@@ -40,10 +40,12 @@
 #include "llvm/Module.h"
 #include "llvm/Analysis/Verifier.h"
 #include "llvm/Support/IRBuilder.h"
-#include "llvm/Intrinsics.h"
+//#include "llvm/Intrinsics.h"
 
 #include <vector>
 #include <stdio.h>
+#include <map>
+/*
 #ifdef _MSC_VER
 #include <unordered_map>
 #else
@@ -52,8 +54,9 @@
 // use C++0x/Microsoft convention
 namespace std
 {
-   using namespace tr1;
+using namespace tr1;
 }
+//*/
 
 #include "ir.h"
 #include "ir_visitor.h"
@@ -127,7 +130,8 @@ public:
          return llvm::ArrayType::get(vec_type, type->matrix_columns);
    }
 
-   typedef std::unordered_map<ir_variable*, llvm::Value*> llvm_variables_t;
+   typedef std::map<ir_variable*, llvm::Value*> llvm_variables_t;
+   //typedef std::unordered_map<ir_variable*, llvm::Value*> llvm_variables_t;
    llvm_variables_t llvm_variables;
 
    llvm::Value* llvm_variable(class ir_variable* var)
@@ -166,7 +170,8 @@ public:
       }
    }
 
-   typedef std::unordered_map<ir_function_signature*, llvm::Function*> llvm_functions_t;
+   typedef std::map<ir_function_signature*, llvm::Function*> llvm_functions_t;
+   //typedef std::unordered_map<ir_function_signature*, llvm::Function*> llvm_functions_t;
    llvm_functions_t llvm_functions;
 
    llvm::Function* llvm_function(class ir_function_signature* sig)
@@ -206,7 +211,8 @@ public:
 
    llvm::Constant* llvm_constant(class ir_instruction* ir)
    {
-      return &dynamic_cast<llvm::Constant&>(*llvm_value(ir));
+      return (llvm::Constant *)llvm_value(ir);
+      //return &dynamic_cast<llvm::Constant&>(*llvm_value(ir));
    }
 
    llvm::Constant* llvm_int(unsigned v)
@@ -237,17 +243,71 @@ public:
       }
    }
 
-   llvm::Value* llvm_intrinsic(llvm::Intrinsic::ID id, llvm::Value* a)
+//   llvm::Value* llvm_intrinsic(llvm::Intrinsic::ID id, llvm::Value* a)
+//   {
+//      const llvm::Type* types[1] = {a->getType()};
+//      return bld.CreateCall(llvm::Intrinsic::getDeclaration(mod, id, types, 1), a);
+//   }
+//
+//   llvm::Value* llvm_intrinsic(llvm::Intrinsic::ID id, llvm::Value* a, llvm::Value* b)
+//   {
+//      const llvm::Type* types[2] = {a->getType(), b->getType()};
+//      /* only one type suffix is usually needed, so pass 1 here */
+//      return bld.CreateCall2(llvm::Intrinsic::getDeclaration(mod, id, types, 1), a, b);
+//   }
+
+   llvm::Value* llvm_intrinsic_unop(ir_expression_operation op, llvm::Value * op0)
    {
-      const llvm::Type* types[1] = {a->getType()};
-      return bld.CreateCall(llvm::Intrinsic::getDeclaration(mod, id, types, 1), a);
+      const llvm::Type * floatType = llvm::Type::getFloatTy(ctx);
+      const char * name = NULL;
+      switch (op) {
+      case ir_unop_sin:
+         name = "sinf";
+         break;
+      case ir_unop_cos:
+         name = "cosf";
+         break;
+      default:
+         assert(0);
+      }
+
+      llvm::Function * function = mod->getFunction(name);
+      if (!function) {
+         // predeclare the intrinsic
+         std::vector<const llvm::Type*> args;
+         args.push_back(floatType);
+         llvm::FunctionType* type = llvm::FunctionType::get(floatType, args, false);
+         function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name, mod);
+         function->setCallingConv(llvm::CallingConv::C);
+      }
+
+      return bld.CreateCall(function, op0);
    }
 
-   llvm::Value* llvm_intrinsic(llvm::Intrinsic::ID id, llvm::Value* a, llvm::Value* b)
+   llvm::Value* llvm_intrinsic_binop(ir_expression_operation op, llvm::Value * op0, llvm::Value * op1)
    {
-      const llvm::Type* types[2] = {a->getType(), b->getType()};
-      /* only one type suffix is usually needed, so pass 1 here */
-      return bld.CreateCall2(llvm::Intrinsic::getDeclaration(mod, id, types, 1), a, b);
+      const llvm::Type * floatType = llvm::Type::getFloatTy(ctx);
+      const char * name = NULL;
+      switch (op) {
+      case ir_binop_pow:
+         name = "powf";
+         break;
+      default:
+         assert(0);
+      }
+
+      llvm::Function * function = mod->getFunction(name);
+      if (!function) {
+         // predeclare the intrinsic
+         std::vector<const llvm::Type*> args;
+         args.push_back(floatType);
+         args.push_back(floatType);
+         llvm::FunctionType* type = llvm::FunctionType::get(floatType, args, false);
+         function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name, mod);
+         function->setCallingConv(llvm::CallingConv::C);
+      }
+
+      return bld.CreateCall2(function, op0, op1);
    }
 
    llvm::Constant* llvm_imm(const llvm::Type* type, double v)
@@ -276,6 +336,56 @@ public:
       const llvm::Type* int_ty = llvm::Type::getInt32Ty(v->getContext());
       llvm::Constant* vals[3] = {llvm::ConstantInt::get(int_ty, a), llvm::ConstantInt::get(int_ty, b), llvm::ConstantInt::get(int_ty, c)};
       return bld.CreateShuffleVector(v, llvm::UndefValue::get(v->getType()), llvm::ConstantVector::get(vals, 3), name);
+   }
+
+   llvm::Value* create_select(unsigned width, llvm::Value * cond, llvm::Value * tru, llvm::Value * fal, const char * name = "")
+   {
+      if (1 == width)
+         return bld.CreateSelect(cond, tru, fal, name);
+
+      const llvm::Type * vectorType = tru->getType();
+      llvm::Value * vector = llvm::Constant::getNullValue(vectorType);
+      for (unsigned int i = 0; i < width; i++) {
+         llvm::Value * c = bld.CreateExtractElement(cond, llvm_int(i));
+         llvm::Value * t = bld.CreateExtractElement(tru, llvm_int(i));
+         llvm::Value * f = bld.CreateExtractElement(fal, llvm_int(i));
+         llvm::Value * v = bld.CreateSelect(c, t, f, name);
+         vector = bld.CreateInsertElement(vector, v, llvm_int(i), "vslct");
+      }
+      return vector;
+   }
+
+   llvm::Value* create_dot_product(llvm::Value* ops0, llvm::Value* ops1, glsl_base_type type, unsigned width)
+   {
+      llvm::Value* prod;
+      switch (type) {
+      case GLSL_TYPE_UINT:
+      case GLSL_TYPE_INT:
+         prod = bld.CreateMul(ops0, ops1, "dot.mul");
+         break;
+      case GLSL_TYPE_FLOAT:
+         prod = bld.CreateFMul(ops0, ops1, "dot.mul");
+         break;
+      default:
+         assert(0);
+      }
+
+      if (width<= 1)
+         return prod;
+
+      llvm::Value* sum = 0;
+      for (unsigned i = 0; i < width; ++i) {
+         llvm::Value* elem = bld.CreateExtractElement(prod, llvm_int(i), "dot.elem");
+         if (sum) {
+            if (type == GLSL_TYPE_FLOAT)
+               sum = bld.CreateFAdd(sum, elem, "dot.add");
+            else
+               sum = bld.CreateAdd(sum, elem, "dot.add");
+         }
+         else
+            sum = elem;
+      }
+      return sum;
    }
 
    llvm::Value* llvm_expression(ir_expression* ir)
@@ -315,60 +425,61 @@ public:
       case ir_unop_logic_not:
          return bld.CreateNot(ops[0]);
       case ir_unop_neg:
-         return bld.CreateNeg(ops[0]);
+         switch (ir->operands[0]->type->base_type) {
+         case GLSL_TYPE_UINT:
+         case GLSL_TYPE_BOOL:
+         case GLSL_TYPE_INT:
+            return bld.CreateNeg(ops[0]);
+         case GLSL_TYPE_FLOAT:
+            return bld.CreateFNeg(ops[0]);
+         default:
+            assert(0);
+         }
       case ir_unop_abs:
-         switch(ir->operands[0]->type->base_type)
-         {
+         switch (ir->operands[0]->type->base_type) {
          case GLSL_TYPE_UINT:
          case GLSL_TYPE_BOOL:
             return ops[0];
          case GLSL_TYPE_INT:
-            return bld.CreateSelect(bld.CreateICmpSGE(ops[0], llvm_imm(ops[0]->getType(), 0), "sabs.ge"), ops[0], bld.CreateNeg(ops[0], "sabs.neg"), "sabs.select");
+            return create_select(ir->operands[0]->type->vector_elements,
+                                 bld.CreateICmpSGE(ops[0], llvm_imm(ops[0]->getType(), 0), "sabs.ge"),
+                                 ops[0], bld.CreateNeg(ops[0], "sabs.neg"), "sabs.select");
          case GLSL_TYPE_FLOAT:
-            return bld.CreateSelect(bld.CreateFCmpUGE(ops[0], llvm_imm(ops[0]->getType(), 0), "fabs.ge"), ops[0], bld.CreateFNeg(ops[0], "fabs.neg"), "fabs.select");
+            return create_select(ir->operands[0]->type->vector_elements,
+                                 bld.CreateFCmpUGE(ops[0], llvm_imm(ops[0]->getType(), 0), "fabs.ge"),
+                                 ops[0], bld.CreateFNeg(ops[0], "fabs.neg"), "fabs.select");
          default:
             assert(0);
          }
       case ir_unop_sign:
-         switch(ir->operands[0]->type->base_type)
-         {
+         switch (ir->operands[0]->type->base_type) {
          case GLSL_TYPE_BOOL:
             return ops[0];
          case GLSL_TYPE_UINT:
             return bld.CreateZExt(bld.CreateICmpNE(ops[0], llvm_imm(ops[0]->getType(), 0), "usign.ne"), ops[0]->getType(), "usign.zext");
          case GLSL_TYPE_INT:
             return bld.CreateSelect(bld.CreateICmpNE(ops[0], llvm_imm(ops[0]->getType(), 0), "ssign.ne"),
-                  bld.CreateSelect(bld.CreateICmpSGE(ops[0], llvm_imm(ops[0]->getType(), 0), "ssign.ge"), llvm_imm(ops[0]->getType(), 1), llvm_imm(ops[0]->getType(), -1), "sabs.selects"),
-                  llvm_imm(ops[0]->getType(), 0), "sabs.select0");
+                                    bld.CreateSelect(bld.CreateICmpSGE(ops[0], llvm_imm(ops[0]->getType(), 0), "ssign.ge"), llvm_imm(ops[0]->getType(), 1), llvm_imm(ops[0]->getType(), -1), "sabs.selects"),
+                                    llvm_imm(ops[0]->getType(), 0), "sabs.select0");
          case GLSL_TYPE_FLOAT:
             return bld.CreateSelect(bld.CreateFCmpONE(ops[0], llvm_imm(ops[0]->getType(), 0), "fsign.ne"),
-                  bld.CreateSelect(bld.CreateFCmpUGE(ops[0], llvm_imm(ops[0]->getType(), 0), "fsign.ge"), llvm_imm(ops[0]->getType(), 1), llvm_imm(ops[0]->getType(), -1), "fabs.selects"),
-                  llvm_imm(ops[0]->getType(), 0), "fabs.select0");
+                                    bld.CreateSelect(bld.CreateFCmpUGE(ops[0], llvm_imm(ops[0]->getType(), 0), "fsign.ge"), llvm_imm(ops[0]->getType(), 1), llvm_imm(ops[0]->getType(), -1), "fabs.selects"),
+                                    llvm_imm(ops[0]->getType(), 0), "fabs.select0");
          default:
             assert(0);
          }
       case ir_unop_rcp:
          assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
          return bld.CreateFDiv(llvm_imm(ops[0]->getType(), 1), ops[0]);
-      case ir_unop_exp:
-         assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return llvm_intrinsic(llvm::Intrinsic::exp, ops[0]);
-      case ir_unop_exp2:
-         assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return llvm_intrinsic(llvm::Intrinsic::exp2, ops[0]);
-      case ir_unop_log:
-         assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return llvm_intrinsic(llvm::Intrinsic::log, ops[0]);
-      case ir_unop_log2:
-         assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return llvm_intrinsic(llvm::Intrinsic::log2, ops[0]);
-      case ir_unop_sin:
-         assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return llvm_intrinsic(llvm::Intrinsic::sin, ops[0]);
+      case ir_unop_exp: // fall through
+      case ir_unop_exp2: // fall through
+      case ir_unop_log: // fall through
+      case ir_unop_log2: // fall through
+      case ir_unop_sin: // fall through
       case ir_unop_cos:
          assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return llvm_intrinsic(llvm::Intrinsic::cos, ops[0]);
-      // TODO: implement these somehow
+         return llvm_intrinsic_unop(ir->operation, ops[0]);
+         // TODO: implement these somehow
       case ir_unop_dFdx:
          assert(0);
          //return llvm_intrinsic(llvm::Intrinsic::ddx, ops[0]);
@@ -399,9 +510,24 @@ public:
          default:
             assert(0);
          }
-         case ir_binop_mul:
-         switch(ir->operands[0]->type->base_type)
-         {
+      case ir_binop_mul:
+         if (ir->operands[0]->type->is_matrix() && ir->operands[1]->type->is_vector())
+            assert(0);
+         else if (ir->operands[0]->type->is_vector() && ir->operands[1]->type->is_matrix()) {
+            assert(0); // matrix multiplication should have been lowered to vector ops
+			llvm::VectorType * vectorType = llvm::VectorType::get(llvm_base_type(ir->operands[1]->type->base_type), ir->operands[1]->type->matrix_columns);
+            llvm::Value * vector = llvm::Constant::getNullValue(vectorType);
+            for (unsigned int i = 0; i < ir->operands[1]->type->matrix_columns; i++) {
+               llvm::Value * value = bld.CreateExtractValue(ops[1], i, "vec*mat_col");
+               value = create_dot_product(value, ops[0], ir->operands[1]->type->base_type, ir->operands[1]->type->vector_elements);
+               vector = bld.CreateInsertElement(vector, value, llvm_int(i), "vec*mat_res");
+            }
+            return vector;
+         }
+         else if (ir->operands[0]->type->is_matrix() && ir->operands[1]->type->is_matrix())
+            assert(0);
+
+         switch (ir->operands[0]->type->base_type) {
          case GLSL_TYPE_BOOL:
             return bld.CreateAnd(ops[0], ops[1]);
          case GLSL_TYPE_UINT:
@@ -490,9 +616,9 @@ public:
          default:
             assert(0);
          }
-      case ir_binop_equal:
-         switch(ir->operands[0]->type->base_type)
-         {
+      case ir_binop_equal: // fall through
+      case ir_binop_all_equal: // TODO: check op same as ir_binop_equal
+         switch (ir->operands[0]->type->base_type) {
          case GLSL_TYPE_BOOL:
          case GLSL_TYPE_UINT:
          case GLSL_TYPE_INT:
@@ -524,64 +650,31 @@ public:
          assert(ir->operands[0]->type->base_type == GLSL_TYPE_BOOL);
          return bld.CreateAnd(ops[0], ops[1]);
       case ir_binop_dot:
-      {
-         llvm::Value* prod;
-         switch(ir->operands[0]->type->base_type)
-         {
-         case GLSL_TYPE_UINT:
-         case GLSL_TYPE_INT:
-            prod = bld.CreateMul(ops[0], ops[1], "dot.mul");
-            break;
-         case GLSL_TYPE_FLOAT:
-            prod = bld.CreateFMul(ops[0], ops[1], "dot.mul");
-            break;
-         default:
-            assert(0);
-         }
-
-         if(ir->operands[0]->type->vector_elements <= 1)
-            return prod;
-
-         llvm::Value* sum = 0;
-         for(unsigned i = 0; i < ir->operands[0]->type->vector_elements; ++i)
-         {
-            llvm::Value* elem = bld.CreateExtractElement(prod, llvm_int(i), "dot.elem");
-            if(sum)
-            {
-               if(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT)
-                  sum = bld.CreateFAdd(sum, elem, "dot.add");
-               else
-                  sum = bld.CreateAdd(sum, elem, "dot.add");
-            }
-            else
-               sum = elem;
-         }
-         return sum;
-      }
-      case ir_binop_cross:
-         assert(ir->operands[0]->type->vector_elements == 3);
-         switch(ir->operands[0]->type->base_type)
-         {
-         case GLSL_TYPE_UINT:
-         case GLSL_TYPE_INT:
-            return bld.CreateSub(
-                  bld.CreateMul(create_shuffle3(bld, ops[0], 1, 2, 0, "cross.a120"), create_shuffle3(bld, ops[1], 2, 0, 1, "cross.a201"), "cross.ab"),
-                  bld.CreateMul(create_shuffle3(bld, ops[1], 1, 2, 0, "cross.b120"), create_shuffle3(bld, ops[0], 2, 0, 1, "cross.b201"), "cross.ba"),
-                  "cross.sub");
-         case GLSL_TYPE_FLOAT:
-            return bld.CreateFSub(
-                  bld.CreateFMul(create_shuffle3(bld, ops[0], 1, 2, 0, "cross.a120"), create_shuffle3(bld, ops[1], 2, 0, 1, "cross.a201"), "cross.ab"),
-                  bld.CreateFMul(create_shuffle3(bld, ops[1], 1, 2, 0, "cross.b120"), create_shuffle3(bld, ops[0], 2, 0, 1, "cross.b201"), "cross.ba"),
-                  "cross.sub");
-         default:
-            assert(0);
-         }
+         return create_dot_product(ops[0], ops[1], ir->operands[0]->type->base_type, ir->operands[0]->type->vector_elements);
+//      case ir_binop_cross: this op does not exist in ir.h
+//         assert(ir->operands[0]->type->vector_elements == 3);
+//         switch(ir->operands[0]->type->base_type)
+//         {
+//         case GLSL_TYPE_UINT:
+//         case GLSL_TYPE_INT:
+//            return bld.CreateSub(
+//                  bld.CreateMul(create_shuffle3(bld, ops[0], 1, 2, 0, "cross.a120"), create_shuffle3(bld, ops[1], 2, 0, 1, "cross.a201"), "cross.ab"),
+//                  bld.CreateMul(create_shuffle3(bld, ops[1], 1, 2, 0, "cross.b120"), create_shuffle3(bld, ops[0], 2, 0, 1, "cross.b201"), "cross.ba"),
+//                  "cross.sub");
+//         case GLSL_TYPE_FLOAT:
+//            return bld.CreateFSub(
+//                  bld.CreateFMul(create_shuffle3(bld, ops[0], 1, 2, 0, "cross.a120"), create_shuffle3(bld, ops[1], 2, 0, 1, "cross.a201"), "cross.ab"),
+//                  bld.CreateFMul(create_shuffle3(bld, ops[1], 1, 2, 0, "cross.b120"), create_shuffle3(bld, ops[0], 2, 0, 1, "cross.b201"), "cross.ba"),
+//                  "cross.sub");
+//         default:
+//            assert(0);
+//         }
       case ir_unop_sqrt:
          assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return llvm_intrinsic(llvm::Intrinsic::sqrt, ops[0]);
+         return llvm_intrinsic_unop(ir->operation, ops[0]);
       case ir_unop_rsq:
          assert(ir->operands[0]->type->base_type == GLSL_TYPE_FLOAT);
-         return bld.CreateFDiv(llvm_imm(ops[0]->getType(), 1), llvm_intrinsic(llvm::Intrinsic::sqrt, ops[0]), "rsqrt.rcp");
+         return bld.CreateFDiv(llvm_imm(ops[0]->getType(), 1), llvm_intrinsic_unop(ir_unop_sqrt, ops[0]), "rsqrt.rcp");
       case ir_unop_i2f:
          return bld.CreateSIToFP(ops[0], llvm_type(ir->type));
       case ir_unop_u2f:
@@ -654,8 +747,9 @@ public:
             assert(0);
          }
       case ir_binop_pow:
-         return llvm_intrinsic(llvm::Intrinsic::pow, ops[0], ops[1]);
-         break;
+         assert(GLSL_TYPE_FLOAT == ir->operands[0]->type->base_type);
+         assert(GLSL_TYPE_FLOAT == ir->operands[1]->type->base_type);
+         return llvm_intrinsic_binop(ir_binop_pow, ops[0], ops[1]);
       case ir_unop_bit_not:
          return bld.CreateNot(ops[0]);
       case ir_binop_bit_and:
@@ -687,6 +781,7 @@ public:
             return 0;
          }
       default:
+         printf("ir->operation=%d \n", ir->operation);
          assert(0);
          return 0;
       }
@@ -1016,7 +1111,13 @@ public:
       unsigned mask = (1 << width) - 1;
       assert(rhs);
 
-      if(!(ir->write_mask & mask))
+      // TODO: masking for matrix assignment
+      if (ir->rhs->type->is_matrix()) {
+         bld.CreateStore(rhs, lhs, "mat_str");
+         return;
+      }
+
+      if (!(ir->write_mask & mask))
          return;
 
       if(ir->rhs->type->vector_elements < width)
@@ -1109,6 +1210,7 @@ glsl_ir_to_llvm_module(struct exec_list *ir)
    if(llvm::verifyModule(*mod, llvm::PrintMessageAction, 0))
    {
       delete mod;
+      assert(0);
       return 0;
    }
 

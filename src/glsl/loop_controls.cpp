@@ -88,7 +88,7 @@ calculate_iterations(ir_rvalue *from, ir_rvalue *to, ir_rvalue *increment,
    if (from == NULL || to == NULL || increment == NULL)
       return -1;
 
-   void *mem_ctx = talloc_init("%s", __func__);
+   void *mem_ctx = hieralloc_init(__func__);
 
    ir_expression *const sub =
       new(mem_ctx) ir_expression(ir_binop_sub, from->type, to, from);
@@ -147,7 +147,7 @@ calculate_iterations(ir_rvalue *from, ir_rvalue *to, ir_rvalue *increment,
       }
    }
 
-   talloc_free(mem_ctx);
+   hieralloc_free(mem_ctx);
    return (valid_loop) ? iter_value : -1;
 }
 

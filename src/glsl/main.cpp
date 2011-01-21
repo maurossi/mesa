@@ -37,6 +37,8 @@
 #include "program.h"
 #include "loop_analysis.h"
 
+#include "ir_to_llvm.h"
+
 extern "C" struct gl_shader *
 _mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type);
 
@@ -61,7 +63,7 @@ _mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type)
    (void) ctx;
 
    assert(type == GL_FRAGMENT_SHADER || type == GL_VERTEX_SHADER);
-   shader = talloc_zero(NULL, struct gl_shader);
+   shader = hieralloc_zero(NULL, struct gl_shader);
    if (shader) {
       shader->Type = type;
       shader->Name = name;
@@ -105,7 +107,7 @@ initialize_context(struct gl_context *ctx, gl_api api)
    ctx->Driver.NewShader = _mesa_new_shader;
 }
 
-/* Returned string will have 'ctx' as its talloc owner. */
+/* Returned string will have 'ctx' as its hieralloc owner. */
 static char *
 load_text_file(void *ctx, const char *file_name)
 {
@@ -119,7 +121,7 @@ load_text_file(void *ctx, const char *file_name)
 	}
 
 	if (fstat(fd, & st) == 0) {
-	   text = (char *) talloc_size(ctx, st.st_size + 1);
+	   text = (char *) hieralloc_size(ctx, st.st_size + 1);
 		if (text != NULL) {
 			do {
 				ssize_t bytes = read(fd, text + total_read,
@@ -151,6 +153,7 @@ int dump_ast = 0;
 int dump_hir = 0;
 int dump_lir = 0;
 int do_link = 0;
+int do_jit = 0;
 
 const struct option compiler_opts[] = {
    { "glsl-es",  0, &glsl_es,  1 },
@@ -158,6 +161,7 @@ const struct option compiler_opts[] = {
    { "dump-hir", 0, &dump_hir, 1 },
    { "dump-lir", 0, &dump_lir, 1 },
    { "link",     0, &do_link,  1 },
+   { "do-jit",   0, &do_jit,   1 },
    { NULL, 0, NULL, 0 }
 };
 
@@ -238,21 +242,231 @@ compile_shader(struct gl_context *ctx, struct gl_shader *shader)
    shader->num_builtins_to_link = state->num_builtins_to_link;
 
    if (shader->InfoLog)
-      talloc_free(shader->InfoLog);
+      hieralloc_free(shader->InfoLog);
 
    shader->InfoLog = state->info_log;
 
    /* Retain any live IR, but trash the rest. */
    reparent_ir(shader->ir, shader);
 
-   talloc_free(state);
+   hieralloc_free(state);
 
    return;
 }
 
+
+#include "image_file.h"
+
+void execute(void (* function)(), float * data)
+{
+   const unsigned width = 480, height = 800;
+   const unsigned wd = 200, ht = 200;
+   unsigned * frameSurface = new unsigned [width * height];
+   float * constants = data + 36;
+   float * outputs = data + 0;
+   float * inputs = data + 12;
+   printf("executing... \n function=%p, data=%p \n", function, data);
+
+   /*
+   #ifdef __arm__
+   {
+      volatile unsigned wait = 1;
+      printf("waiting for attach, set wait(%p) to 0 \n", &wait);
+      puts("");
+      while (wait);
+   }
+   #endif
+   //*/
+
+   unsigned frames = 1;
+
+   clock_t c0 = clock();
+   //for (unsigned i = 0; i < 480 * 800; i++)
+   for (unsigned y = 0; y < ht; y++)
+      for (unsigned x = 0; x < wd; x++) {
+         //data[36] = (float)i / 10000;
+         //memset(data, i, sizeof(data));
+         inputs[0] = ((float)x) / wd;
+         inputs[1] = ((float)y) / ht;
+         inputs[2] = 0;
+         inputs[3] = 1;
+         constants[0] = 0.0f;
+         function();
+         unsigned r = outputs[0] * 255;
+         unsigned g = outputs[1] * 255;
+         unsigned b = outputs[2] * 255;
+         unsigned a = outputs[3] * 255;
+         frameSurface[y * width + x] = (a << 24) | (b << 16) | (g << 8) | r;
+
+      }
+
+   float elapsed = (float)(clock() - c0) / CLOCKS_PER_SEC;
+   printf ("\n *** test_scan elapsed CPU time: %fs \n *** fps=%.2f, tpf=%.2fms \n",
+           elapsed, frames / elapsed, elapsed / frames * 1000);
+   printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", outputs[0], outputs[1], outputs[2], outputs[3]);
+#ifdef __arm__
+   SaveBMP("/sdcard/mesa.bmp", frameSurface, width, height);
+#else
+   SaveBMP("mesa.bmp", frameSurface, width, height);
+#endif
+   delete frameSurface;
+}
+
+//#def USE_LLVM_EXECUTIONENGINE 1
+#if USE_LLVM_EXECUTIONENGINE
+
+#include <llvm/ExecutionEngine/JIT.h>
+#include <llvm/Target/TargetSelect.h>
+
+void jit(llvm::Module * mod)
+{
+#ifndef __arm__
+   __attribute__ ((aligned (16))) // LLVM generates movaps on X86, needs 16 bytes align
+#endif
+   float data [64];
+   memset(data, 0xff, sizeof(data));
+
+   llvm::InitializeNativeTarget();
+
+   std::string errorString;
+   llvm::EngineBuilder engineBuilder(mod);
+   engineBuilder.setEngineKind(llvm::EngineKind::JIT);
+   engineBuilder.setErrorStr(&errorString);
+#ifdef __arm__
+   engineBuilder.setMAttrs(llvm::SmallVector<std::string, 1>(1,"vfp3"));
+   mod->setTargetTriple("armv7-none-linux-gnueabi");
+#endif
+
+   llvm::ExecutionEngine * ee = engineBuilder.create();
+   if (!ee)
+      puts(errorString.c_str());
+   assert(ee);
+
+   ee->DisableLazyCompilation();
+
+   if ((mod->getFunction("putchar")))
+      ee->updateGlobalMapping(mod->getFunction("putchar"), (void *)putchar);
+   if ((mod->getFunction("sinf")))
+      ee->updateGlobalMapping(mod->getFunction("sinf"), (void *)sinf);
+   if ((mod->getFunction("cosf")))
+      ee->updateGlobalMapping(mod->getFunction("cosf"), (void *)cosf);
+   if ((mod->getFunction("powf")))
+      ee->updateGlobalMapping(mod->getFunction("powf"), (void *)cosf);
+
+   ee->updateGlobalMapping(mod->getGlobalVariable("gl_FragColor"), (void *)(data + 0));
+   ee->updateGlobalMapping(mod->getGlobalVariable("gl_FragCoord"), (void *)(data + 4));
+   ee->updateGlobalMapping(mod->getGlobalVariable("gl_FrontFacing"), (void *)(data + 8));
+   ee->updateGlobalMapping(mod->getGlobalVariable("vTexCoord"), (void *)(data + 12));
+   ee->updateGlobalMapping(mod->getGlobalVariable("t"), (void *)(data + 36));
+
+   llvm::Function * func = mod->getFunction("main");
+   assert(func);
+
+   void (* function)() = (void (*)())ee->getPointerToFunction(func);
+   execute(function, data);
+   puts("USE_LLVM_EXECUTIONENGINE");
+   printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", data[0], data[1], data[2], data[3]);
+}
+
+#else
+
+#include <bcc/bcc.h>
+#include <dlfcn.h>
+
+static void* symbolLookup(void* pContext, const char* name)
+{
+   float * data = (float *)pContext;
+   void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
+   if (NULL == symbol) {
+      if (0 == strcmp("gl_FragColor", name))
+         symbol = data + 0;
+      else if (0 == strcmp("gl_FragCoord", name))
+         symbol = data + 4;
+      else if (0 == strcmp("gl_FrontFacing", name))
+         symbol = data + 8;
+      else if (0 == strcmp("vTexCoord", name)) {
+         symbol = data + 12;
+         *(data + 12) = 1.1;
+         *(data + 13) = 1.2;
+         *(data + 14) = 1.3;
+         *(data + 15) = 1;
+      } else if (0 == strcmp("uRotM", name)) {
+         symbol = data + 16;
+         memset(data + 16, 0, 16 * sizeof(*data));
+         data[16] = data[21] = data[26] = data[31] = 1;
+         data[28] = 11;
+         data[29] = 22;
+         data[30] = 33;
+         //data[31] = 44;
+      } else if (0 == strcmp("uFragmentColor", name)) {
+         symbol = data + 32;
+         data[32] = 1.57075f;
+         data[33] = 1.57075f;
+         data[34] = 1.57075f;
+         data[35] = 1.57075f;
+      } else if (0 == strcmp("t", name)) {
+         symbol = data + 36;
+         data[36] = 0.1f;
+      }
+
+   }
+   printf("symbolLookup '%s'=%p \n", name, symbol);
+   assert(symbol);
+   return symbol;
+}
+
+void jit(llvm::Module * mod)
+{
+#ifndef __arm__
+   __attribute__ ((aligned (16))) // LLVM generates movaps on X86, needs 16 bytes align
+#endif
+   float data [64];
+   memset(data, 0xff, sizeof(data));
+
+   BCCScriptRef script = bccCreateScript();
+   bccReadModule(script, "glsl", (LLVMModuleRef)mod, 0);
+   int result = 0;
+   assert(0 == bccGetError(script));
+   bccRegisterSymbolCallback(script, symbolLookup, data);
+   assert(0 == bccGetError(script));
+   bccPrepareExecutable(script, NULL, 0);
+   result = bccGetError(script);
+   if (result != 0) {
+      puts("failed bcc_compile");
+      assert(0);
+      return;
+   }
+
+   void (* function)() = (void (*)())bccGetFuncAddr(script, "main");
+   result = bccGetError(script);
+   if (result != BCC_NO_ERROR)
+      fprintf(stderr, "Could not find '%s': %d\n", "main", result);
+   else
+      printf("bcc_compile %s=%p \n", "main", function);
+   execute(function, data);
+}
+
+#endif
+
+struct _mesa_glsl_parse_state * global_state = NULL;
+
 int
 main(int argc, char **argv)
 {
+   //*
+   if (1 == argc) {
+      argc = 6;
+      char shader_file_path[256] = {0};
+      memcpy(shader_file_path, argv[0], strlen(argv[0]));
+      char * slash = shader_file_path + strlen(shader_file_path);
+      while (*slash != '/')
+         slash--;
+      const char shader_file[] = "stress_fs.frag";
+      memcpy(slash + 1, shader_file, strlen(shader_file));
+      const char * args [] = {argv[0], "--dump-hir", "--do-jit", "--link", "--glsl-es", shader_file_path};
+      argv = (char **)args;
+   }
+   //*/
    int status = EXIT_SUCCESS;
    struct gl_context local_ctx;
    struct gl_context *ctx = &local_ctx;
@@ -270,16 +484,16 @@ main(int argc, char **argv)
 
    struct gl_shader_program *whole_program;
 
-   whole_program = talloc_zero (NULL, struct gl_shader_program);
+   whole_program = hieralloc_zero (NULL, struct gl_shader_program);
    assert(whole_program != NULL);
 
    for (/* empty */; argc > optind; optind++) {
       whole_program->Shaders = (struct gl_shader **)
-	 talloc_realloc(whole_program, whole_program->Shaders,
-			struct gl_shader *, whole_program->NumShaders + 1);
+         hieralloc_realloc(whole_program, whole_program->Shaders,
+         struct gl_shader *, whole_program->NumShaders + 1);
       assert(whole_program->Shaders != NULL);
 
-      struct gl_shader *shader = talloc_zero(whole_program, gl_shader);
+      struct gl_shader *shader = hieralloc_zero(whole_program, gl_shader);
 
       whole_program->Shaders[whole_program->NumShaders] = shader;
       whole_program->NumShaders++;
@@ -318,15 +532,38 @@ main(int argc, char **argv)
       status = (whole_program->LinkStatus) ? EXIT_SUCCESS : EXIT_FAILURE;
 
       if (strlen(whole_program->InfoLog) > 0)
-	 printf("Info log for linking:\n%s\n", whole_program->InfoLog);
+         printf("Info log for linking:\n%s\n", whole_program->InfoLog);
+   }
+
+   puts("jit");
+
+   for (unsigned i = 0; do_jit && i < MESA_SHADER_TYPES; i++) {
+      struct gl_shader *shader = whole_program->_LinkedShaders[i];
+      if (!shader)
+         continue;
+      global_state = new(shader) _mesa_glsl_parse_state(ctx, shader->Type, shader);
+      exec_list * ir = shader->ir;
+
+      do_mat_op_to_vec(ir);
+
+      puts("\n *** IR for JIT *** \n");
+      _mesa_print_ir(ir, global_state);
+
+      llvm::Module * module = glsl_ir_to_llvm_module(ir);
+      assert(module);
+      puts("module translated");
+      jit(module);
+      puts("jitted");
    }
 
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++)
-      talloc_free(whole_program->_LinkedShaders[i]);
+      hieralloc_free(whole_program->_LinkedShaders[i]);
 
-   talloc_free(whole_program);
+   hieralloc_free(whole_program);
    _mesa_glsl_release_types();
    _mesa_glsl_release_functions();
 
+   puts("mesa exit");
+   hieralloc_report(NULL, stdout);
    return status;
 }

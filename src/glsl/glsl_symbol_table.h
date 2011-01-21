@@ -53,27 +53,27 @@ private:
    }
 
 public:
-   /* Callers of this talloc-based new need not call delete. It's
-    * easier to just talloc_free 'ctx' (or any of its ancestors). */
+   /* Callers of this hieralloc-based new need not call delete. It's
+    * easier to just hieralloc_free 'ctx' (or any of its ancestors). */
    static void* operator new(size_t size, void *ctx)
    {
       void *table;
 
-      table = talloc_size(ctx, size);
+      table = hieralloc_size(ctx, size);
       assert(table != NULL);
 
-      talloc_set_destructor(table, (int (*)(void*)) _glsl_symbol_table_destructor);
+      hieralloc_set_destructor(table, (int (*)(void*)) _glsl_symbol_table_destructor);
 
       return table;
    }
 
    /* If the user *does* call delete, that's OK, we will just
-    * talloc_free in that case. Here, C++ will have already called the
-    * destructor so tell talloc not to do that again. */
+    * hieralloc_free in that case. Here, C++ will have already called the
+    * destructor so tell hieralloc not to do that again. */
    static void operator delete(void *table)
    {
-      talloc_set_destructor(table, NULL);
-      talloc_free(table);
+      hieralloc_set_destructor(table, NULL);
+      hieralloc_free(table);
    }
    
    glsl_symbol_table();

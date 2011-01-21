@@ -26,7 +26,7 @@
 
 #include <stdint.h>
 
-#include <talloc.h>
+#include <hieralloc.h>
 
 #include "program/hash_table.h"
 

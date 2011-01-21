@@ -49,23 +49,23 @@ struct YYLTYPE;
  */
 class ast_node {
 public:
-   /* Callers of this talloc-based new need not call delete. It's
-    * easier to just talloc_free 'ctx' (or any of its ancestors). */
+   /* Callers of this hieralloc-based new need not call delete. It's
+    * easier to just hieralloc_free 'ctx' (or any of its ancestors). */
    static void* operator new(size_t size, void *ctx)
    {
       void *node;
 
-      node = talloc_zero_size(ctx, size);
+      node = hieralloc_zero_size(ctx, size);
       assert(node != NULL);
 
       return node;
    }
 
    /* If the user *does* call delete, that's OK, we will just
-    * talloc_free in that case. */
+    * hieralloc_free in that case. */
    static void operator delete(void *table)
    {
-      talloc_free(table);
+      hieralloc_free(table);
    }
 
    /**
@@ -122,7 +122,7 @@ public:
    } location;
 
    exec_node link;
-
+	virtual ~ast_node(){};
 protected:
    /**
     * The only constructor is protected so that only derived class objects can

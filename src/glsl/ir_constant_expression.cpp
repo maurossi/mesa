@@ -34,6 +34,7 @@
  */
 
 #include <math.h>
+#include <cmath>
 #include "main/core.h" /* for MAX2, MIN2, CLAMP */
 #include "ir.h"
 #include "ir_visitor.h"
@@ -86,7 +87,7 @@ ir_expression::constant_expression_value()
       components = op[1]->type->components();
    }
 
-   void *ctx = talloc_parent(this);
+   void *ctx = hieralloc_parent(this);
 
    /* Handle array operations here, rather than below. */
    if (op[0]->type->is_array()) {
@@ -347,7 +348,7 @@ ir_expression::constant_expression_value()
    case ir_unop_log2:
       assert(op[0]->type->base_type == GLSL_TYPE_FLOAT);
       for (unsigned c = 0; c < op[0]->type->components(); c++) {
-	 data.f[c] = log2f(op[0]->value.f[c]);
+	 data.f[c] = log(op[0]->value.f[c]);
       }
       break;
 
@@ -845,7 +846,7 @@ ir_swizzle::constant_expression_value()
 	 }
       }
 
-      void *ctx = talloc_parent(this);
+      void *ctx = hieralloc_parent(this);
       return new(ctx) ir_constant(this->type, &data);
    }
    return NULL;
@@ -868,7 +869,7 @@ ir_dereference_variable::constant_expression_value()
    if (!var->constant_value)
       return NULL;
 
-   return var->constant_value->clone(talloc_parent(var), NULL);
+   return var->constant_value->clone(hieralloc_parent(var), NULL);
 }
 
 
@@ -879,7 +880,7 @@ ir_dereference_array::constant_expression_value()
    ir_constant *idx = this->array_index->constant_expression_value();
 
    if ((array != NULL) && (idx != NULL)) {
-      void *ctx = talloc_parent(this);
+      void *ctx = hieralloc_parent(this);
       if (array->type->is_matrix()) {
 	 /* Array access of a matrix results in a vector.
 	  */
@@ -984,7 +985,7 @@ ir_call::constant_expression_value()
     * - Fill "data" with appopriate constant data
     * - Return an ir_constant directly.
     */
-   void *mem_ctx = talloc_parent(this);
+   void *mem_ctx = hieralloc_parent(this);
    ir_expression *expr = NULL;
 
    ir_constant_data data;

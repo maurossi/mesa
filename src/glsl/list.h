@@ -66,10 +66,10 @@
 
 #ifndef __cplusplus
 #include <stddef.h>
-#include <talloc.h>
+#include <hieralloc.h>
 #else
 extern "C" {
-#include <talloc.h>
+#include <hieralloc.h>
 }
 #endif
 
@@ -80,23 +80,23 @@ struct exec_node {
    struct exec_node *prev;
 
 #ifdef __cplusplus
-   /* Callers of this talloc-based new need not call delete. It's
-    * easier to just talloc_free 'ctx' (or any of its ancestors). */
+   /* Callers of this hieralloc-based new need not call delete. It's
+    * easier to just hieralloc_free 'ctx' (or any of its ancestors). */
    static void* operator new(size_t size, void *ctx)
    {
       void *node;
 
-      node = talloc_size(ctx, size);
+      node = hieralloc_size(ctx, size);
       assert(node != NULL);
 
       return node;
    }
 
    /* If the user *does* call delete, that's OK, we will just
-    * talloc_free in that case. */
+    * hieralloc_free in that case. */
    static void operator delete(void *node)
    {
-      talloc_free(node);
+      hieralloc_free(node);
    }
 
    exec_node() : next(NULL), prev(NULL)
@@ -289,23 +289,23 @@ struct exec_list {
    struct exec_node *tail_pred;
 
 #ifdef __cplusplus
-   /* Callers of this talloc-based new need not call delete. It's
-    * easier to just talloc_free 'ctx' (or any of its ancestors). */
+   /* Callers of this hieralloc-based new need not call delete. It's
+    * easier to just hieralloc_free 'ctx' (or any of its ancestors). */
    static void* operator new(size_t size, void *ctx)
    {
       void *node;
 
-      node = talloc_size(ctx, size);
+      node = hieralloc_size(ctx, size);
       assert(node != NULL);
 
       return node;
    }
 
    /* If the user *does* call delete, that's OK, we will just
-    * talloc_free in that case. */
+    * hieralloc_free in that case. */
    static void operator delete(void *node)
    {
-      talloc_free(node);
+      hieralloc_free(node);
    }
 
    exec_list()

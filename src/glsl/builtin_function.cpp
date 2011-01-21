@@ -63,7 +63,7 @@ read_builtins(GLenum target, const char *protos, const char **functions, unsigne
       if (st->error) {
          printf("error reading builtin: %.35s ...\n", functions[i]);
          printf("Info log:\n%s\n", st->info_log);
-         talloc_free(sh);
+         hieralloc_free(sh);
          return NULL;
       }
    }
@@ -2950,22 +2950,46 @@ static const char builtin_sin[] =
    "   (signature float\n"
    "     (parameters\n"
    "       (declare (in) float angle))\n"
-   "     ((return (expression float sin (var_ref angle)))))\n"
+   "		(\n"
+   "			(return (expression float sin (var_ref angle)))\n"
+   "		)\n"
+   "	)\n"
    "\n"
    "   (signature vec2\n"
    "     (parameters\n"
    "       (declare (in) vec2 angle))\n"
-   "     ((return (expression vec2 sin (var_ref angle)))))\n"
+   "      	(\n"
+   "			(declare () vec2 ret)\n"
+   "			(assign (constant bool (1)) (x) (var_ref ret) (call sin ((swiz x (var_ref angle)))))\n"
+   "			(assign (constant bool (1)) (y) (var_ref ret) (call sin ((swiz y (var_ref angle)))))\n"
+   "			(return (var_ref ret))\n"
+   "		)\n"
+   "	)\n"
    "\n"
    "   (signature vec3\n"
    "     (parameters\n"
    "       (declare (in) vec3 angle))\n"
-   "     ((return (expression vec3 sin (var_ref angle)))))\n"
+   "		(\n"
+   "			(declare () vec3 ret)\n"
+   "			(assign (constant bool (1)) (x) (var_ref ret) (call sin ((swiz x (var_ref angle)))))\n"
+   "			(assign (constant bool (1)) (y) (var_ref ret) (call sin ((swiz y (var_ref angle)))))\n"
+   "			(assign (constant bool (1)) (z) (var_ref ret) (call sin ((swiz z (var_ref angle)))))\n"
+   "			(return (var_ref ret))\n"
+   "		)\n"
+   "	)\n"
    "\n"
-   "   (signature vec4\n"
-   "     (parameters\n"
-   "       (declare (in) vec4 angle))\n"
-   "     ((return (expression vec4 sin (var_ref angle)))))\n"
+   "	(signature vec4\n"
+   "		(parameters \n"
+   "			(declare (in) vec4 angle))\n"
+   "		(\n"
+   "			(declare () vec4 ret)\n"
+   "			(assign (constant bool (1)) (x) (var_ref ret) (call sin ((swiz x (var_ref angle)))))\n"
+   "			(assign (constant bool (1)) (y) (var_ref ret) (call sin ((swiz y (var_ref angle)))))\n"
+   "			(assign (constant bool (1)) (z) (var_ref ret) (call sin ((swiz z (var_ref angle)))))\n"
+   "			(assign (constant bool (1)) (w) (var_ref ret) (call sin ((swiz w (var_ref angle)))))\n"
+   "			(return (var_ref ret))\n"
+   "		)\n"
+   "	)\n"
    "))\n"
    ""
 ;
@@ -13516,7 +13540,7 @@ void *builtin_mem_ctx = NULL;
 void
 _mesa_glsl_release_functions(void)
 {
-   talloc_free(builtin_mem_ctx);
+   hieralloc_free(builtin_mem_ctx);
    builtin_mem_ctx = NULL;
    memset(builtin_profiles, 0, sizeof(builtin_profiles));
 }
@@ -13533,7 +13557,7 @@ _mesa_read_profile(struct _mesa_glsl_parse_state *state,
 
    if (sh == NULL) {
       sh = read_builtins(GL_VERTEX_SHADER, prototypes, functions, count);
-      talloc_steal(builtin_mem_ctx, sh);
+      hieralloc_steal(builtin_mem_ctx, sh);
       builtin_profiles[profile_index] = sh;
    }
 
@@ -13546,7 +13570,7 @@ _mesa_glsl_initialize_functions(exec_list *instructions,
                                 struct _mesa_glsl_parse_state *state)
 {
    if (builtin_mem_ctx == NULL) {
-      builtin_mem_ctx = talloc_init("GLSL built-in functions");
+      builtin_mem_ctx = hieralloc_init("GLSL built-in functions");
       memset(&builtin_profiles, 0, sizeof(builtin_profiles));
    }
 

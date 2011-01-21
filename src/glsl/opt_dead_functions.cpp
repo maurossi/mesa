@@ -49,12 +49,12 @@
  public:
     ir_dead_functions_visitor()
     {
-       this->mem_ctx = talloc_new(NULL);
+       this->mem_ctx = hieralloc_new(NULL);
     }
 
     ~ir_dead_functions_visitor()
     {
-       talloc_free(this->mem_ctx);
+       hieralloc_free(this->mem_ctx);
     }
 
     virtual ir_visitor_status visit_enter(ir_function_signature *);

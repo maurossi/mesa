@@ -51,7 +51,7 @@ public:
     * Read an S-Expression from the given string.
     * Advances the supplied pointer to just after the expression read.
     *
-    * Any allocation will be performed with 'ctx' as the talloc owner.
+    * Any allocation will be performed with 'ctx' as the hieralloc owner.
     */
    static s_expression *read_expression(void *ctx, const char *&src);
 
@@ -67,6 +67,7 @@ public:
 
 protected:
    s_expression() { }
+   virtual ~s_expression() { } // GCC error about accessible nonvirtual dctor
 };
 
 /* Atoms */

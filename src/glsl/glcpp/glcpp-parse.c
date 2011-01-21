@@ -102,9 +102,9 @@
 #include "main/core.h" /* for struct gl_extensions */
 #include "main/mtypes.h" /* for gl_api enum */
 
-#define glcpp_print(stream, str) stream = talloc_strdup_append(stream, str)
+#define glcpp_print(stream, str) stream = hieralloc_strdup_append(stream, str)
 #define glcpp_printf(stream, fmt, args, ...) \
-	stream = talloc_asprintf_append(stream, fmt, args)
+	stream = hieralloc_asprintf_append(stream, fmt, args)
 
 static void
 yyerror (YYLTYPE *locp, glcpp_parser_t *parser, const char *error);
@@ -149,7 +149,7 @@ _argument_list_length (argument_list_t *list);
 static token_list_t *
 _argument_list_member_at (argument_list_t *list, int index);
 
-/* Note: This function talloc_steal()s the str pointer. */
+/* Note: This function hieralloc_steal()s the str pointer. */
 static token_t *
 _token_create_str (void *ctx, int type, char *str);
 
@@ -159,9 +159,9 @@ _token_create_ival (void *ctx, int type, int ival);
 static token_list_t *
 _token_list_create (void *ctx);
 
-/* Note: This function adds a talloc_reference() to token.
+/* Note: This function adds a hieralloc_reference() to token.
  *
- * You may want to talloc_unlink any current reference if you no
+ * You may want to hieralloc_unlink any current reference if you no
  * longer need it. */
 static void
 _token_list_append (token_list_t *list, token_t *token);
@@ -1822,7 +1822,7 @@ yyreduce:
     {
 		_glcpp_parser_print_expanded_token_list (parser, (yyvsp[(1) - (1)].token_list));
 		glcpp_print(parser->output, "\n");
-		talloc_free ((yyvsp[(1) - (1)].token_list));
+		hieralloc_free ((yyvsp[(1) - (1)].token_list));
 	;}
     break;
 
@@ -1879,9 +1879,9 @@ yyreduce:
 		macro_t *macro = hash_table_find (parser->defines, (yyvsp[(2) - (3)].str));
 		if (macro) {
 			hash_table_remove (parser->defines, (yyvsp[(2) - (3)].str));
-			talloc_free (macro);
+			hieralloc_free (macro);
 		}
-		talloc_free ((yyvsp[(2) - (3)].str));
+		hieralloc_free ((yyvsp[(2) - (3)].str));
 	;}
     break;
 
@@ -1932,7 +1932,7 @@ yyreduce:
 #line 262 "glcpp/glcpp-parse.y"
     {
 		macro_t *macro = hash_table_find (parser->defines, (yyvsp[(2) - (4)].str));
-		talloc_free ((yyvsp[(2) - (4)].str));
+		hieralloc_free ((yyvsp[(2) - (4)].str));
 		_glcpp_parser_skip_stack_push_if (parser, & (yylsp[(1) - (4)]), macro != NULL);
 	;}
     break;
@@ -1943,7 +1943,7 @@ yyreduce:
 #line 267 "glcpp/glcpp-parse.y"
     {
 		macro_t *macro = hash_table_find (parser->defines, (yyvsp[(2) - (4)].str));
-		talloc_free ((yyvsp[(2) - (4)].str));
+		hieralloc_free ((yyvsp[(2) - (4)].str));
 		_glcpp_parser_skip_stack_push_if (parser, & (yylsp[(1) - (4)]), macro == NULL);
 	;}
     break;
@@ -2020,7 +2020,7 @@ yyreduce:
 		macro_t *macro = hash_table_find (parser->defines, "__VERSION__");
 		if (macro) {
 			hash_table_remove (parser->defines, "__VERSION__");
-			talloc_free (macro);
+			hieralloc_free (macro);
 		}
 		add_builtin_define (parser, "__VERSION__", (yyvsp[(2) - (3)].ival));
 
@@ -2277,7 +2277,7 @@ yyreduce:
     {
 		(yyval.string_list) = _string_list_create (parser);
 		_string_list_append_item ((yyval.string_list), (yyvsp[(1) - (1)].str));
-		talloc_steal ((yyval.string_list), (yyvsp[(1) - (1)].str));
+		hieralloc_steal ((yyval.string_list), (yyvsp[(1) - (1)].str));
 	;}
     break;
 
@@ -2288,7 +2288,7 @@ yyreduce:
     {
 		(yyval.string_list) = (yyvsp[(1) - (3)].string_list);	
 		_string_list_append_item ((yyval.string_list), (yyvsp[(3) - (3)].str));
-		talloc_steal ((yyval.string_list), (yyvsp[(3) - (3)].str));
+		hieralloc_steal ((yyval.string_list), (yyvsp[(3) - (3)].str));
 	;}
     break;
 
@@ -2351,7 +2351,7 @@ yyreduce:
     {
 		(yyval.token_list) = _token_list_create (parser);
 		_token_list_append ((yyval.token_list), (yyvsp[(1) - (1)].token));
-		talloc_unlink (parser, (yyvsp[(1) - (1)].token));
+		hieralloc_unlink (parser, (yyvsp[(1) - (1)].token));
 	;}
     break;
 
@@ -2362,7 +2362,7 @@ yyreduce:
     {
 		(yyval.token_list) = (yyvsp[(1) - (2)].token_list);
 		_token_list_append ((yyval.token_list), (yyvsp[(2) - (2)].token));
-		talloc_unlink (parser, (yyvsp[(2) - (2)].token));
+		hieralloc_unlink (parser, (yyvsp[(2) - (2)].token));
 	;}
     break;
 
@@ -2374,7 +2374,7 @@ yyreduce:
 		parser->space_tokens = 1;
 		(yyval.token_list) = _token_list_create (parser);
 		_token_list_append ((yyval.token_list), (yyvsp[(1) - (1)].token));
-		talloc_unlink (parser, (yyvsp[(1) - (1)].token));
+		hieralloc_unlink (parser, (yyvsp[(1) - (1)].token));
 	;}
     break;
 
@@ -2385,7 +2385,7 @@ yyreduce:
     {
 		(yyval.token_list) = (yyvsp[(1) - (2)].token_list);
 		_token_list_append ((yyval.token_list), (yyvsp[(2) - (2)].token));
-		talloc_unlink (parser, (yyvsp[(2) - (2)].token));
+		hieralloc_unlink (parser, (yyvsp[(2) - (2)].token));
 	;}
     break;
 
@@ -2886,7 +2886,7 @@ _string_list_create (void *ctx)
 {
 	string_list_t *list;
 
-	list = talloc (ctx, string_list_t);
+	list = hieralloc (ctx, string_list_t);
 	list->head = NULL;
 	list->tail = NULL;
 
@@ -2898,8 +2898,8 @@ _string_list_append_item (string_list_t *list, const char *str)
 {
 	string_node_t *node;
 
-	node = talloc (list, string_node_t);
-	node->str = talloc_strdup (node, str);
+	node = hieralloc (list, string_node_t);
+	node->str = hieralloc_strdup (node, str);
 
 	node->next = NULL;
 
@@ -2977,7 +2977,7 @@ _argument_list_create (void *ctx)
 {
 	argument_list_t *list;
 
-	list = talloc (ctx, argument_list_t);
+	list = hieralloc (ctx, argument_list_t);
 	list->head = NULL;
 	list->tail = NULL;
 
@@ -2989,7 +2989,7 @@ _argument_list_append (argument_list_t *list, token_list_t *argument)
 {
 	argument_node_t *node;
 
-	node = talloc (list, argument_node_t);
+	node = hieralloc (list, argument_node_t);
 	node->argument = argument;
 
 	node->next = NULL;
@@ -3040,15 +3040,15 @@ _argument_list_member_at (argument_list_t *list, int index)
 	return NULL;
 }
 
-/* Note: This function talloc_steal()s the str pointer. */
+/* Note: This function hieralloc_steal()s the str pointer. */
 token_t *
 _token_create_str (void *ctx, int type, char *str)
 {
 	token_t *token;
 
-	token = talloc (ctx, token_t);
+	token = hieralloc (ctx, token_t);
 	token->type = type;
-	token->value.str = talloc_steal (token, str);
+	token->value.str = hieralloc_steal (token, str);
 
 	return token;
 }
@@ -3058,7 +3058,7 @@ _token_create_ival (void *ctx, int type, int ival)
 {
 	token_t *token;
 
-	token = talloc (ctx, token_t);
+	token = hieralloc (ctx, token_t);
 	token->type = type;
 	token->value.ival = ival;
 
@@ -3070,7 +3070,7 @@ _token_list_create (void *ctx)
 {
 	token_list_t *list;
 
-	list = talloc (ctx, token_list_t);
+	list = hieralloc (ctx, token_list_t);
 	list->head = NULL;
 	list->tail = NULL;
 	list->non_space_tail = NULL;
@@ -3083,8 +3083,8 @@ _token_list_append (token_list_t *list, token_t *token)
 {
 	token_node_t *node;
 
-	node = talloc (list, token_node_t);
-	node->token = talloc_reference (list, token);
+	node = hieralloc (list, token_node_t);
+	node->token = hieralloc_reference (list, token);
 
 	node->next = NULL;
 
@@ -3143,7 +3143,7 @@ _token_list_trim_trailing_space (token_list_t *list)
 
 		while (tail) {
 			next = tail->next;
-			talloc_free (tail);
+			hieralloc_free (tail);
 			tail = next;
 		}
 	}
@@ -3263,7 +3263,7 @@ _token_print (char **out, token_t *token)
 	}
 }
 
-/* Return a new token (talloc()ed off of 'token') formed by pasting
+/* Return a new token (hieralloc()ed off of 'token') formed by pasting
  * 'token' and 'other'. Note that this function may return 'token' or
  * 'other' directly rather than allocating anything new.
  *
@@ -3334,7 +3334,7 @@ _token_paste (glcpp_parser_t *parser, token_t *token, token_t *other)
 	{
 		char *str;
 
-		str = talloc_asprintf (token, "%s%s", token->value.str,
+		str = hieralloc_asprintf (token, "%s%s", token->value.str,
 				       other->value.str);
 		combined = _token_create_str (token, token->type, str);
 		combined->location = token->location;
@@ -3381,7 +3381,7 @@ static void add_builtin_define(glcpp_parser_t *parser,
    _token_list_append(list, tok);
    _define_object_macro(parser, NULL, name, list);
 
-   talloc_unlink(parser, tok);
+   hieralloc_unlink(parser, tok);
 }
 
 glcpp_parser_t *
@@ -3390,7 +3390,7 @@ glcpp_parser_create (const struct gl_extensions *extensions, int api)
 	glcpp_parser_t *parser;
 	int language_version;
 
-	parser = talloc (NULL, glcpp_parser_t);
+	parser = hieralloc (NULL, glcpp_parser_t);
 
 	glcpp_lex_init_extra (parser, &parser->scanner);
 	parser->defines = hash_table_ctor (32, hash_table_string_hash,
@@ -3407,8 +3407,8 @@ glcpp_parser_create (const struct gl_extensions *extensions, int api)
 	parser->lex_from_list = NULL;
 	parser->lex_from_node = NULL;
 
-	parser->output = talloc_strdup(parser, "");
-	parser->info_log = talloc_strdup(parser, "");
+	parser->output = hieralloc_strdup(parser, "");
+	parser->info_log = hieralloc_strdup(parser, "");
 	parser->error = 0;
 
 	/* Add pre-defined macros. */
@@ -3448,7 +3448,7 @@ glcpp_parser_destroy (glcpp_parser_t *parser)
 {
 	glcpp_lex_destroy (parser->scanner);
 	hash_table_dtor (parser->defines);
-	talloc_free (parser);
+	hieralloc_free (parser);
 }
 
 typedef enum function_status
@@ -3619,7 +3619,7 @@ _glcpp_parser_expand_function (glcpp_parser_t *parser,
 
 	/* Replace a macro defined as empty with a SPACE token. */
 	if (macro->replacements == NULL) {
-		talloc_free (arguments);
+		hieralloc_free (arguments);
 		return _token_list_create_with_one_space (parser);
 	}
 
@@ -3775,7 +3775,7 @@ _glcpp_parser_expand_node (glcpp_parser_t *parser,
 		token_list_t *expansion;
 		token_t *final;
 
-		str = talloc_strdup (parser, token->value.str);
+		str = hieralloc_strdup (parser, token->value.str);
 		final = _token_create_str (parser, OTHER, str);
 		expansion = _token_list_create (parser);
 		_token_list_append (expansion, final);
@@ -3811,8 +3811,8 @@ _active_list_push (active_list_t *list,
 {
 	active_list_t *node;
 
-	node = talloc (list, active_list_t);
-	node->identifier = talloc_strdup (node, identifier);
+	node = hieralloc (list, active_list_t);
+	node->identifier = hieralloc_strdup (node, identifier);
 	node->marker = marker;
 	node->next = list;
 
@@ -3828,7 +3828,7 @@ _active_list_pop (active_list_t *list)
 		return NULL;
 
 	node = list->next;
-	talloc_free (list);
+	hieralloc_free (list);
 
 	return node;
 }
@@ -3977,17 +3977,17 @@ _define_object_macro (glcpp_parser_t *parser,
 	if (loc != NULL)
 		_check_for_reserved_macro_name(parser, loc, identifier);
 
-	macro = talloc (parser, macro_t);
+	macro = hieralloc (parser, macro_t);
 
 	macro->is_function = 0;
 	macro->parameters = NULL;
-	macro->identifier = talloc_strdup (macro, identifier);
-	macro->replacements = talloc_steal (macro, replacements);
+	macro->identifier = hieralloc_strdup (macro, identifier);
+	macro->replacements = hieralloc_steal (macro, replacements);
 
 	previous = hash_table_find (parser->defines, identifier);
 	if (previous) {
 		if (_macro_equal (macro, previous)) {
-			talloc_free (macro);
+			hieralloc_free (macro);
 			return;
 		}
 		glcpp_error (loc, parser, "Redefinition of macro %s\n",
@@ -4008,17 +4008,17 @@ _define_function_macro (glcpp_parser_t *parser,
 
 	_check_for_reserved_macro_name(parser, loc, identifier);
 
-	macro = talloc (parser, macro_t);
+	macro = hieralloc (parser, macro_t);
 
 	macro->is_function = 1;
-	macro->parameters = talloc_steal (macro, parameters);
-	macro->identifier = talloc_strdup (macro, identifier);
-	macro->replacements = talloc_steal (macro, replacements);
+	macro->parameters = hieralloc_steal (macro, parameters);
+	macro->identifier = hieralloc_strdup (macro, identifier);
+	macro->replacements = hieralloc_steal (macro, replacements);
 
 	previous = hash_table_find (parser->defines, identifier);
 	if (previous) {
 		if (_macro_equal (macro, previous)) {
-			talloc_free (macro);
+			hieralloc_free (macro);
 			return;
 		}
 		glcpp_error (loc, parser, "Redefinition of macro %s\n",
@@ -4094,7 +4094,7 @@ glcpp_parser_lex (YYSTYPE *yylval, YYLTYPE *yylloc, glcpp_parser_t *parser)
 	node = parser->lex_from_node;
 
 	if (node == NULL) {
-		talloc_free (parser->lex_from_list);
+		hieralloc_free (parser->lex_from_list);
 		parser->lex_from_list = NULL;
 		return NEWLINE;
 	}
@@ -4123,13 +4123,13 @@ glcpp_parser_lex_from (glcpp_parser_t *parser, token_list_t *list)
 		_token_list_append (parser->lex_from_list, node->token);
 	}
 
-	talloc_free (list);
+	hieralloc_free (list);
 
 	parser->lex_from_node = parser->lex_from_list->head;
 
 	/* It's possible the list consisted of nothing but whitespace. */
 	if (parser->lex_from_node == NULL) {
-		talloc_free (parser->lex_from_list);
+		hieralloc_free (parser->lex_from_list);
 		parser->lex_from_list = NULL;
 	}
 }
@@ -4144,7 +4144,7 @@ _glcpp_parser_skip_stack_push_if (glcpp_parser_t *parser, YYLTYPE *loc,
 	if (parser->skip_stack)
 		current = parser->skip_stack->type;
 
-	node = talloc (parser, skip_node_t);
+	node = hieralloc (parser, skip_node_t);
 	node->loc = *loc;
 
 	if (current == SKIP_NO_SKIP) {
@@ -4189,6 +4189,6 @@ _glcpp_parser_skip_stack_pop (glcpp_parser_t *parser, YYLTYPE *loc)
 
 	node = parser->skip_stack;
 	parser->skip_stack = node->next;
-	talloc_free (node);
+	hieralloc_free (node);
 }
 

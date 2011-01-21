@@ -2512,7 +2512,7 @@ YY_RULE_SETUP
 {
 			    struct _mesa_glsl_parse_state *state = yyextra;
 			    void *ctx = state;	
-			    yylval->identifier = talloc_strdup(ctx, yytext);
+			    yylval->identifier = hieralloc_strdup(ctx, yytext);
 			    return IDENTIFIER;
 			}
 	YY_BREAK

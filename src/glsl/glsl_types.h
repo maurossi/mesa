@@ -31,7 +31,7 @@
 
 extern "C" {
 #include "GL/gl.h"
-#include <talloc.h>
+#include <hieralloc.h>
 }
 
 struct _mesa_glsl_parse_state;
@@ -77,28 +77,28 @@ struct glsl_type {
 				* and \c GLSL_TYPE_UINT are valid.
 				*/
 
-   /* Callers of this talloc-based new need not call delete. It's
-    * easier to just talloc_free 'mem_ctx' (or any of its ancestors). */
+   /* Callers of this hieralloc-based new need not call delete. It's
+    * easier to just hieralloc_free 'mem_ctx' (or any of its ancestors). */
    static void* operator new(size_t size)
    {
       if (glsl_type::mem_ctx == NULL) {
-	 glsl_type::mem_ctx = talloc_init("glsl_type");
+	 glsl_type::mem_ctx = hieralloc_init("glsl_type");
 	 assert(glsl_type::mem_ctx != NULL);
       }
 
       void *type;
 
-      type = talloc_size(glsl_type::mem_ctx, size);
+      type = hieralloc_size(glsl_type::mem_ctx, size);
       assert(type != NULL);
 
       return type;
    }
 
    /* If the user *does* call delete, that's OK, we will just
-    * talloc_free in that case. */
+    * hieralloc_free in that case. */
    static void operator delete(void *type)
    {
-      talloc_free(type);
+      hieralloc_free(type);
    }
 
    /**
@@ -385,13 +385,13 @@ struct glsl_type {
 
 private:
    /**
-    * talloc context for all glsl_type allocations
+    * hieralloc context for all glsl_type allocations
     *
     * Set on the first call to \c glsl_type::new.
     */
    static void *mem_ctx;
 
-   void init_talloc_type_ctx(void);
+   void init_hieralloc_type_ctx(void);
 
    /** Constructor for vector and matrix types */
    glsl_type(GLenum gl_type,

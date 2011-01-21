@@ -123,7 +123,7 @@ typedef union { GLfloat f; GLint i; } fi_type;
 #if (!defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE < 600)) && !defined(_ISOC99_SOURCE) \
    && (!defined(__STDC_VERSION__) || (__STDC_VERSION__ < 199901L)) \
    && (!defined(_MSC_VER) || (_MSC_VER < 1400))
-#define acosf(f) ((float) acos(f))
+/*#define acosf(f) ((float) acos(f))
 #define asinf(f) ((float) asin(f))
 #define atan2f(x,y) ((float) atan2(x,y))
 #define atanf(f) ((float) atan(f))
@@ -143,7 +143,7 @@ typedef union { GLfloat f; GLint i; } fi_type;
 #define tanhf(f) ((float) tanh(f))
 #define acoshf(f) ((float) acosh(f))
 #define asinhf(f) ((float) asinh(f))
-#define atanhf(f) ((float) atanh(f))
+#define atanhf(f) ((float) atanh(f))*/
 #endif
 
 #if defined(_MSC_VER)

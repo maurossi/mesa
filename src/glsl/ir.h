@@ -30,7 +30,7 @@
 #include <cstdlib>
 
 extern "C" {
-#include <talloc.h>
+#include <hieralloc.h>
 }
 
 #include "glsl_types.h"
@@ -131,6 +131,10 @@ protected:
       ir_type = ir_type_unset;
       type = NULL;
    }
+   
+   virtual  ~ir_instruction() { } // GCC error about accessible nonvirtual dctor
+
+   
 };
 
 
@@ -949,7 +953,7 @@ public:
    /**
     * Get a generic ir_call object when an error occurs
     *
-    * Any allocation will be performed with 'ctx' as talloc owner.
+    * Any allocation will be performed with 'ctx' as hieralloc owner.
     */
    static ir_call *get_error_instruction(void *ctx);
 
