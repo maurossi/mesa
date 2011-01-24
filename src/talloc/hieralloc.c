@@ -42,7 +42,7 @@ static inline hieralloc_header_t * get_header(const void *ptr)
 }
 
 // attach to parent and siblings
-static inline void add_to_parent(hieralloc_header_t * parent, hieralloc_header_t * header)
+static void add_to_parent(hieralloc_header_t * parent, hieralloc_header_t * header)
 {
 	assert(NULL == header->parent);
 	assert(NULL == header->prevSibling);
@@ -58,7 +58,7 @@ static inline void add_to_parent(hieralloc_header_t * parent, hieralloc_header_t
 }
 
 // detach from parent and siblings
-static inline void remove_from_parent(hieralloc_header_t * header)
+static void remove_from_parent(hieralloc_header_t * header)
 {
 	hieralloc_header_t * parent = header->parent;
 	hieralloc_header_t * sibling = header->prevSibling;
@@ -83,16 +83,18 @@ static inline void remove_from_parent(hieralloc_header_t * header)
 }
 
 // allocate memory and attach to parent context and siblings
-void * _hieralloc_allocate(const void * context, size_t size, const char * name)
+void * hieralloc_allocate(const void * context, unsigned size, const char * name)
 {
 	hieralloc_header_t * ptr = malloc(size + sizeof(hieralloc_header_t));
 	assert(ptr);
-	memset(ptr, 0, sizeof(*ptr));
+	memset(ptr, 0xcd, sizeof(*ptr));
 	ptr->beginMagic = BEGIN_MAGIC();
+   ptr->parent = ptr->child = ptr->prevSibling = ptr->nextSibling = NULL;
 	ptr->name = name;
 	ptr->size = size;
 	ptr->childCount = 0;
 	ptr->refCount = 1;
+   ptr->destructor = NULL;
 	ptr->endMagic = END_MAGIC(ptr);
 
 	hieralloc_header_t * parent = NULL;
@@ -107,10 +109,10 @@ void * _hieralloc_allocate(const void * context, size_t size, const char * name)
 }
 
 // (re)allocate memory and attach to parent context and siblings
-static inline void * _hieralloc_reallocate(const void * context, void * ptr, size_t size, const char * name)
+void * hieralloc_reallocate(const void * context, void * ptr, unsigned size, const char * name)
 {
 	if (NULL == ptr)
-		return _hieralloc_allocate(context, size, name);
+		return hieralloc_allocate(context, size, name);
 
 	int reparented = 0;
 	if (NULL == context)
@@ -157,7 +159,7 @@ static inline void * _hieralloc_reallocate(const void * context, void * ptr, siz
 
 // calls destructor if set, and frees children.
 // if destructor returns -1, then do nothing and return -1.
-int _hieralloc_free(void * ptr, const char * location)
+int hieralloc_free(void * ptr)
 {
 	if (!ptr)
 		return 0;
@@ -177,7 +179,7 @@ int _hieralloc_free(void * ptr, const char * location)
 	{
 		hieralloc_header_t * current = child;
 		child = child->nextSibling;
-		if (_hieralloc_free(current + 1, location))
+		if (hieralloc_free(current + 1))
 		{
 			ret = 1;
 			remove_from_parent(current);
@@ -195,27 +197,10 @@ int _hieralloc_free(void * ptr, const char * location)
 	return 0;
 }
 
-// not implemented from _talloc_reference_loc
-void * _hieralloc_reference_loc(const void * ctx, const void * ptr, const char * location)
+// not implemented from talloc_reference
+void * hieralloc_reference(const void * ref_ctx, const void * ptr)
 {
-	if (!ptr)
-		return NULL;
-		
-	get_header(ptr)->refCount++;
-	return ptr;
-	
-	/*
-	hieralloc_header_t * newParent = get_header(ctx);
-	hieralloc_header_t * reference = _hieralloc_allocate(ctx, 0, location);
-	add_to_parent(newParent, reference);
-	
-	hieralloc_header_t * header = get_header(ptr);
-	reference->child = header;
-	reference->childCount = 1;
-	header->parent = reference;
-	header->refCount++;
-	return ptr;
-	//*/
+   return (void *)ptr;
 }
 
 // not implemented from talloc_unlink
@@ -229,28 +214,19 @@ int hieralloc_unlink(const void * ctx, void *ptr)
 }
 
 // moves allocation to new parent context; maintain children but update siblings
-void * _hieralloc_steal_loc(const void * new_ctx, const void * ptr, const char * location)
+// returns ptr on success
+void * hieralloc_steal(const void * new_ctx, const void * ptr)
 {
 	hieralloc_header_t * header = get_header(ptr);
 	remove_from_parent(header);
 	add_to_parent(get_header(new_ctx), header);
-	return ptr;
+	return (void *)ptr;
 }
 
 // creates 0 allocation to be used as parent context
 void * hieralloc_init(const char * name)
 {
-	return _hieralloc_allocate(NULL, 0, name);
-}
-
-void * _hieralloc_array(const void * ctx, unsigned elemSize, unsigned count, const char * name)
-{
-	return _hieralloc_allocate(ctx, elemSize * count, name);
-}
-
-void * _hieralloc_realloc_array(const void * ctx, void * ptr, unsigned elemSize, unsigned count, const char * name)
-{
-	return _hieralloc_reallocate(ctx, ptr, elemSize * count, name);
+	return hieralloc_allocate(NULL, 0, name);
 }
 
 // returns global context
@@ -260,7 +236,7 @@ void * hieralloc_autofree_context()
 }
 
 // sets destructor to be called before freeing; dctor return -1 aborts free
-void _hieralloc_set_destructor(const void * ptr, int (* destructor)(void *))
+void hieralloc_set_destructor(const void * ptr, int (* destructor)(void *))
 {
 	get_header(ptr)->destructor = destructor;
 }
@@ -275,19 +251,25 @@ void * hieralloc_parent(const void * ptr)
 // allocate and zero memory
 void * _hieralloc_zero(const void * ctx, unsigned size, const char * name)
 {
-	void *p = _hieralloc_allocate(ctx, size, name);
+	void *p = hieralloc_allocate(ctx, size, name);
 	if (p)
 		memset(p, 0, size);
 	return p;
 }
 
-static inline char * __hieralloc_strlendup(const void * ctx, const char * str, unsigned len)
+// allocate and copy
+char * hieralloc_strndup(const void * ctx, const char * str, unsigned len)
 {
-	char * ret = (char *)_hieralloc_allocate(ctx, len + 1, str);
+	if (!str)
+		return NULL;
+	
+   len = strnlen(str, len);
+   char * ret = (char *)hieralloc_allocate(ctx, len + 1, str);
 	if (!ret)
 		return NULL;
 	memcpy(ret, str, len);
 	ret[len] = 0;
+   get_header(ret)->name = ret;
 	return ret;
 }
 
@@ -296,24 +278,18 @@ char * hieralloc_strdup(const void * ctx, const char * str)
 {
 	if (!str)
 		return NULL;
-	return __hieralloc_strlendup(ctx, str, strlen(str));
+	return hieralloc_strndup(ctx, str, strlen(str));
 }
 
-// allocate and copy
-char * hieralloc_strndup(const void * ctx, const char * str, unsigned len)
-{
-	if (!str)
-		return NULL;
-	return __hieralloc_strlendup(ctx, str, strnlen(str, len));
-}
-
-static inline char * __hieralloc_strlendup_append(char * str, unsigned len,
+static char * _hieralloc_strlendup_append(char * str, unsigned len,
         const char * append, unsigned appendLen)
 {
-	char * ret = _hieralloc_reallocate(NULL, str, sizeof(char) * (len + appendLen + 1), str);
+	//char * ret = hieralloc_allocate(NULL, sizeof(char) * (len + appendLen + 1), str);
+	//memcpy(ret, str, len);
+	char * ret = hieralloc_reallocate(NULL, str, sizeof(char) * (len + appendLen + 1), str);
 	if (!ret)
 		return NULL;
-	memcpy(&ret[len], append, appendLen);
+	memcpy(ret + len, append, appendLen);
 	ret[len + appendLen] = 0;
 	get_header(ret)->name = ret;
 	return ret;
@@ -326,7 +302,7 @@ char * hieralloc_strdup_append(char * str, const char * append)
 		return hieralloc_strdup(NULL, append);
 	if (!append)
 		return str;
-	return __hieralloc_strlendup_append(str, strlen(str), append, strlen(append));
+	return _hieralloc_strlendup_append(str, strlen(str), append, strlen(append));
 }
 
 // reallocate and append
@@ -336,7 +312,7 @@ char * hieralloc_strndup_append(char * str, const char * append, unsigned len)
 		return hieralloc_strdup(NULL, append);
 	if (!append)
 		return str;
-	return __hieralloc_strlendup_append(str, strlen(str), append, strnlen(append, len));
+	return _hieralloc_strlendup_append(str, strlen(str), append, strnlen(append, len));
 }
 
 // allocate and vsprintf
@@ -352,7 +328,7 @@ char * hieralloc_vasprintf(const void * ctx, const char * fmt, va_list va)
 	if (len < 0)
 		return NULL;
 
-	char * ret = (char *)_hieralloc_allocate(ctx, len + 1, fmt);
+	char * ret = (char *)hieralloc_allocate(ctx, len + 1, fmt);
 	if (!ret)
 		return NULL;
 
@@ -374,10 +350,14 @@ char * hieralloc_asprintf(const void * ctx, const char * fmt, ...)
 	return ret;
 }
 
-static inline char * __hieralloc_vaslenprintf_append(char * str, unsigned len,
-        const char * fmt, va_list va)
+// reallocate and append vsprintf
+char * hieralloc_vasprintf_append(char * str, const char * fmt, va_list va)
 {
-	va_list va2;
+	if (!str)
+		return hieralloc_vasprintf(NULL, fmt, va);
+	
+   int len = strlen(str);
+   va_list va2;
 	va_copy(va2, va);
 	char c = 0;
 	int appendLen = vsnprintf(&c, 1, fmt, va2); // count how many chars would be printed
@@ -386,7 +366,7 @@ static inline char * __hieralloc_vaslenprintf_append(char * str, unsigned len,
 	assert(appendLen >= 0); // some vsnprintf may return -1
 	if (appendLen < 0)
 		return str;
-	str = _hieralloc_reallocate(NULL, str, sizeof(char) * (len + appendLen + 1), str);
+	str = hieralloc_reallocate(NULL, str, sizeof(char) * (len + appendLen + 1), str);
 	if (!str)
 		return NULL;
 
@@ -396,14 +376,6 @@ static inline char * __hieralloc_vaslenprintf_append(char * str, unsigned len,
 
 	get_header(str)->name = str;
 	return str;
-}
-
-// reallocate and append vsprintf
-char * hieralloc_vasprintf_append(char * str, const char * fmt, va_list va)
-{
-	if (!str)
-		return hieralloc_vasprintf(NULL, fmt, va);
-	return __hieralloc_vaslenprintf_append(str, strlen(str), fmt, va);
 }
 
 // reallocate and append sprintf
