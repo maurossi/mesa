@@ -304,6 +304,7 @@ void execute(void (* function)(), float * data)
    printf ("\n *** test_scan elapsed CPU time: %fs \n *** fps=%.2f, tpf=%.2fms \n",
            elapsed, frames / elapsed, elapsed / frames * 1000);
    printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", outputs[0], outputs[1], outputs[2], outputs[3]);
+   assert(0.1f < outputs[3]);
 #ifdef __arm__
    SaveBMP("/sdcard/mesa.bmp", frameSurface, width, height);
 #else
@@ -365,7 +366,6 @@ void jit(llvm::Module * mod)
    void (* function)() = (void (*)())ee->getPointerToFunction(func);
    execute(function, data);
    puts("USE_LLVM_EXECUTIONENGINE");
-   printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", data[0], data[1], data[2], data[3]);
 }
 
 #else
