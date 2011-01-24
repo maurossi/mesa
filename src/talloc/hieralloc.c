@@ -437,5 +437,30 @@ void hieralloc_report(const void * ptr, FILE * file)
 {
 	if (NULL == ptr)
 		ptr = &global_header + 1;
+	fputs("hieralloc_report: \n", file);
 	_hieralloc_report(get_header(ptr), file, 0);
+}
+
+static void _hieralloc_report_brief(const hieralloc_header_t * header, FILE * file, unsigned * data)
+{
+	data[0]++;
+	data[1] += header->size;
+	data[2] += header->childCount;
+	data[3] += header->refCount;
+	const hieralloc_header_t * child = header->child;
+	while (child)
+	{
+		_hieralloc_report_brief(child, file, data);
+		child = child->nextSibling;
+	}
+}
+
+void hieralloc_report_brief(const void * ptr, FILE * file)
+{
+	if (NULL == ptr)
+		ptr = &global_header + 1;
+	unsigned data [4] = {0};
+	_hieralloc_report_brief(get_header(ptr), file, data);
+	fprintf(file, "hieralloc_report total: count=%d size=%d child=%d ref=%d \n",
+		data[0], data[1], data[2], data[3]);
 }

@@ -564,6 +564,6 @@ main(int argc, char **argv)
    _mesa_glsl_release_functions();
 
    puts("mesa exit");
-   hieralloc_report(NULL, stdout);
+   hieralloc_report_brief(NULL, stdout);
    return status;
 }

@@ -1654,7 +1654,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
    if (prog->_LinkedShaders[MESA_SHADER_FRAGMENT] != NULL) {
       gl_shader *const sh = prog->_LinkedShaders[MESA_SHADER_FRAGMENT];
 
-      demote_shader_inputs_and_outputs(sh, ir_var_in);
+      //demote_shader_inputs_and_outputs(sh, ir_var_in); for testing, don't demote
    }
 
    /* FINISHME: Assign fragment shader output locations. */

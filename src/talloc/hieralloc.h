@@ -91,4 +91,6 @@ char * hieralloc_asprintf_append(char * str, const char * fmt, ...);
 // report self and child allocations
 void hieralloc_report(const void * ptr, FILE * file);
 
+void hieralloc_report_brief(const void * ptr, FILE * file);
+
 #endif

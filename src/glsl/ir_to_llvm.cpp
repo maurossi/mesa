@@ -1123,7 +1123,7 @@ public:
       if(ir->rhs->type->vector_elements < width)
       {
          int expand_mask[4] = {-1, -1, -1, -1};
-         for(unsigned i = 0; i < ir->rhs->type->vector_elements; ++i)
+         for(unsigned i = 0; i < ir->lhs->type->vector_elements; ++i)
             expand_mask[i] = i;
 //         printf("ve: %u w %u issw: %i\n", ir->rhs->type->vector_elements, width, !!ir->rhs->as_swizzle());
          rhs = llvm_shuffle(rhs, expand_mask, width, "assign.expand");
