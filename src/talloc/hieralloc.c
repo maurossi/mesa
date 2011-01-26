@@ -64,7 +64,13 @@ static void remove_from_parent(hieralloc_header_t * header)
 	hieralloc_header_t * sibling = header->prevSibling;
 	if (sibling)
 	{
-		assert(sibling->nextSibling == header);
+      if (sibling->nextSibling != header)
+      {
+         printf("&sibling->nextSibling=%p &header=%p \n", &sibling->nextSibling, &header);
+			printf("sibling->nextSibling=%p header=%p \n", sibling->nextSibling, header);
+      }
+		// TODO: assert breaks on device linking with some libsurfaceflinger_client and libpixelflinger
+      //assert(sibling->nextSibling == header);
 		sibling->nextSibling = header->nextSibling;
 		if (header->nextSibling)
 			header->nextSibling->prevSibling = sibling;

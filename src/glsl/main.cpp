@@ -254,14 +254,28 @@ compile_shader(struct gl_context *ctx, struct gl_shader *shader)
    return;
 }
 
-
+//#define DRAW_TO_SCREEN 1
 #include "image_file.h"
+
+#if defined __arm__ && defined DRAW_TO_SCREEN
+extern "C" int SetupDrawingSurface(unsigned * width, unsigned * height, unsigned * bpp);
+extern "C" void * PresentDrawingSurface();
+extern "C" void DisposeDrawingSurface();
+#endif 
 
 void execute(void (* function)(), float * data)
 {
+#if defined __arm__ && DRAW_TO_SCREEN
+   unsigned width = 0, height = 0, bpp = 0;
+   int err = SetupDrawingSurface(&width, &height, &bpp);
+   assert(!err);
+   assert(32 == bpp);
+   unsigned * frameSurface = (unsigned *)PresentDrawingSurface();
+#else
    const unsigned width = 480, height = 800;
-   const unsigned wd = 200, ht = 200;
    unsigned * frameSurface = new unsigned [width * height];
+#endif
+   const unsigned scale = 16, portWidth = 80, portHeight = 50;
    float * constants = data + 36;
    float * outputs = data + 0;
    float * inputs = data + 12;
@@ -277,40 +291,64 @@ void execute(void (* function)(), float * data)
    }
    #endif
    //*/
+   
+
 
    unsigned frames = 1;
-
    clock_t c0 = clock();
-   //for (unsigned i = 0; i < 480 * 800; i++)
-   for (unsigned y = 0; y < ht; y++)
-      for (unsigned x = 0; x < wd; x++) {
-         //data[36] = (float)i / 10000;
-         //memset(data, i, sizeof(data));
-         inputs[0] = ((float)x) / wd;
-         inputs[1] = ((float)y) / ht;
-         inputs[2] = 0;
-         inputs[3] = 1;
-         constants[0] = 0.0f;
-         function();
-         unsigned r = outputs[0] * 255;
-         unsigned g = outputs[1] * 255;
-         unsigned b = outputs[2] * 255;
-         unsigned a = outputs[3] * 255;
-         frameSurface[y * width + x] = (a << 24) | (b << 16) | (g << 8) | r;
-
-      }
+   
+   while(true)
+   for (frames = 1; frames <= 100; frames++)
+   {
+      inputs[2] = 0;
+      inputs[3] = 1;
+      constants[0] = frames * 0.6f;
+            
+      //for (unsigned i = 0; i < 480 * 800; i++)
+      for (unsigned y = 0; y < portHeight; y++)
+         for (unsigned x = 0; x < portWidth; x++) {
+            //data[36] = (float)i / 10000;
+            //memset(data, i, sizeof(data));
+            inputs[0] = ((float)x) / (portWidth - 1);
+            inputs[1] = ((float)y) / (portHeight - 1);
+            function();
+            unsigned r = outputs[0] * 255;
+            unsigned g = outputs[1] * 255;
+            unsigned b = outputs[2] * 255;
+            unsigned a = outputs[3] * 255;
+            frameSurface[y * width + x] = (a << 24) | (b << 16) | (g << 8) | r;
+         }
+      //*
+      for (int y = portHeight - 1; y >= 0; y--)
+         for (int x = portWidth - 1; x >= 0; x--)
+         {
+               unsigned pixel = ((unsigned *)frameSurface)[y * width + x];
+               for (unsigned xx = 0; xx < scale; xx++)
+                  for (unsigned yy = 0; yy < scale; yy++)
+                     ((unsigned *)frameSurface)[(y * scale + yy) * width + x * scale + xx] = pixel;
+         }
+         //*/
+#if defined __arm__ && DRAW_TO_SCREEN
+      frameSurface = (unsigned *)PresentDrawingSurface();
+#endif
+   }
 
    float elapsed = (float)(clock() - c0) / CLOCKS_PER_SEC;
    printf ("\n *** test_scan elapsed CPU time: %fs \n *** fps=%.2f, tpf=%.2fms \n",
            elapsed, frames / elapsed, elapsed / frames * 1000);
    printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", outputs[0], outputs[1], outputs[2], outputs[3]);
    assert(0.1f < outputs[3]);
-#ifdef __arm__
+#if defined __arm__
    SaveBMP("/sdcard/mesa.bmp", frameSurface, width, height);
 #else
    SaveBMP("mesa.bmp", frameSurface, width, height);
 #endif
+#if DRAW_TO_SCREEN
+   void DisposeDrawingSurface();
+#else
    delete frameSurface;
+#endif
+ 
 }
 
 //#def USE_LLVM_EXECUTIONENGINE 1
@@ -411,6 +449,7 @@ static void* symbolLookup(void* pContext, const char* name)
 
    }
    printf("symbolLookup '%s'=%p \n", name, symbol);
+   //getchar();
    assert(symbol);
    return symbol;
 }
@@ -551,7 +590,8 @@ main(int argc, char **argv)
 
       llvm::Module * module = glsl_ir_to_llvm_module(ir);
       assert(module);
-      puts("module translated");
+      puts("\n *** Module for JIT *** \n");
+      module->dump();
       jit(module);
       puts("jitted");
    }

@@ -157,13 +157,22 @@ LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g
 LOCAL_MODULE := mesa
 LOCAL_SRC_FILES := $(mesa_SRC_FILES)
 
+LOCAL_SHARED_LIBRARIES := libstlport libcutils libdl
+
+LOCAL_SRC_FILES += egl.cpp
+#libutils libhardware libsurfaceflinger_client libpixelflinger
+# libsurfaceflinger_client and libpixelflinger causes hieralloc assertion
+LOCAL_SHARED_LIBRARIES += libutils libhardware libsurfaceflinger_client libpixelflinger
+LOCAL_CPPFLAGS += -DDRAW_TO_SCREEN=1
+LOCAL_CFLAGS += -fvisibility=hidden
+LOCAL_CFLAGS += -fstrict-aliasing
+
 ifeq ($(USE_LLVM_EXECUTIONENGINE),true)
 LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE
 LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE
 LOCAL_STATIC_LIBRARIES :=  libLLVMARMCodeGen libLLVMARMInfo libLLVMARMDisassembler libLLVMARMAsmPrinter $(mesa_STATIC_LIBS)
-LOCAL_SHARED_LIBRARIES := libstlport libcutils libdl 
 else
-LOCAL_SHARED_LIBRARIES := libstlport libcutils libdl libbcc 
+LOCAL_SHARED_LIBRARIES += libbcc 
 endif
 
 LOCAL_C_INCLUDES :=	\
