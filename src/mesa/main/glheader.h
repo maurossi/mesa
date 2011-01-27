@@ -50,16 +50,65 @@
 
 
 #define GL_GLEXT_PROTOTYPES
-#include "GL/gl.h"
-#include "GL/glext.h"
-
+#include "GLES2/gl2.h"
+#include "GLES2/gl2ext.h"
 
 /**
  * GL_FIXED is defined in glext.h version 64 but these typedefs aren't (yet).
  */
-typedef int GLfixed;
+//typedef int GLfixed;
 typedef int GLclampx;
+typedef double GLdouble;
+typedef unsigned short GLhalfARB;
+typedef uint64_t GLuint64;
+typedef GLdouble GLclampd;
+typedef int GLsizeiptrARB;
+typedef GLuint64 GLuint64EXT;
+typedef int GLintptrARB;
 
+#define GLAPIENTRYP *
+
+#define GL_POLYGON            0x0009
+#define GL_GEOMETRY_SHADER    0x8DD9
+#define GL_SAMPLER_1D                     0x8B5D
+#define GL_SAMPLER_1D_SHADOW              0x8B61
+#define GL_SAMPLER_2D_SHADOW              0x8B62
+#define GL_SAMPLER_3D                     0x8B5F
+
+#define GL_SAMPLER_2D_RECT                0x8B63
+#define GL_SAMPLER_2D_RECT_SHADOW         0x8B64
+#define GL_SAMPLER_BUFFER                 0x8DC2
+#define GL_INT_SAMPLER_2D_RECT            0x8DCD
+#define GL_INT_SAMPLER_BUFFER             0x8DD0
+#define GL_UNSIGNED_INT_SAMPLER_BUFFER    0x8DD8
+
+#define GL_FLOAT_MAT2x3                   0x8B65
+#define GL_FLOAT_MAT2x4                   0x8B66
+#define GL_FLOAT_MAT3x2                   0x8B67
+#define GL_FLOAT_MAT3x4                   0x8B68
+#define GL_FLOAT_MAT4x2                   0x8B69
+#define GL_FLOAT_MAT4x3                   0x8B6A
+
+#define GL_SAMPLER_1D_ARRAY               0x8DC0
+#define GL_SAMPLER_2D_ARRAY               0x8DC1
+#define GL_SAMPLER_1D_ARRAY_SHADOW        0x8DC3
+#define GL_SAMPLER_2D_ARRAY_SHADOW        0x8DC4
+#define GL_SAMPLER_CUBE_SHADOW            0x8DC5
+#define GL_UNSIGNED_INT_VEC2              0x8DC6
+#define GL_UNSIGNED_INT_VEC3              0x8DC7
+#define GL_UNSIGNED_INT_VEC4              0x8DC8
+#define GL_INT_SAMPLER_1D                 0x8DC9
+#define GL_INT_SAMPLER_2D                 0x8DCA
+#define GL_INT_SAMPLER_3D                 0x8DCB
+#define GL_INT_SAMPLER_CUBE               0x8DCC
+#define GL_INT_SAMPLER_1D_ARRAY           0x8DCE
+#define GL_INT_SAMPLER_2D_ARRAY           0x8DCF
+#define GL_UNSIGNED_INT_SAMPLER_1D        0x8DD1
+#define GL_UNSIGNED_INT_SAMPLER_2D        0x8DD2
+#define GL_UNSIGNED_INT_SAMPLER_3D        0x8DD3
+#define GL_UNSIGNED_INT_SAMPLER_CUBE      0x8DD4
+#define GL_UNSIGNED_INT_SAMPLER_1D_ARRAY  0x8DD6
+#define GL_UNSIGNED_INT_SAMPLER_2D_ARRAY  0x8DD7
 
 #ifndef GL_OES_EGL_image
 typedef void *GLeglImageOES;

@@ -22,14 +22,17 @@ typedef struct hieralloc_header
 #define BEGIN_MAGIC() (13377331)
 #define END_MAGIC(header) ((unsigned)((const hieralloc_header_t *)header + 1) % 0x10000 | 0x13370000)
 
-static hieralloc_header_t global_header = {0, 0, 0, 0, 0, "hieralloc_global_header", 0, 0 ,1, 0, 0};
+static hieralloc_header_t global_hieralloc_header = {BEGIN_MAGIC(), 0, 0, 0, 0, "hieralloc_global_hieralloc_header", 0, 0 ,1, 0, 0x13370000};
 
 // Returns 1 if it's a valid header
 static inline int check_header(const hieralloc_header_t * header)
 {
-	if (&global_header == header)
-		return 1;
 	assert(BEGIN_MAGIC() == header->beginMagic);
+	if (&global_hieralloc_header == header)
+	{
+      assert(0x13370000 == header->endMagic);
+      return 1;
+   }
 	assert(END_MAGIC(header) == header->endMagic);
 	return 1;
 }
@@ -60,7 +63,7 @@ static void add_to_parent(hieralloc_header_t * parent, hieralloc_header_t * head
 // detach from parent and siblings
 static void remove_from_parent(hieralloc_header_t * header)
 {
-	hieralloc_header_t * parent = header->parent;
+   hieralloc_header_t * parent = header->parent;
 	hieralloc_header_t * sibling = header->prevSibling;
 	if (sibling)
 	{
@@ -105,7 +108,7 @@ void * hieralloc_allocate(const void * context, unsigned size, const char * name
 
 	hieralloc_header_t * parent = NULL;
 	if (!context)
-		parent = &global_header;
+		parent = &global_hieralloc_header;
 	else
 		parent = get_header(context);
 	check_header(parent);
@@ -123,7 +126,7 @@ void * hieralloc_reallocate(const void * context, void * ptr, unsigned size, con
 	int reparented = 0;
 	if (NULL == context)
 	{
-		context = &global_header + 1;
+		context = &global_hieralloc_header + 1;
 		reparented = 1;
 	}
 
@@ -187,7 +190,7 @@ int hieralloc_free(void * ptr)
 		child = child->nextSibling;
 		if (hieralloc_free(current + 1))
 		{
-			ret = 1;
+			ret = -1;
 			remove_from_parent(current);
 			add_to_parent(header->parent, current);
 		}
@@ -195,7 +198,7 @@ int hieralloc_free(void * ptr)
 	//*/
 	
 	if (ret)
-		return 1;
+		return -1;
 		
 	remove_from_parent(header);
 	memset(header, 0xfe, header->size + sizeof(*header));
@@ -238,7 +241,7 @@ void * hieralloc_init(const char * name)
 // returns global context
 void * hieralloc_autofree_context()
 {
-	return &global_header + 1;
+	return &global_hieralloc_header + 1;
 }
 
 // sets destructor to be called before freeing; dctor return -1 aborts free
@@ -414,7 +417,7 @@ static void _hieralloc_report(const hieralloc_header_t * header, FILE * file, un
 void hieralloc_report(const void * ptr, FILE * file)
 {
 	if (NULL == ptr)
-		ptr = &global_header + 1;
+		ptr = &global_hieralloc_header + 1;
 	fputs("hieralloc_report: \n", file);
 	_hieralloc_report(get_header(ptr), file, 0);
 }
@@ -436,9 +439,20 @@ static void _hieralloc_report_brief(const hieralloc_header_t * header, FILE * fi
 void hieralloc_report_brief(const void * ptr, FILE * file)
 {
 	if (NULL == ptr)
-		ptr = &global_header + 1;
+		ptr = &global_hieralloc_header + 1;
 	unsigned data [4] = {0};
 	_hieralloc_report_brief(get_header(ptr), file, data);
 	fprintf(file, "hieralloc_report total: count=%d size=%d child=%d ref=%d \n",
 		data[0], data[1], data[2], data[3]);
+}
+
+void hieralloc_report_lineage(const void * ptr, FILE * file, int tab)
+{
+   const hieralloc_header_t * header = get_header(ptr);
+   if (header->parent)
+      hieralloc_report_lineage(header->parent + 1, file, tab + 2);
+   for (tab; tab >=0; tab--)
+      fputc(' ', file);
+   fprintf(file, "hieralloc_report_lineage %p: size=%d child=%d ref=%d name='%s' parent=%p \n",
+      ptr, header->size, header->child, header->refCount, header->name, header->parent + 1);
 }

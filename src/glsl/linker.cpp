@@ -1466,7 +1466,8 @@ assign_varying_locations(struct gl_shader_program *prog,
 void
 link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
 {
-   void *mem_ctx = hieralloc_init("temporary linker context");
+   //void *mem_ctx = hieralloc_init("temporary linker context");
+   void * mem_ctx = prog; // need linked & cloned ir to persist 
 
    prog->LinkStatus = false;
    prog->Validated = false;
@@ -1670,5 +1671,5 @@ done:
       reparent_ir(prog->_LinkedShaders[i]->ir, prog->_LinkedShaders[i]->ir);
    }
 
-   hieralloc_free(mem_ctx);
+   //hieralloc_free(mem_ctx);
 }

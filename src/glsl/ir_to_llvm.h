@@ -4,6 +4,6 @@
 #include "llvm/Module.h"
 #include "ir.h"
 
-struct llvm::Module * glsl_ir_to_llvm_module(struct exec_list *ir);
+struct llvm::Module * glsl_ir_to_llvm_module(struct exec_list *ir, const struct GGLContext * gglCtx);
 
 #endif /* IR_TO_LLVM_H_ */

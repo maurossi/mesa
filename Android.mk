@@ -101,8 +101,15 @@ mesa_SRC_FILES :=	\
 	src/glsl/s_expression.cpp \
 	src/glsl/strtod.c \
 	src/glsl/ir_to_llvm.cpp \
+	src/glsl/ir_to_llvm_helper.cpp \
 	src/mesa/program/hash_table.c \
 	src/mesa/program/symbol_table.c \
+	src/pixelflinger2/buffer.cpp \
+	src/pixelflinger2/pixelflinger2.cpp \
+	src/pixelflinger2/raster.cpp \
+	src/pixelflinger2/scanline.cpp \
+	src/pixelflinger2/shader.cpp \
+	src/pixelflinger2/texture.cpp \
 	src/talloc/hieralloc.c
 	
 # Executable for host
@@ -165,7 +172,7 @@ LOCAL_SRC_FILES += egl.cpp
 LOCAL_SHARED_LIBRARIES += libutils libhardware libsurfaceflinger_client libpixelflinger
 LOCAL_CPPFLAGS += -DDRAW_TO_SCREEN=1
 LOCAL_CFLAGS += -fvisibility=hidden
-LOCAL_CFLAGS += -fstrict-aliasing
+LOCAL_CPPFLAGS += -fvisibility=hidden
 
 ifeq ($(USE_LLVM_EXECUTIONENGINE),true)
 LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE

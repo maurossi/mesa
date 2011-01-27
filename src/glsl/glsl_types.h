@@ -30,7 +30,7 @@
 #include <cassert>
 
 extern "C" {
-#include "GL/gl.h"
+#include "GLES2/gl2.h"
 #include <hieralloc.h>
 }
 

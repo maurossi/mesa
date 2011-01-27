@@ -88,4 +88,6 @@ void hieralloc_report(const void * ptr, FILE * file);
 
 void hieralloc_report_brief(const void * ptr, FILE * file);
 
+void hieralloc_report_lineage(const void * ptr, FILE * file, int tab);
+
 #endif

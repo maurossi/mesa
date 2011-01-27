@@ -39,6 +39,10 @@
 
 #include "ir_to_llvm.h"
 
+#include "src/pixelflinger2/pixelflinger2.h"
+
+GGLInterface * ggl = NULL;
+   
 extern "C" struct gl_shader *
 _mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type);
 
@@ -263,7 +267,7 @@ extern "C" void * PresentDrawingSurface();
 extern "C" void DisposeDrawingSurface();
 #endif 
 
-void execute(void (* function)(), float * data)
+void execute(void (* function)(), gl_shader * shader)
 {
 #if defined __arm__ && DRAW_TO_SCREEN
    unsigned width = 0, height = 0, bpp = 0;
@@ -275,10 +279,30 @@ void execute(void (* function)(), float * data)
    const unsigned width = 480, height = 800;
    unsigned * frameSurface = new unsigned [width * height];
 #endif
-   const unsigned scale = 16, portWidth = 80, portHeight = 50;
+   //const unsigned scale = 16, portWidth = 80, portHeight = 50;
+   unsigned scale = 1, portWidth = width, portHeight = height;
+   
+   float * data = (float *)shader->Source;
    float * constants = data + 36;
    float * outputs = data + 0;
    float * inputs = data + 12;
+   int glFragColorLocation = 0;
+   int vTexCoordLocation = -1;
+   if (shader->symbols->get_variable("vTexCoord"))
+      vTexCoordLocation = shader->symbols->get_variable("vTexCoord")->location;
+   int vNormalLocation = -1;
+   if (shader->symbols->get_variable("vNormal"))
+      vNormalLocation = shader->symbols->get_variable("vNormal")->location;
+   if (shader->symbols->get_variable("uRotM"))
+   {
+      float * matrix = data + 4 * 1 + 4 * shader->symbols->get_variable("uRotM")->location;
+      memset(matrix, 0, 16 * sizeof(*matrix));
+      matrix[0] = matrix[5] = matrix[10] = matrix[15] = 1;
+      matrix[28] = 0;
+      matrix[29] = 0;
+      matrix[30] = 0;
+      matrix[31] = 0;
+   }
    printf("executing... \n function=%p, data=%p \n", function, data);
 
    /*
@@ -297,8 +321,8 @@ void execute(void (* function)(), float * data)
    unsigned frames = 1;
    clock_t c0 = clock();
    
-   while(true)
-   for (frames = 1; frames <= 100; frames++)
+   //while(true)
+   for (frames = 1; frames <= 10; frames++)
    {
       inputs[2] = 0;
       inputs[3] = 1;
@@ -309,25 +333,45 @@ void execute(void (* function)(), float * data)
          for (unsigned x = 0; x < portWidth; x++) {
             //data[36] = (float)i / 10000;
             //memset(data, i, sizeof(data));
-            inputs[0] = ((float)x) / (portWidth - 1);
-            inputs[1] = ((float)y) / (portHeight - 1);
+            //inputs[0] = ((float)x) / (portWidth - 1);
+            //inputs[1] = ((float)y) / (portHeight - 1);
+            if (vTexCoordLocation > -1)
+            {
+               data[1 * 4 + vTexCoordLocation * 4 + 0] = ((float)x) / (portWidth - 1);
+               data[1 * 4 + vTexCoordLocation * 4 + 1] = ((float)y) / (portHeight - 1);
+               data[1 * 4 + vTexCoordLocation * 4 + 2] = 0;
+               data[1 * 4 + vTexCoordLocation * 4 + 3] = 1;
+            }
+            if (vNormalLocation > -1)
+            {
+               data[1 * 4 + vNormalLocation * 4 + 0] = 0;
+               data[1 * 4 + vNormalLocation * 4 + 1] = 1;
+               data[1 * 4 + vNormalLocation * 4 + 2] = 0;
+               data[1 * 4 + vNormalLocation * 4 + 3] = 1;
+            }
             function();
             unsigned r = outputs[0] * 255;
             unsigned g = outputs[1] * 255;
             unsigned b = outputs[2] * 255;
             unsigned a = outputs[3] * 255;
+//            unsigned r = *(unsigned *)(outputs + 0);
+//            unsigned g = *(unsigned *)(outputs + 1);
+//            unsigned b = *(unsigned *)(outputs + 2);
+//            unsigned a = *(unsigned *)(outputs + 3);
             frameSurface[y * width + x] = (a << 24) | (b << 16) | (g << 8) | r;
+//            frameSurface[y * width + x] = *(unsigned *)outputs;
          }
       //*
-      for (int y = portHeight - 1; y >= 0; y--)
-         for (int x = portWidth - 1; x >= 0; x--)
-         {
+      if (scale > 1)
+         for (int y = portHeight - 1; y >= 0; y--)
+            for (int x = portWidth - 1; x >= 0; x--)
+            {
                unsigned pixel = ((unsigned *)frameSurface)[y * width + x];
                for (unsigned xx = 0; xx < scale; xx++)
                   for (unsigned yy = 0; yy < scale; yy++)
                      ((unsigned *)frameSurface)[(y * scale + yy) * width + x * scale + xx] = pixel;
-         }
-         //*/
+            }
+      //*/
 #if defined __arm__ && DRAW_TO_SCREEN
       frameSurface = (unsigned *)PresentDrawingSurface();
 #endif
@@ -351,13 +395,12 @@ void execute(void (* function)(), float * data)
  
 }
 
-//#def USE_LLVM_EXECUTIONENGINE 1
 #if USE_LLVM_EXECUTIONENGINE
 
 #include <llvm/ExecutionEngine/JIT.h>
 #include <llvm/Target/TargetSelect.h>
 
-void jit(llvm::Module * mod)
+void jit(llvm::Module * mod, gl_shader * shader)
 {
 #ifndef __arm__
    __attribute__ ((aligned (16))) // LLVM generates movaps on X86, needs 16 bytes align
@@ -413,40 +456,59 @@ void jit(llvm::Module * mod)
 
 static void* symbolLookup(void* pContext, const char* name)
 {
-   float * data = (float *)pContext;
+   gl_shader * shader = (gl_shader *)pContext;
+   const GGLContext * gglCtx = (const GGLContext *)shader->Program;
+   
+   float * data = (float *)shader->Source;
    void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
    if (NULL == symbol) {
-      if (0 == strcmp("gl_FragColor", name))
-         symbol = data + 0;
-      else if (0 == strcmp("gl_FragCoord", name))
-         symbol = data + 4;
-      else if (0 == strcmp("gl_FrontFacing", name))
-         symbol = data + 8;
-      else if (0 == strcmp("vTexCoord", name)) {
-         symbol = data + 12;
-         *(data + 12) = 1.1;
-         *(data + 13) = 1.2;
-         *(data + 14) = 1.3;
-         *(data + 15) = 1;
-      } else if (0 == strcmp("uRotM", name)) {
-         symbol = data + 16;
-         memset(data + 16, 0, 16 * sizeof(*data));
-         data[16] = data[21] = data[26] = data[31] = 1;
-         data[28] = 11;
-         data[29] = 22;
-         data[30] = 33;
-         //data[31] = 44;
-      } else if (0 == strcmp("uFragmentColor", name)) {
-         symbol = data + 32;
-         data[32] = 1.57075f;
-         data[33] = 1.57075f;
-         data[34] = 1.57075f;
-         data[35] = 1.57075f;
-      } else if (0 == strcmp("t", name)) {
-         symbol = data + 36;
-         data[36] = 0.1f;
-      }
+//      if (0 == strcmp("gl_FragColor", name))
+//         symbol = data + 0;
+//      else if (0 == strcmp("gl_FragCoord", name))
+//         symbol = data + 4;
+//      else if (0 == strcmp("gl_FrontFacing", name))
+//         symbol = data + 8;
+//      else if (0 == strcmp("vTexCoord", name)) {
+//         symbol = data + 12;
+//         *(data + 12) = 1.1;
+//         *(data + 13) = 1.2;
+//         *(data + 14) = 1.3;
+//         *(data + 15) = 1;
+//      } else if (0 == strcmp("uRotM", name)) {
+//         symbol = data + 16;
+//         memset(data + 16, 0, 16 * sizeof(*data));
+//         data[16] = data[21] = data[26] = data[31] = 1;
+//         data[28] = 11;
+//         data[29] = 22;
+//         data[30] = 33;
+//         //data[31] = 44;
+//      } else if (0 == strcmp("uFragmentColor", name)) {
+//         symbol = data + 32;
+//         data[32] = 1.57075f;
+//         data[33] = 1.57075f;
+//         data[34] = 1.57075f;
+//         data[35] = 1.57075f;
+//      } else if (0 == strcmp("t", name)) {
+//         symbol = data + 36;
+//         data[36] = 0.1f;
+//      }
 
+      if (!strcmp("gl_FragColor", name))
+         symbol = data + 0;
+      else if (!strcmp(_PF2_TEXTURE_DATA_NAME_, name))
+         symbol = (void *)gglCtx->textureState.textureData;
+      else if (!strcmp(_PF2_TEXTURE_DIMENSIONS_NAME_, name))
+         symbol = (void *)gglCtx->textureState.textureDimensions;
+      else
+      {
+         ir_variable * var = shader->symbols->get_variable(name);
+         if (-1 == var->location)
+            var->location = shader->SourceChecksum++;
+         else
+            shader->SourceChecksum = MAX2(var->location + var->type->matrix_columns, shader->SourceChecksum);
+         symbol = data + 4 * 1 + var->location * 4;
+         printf("'%s' at %d \n", var->name, var->location);
+      };
    }
    printf("symbolLookup '%s'=%p \n", name, symbol);
    //getchar();
@@ -454,7 +516,7 @@ static void* symbolLookup(void* pContext, const char* name)
    return symbol;
 }
 
-void jit(llvm::Module * mod)
+void jit(llvm::Module * mod, gl_shader * shader)
 {
 #ifndef __arm__
    __attribute__ ((aligned (16))) // LLVM generates movaps on X86, needs 16 bytes align
@@ -462,11 +524,16 @@ void jit(llvm::Module * mod)
    float data [64];
    memset(data, 0xff, sizeof(data));
 
+   assert(!shader->Source);
+   shader->Source = (char *)data; // i/o pool
+   assert(!shader->Program);
+   shader->Program = (gl_program *)ggl; // pass in context
+   
    BCCScriptRef script = bccCreateScript();
    bccReadModule(script, "glsl", (LLVMModuleRef)mod, 0);
    int result = 0;
    assert(0 == bccGetError(script));
-   bccRegisterSymbolCallback(script, symbolLookup, data);
+   bccRegisterSymbolCallback(script, symbolLookup, shader);
    assert(0 == bccGetError(script));
    bccPrepareExecutable(script, NULL, 0);
    result = bccGetError(script);
@@ -482,27 +549,35 @@ void jit(llvm::Module * mod)
       fprintf(stderr, "Could not find '%s': %d\n", "main", result);
    else
       printf("bcc_compile %s=%p \n", "main", function);
-   execute(function, data);
+   
+   execute(function, shader);
+   
+   shader->Source = NULL;
+   shader->Program = NULL;
 }
 
 #endif
 
-struct _mesa_glsl_parse_state * global_state = NULL;
-
 int
 main(int argc, char **argv)
 {
+   static char texturePath [256] = {0};
+   static char shaderPath [256] = {0};
+   static const char shaderFile[] = "fs.frag";
+   static const char textureFile[] = "android.tga";
+   
+   memcpy(texturePath, argv[0], strlen(argv[0]));
+   char * slash = texturePath + strlen(texturePath);
+   while (*slash != '/' && slash >= texturePath)
+      slash--;
+   memcpy(slash + 1, textureFile, strlen(textureFile));
+   memcpy(shaderPath, texturePath, slash - texturePath + 1);
+   memcpy(shaderPath + (slash - texturePath) + 1, shaderFile, strlen(shaderFile));
+      
    //*
    if (1 == argc) {
       argc = 6;
-      char shader_file_path[256] = {0};
-      memcpy(shader_file_path, argv[0], strlen(argv[0]));
-      char * slash = shader_file_path + strlen(shader_file_path);
-      while (*slash != '/')
-         slash--;
-      const char shader_file[] = "stress_fs.frag";
-      memcpy(slash + 1, shader_file, strlen(shader_file));
-      const char * args [] = {argv[0], "--dump-hir", "--do-jit", "--link", "--glsl-es", shader_file_path};
+      const char * args [] = {argv[0], "--dump-hir", "--do-jit", "--link", "--glsl-es", shaderPath};
       argv = (char **)args;
    }
    //*/
@@ -576,25 +651,37 @@ main(int argc, char **argv)
 
    puts("jit");
 
+   ggl = CreateGGLInterface();
+   GGLTexture texture = {0};  
+   LoadTGA(texturePath, &texture.width, &texture.height, reinterpret_cast<void **>(&texture.levels));
+   texture.format = GGL_PIXEL_FORMAT_RGBA_8888;
+   texture.type = GL_TEXTURE_2D;
+   texture.levelCount = 1;
+   texture.wrapS = texture.wrapT = 0; // repeat = 0 fastest, clamp = 1, mirrored = 2
+   texture.minFilter = texture.magFilter = 0; // nearest = 0, linear = 1
+   ggl->SetSampler(ggl, 0, &texture);
+   
    for (unsigned i = 0; do_jit && i < MESA_SHADER_TYPES; i++) {
       struct gl_shader *shader = whole_program->_LinkedShaders[i];
       if (!shader)
          continue;
-      global_state = new(shader) _mesa_glsl_parse_state(ctx, shader->Type, shader);
       exec_list * ir = shader->ir;
 
       do_mat_op_to_vec(ir);
 
       puts("\n *** IR for JIT *** \n");
-      _mesa_print_ir(ir, global_state);
+      _mesa_print_ir(ir, NULL);
 
-      llvm::Module * module = glsl_ir_to_llvm_module(ir);
+      llvm::Module * module = glsl_ir_to_llvm_module(ir, (GGLContext *)ggl);
       assert(module);
       puts("\n *** Module for JIT *** \n");
       module->dump();
-      jit(module);
+      jit(module, shader);
       puts("jitted");
    }
+   
+   free(texture.levels);
+   DestroyGGLInterface((GGLInterface *)ggl);
 
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++)
       hieralloc_free(whole_program->_LinkedShaders[i]);

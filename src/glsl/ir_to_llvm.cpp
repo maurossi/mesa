@@ -62,9 +62,17 @@ using namespace tr1;
 #include "ir_visitor.h"
 #include "glsl_types.h"
 
+struct GGLContext;
+
+llvm::Value * tex2D(llvm::IRBuilder<> & builder, llvm::Value * in1, const unsigned sampler,
+                     const GGLContext * gglCtx);
+llvm::Value * texCube(llvm::IRBuilder<> & builder, llvm::Value * in1, const unsigned sampler,
+                     const GGLContext * gglCtx);
+
 class ir_to_llvm_visitor : public ir_visitor {
-public:
    ir_to_llvm_visitor();
+public:
+
 
    llvm::LLVMContext& ctx;
    llvm::Module* mod;
@@ -74,9 +82,11 @@ public:
    llvm::BasicBlock* bb;
    llvm::Value* result;
    llvm::IRBuilder<> bld;
+   
+   const GGLContext * gglCtx;
 
-   ir_to_llvm_visitor(llvm::LLVMContext& p_ctx, llvm::Module* p_mod)
-   : ctx(p_ctx), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, (llvm::BasicBlock*)0)), bb(0), bld(ctx)
+   ir_to_llvm_visitor(llvm::LLVMContext& p_ctx, llvm::Module* p_mod, const GGLContext * GGLCtx)
+   : ctx(p_ctx), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx)
    {
    }
 
@@ -809,7 +819,10 @@ public:
 
    virtual void visit(class ir_texture * ir)
    {
-      // TODO
+      assert(ir_tex == ir->op);
+      llvm::Value * coordinate = llvm_value(ir->coordinate);
+      result = tex2D(bld, coordinate, 0, gglCtx);
+      assert(result);
    }
 
    virtual void visit(class ir_discard * ir)
@@ -1198,11 +1211,11 @@ public:
 };
 
 struct llvm::Module *
-glsl_ir_to_llvm_module(struct exec_list *ir)
+glsl_ir_to_llvm_module(struct exec_list *ir, const GGLContext * gglCtx)
 {
    llvm::LLVMContext& ctx = llvm::getGlobalContext();
    llvm::Module* mod = new llvm::Module("glsl", ctx);
-   ir_to_llvm_visitor v(ctx, mod);
+   ir_to_llvm_visitor v(ctx, mod, gglCtx);
 
    visit_exec_list(ir, &v);
 
