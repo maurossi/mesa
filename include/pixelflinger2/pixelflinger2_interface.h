@@ -67,10 +67,8 @@ typedef struct GGLTexture {
    // data layout is level 0 of first surface (cubemap +x), level 0 of second surface (for cube map, -x),
    // level 0 of 3rd surface (cubemap +y), cubemap level 0 -y, cubemap level 0 +z,
    // cubemap level 0 -z, level 1 of first surface,
-   // levels[1] is level 1 of 1st surface, level 1 of 2nd surface ....
-   // levels[n] is max level of first surface...
-   // levels[n] + 5 * width * height is last level of last cube map face
-   void ** levels;
+   // then level 1 of 1st surface, level 1 of 2nd surface ....
+   void * levels;
 
    // the following affects vs/fs jit; must fit in byte; size used in GetShaderKey
 unsigned wrapS :

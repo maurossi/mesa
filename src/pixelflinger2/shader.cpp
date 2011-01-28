@@ -404,9 +404,7 @@ void SetShaderVerifyFunctions(struct GGLInterface * iface)
 void InitializeShaderFunctions(struct GGLInterface * iface)
 {
     GGL_GET_CONTEXT(ctx, iface);
-	puts("ctx->llvmCtx = new llvm::LLVMContext");
     ctx->llvmCtx = new llvm::LLVMContext();
-    printf("ctx->llvmCtx=%p \n", ctx->llvmCtx);
 	
     iface->ShaderCreate = ShaderCreate;
     iface->ShaderCompile = ShaderCompile;

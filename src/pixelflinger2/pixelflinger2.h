@@ -49,7 +49,7 @@ struct GGLContext
 {
     GGLInterface interface; // must be first member so that GGLContext * == GGLInterface *
     
-	GGLSurface frameSurface;
+    GGLSurface frameSurface;
     GGLSurface depthSurface;
     GGLSurface stencilSurface;
     
@@ -154,7 +154,5 @@ void SetShaderVerifyFunctions(GGLInterface * iface); // called by state change f
 void DestroyShaderFunctions(GGLInterface * iface); // destroy needed objects
 // actual gl_shader and gl_shader_program is created and destroyed by ShaderCreate/Free, 
 // and ShaderProgramCreate/Free. 
-
-
 
 #endif // #ifndef _PIXELFLINGER2_H_

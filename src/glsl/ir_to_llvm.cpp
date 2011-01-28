@@ -86,7 +86,8 @@ public:
    const GGLContext * gglCtx;
 
    ir_to_llvm_visitor(llvm::LLVMContext& p_ctx, llvm::Module* p_mod, const GGLContext * GGLCtx)
-   : ctx(p_ctx), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx)
+   : ctx(p_ctx), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, 
+      (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx)
    {
    }
 
@@ -819,10 +820,55 @@ public:
 
    virtual void visit(class ir_texture * ir)
    {
-      assert(ir_tex == ir->op);
       llvm::Value * coordinate = llvm_value(ir->coordinate);
-      result = tex2D(bld, coordinate, 0, gglCtx);
-      assert(result);
+      if (ir->projector)
+      {
+         llvm::Value * proj = llvm_value(ir->projector);
+         unsigned width = ((llvm::VectorType*)coordinate->getType())->getNumElements();
+         llvm::Value * div = llvm::Constant::getNullValue(coordinate->getType());
+         for (unsigned i = 0; i < width; i++)
+            div = bld.CreateInsertElement(div, proj, bld.getInt32(i), "texProjDup");
+         coordinate = bld.CreateFDiv(coordinate, div, "texProj");
+      }
+     
+      ir_variable * sampler = NULL;
+      if(ir_dereference_variable* deref = ir->sampler->as_dereference_variable())
+         sampler = deref->variable_referenced();
+      else if(ir_dereference_array* deref = ir->sampler->as_dereference_array())
+      {
+         result = llvm::Constant::getNullValue(llvm::VectorType::get(bld.getFloatTy(), 4));
+         return;
+         assert(0);
+         deref->array_index;
+         deref->array;
+      }
+      else if(ir->sampler->as_dereference())
+      {
+         assert(0);
+         ir_dereference_record* deref = (ir_dereference_record*)ir->sampler;
+         int idx = deref->record->type->field_index(deref->field);
+         assert(idx >= 0);
+         //return bld.CreateConstInBoundsGEP2_32(llvm_pointer(deref->record), 0, idx);
+      }
+      else
+         assert(0);
+
+      assert(sampler->location >= 0 && sampler->location < 64); // TODO: proper limit
+      
+      // ESSL texture LOD is only for 2D texture in vert shader, and it's explicit
+      // bias used only in frag shader, and added to computed LOD
+      assert(ir_tex == ir->op);
+   
+      assert(GLSL_TYPE_FLOAT == sampler->type->sampler_type);
+      printf("sampler '%s' location=%d dim=%d type=%d proj=%d lod=%d \n", sampler->name, sampler->location, 
+         sampler->type->sampler_dimensionality, sampler->type->sampler_type, 
+         ir->projector ? 1 : 0, ir->lod_info.lod ? 1 : 0);
+      if (GLSL_SAMPLER_DIM_CUBE == sampler->type->sampler_dimensionality)
+         result = texCube(bld, coordinate, sampler->location, gglCtx);
+      else if (GLSL_SAMPLER_DIM_2D == sampler->type->sampler_dimensionality)
+         result = tex2D(bld, coordinate, sampler->location, gglCtx);
+      else 
+         assert(0);
    }
 
    virtual void visit(class ir_discard * ir)

@@ -986,7 +986,7 @@ update_array_sizes(struct gl_shader_program *prog)
 static void
 add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 	    const char *name, const glsl_type *type, GLenum shader_type,
-	    unsigned *next_shader_pos, unsigned *total_uniforms)
+	    unsigned *next_shader_pos, unsigned *total_uniforms, unsigned *next_sampler_pos)
 {
    if (type->is_record()) {
       for (unsigned int i = 0; i < type->length; i++) {
@@ -995,7 +995,7 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 					    type->fields.structure[i].name);
 
 	 add_uniform(mem_ctx, uniforms, ht, field_name, field_type,
-		     shader_type, next_shader_pos, total_uniforms);
+		     shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
       }
    } else {
       uniform_node *n = (uniform_node *) hash_table_find(ht, name);
@@ -1009,7 +1009,7 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 	    for (unsigned int i = 0; i < type->length; i++) {
 	       char *elem_name = hieralloc_asprintf(mem_ctx, "%s[%d]", name, i);
 	       add_uniform(mem_ctx, uniforms, ht, elem_name, array_elem_type,
-			   shader_type, next_shader_pos, total_uniforms);
+			   shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
 	    }
 	    return;
 	 }
@@ -1040,11 +1040,18 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 	 n->u->FragPos = -1;
 	 n->u->GeomPos = -1;
 	 (*total_uniforms)++;
-
+    
+      if (type->is_sampler() || (array_elem_type && array_elem_type->is_sampler()))
+      {
+         n->u->VertPos = n->u->FragPos = n->u->GeomPos = *next_sampler_pos;
+         *next_sampler_pos += vec4_slots;
+      }
 	 hash_table_insert(ht, n, name);
 	 uniforms->push_tail(& n->link);
       }
-
+      
+      if (!(type->is_sampler() || (array_elem_type && array_elem_type->is_sampler())))
+      {
       switch (shader_type) {
       case GL_VERTEX_SHADER:
 	 n->u->VertPos = *next_shader_pos;
@@ -1056,8 +1063,8 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 	 n->u->GeomPos = *next_shader_pos;
 	 break;
       }
-
       (*next_shader_pos) += vec4_slots;
+      }
    }
 }
 
@@ -1067,6 +1074,7 @@ assign_uniform_locations(struct gl_shader_program *prog)
    /* */
    exec_list uniforms;
    unsigned total_uniforms = 0;
+   unsigned next_sampler_pos = 0; // all shaders in prog share same sampler location
    hash_table *ht = hash_table_ctor(32, hash_table_string_hash,
 				    hash_table_string_compare);
    void *mem_ctx = hieralloc_new(NULL);
@@ -1075,7 +1083,7 @@ assign_uniform_locations(struct gl_shader_program *prog)
       if (prog->_LinkedShaders[i] == NULL)
 	 continue;
 
-      unsigned next_position = 0;
+      unsigned next_position = 0; // TODO: shouldn't shaders of same prog share uniform location?
 
       foreach_list(node, prog->_LinkedShaders[i]->ir) {
 	 ir_variable *const var = ((ir_instruction *) node)->as_variable();
@@ -1091,10 +1099,13 @@ assign_uniform_locations(struct gl_shader_program *prog)
 	    continue;
 	 }
 
-	 var->location = next_position;
+	 if (var->type->is_sampler() || (var->type->is_array() && var->type->fields.array->is_sampler()))
+      var->location = next_sampler_pos;
+	 else
+      var->location = next_position;
 	 add_uniform(mem_ctx, &uniforms, ht, var->name, var->type,
 		     prog->_LinkedShaders[i]->Type,
-		     &next_position, &total_uniforms);
+		     &next_position, &total_uniforms, &next_sampler_pos);
       }
    }
 

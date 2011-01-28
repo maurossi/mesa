@@ -408,14 +408,12 @@ Value * tex2D(IRBuilder<> & builder, Value * in1, const unsigned sampler,
          0 == gglCtx->textureState.textures[sampler].magFilter) { // GL_NEAREST
       Value * ret = pointSample(builder, textureData, index,
                                 gglCtx->textureState.textures[sampler].format/*, dstDesc*/);
-                                ret->dump();
       return intColorVecToFloatColorVec(builder, ret);
    } else if (1 == gglCtx->textureState.textures[sampler].minFilter &&
               1 == gglCtx->textureState.textures[sampler].magFilter) { // GL_LINEAR
       Value * ret = linearSample(builder, textureData, builder.getInt32(0), x, y, xLerp, yLerp,
                                  textureW, textureH,  textureWidth, textureHeight,
                                  gglCtx->textureState.textures[sampler].format/*, dstDesc*/);
-                                 ret->dump();
       return intColorVecToFloatColorVec(builder, ret);
    } else
       assert(!"unsupported texture filter");
@@ -466,11 +464,11 @@ Value * texCube(IRBuilder<> & builder, Value * in1, const unsigned sampler,
    Module * module = builder.GetInsertBlock()->getParent()->getParent();
    std::vector<Value * > texcoords = extractVector(builder, in1);
 
-   Value * textureDimensions = module->getGlobalVariable("textureDimensions");
+   Value * textureDimensions = module->getGlobalVariable(_PF2_TEXTURE_DIMENSIONS_NAME_);
    if (!textureDimensions)
       textureDimensions = new GlobalVariable(*module, intType, true,
                                              GlobalValue::ExternalLinkage,
-                                             NULL, "textureDimensions");
+                                             NULL, _PF2_TEXTURE_DIMENSIONS_NAME_);
    Value * textureWidth = builder.CreateConstInBoundsGEP1_32(textureDimensions,
                           sampler * 2);
    textureWidth = builder.CreateLoad(textureWidth, name("textureWidth"));
@@ -592,11 +590,11 @@ Value * texCube(IRBuilder<> & builder, Value * in1, const unsigned sampler,
    Value * indexOffset = builder.CreateMul(builder.CreateMul(textureHeight, textureWidth), face);
    Value * index = builder.CreateAdd(builder.CreateMul(y, textureWidth), x);
 
-   Value * textureData = module->getGlobalVariable("textureData");
+   Value * textureData = module->getGlobalVariable(_PF2_TEXTURE_DATA_NAME_);
    if (!textureData)
       textureData = new GlobalVariable(*module, intPointerType,
                                        true, GlobalValue::ExternalLinkage,
-                                       NULL, "textureData");
+                                       NULL, _PF2_TEXTURE_DATA_NAME_);
 
    textureData = builder.CreateConstInBoundsGEP1_32(textureData, sampler);
    textureData = builder.CreateLoad(textureData);

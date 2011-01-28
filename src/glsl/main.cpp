@@ -561,19 +561,21 @@ void jit(llvm::Module * mod, gl_shader * shader)
 int
 main(int argc, char **argv)
 {
+   static char basePath [256] = {0};
    static char texturePath [256] = {0};
    static char shaderPath [256] = {0};
+   static char cubeTexturePath [256] = {0};
    static const char shaderFile[] = "fs.frag";
    static const char textureFile[] = "android.tga";
+   static const char cubeTextureFile[] = "cube.tga";
    
-   memcpy(texturePath, argv[0], strlen(argv[0]));
-   char * slash = texturePath + strlen(texturePath);
-   while (*slash != '/' && slash >= texturePath)
-      slash--;
-   memcpy(slash + 1, textureFile, strlen(textureFile));
-   memcpy(shaderPath, texturePath, slash - texturePath + 1);
-   memcpy(shaderPath + (slash - texturePath) + 1, shaderFile, strlen(shaderFile));
-      
+   strncpy(basePath, argv[0], strrchr(argv[0], '/') - argv[0] + 1);
+   strcpy(shaderPath, basePath);
+   strcat(shaderPath, shaderFile);
+   strcpy(texturePath, basePath);
+   strcat(texturePath, textureFile);
+   strcpy(cubeTexturePath, basePath);
+   strcat(cubeTexturePath, cubeTextureFile);
    //*
    if (1 == argc) {
       argc = 6;
@@ -653,29 +655,51 @@ main(int argc, char **argv)
 
    ggl = CreateGGLInterface();
    GGLTexture texture = {0};  
-   LoadTGA(texturePath, &texture.width, &texture.height, reinterpret_cast<void **>(&texture.levels));
+   LoadTGA(texturePath, &texture.width, &texture.height, &texture.levels);
    texture.format = GGL_PIXEL_FORMAT_RGBA_8888;
    texture.type = GL_TEXTURE_2D;
    texture.levelCount = 1;
    texture.wrapS = texture.wrapT = 0; // repeat = 0 fastest, clamp = 1, mirrored = 2
-   texture.minFilter = texture.magFilter = 0; // nearest = 0, linear = 1
+   texture.minFilter = texture.magFilter = 1; // nearest = 0, linear = 1
    ggl->SetSampler(ggl, 0, &texture);
+   
+   static unsigned cubeTextureSurface [6] = {0xff0000ff, 0xff00ff00, 0xffff0000, 
+   0xff00ffff, 0xffffff00, 0xffff00ff};
+   GGLTexture cubeTexture = {GL_TEXTURE_CUBE_MAP, GGL_PIXEL_FORMAT_RGBA_8888, 1, 1, 1, cubeTextureSurface, 1, 2, 1, 1};  
    
    for (unsigned i = 0; do_jit && i < MESA_SHADER_TYPES; i++) {
       struct gl_shader *shader = whole_program->_LinkedShaders[i];
       if (!shader)
          continue;
+      // TODO: fix add_uniform for sampler location
+      for (unsigned i = 0; i < whole_program->Uniforms->NumUniforms; i++)
+      {
+         const gl_uniform & uniform = whole_program->Uniforms->Uniforms[i];
+         ir_variable * var = NULL;
+         if (!(var = shader->symbols->get_variable(uniform.Name)))
+            continue;
+         assert(var->location >= 0);
+         printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.FragPos, uniform.Type->name);
+      }
+      ir_variable * sampler = NULL;
+      if ((sampler = shader->symbols->get_variable("samp2D")) && sampler->location >= 0)
+         ggl->SetSampler(ggl, sampler->location, &texture);
+      if ((sampler = shader->symbols->get_variable("samp2DA")) && sampler->location >= 0)
+         ggl->SetSampler(ggl, sampler->location, &texture); 
+      if ((sampler = shader->symbols->get_variable("sampCube")) && sampler->location >= 0)
+         ggl->SetSampler(ggl, sampler->location, &cubeTexture);
+         
       exec_list * ir = shader->ir;
 
       do_mat_op_to_vec(ir);
 
       puts("\n *** IR for JIT *** \n");
-      _mesa_print_ir(ir, NULL);
+      //_mesa_print_ir(ir, NULL);
 
       llvm::Module * module = glsl_ir_to_llvm_module(ir, (GGLContext *)ggl);
       assert(module);
       puts("\n *** Module for JIT *** \n");
-      module->dump();
+      //module->dump();
       jit(module, shader);
       puts("jitted");
    }
