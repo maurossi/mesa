@@ -64,6 +64,9 @@ struct gl_program_parameter
     * The next program parameter's Size will be Size-4 of this parameter.
     */
    GLuint Size;
+   GLuint Slots;            /**< how many slots occupied */
+   GLint ExplicitLocation;  /**< for attributes, set by BindAttribLocation */
+   GLint Location;          /**< actual location assigned after linking */
    GLboolean Initialized;   /**< debug: Has the ParameterValue[] been set? */
    GLbitfield Flags;        /**< Bitmask of PROG_PARAM_*_BIT */
    /**

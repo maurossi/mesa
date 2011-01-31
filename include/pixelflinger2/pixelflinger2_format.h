@@ -17,6 +17,9 @@
 #ifndef _PIXELFLINGER2_FORMAT_H_
 #define _PIXELFLINGER2_FORMAT_H_
 
+#include <stdint.h>
+#include <sys/types.h>
+
 enum GGLPixelFormat {
     // these constants need to match those
     // in graphics/PixelFormat.java, ui/PixelFormat.h, BlitHardware.h
@@ -62,5 +65,75 @@ enum GGLPixelFormat {
     // must be last
     GGL_PIXEL_FORMAT_COUNT      = 0xFF
 };
+
+enum GGLFormatComponents {
+        GGL_STENCIL_INDEX               = 0x1901,
+        GGL_DEPTH_COMPONENT             = 0x1902,
+        GGL_ALPHA                       = 0x1906,
+        GGL_RGB                         = 0x1907,
+        GGL_RGBA                        = 0x1908,
+        GGL_LUMINANCE                   = 0x1909,
+        GGL_LUMINANCE_ALPHA             = 0x190A,
+};
+
+enum GGLFormatComponentIndex {
+    GGL_INDEX_ALPHA   = 0,
+    GGL_INDEX_RED     = 1,
+    GGL_INDEX_GREEN   = 2,
+    GGL_INDEX_BLUE    = 3,
+    GGL_INDEX_STENCIL = 0,
+    GGL_INDEX_DEPTH   = 1,
+    GGL_INDEX_Y       = 0,
+    GGL_INDEX_CB      = 1,
+    GGL_INDEX_CR      = 2,
+};
+
+typedef struct {
+#ifdef __cplusplus
+    enum {
+        ALPHA   = GGL_INDEX_ALPHA,
+        RED     = GGL_INDEX_RED,
+        GREEN   = GGL_INDEX_GREEN,
+        BLUE    = GGL_INDEX_BLUE,
+        STENCIL = GGL_INDEX_STENCIL,
+        DEPTH   = GGL_INDEX_DEPTH,
+        LUMA    = GGL_INDEX_Y,
+        CHROMAB = GGL_INDEX_CB,
+        CHROMAR = GGL_INDEX_CR,
+    };
+    inline uint32_t mask(int i) const {
+            return ((1<<(c[i].h-c[i].l))-1)<<c[i].l;
+    }
+    inline uint32_t bits(int i) const {
+            return c[i].h - c[i].l;
+    }
+#endif
+    uint8_t     size;       // bytes per pixel
+    uint8_t     bitsPerPixel;
+    union {
+        struct {
+            uint8_t     ah;             // alpha high bit position + 1
+            uint8_t     al;             // alpha low bit position
+            uint8_t     rh;             // red high bit position + 1
+            uint8_t     rl;             // red low bit position
+            uint8_t     gh;             // green high bit position + 1
+            uint8_t     gl;             // green low bit position
+            uint8_t     bh;             // blue high bit position + 1
+            uint8_t     bl;             // blue low bit position
+        };
+        struct {
+            uint8_t h;
+            uint8_t l;
+        } __attribute__((__packed__)) c[4];
+    } __attribute__((__packed__));
+        uint16_t    components; // GGLFormatComponents
+} GGLFormat;
+
+
+#ifdef __cplusplus
+extern "C" const GGLFormat* gglGetPixelFormatTable(size_t* numEntries = 0);
+#else
+const GGLFormat* gglGetPixelFormatTable(size_t* numEntries);
+#endif
 
 #endif // _PIXELFLINGER2_FORMAT_H_

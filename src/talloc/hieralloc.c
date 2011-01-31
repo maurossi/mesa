@@ -1,11 +1,16 @@
 /*
  * Similar core function to LGPL licensed talloc from Samba
  */
+#define CHECK_ALLOCATION 0
 
 #include "hieralloc.h"
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+
+#if CHECK_ALLOCATION
+#include <set>
+#endif
 
 typedef struct hieralloc_header
 {
@@ -22,18 +27,32 @@ typedef struct hieralloc_header
 #define BEGIN_MAGIC() (13377331)
 #define END_MAGIC(header) ((unsigned)((const hieralloc_header_t *)header + 1) % 0x10000 | 0x13370000)
 
-static hieralloc_header_t global_hieralloc_header = {BEGIN_MAGIC(), 0, 0, 0, 0, "hieralloc_global_hieralloc_header", 0, 0 ,1, 0, 0x13370000};
+static hieralloc_header_t hieralloc_global_header = {BEGIN_MAGIC(), 0, 0, 0, 0, "hieralloc_hieralloc_global_header", 0, 0 ,1, 0, 0x13370000};
 
+#if CHECK_ALLOCATION
+static std::set<void *> allocations;
+#endif
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+   
 // Returns 1 if it's a valid header
 static inline int check_header(const hieralloc_header_t * header)
 {
+   if (BEGIN_MAGIC() != header->beginMagic)
+      printf("*** hieralloc check_header fail: %p ***\n", header + 1); 
 	assert(BEGIN_MAGIC() == header->beginMagic);
-	if (&global_hieralloc_header == header)
+	if (&hieralloc_global_header == header)
 	{
       assert(0x13370000 == header->endMagic);
       return 1;
    }
 	assert(END_MAGIC(header) == header->endMagic);
+   assert(!header->nextSibling || header->nextSibling->prevSibling == header);
+   assert(!header->nextSibling || header->nextSibling->parent == header->parent);
+   assert(!header->prevSibling || header->prevSibling->nextSibling == header);
+   assert(!header->prevSibling || header->prevSibling->parent == header->parent);
 	return 1;
 }
 
@@ -44,6 +63,21 @@ static inline hieralloc_header_t * get_header(const void *ptr)
 	return header;
 }
 
+static void check_children(hieralloc_header_t * header)
+{
+   check_header(header);
+   unsigned childCount = 0;
+   hieralloc_header_t * child = header->child;
+   while (child)
+   {
+      childCount++;
+      check_children(child);
+      child = child->nextSibling;
+   }
+   assert(childCount == header->childCount);
+}
+
+
 // attach to parent and siblings
 static void add_to_parent(hieralloc_header_t * parent, hieralloc_header_t * header)
 {
@@ -52,12 +86,25 @@ static void add_to_parent(hieralloc_header_t * parent, hieralloc_header_t * head
 	assert(NULL == header->nextSibling);
 
 	if (parent->child)
+   {
+//      hieralloc_header_t * child = parent->child;
+//      while (child)
+//      {
+//         assert(child != header);
+//         child = child->nextSibling;
+//      }
 		parent->child->prevSibling = header;
+   }
 	header->nextSibling = parent->child;
 	header->prevSibling = NULL;
 	header->parent = parent;
 	parent->child = header;
 	parent->childCount++;
+   
+   assert(!header->nextSibling || header->nextSibling->prevSibling == header);
+   assert(!header->nextSibling || header->nextSibling->parent == header->parent);
+   assert(!header->prevSibling || header->prevSibling->nextSibling == header);
+   assert(!header->prevSibling || header->prevSibling->parent == header->parent);
 }
 
 // detach from parent and siblings
@@ -65,6 +112,10 @@ static void remove_from_parent(hieralloc_header_t * header)
 {
    hieralloc_header_t * parent = header->parent;
 	hieralloc_header_t * sibling = header->prevSibling;
+   assert(!header->nextSibling || header->nextSibling->prevSibling == header);
+   assert(!header->nextSibling || header->nextSibling->parent == header->parent);
+   assert(!header->prevSibling || header->prevSibling->nextSibling == header);
+   assert(!header->prevSibling || header->prevSibling->parent == header->parent);
 	if (sibling)
 	{
       if (sibling->nextSibling != header)
@@ -72,8 +123,6 @@ static void remove_from_parent(hieralloc_header_t * header)
          printf("&sibling->nextSibling=%p &header=%p \n", &sibling->nextSibling, &header);
 			printf("sibling->nextSibling=%p header=%p \n", sibling->nextSibling, header);
       }
-		// TODO: assert breaks on device linking with some libsurfaceflinger_client and libpixelflinger
-      //assert(sibling->nextSibling == header);
 		sibling->nextSibling = header->nextSibling;
 		if (header->nextSibling)
 			header->nextSibling->prevSibling = sibling;
@@ -82,6 +131,7 @@ static void remove_from_parent(hieralloc_header_t * header)
 	}
 	else
 	{
+      assert(parent->child == header);
 		parent->child = header->nextSibling;
 		if (header->nextSibling)
 			header->nextSibling->prevSibling = NULL;
@@ -94,7 +144,7 @@ static void remove_from_parent(hieralloc_header_t * header)
 // allocate memory and attach to parent context and siblings
 void * hieralloc_allocate(const void * context, unsigned size, const char * name)
 {
-	hieralloc_header_t * ptr = malloc(size + sizeof(hieralloc_header_t));
+	hieralloc_header_t * ptr = (hieralloc_header_t *)malloc(size + sizeof(hieralloc_header_t));
 	assert(ptr);
 	memset(ptr, 0xcd, sizeof(*ptr));
 	ptr->beginMagic = BEGIN_MAGIC();
@@ -108,12 +158,14 @@ void * hieralloc_allocate(const void * context, unsigned size, const char * name
 
 	hieralloc_header_t * parent = NULL;
 	if (!context)
-		parent = &global_hieralloc_header;
+		parent = &hieralloc_global_header;
 	else
 		parent = get_header(context);
-	check_header(parent);
-
 	add_to_parent(parent, ptr);
+#if CHECK_ALLOCATION
+   assert(allocations.find(ptr + 1) == allocations.end());
+   allocations.insert(ptr + 1);
+#endif
 	return ptr + 1;
 }
 
@@ -122,13 +174,11 @@ void * hieralloc_reallocate(const void * context, void * ptr, unsigned size, con
 {
 	if (NULL == ptr)
 		return hieralloc_allocate(context, size, name);
-
-	int reparented = 0;
+#if CHECK_ALLOCATION
+   assert(allocations.find(ptr) != allocations.end());
+#endif
 	if (NULL == context)
-	{
-		context = &global_hieralloc_header + 1;
-		reparented = 1;
-	}
+		context = &hieralloc_global_header + 1;
 
 	hieralloc_header_t * header = get_header(ptr);
 	hieralloc_header_t * parent = header->parent;
@@ -140,19 +190,19 @@ void * hieralloc_reallocate(const void * context, void * ptr, unsigned size, con
 		add_to_parent(parent, header);
 	}
 
-	hieralloc_header_t * sibling = header->prevSibling;
-
-	ptr = realloc(header, size + sizeof(hieralloc_header_t));
-	assert(ptr);
-	((hieralloc_header_t *)ptr)->size = size;
-	if (ptr == header)
-		return header + 1;
-
-	header = ptr;
-	header->beginMagic = BEGIN_MAGIC();
+	header = (hieralloc_header_t *)realloc(header, size + sizeof(hieralloc_header_t));
+	assert(header);
+	header->size = size;
+	header->name = name;
+	if (ptr == (header + 1))
+		return ptr; // realloc didn't move allocation
+   
+   header->beginMagic = BEGIN_MAGIC();
 	header->endMagic = END_MAGIC(header);
-	if (sibling)
-		sibling->nextSibling = header;
+   if (header->nextSibling)
+      header->nextSibling->prevSibling = header;
+	if (header->prevSibling)
+		header->prevSibling->nextSibling = header;
 	else
 		parent->child = header;
 
@@ -162,7 +212,11 @@ void * hieralloc_reallocate(const void * context, void * ptr, unsigned size, con
 		child->parent = header;
 		child = child->nextSibling;
 	}
-
+#if CHECK_ALLOCATION
+   allocations.erase(ptr);
+   assert(allocations.find(header + 1) == allocations.end());
+   allocations.insert(header + 1);
+#endif
 	return header + 1;
 }
 
@@ -170,9 +224,11 @@ void * hieralloc_reallocate(const void * context, void * ptr, unsigned size, con
 // if destructor returns -1, then do nothing and return -1.
 int hieralloc_free(void * ptr)
 {
-	if (!ptr)
+   if (!ptr)
 		return 0;
-	hieralloc_header_t * header = get_header(ptr);
+
+   hieralloc_header_t * header = get_header(ptr);
+   
 	header->refCount--;
 	if (header->refCount > 0)
 		return -1;
@@ -181,28 +237,39 @@ int hieralloc_free(void * ptr)
 		if (header->destructor(ptr))
 			return -1;
 
-	int ret = 0;
+   int ret = 0;
+   
 	//* TODO: implement reference and steal first
 	hieralloc_header_t * child = header->child;
 	while (child)
 	{
 		hieralloc_header_t * current = child;
-		child = child->nextSibling;
+		assert(!current->prevSibling);
+      child = child->nextSibling;
 		if (hieralloc_free(current + 1))
 		{
 			ret = -1;
 			remove_from_parent(current);
 			add_to_parent(header->parent, current);
+         assert(0); // shouldn't happen since reference is always 1
 		}
+      
 	}
-	//*/
-	
+   
 	if (ret)
 		return -1;
-		
+
+   assert(0 == header->childCount);
+   assert(!header->child);
 	remove_from_parent(header);
-	memset(header, 0xfe, header->size + sizeof(*header));
-	free(header);
+   memset(header, 0xfe, header->size + sizeof(*header));
+#if CHECK_ALLOCATION
+   assert(allocations.find(ptr) != allocations.end());
+   allocations.erase(ptr);
+   // don't free yet to force allocations to new addresses for checking double freeing
+#else
+   free(header); 
+#endif
 	return 0;
 }
 
@@ -241,7 +308,7 @@ void * hieralloc_init(const char * name)
 // returns global context
 void * hieralloc_autofree_context()
 {
-	return &global_hieralloc_header + 1;
+	return &hieralloc_global_header + 1;
 }
 
 // sets destructor to be called before freeing; dctor return -1 aborts free
@@ -293,9 +360,10 @@ char * hieralloc_strdup(const void * ctx, const char * str)
 static char * _hieralloc_strlendup_append(char * str, unsigned len,
         const char * append, unsigned appendLen)
 {
-	//char * ret = hieralloc_allocate(NULL, sizeof(char) * (len + appendLen + 1), str);
+	//char * ret = hieralloc_allocate(str, sizeof(char) * (len + appendLen + 1), str);
 	//memcpy(ret, str, len);
-	char * ret = hieralloc_reallocate(NULL, str, sizeof(char) * (len + appendLen + 1), str);
+	hieralloc_header_t * header = get_header(str);
+	char * ret = (char *)hieralloc_reallocate(header->parent + 1, str, sizeof(char) * (len + appendLen + 1), str);
 	if (!ret)
 		return NULL;
 	memcpy(ret + len, append, appendLen);
@@ -375,7 +443,7 @@ char * hieralloc_vasprintf_append(char * str, const char * fmt, va_list va)
 	assert(appendLen >= 0); // some vsnprintf may return -1
 	if (appendLen < 0)
 		return str;
-	str = hieralloc_reallocate(NULL, str, sizeof(char) * (len + appendLen + 1), str);
+	str = (char *)hieralloc_reallocate(NULL, str, sizeof(char) * (len + appendLen + 1), str);
 	if (!str)
 		return NULL;
 
@@ -402,8 +470,9 @@ static void _hieralloc_report(const hieralloc_header_t * header, FILE * file, un
 	unsigned i = 0;
 	for (i = 0; i < tab; i++)
 		fputc(' ', file);
-	fprintf(file, "%p: child=%d ref=%d size=%d name='%.256s' \n", header + 1,
-	        header->childCount, header->refCount, header->size, header->name);
+	check_header(header);
+	fprintf(file, "%p: child=%d ref=%d size=%d dctor=%p name='%.256s' \n", header + 1,
+	        header->childCount, header->refCount, header->size, header->destructor, header->name);
 	const hieralloc_header_t * child = header->child;
 	while (child)
 	{
@@ -417,13 +486,14 @@ static void _hieralloc_report(const hieralloc_header_t * header, FILE * file, un
 void hieralloc_report(const void * ptr, FILE * file)
 {
 	if (NULL == ptr)
-		ptr = &global_hieralloc_header + 1;
+		ptr = &hieralloc_global_header + 1;
 	fputs("hieralloc_report: \n", file);
 	_hieralloc_report(get_header(ptr), file, 0);
 }
 
 static void _hieralloc_report_brief(const hieralloc_header_t * header, FILE * file, unsigned * data)
 {
+	check_header(header);
 	data[0]++;
 	data[1] += header->size;
 	data[2] += header->childCount;
@@ -439,11 +509,11 @@ static void _hieralloc_report_brief(const hieralloc_header_t * header, FILE * fi
 void hieralloc_report_brief(const void * ptr, FILE * file)
 {
 	if (NULL == ptr)
-		ptr = &global_hieralloc_header + 1;
+		ptr = &hieralloc_global_header + 1;
 	unsigned data [4] = {0};
 	_hieralloc_report_brief(get_header(ptr), file, data);
-	fprintf(file, "hieralloc_report total: count=%d size=%d child=%d ref=%d \n",
-		data[0], data[1], data[2], data[3]);
+	fprintf(file, "hieralloc_report %p total: count=%d size=%d child=%d ref=%d \n",
+		ptr, data[0], data[1], data[2], data[3]);
 }
 
 void hieralloc_report_lineage(const void * ptr, FILE * file, int tab)
@@ -454,5 +524,34 @@ void hieralloc_report_lineage(const void * ptr, FILE * file, int tab)
    for (tab; tab >=0; tab--)
       fputc(' ', file);
    fprintf(file, "hieralloc_report_lineage %p: size=%d child=%d ref=%d name='%s' parent=%p \n",
-      ptr, header->size, header->child, header->refCount, header->name, header->parent + 1);
+      ptr, header->size, header->childCount, header->refCount, header->name, header->parent ? header->parent + 1 : NULL);
 }
+
+int hieralloc_find(const void * top, const void * ptr, FILE * file, int tab)
+{
+   int found = 0;
+   if (NULL == top)
+      top = &hieralloc_global_header + 1;
+   if (0 == tab && file)
+      fputs("hieralloc_find start \n", file);
+   if (top == ptr)
+   {
+      if (file)
+         fprintf(file, "hieralloc_found %p \n", ptr);
+      found++;
+   }
+   const hieralloc_header_t * start = get_header(top);
+   const hieralloc_header_t * child = start->child;
+	while (child)
+	{
+		found += hieralloc_find(child + 1, ptr, file, tab + 2);
+		child = child->nextSibling;
+	}
+   if (0 == tab && file)
+      fprintf(file, "hieralloc_find end found=%d \n", found);
+   return found;
+}
+
+#ifdef __cplusplus
+} // extern "C"
+#endif

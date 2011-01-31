@@ -24,6 +24,9 @@
 #define hieralloc_array(ctx, type, count) (type *)hieralloc_allocate(ctx, sizeof(type) * count, "ar:"#type)
 #define hieralloc_realloc(ctx, p, type, count) (type *)hieralloc_reallocate(ctx, p, sizeof(type) * count, "re:"#type)
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 // allocate memory and attach to parent context and siblings
 void * hieralloc_allocate(const void * context, unsigned size, const char * name);
 
@@ -89,5 +92,11 @@ void hieralloc_report(const void * ptr, FILE * file);
 void hieralloc_report_brief(const void * ptr, FILE * file);
 
 void hieralloc_report_lineage(const void * ptr, FILE * file, int tab);
+
+int hieralloc_find(const void * top, const void * ptr, FILE * file, int tab);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

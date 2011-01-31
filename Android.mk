@@ -105,6 +105,7 @@ mesa_SRC_FILES :=	\
 	src/mesa/program/hash_table.c \
 	src/mesa/program/symbol_table.c \
 	src/pixelflinger2/buffer.cpp \
+	src/pixelflinger2/format.cpp \
 	src/pixelflinger2/pixelflinger2.cpp \
 	src/pixelflinger2/raster.cpp \
 	src/pixelflinger2/scanline.cpp \
@@ -125,10 +126,12 @@ LOCAL_MODULE := mesa
 LOCAL_SRC_FILES := $(mesa_SRC_FILES)
 
 ifeq ($(USE_LLVM_EXECUTIONENGINE),true)
-LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE
-LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE
+LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
+LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
 LOCAL_STATIC_LIBRARIES := libLLVMX86CodeGen libLLVMX86Info $(mesa_STATIC_LIBS)
 else
+LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
+LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
 LOCAL_SHARED_LIBRARIES := libbcc
 endif
 
@@ -169,16 +172,18 @@ LOCAL_SHARED_LIBRARIES := libstlport libcutils libdl
 LOCAL_SRC_FILES += egl.cpp
 #libutils libhardware libsurfaceflinger_client libpixelflinger
 # libsurfaceflinger_client and libpixelflinger causes hieralloc assertion
-LOCAL_SHARED_LIBRARIES += libutils libhardware libsurfaceflinger_client libpixelflinger
+LOCAL_SHARED_LIBRARIES += libutils libhardware libsurfaceflinger_client
 LOCAL_CPPFLAGS += -DDRAW_TO_SCREEN=1
-LOCAL_CFLAGS += -fvisibility=hidden
-LOCAL_CPPFLAGS += -fvisibility=hidden
+#LOCAL_CFLAGS += -fvisibility=hidden
+#LOCAL_CPPFLAGS += -fvisibility=hidden
 
 ifeq ($(USE_LLVM_EXECUTIONENGINE),true)
-LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE
-LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE
+LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
+LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
 LOCAL_STATIC_LIBRARIES :=  libLLVMARMCodeGen libLLVMARMInfo libLLVMARMDisassembler libLLVMARMAsmPrinter $(mesa_STATIC_LIBS)
 else
+LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
+LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
 LOCAL_SHARED_LIBRARIES += libbcc 
 endif
 

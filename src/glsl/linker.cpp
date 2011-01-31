@@ -323,7 +323,7 @@ cross_validate_globals(struct gl_shader_program *prog,
    /* Examine all of the uniforms in all of the shaders and cross validate
     * them.
     */
-   glsl_symbol_table variables;
+   glsl_symbol_table variables(prog);
    for (unsigned i = 0; i < num_shaders; i++) {
       if (shader_list[i] == NULL)
 	 continue;
@@ -449,7 +449,7 @@ bool
 cross_validate_outputs_to_inputs(struct gl_shader_program *prog,
 				 gl_shader *producer, gl_shader *consumer)
 {
-   glsl_symbol_table parameters;
+   glsl_symbol_table parameters(prog);
    /* FINISHME: Figure these out dynamically. */
    const char *const producer_stage = "vertex";
    const char *const consumer_stage = "fragment";
@@ -570,7 +570,7 @@ cross_validate_outputs_to_inputs(struct gl_shader_program *prog,
 static void
 populate_symbol_table(gl_shader *sh)
 {
-   sh->symbols = new(sh) glsl_symbol_table;
+   sh->symbols = new(sh) glsl_symbol_table(sh);
 
    foreach_list(node, sh->ir) {
       ir_instruction *const inst = (ir_instruction *) node;
@@ -1487,7 +1487,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
    if (prog->InfoLog != NULL)
       hieralloc_free(prog->InfoLog);
 
-   prog->InfoLog = hieralloc_strdup(NULL, "");
+   prog->InfoLog = hieralloc_strdup(prog, "");
 
    /* Separate the shaders into groups based on their type.
     */

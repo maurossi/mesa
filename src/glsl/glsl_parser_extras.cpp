@@ -47,7 +47,7 @@ _mesa_glsl_parse_state::_mesa_glsl_parse_state(struct gl_context *ctx,
 
    this->scanner = NULL;
    this->translation_unit.make_empty();
-   this->symbols = new(mem_ctx) glsl_symbol_table;
+   this->symbols = new(mem_ctx) glsl_symbol_table(mem_ctx);
    this->info_log = hieralloc_strdup(mem_ctx, "");
    this->error = false;
    this->loop_or_switch_nesting = NULL;

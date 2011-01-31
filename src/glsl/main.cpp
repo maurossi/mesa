@@ -258,7 +258,7 @@ compile_shader(struct gl_context *ctx, struct gl_shader *shader)
    return;
 }
 
-//#define DRAW_TO_SCREEN 1
+#define DRAW_TO_SCREEN 1
 #include "image_file.h"
 
 #if defined __arm__ && defined DRAW_TO_SCREEN
@@ -276,11 +276,12 @@ void execute(void (* function)(), gl_shader * shader)
    assert(32 == bpp);
    unsigned * frameSurface = (unsigned *)PresentDrawingSurface();
 #else
-   const unsigned width = 480, height = 800;
+   const unsigned width = 1280, height = 800;
    unsigned * frameSurface = new unsigned [width * height];
 #endif
    //const unsigned scale = 16, portWidth = 80, portHeight = 50;
-   unsigned scale = 1, portWidth = width, portHeight = height;
+   //unsigned scale = 1, portWidth = width / scale, portHeight = height / scale;
+   unsigned scale = 1, portWidth = width / 4, portHeight = height / 4;
    
    float * data = (float *)shader->Source;
    float * constants = data + 36;
@@ -381,7 +382,7 @@ void execute(void (* function)(), gl_shader * shader)
    printf ("\n *** test_scan elapsed CPU time: %fs \n *** fps=%.2f, tpf=%.2fms \n",
            elapsed, frames / elapsed, elapsed / frames * 1000);
    printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", outputs[0], outputs[1], outputs[2], outputs[3]);
-   assert(0.1f < outputs[3]);
+   //assert(0.1f < outputs[3]);
 #if defined __arm__
    SaveBMP("/sdcard/mesa.bmp", frameSurface, width, height);
 #else
@@ -550,7 +551,8 @@ void jit(llvm::Module * mod, gl_shader * shader)
    else
       printf("bcc_compile %s=%p \n", "main", function);
    
-   execute(function, shader);
+   if (GL_FRAGMENT_SHADER == shader->Type)
+      execute(function, shader);
    
    shader->Source = NULL;
    shader->Program = NULL;
@@ -563,23 +565,27 @@ main(int argc, char **argv)
 {
    static char basePath [256] = {0};
    static char texturePath [256] = {0};
-   static char shaderPath [256] = {0};
+   static char fragPath [256] = {0};
+   static char vertPath [256] = {0};
    static char cubeTexturePath [256] = {0};
-   static const char shaderFile[] = "fs.frag";
+   static const char fragFile[] = "fs.frag";
+   static const char vertFile[] = "vs.vert";
    static const char textureFile[] = "android.tga";
    static const char cubeTextureFile[] = "cube.tga";
    
    strncpy(basePath, argv[0], strrchr(argv[0], '/') - argv[0] + 1);
-   strcpy(shaderPath, basePath);
-   strcat(shaderPath, shaderFile);
+   strcpy(fragPath, basePath);
+   strcat(fragPath, fragFile);
+   strcpy(vertPath, basePath);
+   strcat(vertPath, vertFile);
    strcpy(texturePath, basePath);
    strcat(texturePath, textureFile);
    strcpy(cubeTexturePath, basePath);
    strcat(cubeTexturePath, cubeTextureFile);
    //*
    if (1 == argc) {
-      argc = 6;
-      const char * args [] = {argv[0], "--dump-hir", "--do-jit", "--link", "--glsl-es", shaderPath};
+      const char * args [] = {argv[0], "--dump-hir", "--do-jit", "--link", "--glsl-es", fragPath, vertPath};
+      argc = sizeof(args) / sizeof(*args);
       argv = (char **)args;
    }
    //*/
@@ -602,7 +608,8 @@ main(int argc, char **argv)
 
    whole_program = hieralloc_zero (NULL, struct gl_shader_program);
    assert(whole_program != NULL);
-
+   whole_program->Attributes = hieralloc_zero(whole_program, gl_program_parameter_list);
+   
    for (/* empty */; argc > optind; optind++) {
       whole_program->Shaders = (struct gl_shader **)
          hieralloc_realloc(whole_program, whole_program->Shaders,
@@ -641,8 +648,46 @@ main(int argc, char **argv)
 	 status = EXIT_FAILURE;
 	 break;
       }
+      
+      if (GL_VERTEX_SHADER == shader->Type)
+      {
+         gl_program_parameter_list * attributes = whole_program->Attributes;
+         foreach_list(node, shader->ir) {
+            ir_variable *const var = ((ir_instruction *) node)->as_variable();
+            if ((var == NULL) || (var->mode != ir_var_in))
+               continue;
+            bool exists = false;
+            for (unsigned i = 0; i < attributes->NumParameters; i++)
+               if (!strcmp(var->name, attributes->Parameters[i].Name))
+               {
+                  exists = true;
+                  break;
+               }
+            if (exists)
+               continue;
+            
+            unsigned vec4_slots = 0;
+            if (var->type->is_array())
+               vec4_slots = var->type->length * var->type->fields.array->matrix_columns;
+            else
+               vec4_slots = var->type->matrix_columns;
+      
+            attributes->NumParameters++;
+            attributes->Parameters = hieralloc_realloc(attributes, attributes->Parameters, 
+               gl_program_parameter, attributes->NumParameters);
+            
+            gl_program_parameter * attribute = attributes->Parameters + attributes->NumParameters - 1;
+            memset(attribute, 0, sizeof(*attribute));
+            attribute->Name = hieralloc_strdup(attributes->Parameters, var->name);
+            attribute->ExplicitLocation = -1;
+            attribute->Location = -1;
+            attribute->Slots = vec4_slots;
+         }
+      }
    }
 
+   puts("link");
+   
    if ((status == EXIT_SUCCESS) && do_link)  {
       link_shaders(ctx, whole_program);
       status = (whole_program->LinkStatus) ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -671,7 +716,6 @@ main(int argc, char **argv)
       struct gl_shader *shader = whole_program->_LinkedShaders[i];
       if (!shader)
          continue;
-      // TODO: fix add_uniform for sampler location
       for (unsigned i = 0; i < whole_program->Uniforms->NumUniforms; i++)
       {
          const gl_uniform & uniform = whole_program->Uniforms->Uniforms[i];
@@ -680,6 +724,11 @@ main(int argc, char **argv)
             continue;
          assert(var->location >= 0);
          printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.FragPos, uniform.Type->name);
+      }
+      for (unsigned i = 0; i < whole_program->Attributes->NumParameters; i++)
+      {
+         const gl_program_parameter & attribute = whole_program->Attributes->Parameters[i];
+         printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
       }
       ir_variable * sampler = NULL;
       if ((sampler = shader->symbols->get_variable("samp2D")) && sampler->location >= 0)
@@ -701,20 +750,21 @@ main(int argc, char **argv)
       puts("\n *** Module for JIT *** \n");
       //module->dump();
       jit(module, shader);
+   
       puts("jitted");
    }
    
    free(texture.levels);
    DestroyGGLInterface((GGLInterface *)ggl);
-
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++)
       hieralloc_free(whole_program->_LinkedShaders[i]);
 
    hieralloc_free(whole_program);
+      
    _mesa_glsl_release_types();
    _mesa_glsl_release_functions();
 
-   puts("mesa exit");
+   printf("mesa exit(%d) \n", status);
    hieralloc_report_brief(NULL, stdout);
    return status;
 }

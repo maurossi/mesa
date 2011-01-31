@@ -63,7 +63,6 @@ public:
       assert(table != NULL);
 
       hieralloc_set_destructor(table, (int (*)(void*)) _glsl_symbol_table_destructor);
-
       return table;
    }
 
@@ -76,7 +75,7 @@ public:
       hieralloc_free(table);
    }
    
-   glsl_symbol_table();
+   glsl_symbol_table(void * mem_ctx);
    ~glsl_symbol_table();
 
    unsigned int language_version;

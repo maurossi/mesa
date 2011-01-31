@@ -20,7 +20,10 @@
 
 #define USE_LLVM_TEXTURE_SAMPLER 1
 #define USE_LLVM_SCANLINE 1
+
+#ifndef USE_LLVM_EXECUTIONENGINE
 #define USE_LLVM_EXECUTIONENGINE 0 // 1 to use llvm::Execution, 0 to use libBCC, requires modifying makefile
+#endif
 
 #define debug_printf printf
 

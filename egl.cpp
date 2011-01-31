@@ -1917,9 +1917,12 @@ EGLBoolean eglSetSwapRectangleANDROID(EGLDisplay dpy, EGLSurface draw,
    return EGL_TRUE;
 }
 
-sp<SurfaceComposerClient> client;
-sp<SurfaceControl> surfaceControl;
-sp<Surface> surface;
+static struct S
+{
+   sp<SurfaceComposerClient> client;
+   sp<SurfaceControl> surfaceControl;
+   sp<Surface> surface;
+} * s = NULL;
 ANativeWindow * window;
 EGLDisplay display;
 EGLContext eglCtx;
@@ -1927,16 +1930,17 @@ EGLSurface drawSurface;
 
 extern "C" int SetupDrawingSurface(unsigned * width, unsigned * height, unsigned * bpp)
 {
+   s = new S;
    // create a client to surfaceflinger
-   client = new SurfaceComposerClient();
+   s->client = new SurfaceComposerClient();
 
-   surfaceControl = client->createSurface(getpid(), 0, 1280, 800, PIXEL_FORMAT_RGBA_8888);
-   client->openTransaction();
-   surfaceControl->setLayer(25000);
-   client->closeTransaction();
+   s->surfaceControl = s->client->createSurface(getpid(), 0, 1280, 800, PIXEL_FORMAT_RGBA_8888);
+   s->client->openTransaction();
+   s->surfaceControl->setLayer(25000);
+   s->client->closeTransaction();
 
-   surface = surfaceControl->getSurface();
-   window = surface.get();
+   s->surface = s->surfaceControl->getSurface();
+   window = s->surface.get();
 
    printf("window=%p\n", window);
 
@@ -1995,8 +1999,12 @@ extern "C" void * PresentDrawingSurface()
 
 extern "C" void DisposeDrawingSurface()
 {
+   puts("DisposeDrawingSurface");
    eglDestroySurface(display, drawSurface);
    eglDestroyContext(display, eglCtx);
 
+   delete s;
+   s = NULL;
+   
    puts("DisposeDrawingSurface");
 }

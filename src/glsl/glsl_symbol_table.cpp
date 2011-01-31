@@ -51,19 +51,19 @@ public:
    ir_variable *v;
    ir_function *f;
    const glsl_type *t;
-};
+}; 
 
-glsl_symbol_table::glsl_symbol_table()
+glsl_symbol_table::glsl_symbol_table(void * ctx)
 {
    this->language_version = 120;
    this->table = _mesa_symbol_table_ctor();
-   this->mem_ctx = hieralloc_init("symbol table entries");
+   this->mem_ctx = hieralloc_allocate(ctx, 0, "symbol table entries");
 }
 
 glsl_symbol_table::~glsl_symbol_table()
 {
    _mesa_symbol_table_dtor(table);
-   hieralloc_free(mem_ctx);
+   //hieralloc_free(mem_ctx); parent context free will free this
 }
 
 void glsl_symbol_table::push_scope()
