@@ -258,6 +258,13 @@ compile_shader(struct gl_context *ctx, struct gl_shader *shader)
    return;
 }
 
+struct SymbolLookupContext
+{
+   const GGLContext * gglCtx;
+   const gl_shader_program * program;
+   const gl_shader * shader;
+};
+
 #define DRAW_TO_SCREEN 1
 #include "image_file.h"
 
@@ -267,8 +274,9 @@ extern "C" void * PresentDrawingSurface();
 extern "C" void DisposeDrawingSurface();
 #endif 
 
-void execute(void (* function)(), gl_shader * shader)
+void execute(SymbolLookupContext * ctx)
 {
+   const gl_shader * shader = ctx->shader;
 #if defined __arm__ && DRAW_TO_SCREEN
    unsigned width = 0, height = 0, bpp = 0;
    int err = SetupDrawingSurface(&width, &height, &bpp);
@@ -282,11 +290,11 @@ void execute(void (* function)(), gl_shader * shader)
    //const unsigned scale = 16, portWidth = 80, portHeight = 50;
    //unsigned scale = 1, portWidth = width / scale, portHeight = height / scale;
    unsigned scale = 1, portWidth = width / 4, portHeight = height / 4;
-   
-   float * data = (float *)shader->Source;
-   float * constants = data + 36;
-   float * outputs = data + 0;
-   float * inputs = data + 12;
+      
+   float * uniform = (float *)ctx->program->ValuesUniform;
+   float * attribute = (float *)ctx->program->ValuesVertexInput;
+   float * varying = (float *)ctx->program->ValuesVertexOutput;
+   float * output = ((VertexOutput*)ctx->program->ValuesVertexOutput)->fragColor[0].f;
    int glFragColorLocation = 0;
    int vTexCoordLocation = -1;
    if (shader->symbols->get_variable("vTexCoord"))
@@ -294,9 +302,10 @@ void execute(void (* function)(), gl_shader * shader)
    int vNormalLocation = -1;
    if (shader->symbols->get_variable("vNormal"))
       vNormalLocation = shader->symbols->get_variable("vNormal")->location;
-   if (shader->symbols->get_variable("uRotM"))
+   if (shader->symbols->get_variable("uRotM") && 0)
    {
-      float * matrix = data + 4 * 1 + 4 * shader->symbols->get_variable("uRotM")->location;
+      ir_variable * var = shader->symbols->get_variable("uRotM");
+      float * matrix = uniform + 4 * 1 + 4 * shader->symbols->get_variable("uRotM")->location;
       memset(matrix, 0, 16 * sizeof(*matrix));
       matrix[0] = matrix[5] = matrix[10] = matrix[15] = 1;
       matrix[28] = 0;
@@ -304,7 +313,7 @@ void execute(void (* function)(), gl_shader * shader)
       matrix[30] = 0;
       matrix[31] = 0;
    }
-   printf("executing... \n function=%p, data=%p \n", function, data);
+   printf("executing... \n function=%p \n", shader->function);
 
    /*
    #ifdef __arm__
@@ -325,36 +334,27 @@ void execute(void (* function)(), gl_shader * shader)
    //while(true)
    for (frames = 1; frames <= 10; frames++)
    {
-      inputs[2] = 0;
-      inputs[3] = 1;
-      constants[0] = frames * 0.6f;
-            
-      //for (unsigned i = 0; i < 480 * 800; i++)
       for (unsigned y = 0; y < portHeight; y++)
          for (unsigned x = 0; x < portWidth; x++) {
-            //data[36] = (float)i / 10000;
-            //memset(data, i, sizeof(data));
-            //inputs[0] = ((float)x) / (portWidth - 1);
-            //inputs[1] = ((float)y) / (portHeight - 1);
             if (vTexCoordLocation > -1)
             {
-               data[1 * 4 + vTexCoordLocation * 4 + 0] = ((float)x) / (portWidth - 1);
-               data[1 * 4 + vTexCoordLocation * 4 + 1] = ((float)y) / (portHeight - 1);
-               data[1 * 4 + vTexCoordLocation * 4 + 2] = 0;
-               data[1 * 4 + vTexCoordLocation * 4 + 3] = 1;
+               varying[vTexCoordLocation * 4 + 0] = ((float)x) / (portWidth - 1);
+               varying[vTexCoordLocation * 4 + 1] = ((float)y) / (portHeight - 1);
+               varying[vTexCoordLocation * 4 + 2] = 0;
+               varying[vTexCoordLocation * 4 + 3] = 1;
             }
             if (vNormalLocation > -1)
             {
-               data[1 * 4 + vNormalLocation * 4 + 0] = 0;
-               data[1 * 4 + vNormalLocation * 4 + 1] = 1;
-               data[1 * 4 + vNormalLocation * 4 + 2] = 0;
-               data[1 * 4 + vNormalLocation * 4 + 3] = 1;
+               varying[vNormalLocation * 4 + 0] = 0;
+               varying[vNormalLocation * 4 + 1] = 1;
+               varying[vNormalLocation * 4 + 2] = 0;
+               varying[vNormalLocation * 4 + 3] = 1;
             }
-            function();
-            unsigned r = outputs[0] * 255;
-            unsigned g = outputs[1] * 255;
-            unsigned b = outputs[2] * 255;
-            unsigned a = outputs[3] * 255;
+            shader->function();
+            unsigned r = output[0] * 255;
+            unsigned g = output[1] * 255;
+            unsigned b = output[2] * 255;
+            unsigned a = output[3] * 255;
 //            unsigned r = *(unsigned *)(outputs + 0);
 //            unsigned g = *(unsigned *)(outputs + 1);
 //            unsigned b = *(unsigned *)(outputs + 2);
@@ -381,7 +381,7 @@ void execute(void (* function)(), gl_shader * shader)
    float elapsed = (float)(clock() - c0) / CLOCKS_PER_SEC;
    printf ("\n *** test_scan elapsed CPU time: %fs \n *** fps=%.2f, tpf=%.2fms \n",
            elapsed, frames / elapsed, elapsed / frames * 1000);
-   printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", outputs[0], outputs[1], outputs[2], outputs[3]);
+   printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", output[0], output[1], output[2], output[3]);
    //assert(0.1f < outputs[3]);
 #if defined __arm__
    SaveBMP("/sdcard/mesa.bmp", frameSurface, width, height);
@@ -401,7 +401,7 @@ void execute(void (* function)(), gl_shader * shader)
 #include <llvm/ExecutionEngine/JIT.h>
 #include <llvm/Target/TargetSelect.h>
 
-void jit(llvm::Module * mod, gl_shader * shader)
+/*void jit(llvm::Module * mod, gl_shader * shader)
 {
 #ifndef __arm__
    __attribute__ ((aligned (16))) // LLVM generates movaps on X86, needs 16 bytes align
@@ -448,7 +448,7 @@ void jit(llvm::Module * mod, gl_shader * shader)
    void (* function)() = (void (*)())ee->getPointerToFunction(func);
    execute(function, data);
    puts("USE_LLVM_EXECUTIONENGINE");
-}
+}*/
 
 #else
 
@@ -457,84 +457,61 @@ void jit(llvm::Module * mod, gl_shader * shader)
 
 static void* symbolLookup(void* pContext, const char* name)
 {
-   gl_shader * shader = (gl_shader *)pContext;
-   const GGLContext * gglCtx = (const GGLContext *)shader->Program;
-   
-   float * data = (float *)shader->Source;
-   void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
+   SymbolLookupContext * ctx = (SymbolLookupContext *)pContext;
+   const gl_shader * shader = ctx->shader;
+   const gl_shader_program * program = ctx->program;
+   const GGLContext * gglCtx = ctx->gglCtx;
+   const void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
    if (NULL == symbol) {
-//      if (0 == strcmp("gl_FragColor", name))
-//         symbol = data + 0;
-//      else if (0 == strcmp("gl_FragCoord", name))
-//         symbol = data + 4;
-//      else if (0 == strcmp("gl_FrontFacing", name))
-//         symbol = data + 8;
-//      else if (0 == strcmp("vTexCoord", name)) {
-//         symbol = data + 12;
-//         *(data + 12) = 1.1;
-//         *(data + 13) = 1.2;
-//         *(data + 14) = 1.3;
-//         *(data + 15) = 1;
-//      } else if (0 == strcmp("uRotM", name)) {
-//         symbol = data + 16;
-//         memset(data + 16, 0, 16 * sizeof(*data));
-//         data[16] = data[21] = data[26] = data[31] = 1;
-//         data[28] = 11;
-//         data[29] = 22;
-//         data[30] = 33;
-//         //data[31] = 44;
-//      } else if (0 == strcmp("uFragmentColor", name)) {
-//         symbol = data + 32;
-//         data[32] = 1.57075f;
-//         data[33] = 1.57075f;
-//         data[34] = 1.57075f;
-//         data[35] = 1.57075f;
-//      } else if (0 == strcmp("t", name)) {
-//         symbol = data + 36;
-//         data[36] = 0.1f;
-//      }
-
-      if (!strcmp("gl_FragColor", name))
-         symbol = data + 0;
-      else if (!strcmp(_PF2_TEXTURE_DATA_NAME_, name))
+      if (!strcmp(_PF2_TEXTURE_DATA_NAME_, name))
          symbol = (void *)gglCtx->textureState.textureData;
       else if (!strcmp(_PF2_TEXTURE_DIMENSIONS_NAME_, name))
          symbol = (void *)gglCtx->textureState.textureDimensions;
       else
       {
-         ir_variable * var = shader->symbols->get_variable(name);
-         if (-1 == var->location)
-            var->location = shader->SourceChecksum++;
-         else
-            shader->SourceChecksum = MAX2(var->location + var->type->matrix_columns, shader->SourceChecksum);
-         symbol = data + 4 * 1 + var->location * 4;
-         printf("'%s' at %d \n", var->name, var->location);
+         for (unsigned i = 0; i < program->Uniforms->NumUniforms && !symbol; i++)
+            if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
+               symbol = program->ValuesUniform + program->Uniforms->Uniforms[i].Pos;
+         for (unsigned i = 0; i < program->Attributes->NumParameters && !symbol; i++)
+            if (!strcmp(program->Attributes->Parameters[i].Name, name))
+            {
+               assert(program->Attributes->Parameters[i].Location
+                  < sizeof(VertexInput) / sizeof(float[4]));
+               symbol = program->ValuesVertexInput + program->Attributes->Parameters[i].Location;
+            }
+         for (unsigned i = 0; i < program->Varying->NumParameters && !symbol; i++)
+            if (!strcmp(program->Varying->Parameters[i].Name, name))
+            {
+               int index = -1;
+               if (GL_VERTEX_SHADER == shader->Type)
+                  index = program->Varying->Parameters[i].BindLocation;
+               else if (GL_FRAGMENT_SHADER == shader->Type)
+                  index = program->Varying->Parameters[i].Location;
+               else 
+                  assert(0);
+               assert(index >= 0);
+               assert(index < sizeof(VertexOutput) / sizeof(float[4]));
+               symbol = program->ValuesVertexOutput + index;
+            }
+         assert(symbol >= program->ValuesVertexInput &&
+            symbol < (char *)program->ValuesUniform + 16 * program->Uniforms->Slots - 3);
       };
    }
    printf("symbolLookup '%s'=%p \n", name, symbol);
    //getchar();
    assert(symbol);
-   return symbol;
+   return (void *)symbol;
 }
 
-void jit(llvm::Module * mod, gl_shader * shader)
+void jit(gl_shader * shader, gl_shader_program * program, const GGLContext * gglCtx)
 {
-#ifndef __arm__
-   __attribute__ ((aligned (16))) // LLVM generates movaps on X86, needs 16 bytes align
-#endif
-   float data [64];
-   memset(data, 0xff, sizeof(data));
-
-   assert(!shader->Source);
-   shader->Source = (char *)data; // i/o pool
-   assert(!shader->Program);
-   shader->Program = (gl_program *)ggl; // pass in context
+   SymbolLookupContext ctx = {gglCtx, program, shader};
    
    BCCScriptRef script = bccCreateScript();
-   bccReadModule(script, "glsl", (LLVMModuleRef)mod, 0);
+   bccReadModule(script, "glsl", (LLVMModuleRef)shader->module, 0);
    int result = 0;
    assert(0 == bccGetError(script));
-   bccRegisterSymbolCallback(script, symbolLookup, shader);
+   bccRegisterSymbolCallback(script, symbolLookup, &ctx);
    assert(0 == bccGetError(script));
    bccPrepareExecutable(script, NULL, 0);
    result = bccGetError(script);
@@ -544,18 +521,15 @@ void jit(llvm::Module * mod, gl_shader * shader)
       return;
    }
 
-   void (* function)() = (void (*)())bccGetFuncAddr(script, "main");
+   shader->function = (void (*)())bccGetFuncAddr(script, "main");
    result = bccGetError(script);
    if (result != BCC_NO_ERROR)
       fprintf(stderr, "Could not find '%s': %d\n", "main", result);
    else
-      printf("bcc_compile %s=%p \n", "main", function);
+      printf("bcc_compile %s=%p \n", "main", shader->function);
    
    if (GL_FRAGMENT_SHADER == shader->Type)
-      execute(function, shader);
-   
-   shader->Source = NULL;
-   shader->Program = NULL;
+      execute(&ctx);
 }
 
 #endif
@@ -603,13 +577,14 @@ main(int argc, char **argv)
       usage_fail(argv[0]);
 
    initialize_context(ctx, (glsl_es) ? API_OPENGLES2 : API_OPENGL);
-
+   ggl = CreateGGLInterface();
+   
    struct gl_shader_program *whole_program;
 
    whole_program = hieralloc_zero (NULL, struct gl_shader_program);
    assert(whole_program != NULL);
    whole_program->Attributes = hieralloc_zero(whole_program, gl_program_parameter_list);
-   
+   whole_program->Varying = hieralloc_zero(whole_program, gl_program_parameter_list);
    for (/* empty */; argc > optind; optind++) {
       whole_program->Shaders = (struct gl_shader **)
          hieralloc_realloc(whole_program, whole_program->Shaders,
@@ -648,42 +623,6 @@ main(int argc, char **argv)
 	 status = EXIT_FAILURE;
 	 break;
       }
-      
-      if (GL_VERTEX_SHADER == shader->Type)
-      {
-         gl_program_parameter_list * attributes = whole_program->Attributes;
-         foreach_list(node, shader->ir) {
-            ir_variable *const var = ((ir_instruction *) node)->as_variable();
-            if ((var == NULL) || (var->mode != ir_var_in))
-               continue;
-            bool exists = false;
-            for (unsigned i = 0; i < attributes->NumParameters; i++)
-               if (!strcmp(var->name, attributes->Parameters[i].Name))
-               {
-                  exists = true;
-                  break;
-               }
-            if (exists)
-               continue;
-            
-            unsigned vec4_slots = 0;
-            if (var->type->is_array())
-               vec4_slots = var->type->length * var->type->fields.array->matrix_columns;
-            else
-               vec4_slots = var->type->matrix_columns;
-      
-            attributes->NumParameters++;
-            attributes->Parameters = hieralloc_realloc(attributes, attributes->Parameters, 
-               gl_program_parameter, attributes->NumParameters);
-            
-            gl_program_parameter * attribute = attributes->Parameters + attributes->NumParameters - 1;
-            memset(attribute, 0, sizeof(*attribute));
-            attribute->Name = hieralloc_strdup(attributes->Parameters, var->name);
-            attribute->ExplicitLocation = -1;
-            attribute->Location = -1;
-            attribute->Slots = vec4_slots;
-         }
-      }
    }
 
    puts("link");
@@ -696,9 +635,24 @@ main(int argc, char **argv)
          printf("Info log for linking:\n%s\n", whole_program->InfoLog);
    }
 
+   for (unsigned i = 0; i < whole_program->Attributes->NumParameters; i++)
+   {
+      const gl_program_parameter & attribute = whole_program->Attributes->Parameters[i];
+      printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+   }
+   for (unsigned i = 0; i < whole_program->Varying->NumParameters; i++)
+   {
+      const gl_program_parameter & varying = whole_program->Varying->Parameters[i];
+      printf("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+   }
+   for (unsigned i = 0; i < whole_program->Uniforms->NumUniforms; i++)
+   {
+      const gl_uniform & uniform = whole_program->Uniforms->Uniforms[i];
+      printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
+   }
+         
    puts("jit");
 
-   ggl = CreateGGLInterface();
    GGLTexture texture = {0};  
    LoadTGA(texturePath, &texture.width, &texture.height, &texture.levels);
    texture.format = GGL_PIXEL_FORMAT_RGBA_8888;
@@ -716,20 +670,6 @@ main(int argc, char **argv)
       struct gl_shader *shader = whole_program->_LinkedShaders[i];
       if (!shader)
          continue;
-      for (unsigned i = 0; i < whole_program->Uniforms->NumUniforms; i++)
-      {
-         const gl_uniform & uniform = whole_program->Uniforms->Uniforms[i];
-         ir_variable * var = NULL;
-         if (!(var = shader->symbols->get_variable(uniform.Name)))
-            continue;
-         assert(var->location >= 0);
-         printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.FragPos, uniform.Type->name);
-      }
-      for (unsigned i = 0; i < whole_program->Attributes->NumParameters; i++)
-      {
-         const gl_program_parameter & attribute = whole_program->Attributes->Parameters[i];
-         printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
-      }
       ir_variable * sampler = NULL;
       if ((sampler = shader->symbols->get_variable("samp2D")) && sampler->location >= 0)
          ggl->SetSampler(ggl, sampler->location, &texture);
@@ -738,18 +678,17 @@ main(int argc, char **argv)
       if ((sampler = shader->symbols->get_variable("sampCube")) && sampler->location >= 0)
          ggl->SetSampler(ggl, sampler->location, &cubeTexture);
          
-      exec_list * ir = shader->ir;
-
-      do_mat_op_to_vec(ir);
+      do_mat_op_to_vec(shader->ir);
 
       puts("\n *** IR for JIT *** \n");
       //_mesa_print_ir(ir, NULL);
 
-      llvm::Module * module = glsl_ir_to_llvm_module(ir, (GGLContext *)ggl);
+      llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, (GGLContext *)ggl);
       assert(module);
+      shader->module = module;
       puts("\n *** Module for JIT *** \n");
       //module->dump();
-      jit(module, shader);
+      jit(shader, whole_program, (GGLContext *)ggl);
    
       puts("jitted");
    }

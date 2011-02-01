@@ -2069,8 +2069,8 @@ struct gl_shader
    GLboolean Main;  /**< shader defines main() */
    GLboolean UnresolvedRefs;
    const GLchar *Source;  /**< Source code string */
-   GLuint SourceChecksum;       /**< for debug/logging purposes */
-   struct gl_program *Program;  /**< Post-compile assembly code */
+//   GLuint SourceChecksum;       /**< for debug/logging purposes */
+//   struct gl_program *Program;  /**< Post-compile assembly code */
    GLchar *InfoLog;
    struct gl_sl_pragmas Pragmas;
 
@@ -2078,6 +2078,8 @@ struct gl_shader
 
    struct exec_list *ir;
    struct glsl_symbol_table *symbols;
+   void * module;
+   void (*function)(); 
 
    /** Shaders containing built-in functions that are used for linking. */
    struct gl_shader *builtins_to_link[16];
@@ -2103,31 +2105,30 @@ struct gl_shader_program
    struct gl_program_parameter_list *Attributes;
 
    /** Transform feedback varyings */
-   struct {
-      GLenum BufferMode;
-      GLuint NumVarying;
-      GLchar **VaryingNames;  /**< Array [NumVarying] of char * */
-   } TransformFeedback;
+//   struct {
+//      GLenum BufferMode;
+//      GLuint NumVarying;
+//      GLchar **VaryingNames;  /**< Array [NumVarying] of char * */
+//   } TransformFeedback;
 
    /** Geometry shader state - copied into gl_geometry_program at link time */
-   struct {
-      GLint VerticesOut;
-      GLenum InputType;  /**< GL_POINTS, GL_LINES, GL_LINES_ADJACENCY_ARB,
-                              GL_TRIANGLES, or GL_TRIANGLES_ADJACENCY_ARB */
-      GLenum OutputType; /**< GL_POINTS, GL_LINE_STRIP or GL_TRIANGLE_STRIP */
-   } Geom;
+//   struct {
+//      GLint VerticesOut;
+//      GLenum InputType;  /**< GL_POINTS, GL_LINES, GL_LINES_ADJACENCY_ARB,
+//                              GL_TRIANGLES, or GL_TRIANGLES_ADJACENCY_ARB */
+//      GLenum OutputType; /**< GL_POINTS, GL_LINE_STRIP or GL_TRIANGLE_STRIP */
+//   } Geom;
 
    /* post-link info: */
-   struct gl_vertex_program *VertexProgram;     /**< Linked vertex program */
-   struct gl_fragment_program *FragmentProgram; /**< Linked fragment prog */
-   struct gl_geometry_program *GeometryProgram; /**< Linked geometry prog */
+//   struct gl_vertex_program *VertexProgram;     /**< Linked vertex program */
+//   struct gl_fragment_program *FragmentProgram; /**< Linked fragment prog */
+//   struct gl_geometry_program *GeometryProgram; /**< Linked geometry prog */
    struct gl_uniform_list *Uniforms;
    struct gl_program_parameter_list *Varying;
    GLboolean LinkStatus;   /**< GL_LINK_STATUS */
    GLboolean Validated;
    GLboolean _Used;        /**< Ever used for drawing? */
    GLchar *InfoLog;
-
    unsigned Version;       /**< GLSL version used for linking */
 
    /**
@@ -2138,6 +2139,10 @@ struct gl_shader_program
     * \c NULL.
     */
    struct gl_shader *_LinkedShaders[MESA_SHADER_TYPES];
+   GLfloat (*ValuesUniform)[4];
+   GLfloat (*ValuesVertexInput)[4];    /**< actually a VertexInput */
+   GLfloat (*ValuesVertexOutput)[4];   /**< actually a VertexOutput */
+   void * InputOuputBase;              /**< allocation base for Values* */
 };   
 
 
@@ -3065,200 +3070,200 @@ typedef enum {
 struct gl_context
 {
    /** State possibly shared with other contexts in the address space */
-   struct gl_shared_state *Shared;
+//   struct gl_shared_state *Shared;
 
    /** \name API function pointer tables */
    /*@{*/
    gl_api API;
-   struct _glapi_table *Save;	/**< Display list save functions */
-   struct _glapi_table *Exec;	/**< Execute functions */
-   struct _glapi_table *CurrentDispatch;  /**< == Save or Exec !! */
+//   struct _glapi_table *Save;	/**< Display list save functions */
+//   struct _glapi_table *Exec;	/**< Execute functions */
+//   struct _glapi_table *CurrentDispatch;  /**< == Save or Exec !! */
    /*@}*/
 
-   struct gl_config Visual;
-   struct gl_framebuffer *DrawBuffer;	/**< buffer for writing */
-   struct gl_framebuffer *ReadBuffer;	/**< buffer for reading */
-   struct gl_framebuffer *WinSysDrawBuffer;  /**< set with MakeCurrent */
-   struct gl_framebuffer *WinSysReadBuffer;  /**< set with MakeCurrent */
+//   struct gl_config Visual;
+//   struct gl_framebuffer *DrawBuffer;	/**< buffer for writing */
+//   struct gl_framebuffer *ReadBuffer;	/**< buffer for reading */
+//   struct gl_framebuffer *WinSysDrawBuffer;  /**< set with MakeCurrent */
+//   struct gl_framebuffer *WinSysReadBuffer;  /**< set with MakeCurrent */
 
    /**
     * Device driver function pointer table
     */
    struct dd_function_table Driver;
 
-   void *DriverCtx;	/**< Points to device driver context/state */
+//   void *DriverCtx;	/**< Points to device driver context/state */
 
    /** Core/Driver constants */
    struct gl_constants Const;
 
-   /** \name The various 4x4 matrix stacks */
-   /*@{*/
-   struct gl_matrix_stack ModelviewMatrixStack;
-   struct gl_matrix_stack ProjectionMatrixStack;
-   struct gl_matrix_stack TextureMatrixStack[MAX_TEXTURE_UNITS];
-   struct gl_matrix_stack ProgramMatrixStack[MAX_PROGRAM_MATRICES];
-   struct gl_matrix_stack *CurrentStack; /**< Points to one of the above stacks */
-   /*@}*/
+//   /** \name The various 4x4 matrix stacks */
+//   /*@{*/
+//   struct gl_matrix_stack ModelviewMatrixStack;
+//   struct gl_matrix_stack ProjectionMatrixStack;
+//   struct gl_matrix_stack TextureMatrixStack[MAX_TEXTURE_UNITS];
+//   struct gl_matrix_stack ProgramMatrixStack[MAX_PROGRAM_MATRICES];
+//   struct gl_matrix_stack *CurrentStack; /**< Points to one of the above stacks */
+//   /*@}*/
+//
+//   /** Combined modelview and projection matrix */
+//   GLmatrix _ModelProjectMatrix;
 
-   /** Combined modelview and projection matrix */
-   GLmatrix _ModelProjectMatrix;
+//   /** \name Display lists */
+//   struct gl_dlist_state ListState;
 
-   /** \name Display lists */
-   struct gl_dlist_state ListState;
+//   GLboolean ExecuteFlag;	/**< Execute GL commands? */
+//   GLboolean CompileFlag;	/**< Compile GL commands into display list? */
 
-   GLboolean ExecuteFlag;	/**< Execute GL commands? */
-   GLboolean CompileFlag;	/**< Compile GL commands into display list? */
-
-   /** Extension information */
+//   /** Extension information */
    struct gl_extensions Extensions;
+//
+//   /** Version info */
+//   GLuint VersionMajor, VersionMinor;
+//   char *VersionString;
+//
+//   /** \name State attribute stack (for glPush/PopAttrib) */
+//   /*@{*/
+//   GLuint AttribStackDepth;
+//   struct gl_attrib_node *AttribStack[MAX_ATTRIB_STACK_DEPTH];
+//   /*@}*/
 
-   /** Version info */
-   GLuint VersionMajor, VersionMinor;
-   char *VersionString;
+//   /** \name Renderer attribute groups
+//    * 
+//    * We define a struct for each attribute group to make pushing and popping
+//    * attributes easy.  Also it's a good organization.
+//    */
+//   /*@{*/
+//   struct gl_accum_attrib	Accum;		/**< Accum buffer attributes */
+//   struct gl_colorbuffer_attrib	Color;		/**< Color buffer attributes */
+//   struct gl_current_attrib	Current;	/**< Current attributes */
+//   struct gl_depthbuffer_attrib	Depth;		/**< Depth buffer attributes */
+//   struct gl_eval_attrib	Eval;		/**< Eval attributes */
+//   struct gl_fog_attrib		Fog;		/**< Fog attributes */
+//   struct gl_hint_attrib	Hint;		/**< Hint attributes */
+//   struct gl_light_attrib	Light;		/**< Light attributes */
+//   struct gl_line_attrib	Line;		/**< Line attributes */
+//   struct gl_list_attrib	List;		/**< List attributes */
+//   struct gl_multisample_attrib Multisample;
+//   struct gl_pixel_attrib	Pixel;		/**< Pixel attributes */
+//   struct gl_point_attrib	Point;		/**< Point attributes */
+//   struct gl_polygon_attrib	Polygon;	/**< Polygon attributes */
+//   GLuint PolygonStipple[32];			/**< Polygon stipple */
+//   struct gl_scissor_attrib	Scissor;	/**< Scissor attributes */
+//   struct gl_stencil_attrib	Stencil;	/**< Stencil buffer attributes */
+//   struct gl_texture_attrib	Texture;	/**< Texture attributes */
+//   struct gl_transform_attrib	Transform;	/**< Transformation attributes */
+//   struct gl_viewport_attrib	Viewport;	/**< Viewport attributes */
+//   /*@}*/
+//
+//   /** \name Client attribute stack */
+//   /*@{*/
+//   GLuint ClientAttribStackDepth;
+//   struct gl_attrib_node *ClientAttribStack[MAX_CLIENT_ATTRIB_STACK_DEPTH];
+//   /*@}*/
+//
+//   /** \name Client attribute groups */
+//   /*@{*/
+//   struct gl_array_attrib	Array;	/**< Vertex arrays */
+//   struct gl_pixelstore_attrib	Pack;	/**< Pixel packing */
+//   struct gl_pixelstore_attrib	Unpack;	/**< Pixel unpacking */
+//   struct gl_pixelstore_attrib	DefaultPacking;	/**< Default params */
+//   /*@}*/
+//
+//   /** \name Other assorted state (not pushed/popped on attribute stack) */
+//   /*@{*/
+//   struct gl_pixelmaps          PixelMaps;
 
-   /** \name State attribute stack (for glPush/PopAttrib) */
-   /*@{*/
-   GLuint AttribStackDepth;
-   struct gl_attrib_node *AttribStack[MAX_ATTRIB_STACK_DEPTH];
-   /*@}*/
+//   struct gl_evaluators EvalMap;   /**< All evaluators */
+//   struct gl_feedback   Feedback;  /**< Feedback */
+//   struct gl_selection  Select;    /**< Selection */
 
-   /** \name Renderer attribute groups
-    * 
-    * We define a struct for each attribute group to make pushing and popping
-    * attributes easy.  Also it's a good organization.
-    */
-   /*@{*/
-   struct gl_accum_attrib	Accum;		/**< Accum buffer attributes */
-   struct gl_colorbuffer_attrib	Color;		/**< Color buffer attributes */
-   struct gl_current_attrib	Current;	/**< Current attributes */
-   struct gl_depthbuffer_attrib	Depth;		/**< Depth buffer attributes */
-   struct gl_eval_attrib	Eval;		/**< Eval attributes */
-   struct gl_fog_attrib		Fog;		/**< Fog attributes */
-   struct gl_hint_attrib	Hint;		/**< Hint attributes */
-   struct gl_light_attrib	Light;		/**< Light attributes */
-   struct gl_line_attrib	Line;		/**< Line attributes */
-   struct gl_list_attrib	List;		/**< List attributes */
-   struct gl_multisample_attrib Multisample;
-   struct gl_pixel_attrib	Pixel;		/**< Pixel attributes */
-   struct gl_point_attrib	Point;		/**< Point attributes */
-   struct gl_polygon_attrib	Polygon;	/**< Polygon attributes */
-   GLuint PolygonStipple[32];			/**< Polygon stipple */
-   struct gl_scissor_attrib	Scissor;	/**< Scissor attributes */
-   struct gl_stencil_attrib	Stencil;	/**< Stencil buffer attributes */
-   struct gl_texture_attrib	Texture;	/**< Texture attributes */
-   struct gl_transform_attrib	Transform;	/**< Transformation attributes */
-   struct gl_viewport_attrib	Viewport;	/**< Viewport attributes */
-   /*@}*/
+//   struct gl_program_state Program;  /**< general program state */
+//   struct gl_vertex_program_state VertexProgram;
+//   struct gl_fragment_program_state FragmentProgram;
+//   struct gl_geometry_program_state GeometryProgram;
+//   struct gl_ati_fragment_shader_state ATIFragmentShader;
 
-   /** \name Client attribute stack */
-   /*@{*/
-   GLuint ClientAttribStackDepth;
-   struct gl_attrib_node *ClientAttribStack[MAX_CLIENT_ATTRIB_STACK_DEPTH];
-   /*@}*/
+//   struct gl_shader_state Shader; /**< GLSL shader object state */
+//   struct gl_shader_compiler_options ShaderCompilerOptions[MESA_SHADER_TYPES];
 
-   /** \name Client attribute groups */
-   /*@{*/
-   struct gl_array_attrib	Array;	/**< Vertex arrays */
-   struct gl_pixelstore_attrib	Pack;	/**< Pixel packing */
-   struct gl_pixelstore_attrib	Unpack;	/**< Pixel unpacking */
-   struct gl_pixelstore_attrib	DefaultPacking;	/**< Default params */
-   /*@}*/
+//   struct gl_query_state Query;  /**< occlusion, timer queries */
 
-   /** \name Other assorted state (not pushed/popped on attribute stack) */
-   /*@{*/
-   struct gl_pixelmaps          PixelMaps;
+//   struct gl_transform_feedback TransformFeedback;
 
-   struct gl_evaluators EvalMap;   /**< All evaluators */
-   struct gl_feedback   Feedback;  /**< Feedback */
-   struct gl_selection  Select;    /**< Selection */
+//   struct gl_buffer_object *CopyReadBuffer; /**< GL_ARB_copy_buffer */
+//   struct gl_buffer_object *CopyWriteBuffer; /**< GL_ARB_copy_buffer */
+//   /*@}*/
+//
+//   struct gl_meta_state *Meta;  /**< for "meta" operations */
+//
+//   /* GL_EXT_framebuffer_object */
+//   struct gl_renderbuffer *CurrentRenderbuffer;
+//
+//   GLenum ErrorValue;        /**< Last error code */
+//
+//   /**
+//    * Recognize and silence repeated error debug messages in buggy apps.
+//    */
+//   const char *ErrorDebugFmtString;
+//   GLuint ErrorDebugCount;
 
-   struct gl_program_state Program;  /**< general program state */
-   struct gl_vertex_program_state VertexProgram;
-   struct gl_fragment_program_state FragmentProgram;
-   struct gl_geometry_program_state GeometryProgram;
-   struct gl_ati_fragment_shader_state ATIFragmentShader;
+//   GLenum RenderMode;        /**< either GL_RENDER, GL_SELECT, GL_FEEDBACK */
+//   GLbitfield NewState;      /**< bitwise-or of _NEW_* flags */
 
-   struct gl_shader_state Shader; /**< GLSL shader object state */
-   struct gl_shader_compiler_options ShaderCompilerOptions[MESA_SHADER_TYPES];
+//   GLboolean ViewportInitialized;  /**< has viewport size been initialized? */
 
-   struct gl_query_state Query;  /**< occlusion, timer queries */
+//   GLbitfield varying_vp_inputs;  /**< mask of VERT_BIT_* flags */
+//
+//   /** \name Derived state */
+//   /*@{*/
+//   /** Bitwise-or of DD_* flags.  Note that this bitfield may be used before
+//    * state validation so they need to always be current.
+//    */
+//   GLbitfield _TriangleCaps;
+//   GLbitfield _ImageTransferState;/**< bitwise-or of IMAGE_*_BIT flags */
+//   GLfloat _EyeZDir[3];
+//   GLfloat _ModelViewInvScale;
+//   GLboolean _NeedEyeCoords;
+//   GLboolean _ForceEyeCoords; 
+//
+//   GLuint TextureStateTimestamp; /**< detect changes to shared state */
 
-   struct gl_transform_feedback TransformFeedback;
-
-   struct gl_buffer_object *CopyReadBuffer; /**< GL_ARB_copy_buffer */
-   struct gl_buffer_object *CopyWriteBuffer; /**< GL_ARB_copy_buffer */
-   /*@}*/
-
-   struct gl_meta_state *Meta;  /**< for "meta" operations */
-
-   /* GL_EXT_framebuffer_object */
-   struct gl_renderbuffer *CurrentRenderbuffer;
-
-   GLenum ErrorValue;        /**< Last error code */
-
-   /**
-    * Recognize and silence repeated error debug messages in buggy apps.
-    */
-   const char *ErrorDebugFmtString;
-   GLuint ErrorDebugCount;
-
-   GLenum RenderMode;        /**< either GL_RENDER, GL_SELECT, GL_FEEDBACK */
-   GLbitfield NewState;      /**< bitwise-or of _NEW_* flags */
-
-   GLboolean ViewportInitialized;  /**< has viewport size been initialized? */
-
-   GLbitfield varying_vp_inputs;  /**< mask of VERT_BIT_* flags */
-
-   /** \name Derived state */
-   /*@{*/
-   /** Bitwise-or of DD_* flags.  Note that this bitfield may be used before
-    * state validation so they need to always be current.
-    */
-   GLbitfield _TriangleCaps;
-   GLbitfield _ImageTransferState;/**< bitwise-or of IMAGE_*_BIT flags */
-   GLfloat _EyeZDir[3];
-   GLfloat _ModelViewInvScale;
-   GLboolean _NeedEyeCoords;
-   GLboolean _ForceEyeCoords; 
-
-   GLuint TextureStateTimestamp; /**< detect changes to shared state */
-
-   struct gl_shine_tab *_ShineTable[2]; /**< Active shine tables */
-   struct gl_shine_tab *_ShineTabList;  /**< MRU list of inactive shine tables */
-   /**@}*/
-
-   struct gl_list_extensions *ListExt; /**< driver dlist extensions */
-
-   /** \name For debugging/development only */
-   /*@{*/
-   GLboolean FirstTimeCurrent;
-   /*@}*/
-
-   /** Dither disable via MESA_NO_DITHER env var */
-   GLboolean NoDither;
-
-   /** software compression/decompression supported or not */
-   GLboolean Mesa_DXTn;
-
-   /** 
-    * Use dp4 (rather than mul/mad) instructions for position
-    * transformation?
-    */
-   GLboolean mvp_with_dp4;
-
-   /**
-    * \name Hooks for module contexts.  
-    *
-    * These will eventually live in the driver or elsewhere.
-    */
-   /*@{*/
-   void *swrast_context;
-   void *swsetup_context;
-   void *swtnl_context;
-   void *swtnl_im;
-   struct st_context *st;
-   void *aelt_context;
-   /*@}*/
+//   struct gl_shine_tab *_ShineTable[2]; /**< Active shine tables */
+//   struct gl_shine_tab *_ShineTabList;  /**< MRU list of inactive shine tables */
+//   /**@}*/
+//
+//   struct gl_list_extensions *ListExt; /**< driver dlist extensions */
+//
+//   /** \name For debugging/development only */
+//   /*@{*/
+//   GLboolean FirstTimeCurrent;
+//   /*@}*/
+//
+//   /** Dither disable via MESA_NO_DITHER env var */
+//   GLboolean NoDither;
+//
+//   /** software compression/decompression supported or not */
+//   GLboolean Mesa_DXTn;
+//
+//   /** 
+//    * Use dp4 (rather than mul/mad) instructions for position
+//    * transformation?
+//    */
+//   GLboolean mvp_with_dp4;
+//
+//   /**
+//    * \name Hooks for module contexts.  
+//    *
+//    * These will eventually live in the driver or elsewhere.
+//    */
+//   /*@{*/
+//   void *swrast_context;
+//   void *swsetup_context;
+//   void *swtnl_context;
+//   void *swtnl_im;
+//   struct st_context *st;
+//   void *aelt_context;
+//   /*@}*/
 };
 
 

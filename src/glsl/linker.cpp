@@ -68,6 +68,8 @@
 #include <cstdarg>
 #include <climits>
 
+#include <pixelflinger2/pixelflinger2_interface.h>
+
 extern "C" {
 #include <hieralloc.h>
 }
@@ -983,19 +985,22 @@ update_array_sizes(struct gl_shader_program *prog)
    }
 }
 
-static void
+static int // returns location assigned
 add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 	    const char *name, const glsl_type *type, GLenum shader_type,
 	    unsigned *next_shader_pos, unsigned *total_uniforms, unsigned *next_sampler_pos)
 {
+   int index = -1;
    if (type->is_record()) {
       for (unsigned int i = 0; i < type->length; i++) {
-	 const glsl_type *field_type = type->fields.structure[i].type;
-	 char *field_name = hieralloc_asprintf(mem_ctx, "%s.%s", name,
+         const glsl_type *field_type = type->fields.structure[i].type;
+         char *field_name = hieralloc_asprintf(mem_ctx, "%s.%s", name,
 					    type->fields.structure[i].name);
 
-	 add_uniform(mem_ctx, uniforms, ht, field_name, field_type,
-		     shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
+         int firstIndex = add_uniform(mem_ctx, uniforms, ht, field_name, field_type,
+            shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
+         if (i == 0)
+            index = firstIndex;
       }
    } else {
       uniform_node *n = (uniform_node *) hash_table_find(ht, name);
@@ -1003,69 +1008,56 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
       const glsl_type *array_elem_type = NULL;
 
       if (type->is_array()) {
-	 array_elem_type = type->fields.array;
-	 /* Array of structures. */
-	 if (array_elem_type->is_record()) {
-	    for (unsigned int i = 0; i < type->length; i++) {
-	       char *elem_name = hieralloc_asprintf(mem_ctx, "%s[%d]", name, i);
-	       add_uniform(mem_ctx, uniforms, ht, elem_name, array_elem_type,
-			   shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
-	    }
-	    return;
-	 }
+         array_elem_type = type->fields.array;
+         /* Array of structures. */
+         if (array_elem_type->is_record()) {
+            for (unsigned int i = 0; i < type->length; i++) {
+               char *elem_name = hieralloc_asprintf(mem_ctx, "%s[%d]", name, i);
+               int firstIndex = add_uniform(mem_ctx, uniforms, ht, elem_name, array_elem_type,
+                  shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
+               if (i == 0)
+                  index = firstIndex;
+            }
+            return index;
+         }
       }
 
       /* Fix the storage size of samplers at 1 vec4 each. Be sure to pad out
        * vectors to vec4 slots.
        */
       if (type->is_array()) {
-	 if (array_elem_type->is_sampler())
-	    vec4_slots = type->length;
-	 else
-	    vec4_slots = type->length * array_elem_type->matrix_columns;
-      } else if (type->is_sampler()) {
-	 vec4_slots = 1;
-      } else {
-	 vec4_slots = type->matrix_columns;
-      }
+         if (array_elem_type->is_sampler())
+            vec4_slots = type->length;
+         else
+            vec4_slots = type->length * array_elem_type->matrix_columns;
+      } else if (type->is_sampler()) 
+         vec4_slots = 1;
+      else
+         vec4_slots = type->matrix_columns;
 
       if (n == NULL) {
-	 n = (uniform_node *) calloc(1, sizeof(struct uniform_node));
-	 n->u = (gl_uniform *) calloc(1, sizeof(struct gl_uniform));
-	 n->slots = vec4_slots;
+         n = (uniform_node *) calloc(1, sizeof(struct uniform_node));
+         n->u = (gl_uniform *) calloc(1, sizeof(struct gl_uniform));
+         n->slots = vec4_slots;
 
-	 n->u->Name = strdup(name);
-	 n->u->Type = type;
-	 n->u->VertPos = -1;
-	 n->u->FragPos = -1;
-	 n->u->GeomPos = -1;
-	 (*total_uniforms)++;
+         n->u->Name = strdup(name);
+         n->u->Type = type;
+         n->u->Pos = *next_shader_pos;
+         (*total_uniforms)++;
     
-      if (type->is_sampler() || (array_elem_type && array_elem_type->is_sampler()))
-      {
-         n->u->VertPos = n->u->FragPos = n->u->GeomPos = *next_sampler_pos;
-         *next_sampler_pos += vec4_slots;
+         if (type->is_sampler() || (array_elem_type && array_elem_type->is_sampler()))
+         {
+            n->u->Pos = *next_sampler_pos;
+            *next_sampler_pos += vec4_slots;
+         }
+         else
+            (*next_shader_pos) += vec4_slots;
+         hash_table_insert(ht, n, name);
+         uniforms->push_tail(&n->link);
       }
-	 hash_table_insert(ht, n, name);
-	 uniforms->push_tail(& n->link);
-      }
-      
-      if (!(type->is_sampler() || (array_elem_type && array_elem_type->is_sampler())))
-      {
-      switch (shader_type) {
-      case GL_VERTEX_SHADER:
-	 n->u->VertPos = *next_shader_pos;
-	 break;
-      case GL_FRAGMENT_SHADER:
-	 n->u->FragPos = *next_shader_pos;
-	 break;
-      case GL_GEOMETRY_SHADER:
-	 n->u->GeomPos = *next_shader_pos;
-	 break;
-      }
-      (*next_shader_pos) += vec4_slots;
-      }
+      index = n->u->Pos;
    }
+   return index;
 }
 
 void
@@ -1077,14 +1069,15 @@ assign_uniform_locations(struct gl_shader_program *prog)
    unsigned next_sampler_pos = 0; // all shaders in prog share same sampler location
    hash_table *ht = hash_table_ctor(32, hash_table_string_hash,
 				    hash_table_string_compare);
-   void *mem_ctx = hieralloc_new(NULL);
+   void *mem_ctx = hieralloc_new(prog);
+
+   unsigned next_position = 0; // also number of slots for uniforms
 
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (prog->_LinkedShaders[i] == NULL)
 	 continue;
 
-      unsigned next_position = 0; // TODO: shouldn't shaders of same prog share uniform location?
-
+      
       foreach_list(node, prog->_LinkedShaders[i]->ir) {
 	 ir_variable *const var = ((ir_instruction *) node)->as_variable();
 
@@ -1099,24 +1092,17 @@ assign_uniform_locations(struct gl_shader_program *prog)
 	    continue;
 	 }
 
-	 if (var->type->is_sampler() || (var->type->is_array() && var->type->fields.array->is_sampler()))
-      var->location = next_sampler_pos;
-	 else
-      var->location = next_position;
-	 add_uniform(mem_ctx, &uniforms, ht, var->name, var->type,
+	 var->location = add_uniform(mem_ctx, &uniforms, ht, var->name, var->type,
 		     prog->_LinkedShaders[i]->Type,
 		     &next_position, &total_uniforms, &next_sampler_pos);
       }
    }
 
-   hieralloc_free(mem_ctx);
-
-   gl_uniform_list *ul = (gl_uniform_list *)
-      calloc(1, sizeof(gl_uniform_list));
+   gl_uniform_list *ul = hieralloc_zero(prog, gl_uniform_list);
 
    ul->Size = total_uniforms;
    ul->NumUniforms = total_uniforms;
-   ul->Uniforms = (gl_uniform *) calloc(total_uniforms, sizeof(gl_uniform));
+   ul->Uniforms = (gl_uniform *)hieralloc_zero_size(ul, total_uniforms * sizeof(gl_uniform));
 
    unsigned idx = 0;
    uniform_node *next;
@@ -1136,6 +1122,9 @@ assign_uniform_locations(struct gl_shader_program *prog)
    hash_table_dtor(ht);
 
    prog->Uniforms = ul;
+   prog->Uniforms->Slots = next_position;
+      
+   hieralloc_free(mem_ctx);
 }
 
 
@@ -1184,7 +1173,8 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
 
    /* Operate in a total of four passes.
     *
-    * 1. Invalidate the location assignments for all vertex shader inputs.
+    * 1. Invalidate the location assignments for all vertex shader inputs,
+    *    except for explicit_location and glBindAttribLocation
     *
     * 2. Assign locations for inputs that have user-defined (via
     *    glBindVertexAttribLocation) locatoins.
@@ -1196,21 +1186,34 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
     *
     * 4. Assign locations to any inputs without assigned locations.
     */
-
-   invalidate_variable_locations(sh, ir_var_in, VERT_ATTRIB_GENERIC0);
-
    if (prog->Attributes != NULL) {
-      for (unsigned i = 0; i < prog->Attributes->NumParameters; i++) {
-	 ir_variable *const var =
-	    sh->symbols->get_variable(prog->Attributes->Parameters[i].Name);
+      // declare attributes if they haven't been already by BindAttribLocation
+      gl_program_parameter_list * attributes = prog->Attributes;
+         foreach_list(node, sh->ir) {
+            ir_variable *const var = ((ir_instruction *) node)->as_variable();
+            if ((var == NULL) || (var->mode != ir_var_in))
+               continue;
+            if (_mesa_get_parameter(attributes, var->name) < 0)
+                _mesa_add_parameter(attributes, var->name);
+         }
+         
+      for (unsigned i = 0; i < attributes->NumParameters; i++) {
+         gl_program_parameter * param = attributes->Parameters + i;
+         ir_variable * const var = sh->symbols->get_variable(param->Name);
+         if (!var || ir_var_in != var->mode)
+            continue;
 
-	 /* Note: attributes that occupy multiple slots, such as arrays or
-	  * matrices, may appear in the attrib array multiple times.
-	  */
-	 if ((var == NULL) || (var->location != -1))
-	    continue;
-
-	 /* From page 61 of the OpenGL 4.0 spec:
+         if (param->BindLocation >= 0 && !var->explicit_location)
+            var->location = param->Location = param->BindLocation;
+         else if (var->explicit_location)
+            param->Location = var->location;
+         else
+            var->location = -1;
+         const unsigned slots = count_attribute_slots(var->type);
+         param->Slots = slots;
+         if (0 > var->location)
+            continue;
+ 	 /* From page 61 of the OpenGL 4.0 spec:
 	  *
 	  *     "LinkProgram will fail if the attribute bindings assigned by
 	  *     BindAttribLocation do not leave not enough space to assign a
@@ -1240,26 +1243,22 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
 	 /* FINISHME: The code as currently written does not support attribute
 	  * FINISHME: location aliasing (see comment above).
 	  */
-	 const int attr = prog->Attributes->Parameters[i].StateIndexes[0];
-	 const unsigned slots = count_attribute_slots(var->type);
-
+         const int attr = param->Location;
 	 /* Mask representing the contiguous slots that will be used by this
 	  * attribute.
 	  */
 	 const unsigned use_mask = (1 << slots) - 1;
-
 	 /* Generate a link error if the set of bits requested for this
 	  * attribute overlaps any previously allocated bits.
 	  */
-	 if ((~(use_mask << attr) & used_locations) != used_locations) {
+	 if ((use_mask << attr) & used_locations) {
 	    linker_error_printf(prog,
 				"insufficient contiguous attribute locations "
 				"available for vertex shader input `%s'",
 				var->name);
 	    return false;
 	 }
-
-	 var->location = VERT_ATTRIB_GENERIC0 + attr;
+    
 	 used_locations |= (use_mask << attr);
       }
    }
@@ -1285,16 +1284,14 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
 
    foreach_list(node, sh->ir) {
       ir_variable *const var = ((ir_instruction *) node)->as_variable();
-
       if ((var == NULL) || (var->mode != ir_var_in))
-	 continue;
-
+         continue;
       if (var->explicit_location) {
 	 const unsigned slots = count_attribute_slots(var->type);
 	 const unsigned use_mask = (1 << slots) - 1;
-	 const int attr = var->location - VERT_ATTRIB_GENERIC0;
+	 const int attr = var->location/* - VERT_ATTRIB_GENERIC0*/;
 
-	 if ((var->location >= (int)(max_attribute_index + VERT_ATTRIB_GENERIC0))
+	 if ((var->location >= (int)(max_attribute_index/* + VERT_ATTRIB_GENERIC0*/))
 	     || (var->location < 0)) {
 	    linker_error_printf(prog,
 				"invalid explicit location %d specified for "
@@ -1302,7 +1299,7 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
 				(var->location < 0) ? var->location : attr,
 				var->name);
 	    return false;
-	 } else if (var->location >= VERT_ATTRIB_GENERIC0) {
+	 } else if (var->location >= 0/*VERT_ATTRIB_GENERIC0*/) {
 	    used_locations |= (use_mask << attr);
 	 }
       }
@@ -1351,8 +1348,11 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
 	 return false;
       }
 
-      to_assign[i].var->location = VERT_ATTRIB_GENERIC0 + location;
+      to_assign[i].var->location = /*VERT_ATTRIB_GENERIC0 +*/ location;
       used_locations |= (use_mask << location);
+      int paramIndex = _mesa_get_parameter(prog->Attributes, to_assign[i].var->name);
+      if (0 <= paramIndex)
+         prog->Attributes->Parameters[paramIndex].Location = location;
    }
 
    return true;
@@ -1381,14 +1381,15 @@ demote_shader_inputs_and_outputs(gl_shader *sh, enum ir_variable_mode mode)
    }
 }
 
+#define VertexOutputOffset(FIELD) (offsetof(VertexOutput,FIELD)/sizeof(Vector4))
 
 void
 assign_varying_locations(struct gl_shader_program *prog,
 			 gl_shader *producer, gl_shader *consumer)
 {
    /* FINISHME: Set dynamically when geometry shader support is added. */
-   unsigned output_index = VERT_RESULT_VAR0;
-   unsigned input_index = FRAG_ATTRIB_VAR0;
+   unsigned output_index = VertexOutputOffset(varyings); /*VERT_RESULT_VAR0*/;
+   unsigned input_index = VertexOutputOffset(varyings);
 
    /* Operate in a total of three passes.
     *
@@ -1400,16 +1401,45 @@ assign_varying_locations(struct gl_shader_program *prog,
     * 3. Mark input variables in the consumer that do not have locations as
     *    not being inputs.  This lets the optimizer eliminate them.
     */
-
-   invalidate_variable_locations(producer, ir_var_out, VERT_RESULT_VAR0);
-   invalidate_variable_locations(consumer, ir_var_in, FRAG_ATTRIB_VAR0);
+   foreach_list(node, producer->ir) {
+      ir_variable *const var = ((ir_instruction *) node)->as_variable();
+      if (!var || ir_var_out != var->mode)
+         continue;  
+      if (!strcmp("gl_Position", var->name))
+         var->location = VertexOutputOffset(position);
+      else if (!strcmp("gl_PointSize", var->name))
+         var->location = VertexOutputOffset(pointSize);
+      else
+         var->location = -1;
+   }
+   foreach_list(node, consumer->ir) {
+      ir_variable *const var = ((ir_instruction *) node)->as_variable();
+      if (!var || ir_var_in != var->mode)
+         continue;  
+      if (!strcmp("gl_FragCoord", var->name))
+         var->location = VertexOutputOffset(position);
+      else if (!strcmp("gl_FrontFacing", var->name))
+         var->location = VertexOutputOffset(frontFacingPointCoord);
+      else if (!strcmp("gl_PointCoord", var->name))
+         var->location = VertexOutputOffset(frontFacingPointCoord);
+      else
+         var->location = -1;
+   }
 
    foreach_list(node, producer->ir) {
       ir_variable *const output_var = ((ir_instruction *) node)->as_variable();
 
-      if ((output_var == NULL) || (output_var->mode != ir_var_out)
-	  || (output_var->location != -1))
-	 continue;
+      if ((output_var == NULL) || (output_var->mode != ir_var_out))
+         continue;
+      int paramIndex = _mesa_get_parameter(prog->Varying, output_var->name);
+      if (paramIndex < 0)
+         paramIndex = _mesa_add_parameter(prog->Varying, output_var->name);
+      gl_program_parameter * param = prog->Varying->Parameters + paramIndex;
+      if (output_var->location != -1)
+      {
+         param->BindLocation = output_var->location;
+         continue;
+      }
 
       ir_variable *const input_var =
 	 consumer->symbols->get_variable(output_var->name);
@@ -1419,8 +1449,8 @@ assign_varying_locations(struct gl_shader_program *prog,
 
       assert(input_var->location == -1);
 
-      output_var->location = output_index;
-      input_var->location = input_index;
+      param->BindLocation = output_var->location = output_index;
+      param->Location = input_var->location = input_index;
 
       /* FINISHME: Support for "varying" records in GLSL 1.50. */
       assert(!output_var->type->is_record());
@@ -1444,9 +1474,13 @@ assign_varying_locations(struct gl_shader_program *prog,
 
       if ((var == NULL) || (var->mode != ir_var_in))
 	 continue;
-
+      int paramIndex = _mesa_get_parameter(prog->Varying, var->name);
+      if (paramIndex < 0)
+         paramIndex = _mesa_add_parameter(prog->Varying, var->name);
+      gl_program_parameter * param = prog->Varying->Parameters + paramIndex;
+      
       if (var->location == -1) {
-	 if (prog->Version <= 120) {
+         if (prog->Version <= 120) {
 	    /* On page 25 (page 31 of the PDF) of the GLSL 1.20 spec:
 	     *
 	     *     Only those varying variables used (i.e. read) in
@@ -1460,16 +1494,18 @@ assign_varying_locations(struct gl_shader_program *prog,
 	     * "glsl1-varying read but not written" in piglit.
 	     */
 
-	    linker_error_printf(prog, "fragment shader varying %s not written "
-				"by vertex shader\n.", var->name);
-	    prog->LinkStatus = false;
-	 }
+            linker_error_printf(prog, "fragment shader varying %s not written "
+               "by vertex shader\n.", var->name);
+            prog->LinkStatus = false;
+         }
 
 	 /* An 'in' variable is only really a shader input if its
 	  * value is written by the previous stage.
 	  */
-	 var->mode = ir_var_auto;
+         var->mode = ir_var_auto;
       }
+      else
+         param->Location = var->location;
    }
 }
 
@@ -1646,7 +1682,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
 
       assign_varying_locations(prog,
 			       prog->_LinkedShaders[prev],
-			       prog->_LinkedShaders[i]);
+			       prog->_LinkedShaders[i]);      
       prev = i;
    }
 
@@ -1667,9 +1703,31 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
       gl_shader *const sh = prog->_LinkedShaders[MESA_SHADER_FRAGMENT];
 
       //demote_shader_inputs_and_outputs(sh, ir_var_in); for testing, don't demote
+      
+      foreach_list(node, sh->ir) {
+         ir_variable *const var = ((ir_instruction *) node)->as_variable();
+         if (!var || ir_var_out != var->mode)
+            continue;  
+         if (!strcmp("gl_FragColor", var->name) || !strcmp("gl_FragData", var->name))
+         {
+            int paramIndex = _mesa_get_parameter(prog->Varying, var->name);
+            if (0 > paramIndex)
+               paramIndex = _mesa_add_parameter(prog->Varying, var->name);
+            var->location= VertexOutputOffset(fragColor);
+            prog->Varying->Parameters[paramIndex].Location = var->location;
+         }
+         else
+            assert(0);
+      }
    }
 
-   /* FINISHME: Assign fragment shader output locations. */
+   //prog->InputOuputBase = malloc(1024 * 8);
+   //memset(prog->InputOuputBase, 0xdd, 1024 * 8);
+   prog->InputOuputBase = hieralloc_realloc(prog, prog->InputOuputBase, char, 
+      prog->Uniforms->Slots * 16 + sizeof(VertexInput) + sizeof(VertexOutput) + 16);
+   prog->ValuesVertexInput = (float (*)[4])((((unsigned long)prog->InputOuputBase) + 15) & (~15L));
+   prog->ValuesVertexOutput = (float (*)[4])((unsigned long)prog->ValuesVertexInput + sizeof(VertexInput));
+   prog->ValuesUniform = (float (*)[4])((unsigned long)prog->ValuesVertexOutput + sizeof(VertexOutput));
 
 done:
    free(vert_shader_list);
@@ -1684,3 +1742,5 @@ done:
 
    //hieralloc_free(mem_ctx);
 }
+
+#undef VertexOutputOffset

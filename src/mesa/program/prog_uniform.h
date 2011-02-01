@@ -47,9 +47,10 @@
 struct gl_uniform
 {
    const char *Name;        /**< Null-terminated string */
-   GLint VertPos;
-   GLint FragPos;
-   GLint GeomPos;
+   //GLint VertPos;
+   //GLint FragPos;
+   //GLint GeomPos;
+   GLint Pos;
    GLboolean Initialized;   /**< For debug.  Has this uniform been set? */
    const struct glsl_type *Type;
 };
@@ -62,6 +63,7 @@ struct gl_uniform_list
 {
    GLuint Size;                 /**< allocated size of Uniforms array */
    GLuint NumUniforms;          /**< number of uniforms in the array */
+   GLuint Slots;                /**< number of float[4] slots uniforms will occupy */
    struct gl_uniform *Uniforms; /**< Array [Size] */
 };
 

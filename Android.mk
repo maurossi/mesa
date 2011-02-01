@@ -103,6 +103,7 @@ mesa_SRC_FILES :=	\
 	src/glsl/ir_to_llvm.cpp \
 	src/glsl/ir_to_llvm_helper.cpp \
 	src/mesa/program/hash_table.c \
+	src/mesa/program/prog_parameter.cpp \
 	src/mesa/program/symbol_table.c \
 	src/pixelflinger2/buffer.cpp \
 	src/pixelflinger2/format.cpp \
