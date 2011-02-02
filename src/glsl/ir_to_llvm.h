@@ -4,6 +4,7 @@
 #include "llvm/Module.h"
 #include "ir.h"
 
-struct llvm::Module * glsl_ir_to_llvm_module(struct exec_list *ir, const struct GGLContext * gglCtx);
+struct llvm::Module * glsl_ir_to_llvm_module(struct exec_list *ir, llvm::Module * mod,
+               const struct GGLContext * gglCtx, const char * shaderSuffix);
 
 #endif /* IR_TO_LLVM_H_ */

@@ -2078,9 +2078,9 @@ struct gl_shader
 
    struct exec_list *ir;
    struct glsl_symbol_table *symbols;
-   void * module;
-   void (*function)(); 
-
+   struct Executable * executable;
+   void (*function)();     /**< the active function */
+   unsigned SamplersUsed;  /**< bitfield of samplers used by shader */
    /** Shaders containing built-in functions that are used for linking. */
    struct gl_shader *builtins_to_link[16];
    unsigned num_builtins_to_link;

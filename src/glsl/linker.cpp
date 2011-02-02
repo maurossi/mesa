@@ -989,7 +989,7 @@ update_array_sizes(struct gl_shader_program *prog)
 static int // returns location assigned
 add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 	    const char *name, const glsl_type *type, GLenum shader_type,
-	    unsigned *next_shader_pos, unsigned *total_uniforms, unsigned *next_sampler_pos)
+	    unsigned *next_shader_pos, unsigned *total_uniforms, unsigned *next_sampler_pos, unsigned * samplers_used)
 {
    int index = -1;
    if (type->is_record()) {
@@ -999,7 +999,7 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
 					    type->fields.structure[i].name);
 
          int firstIndex = add_uniform(mem_ctx, uniforms, ht, field_name, field_type,
-            shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
+            shader_type, next_shader_pos, total_uniforms, next_sampler_pos, samplers_used);
          if (i == 0)
             index = firstIndex;
       }
@@ -1015,7 +1015,7 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
             for (unsigned int i = 0; i < type->length; i++) {
                char *elem_name = hieralloc_asprintf(mem_ctx, "%s[%d]", name, i);
                int firstIndex = add_uniform(mem_ctx, uniforms, ht, elem_name, array_elem_type,
-                  shader_type, next_shader_pos, total_uniforms, next_sampler_pos);
+                  shader_type, next_shader_pos, total_uniforms, next_sampler_pos, samplers_used);
                if (i == 0)
                   index = firstIndex;
             }
@@ -1056,6 +1056,9 @@ add_uniform(void *mem_ctx, exec_list *uniforms, struct hash_table *ht,
          hash_table_insert(ht, n, name);
          uniforms->push_tail(&n->link);
       }
+      
+      if (type->is_sampler() || (array_elem_type && array_elem_type->is_sampler()))
+         (*samplers_used) |= 1 << n->u->Pos;
       index = n->u->Pos;
    }
    return index;
@@ -1078,7 +1081,7 @@ assign_uniform_locations(struct gl_shader_program *prog)
       if (prog->_LinkedShaders[i] == NULL)
 	 continue;
 
-      
+      prog->_LinkedShaders[i]->SamplersUsed = 0;
       foreach_list(node, prog->_LinkedShaders[i]->ir) {
 	 ir_variable *const var = ((ir_instruction *) node)->as_variable();
 
@@ -1095,7 +1098,7 @@ assign_uniform_locations(struct gl_shader_program *prog)
 
 	 var->location = add_uniform(mem_ctx, &uniforms, ht, var->name, var->type,
 		     prog->_LinkedShaders[i]->Type,
-		     &next_position, &total_uniforms, &next_sampler_pos);
+		     &next_position, &total_uniforms, &next_sampler_pos, &prog->_LinkedShaders[i]->SamplersUsed);
       }
    }
 

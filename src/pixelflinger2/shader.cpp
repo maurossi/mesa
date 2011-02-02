@@ -18,17 +18,55 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <map>
 
 #include <llvm/LLVMContext.h>
+#include <llvm/Module.h>
+#include <bcc/bcc.h>
 
 #include "src/talloc/hieralloc.h"
 #include "src/mesa/main/mtypes.h"
 #include "src/mesa/program/prog_parameter.h"
 #include "src/mesa/program/prog_uniform.h"
 #include "src/glsl/glsl_types.h"
-#include "src/glsl/ir.h"
+#include "src/glsl/ir_to_llvm.h"
+
+struct ShaderKey {
+   struct ScanLineKey {
+      GGLContext::StencilState frontStencil, backStencil;
+      GGLContext::BufferState bufferState;
+      GGLContext::BlendState blendState;
+   } scanLineKey;
+   GGLPixelFormat textureFormats[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS];
+   unsigned char textureParameters[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]; // wrap and filter
+   bool operator <(const ShaderKey & rhs) const {
+      return memcmp(this, &rhs, sizeof(*this)) < 0;
+   }
+};
+
+struct Instance {
+   llvm::Module * module;
+   struct BCCOpaqueScript * script;
+   void (* function)();
+   ~Instance() {
+      // TODO: check bccDisposeScript, which seems to dispose llvm::Module
+      if (script)
+         bccDisposeScript(script);
+      else if (module)
+         delete module;
+      getchar();
+   }
+};
+
+struct Executable { // codegen info
+   std::map<ShaderKey, Instance *> instances;
+};
+
+bool do_mat_op_to_vec(exec_list *instructions);
 
 extern void link_shaders(struct gl_context *ctx, struct gl_shader_program *prog);
+
+extern "C" void compile_shader(struct gl_context *ctx, struct gl_shader *shader);
 
 extern "C" void _mesa_reference_shader(struct gl_context *ctx, struct gl_shader **ptr,
                                           struct gl_shader *sh)
@@ -53,10 +91,18 @@ extern "C" void _mesa_delete_shader(struct gl_context *ctx, struct gl_shader *sh
 {
    if (!shader)
       return;
-   if (1 == shader->RefCount)
-      hieralloc_free(shader);
-   else
+   if (shader->RefCount > 1) {
       shader->DeletePending = true;
+      return;
+   }
+   if (shader->executable)
+   {
+      for (std::map<ShaderKey, Instance *>::iterator it=shader->executable->instances.begin();
+         it != shader->executable->instances.end(); it++)
+         (*it).second->~Instance();
+      shader->executable->instances.~map();
+   }
+   hieralloc_free(shader);
 }
 
 static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
@@ -72,8 +118,6 @@ static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
    assert(1 == shader->RefCount);
    return shader;
 }
-
-extern "C" void compile_shader(struct gl_context *ctx, struct gl_shader *shader);
 
 static GLboolean ShaderCompile(const GGLInterface * iface, gl_shader * shader,
                                const char * glsl, char ** infoLog)
@@ -164,34 +208,29 @@ static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program
    return program->LinkStatus;
 }
 
-struct gl_program;
-struct ShaderKey;
-
-static void GetShaderKey(const GGLContext * ctx, const gl_program * shader, ShaderKey * key)
+static void GetShaderKey(const GGLContext * ctx, const gl_shader * shader, ShaderKey * key)
 {
-//    memset(key, 0, sizeof(*key));
-//    if (GL_FRAGMENT_SHADER == shader->Target)
-//    {
-//        key->scanLineKey.frontStencil = ctx->frontStencil;
-//        key->scanLineKey.backStencil = ctx->backStencil;
-//        key->scanLineKey.bufferState = ctx->bufferState;
-//        key->scanLineKey.blendState = ctx->blendState;
-//    }
-//
-//    for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++)
-//        if (shader->SamplersUsed & (1 << i))
-//        {
-//            const GGLTexture & texture = ctx->textureState.textures[i];
-//            key->textureFormats[i] = texture.format;
-//            assert((1 << 2) > texture.wrapS);
-//            key->textureParameters[i] |= texture.wrapS;
-//            assert((1 << 2) > texture.wrapT);
-//            key->textureParameters[i] |= texture.wrapT << 2;
-//            assert((1 << 3) > texture.minFilter);
-//            key->textureParameters[i] |= texture.minFilter << (2 + 2);
-//            assert((1 << 1) > texture.magFilter);
-//            key->textureParameters[i] |= texture.magFilter << (2 + 2 + 3);
-//        }
+   memset(key, 0, sizeof(*key));
+   if (GL_FRAGMENT_SHADER == shader->Type) {
+      key->scanLineKey.frontStencil = ctx->frontStencil;
+      key->scanLineKey.backStencil = ctx->backStencil;
+      key->scanLineKey.bufferState = ctx->bufferState;
+      key->scanLineKey.blendState = ctx->blendState;
+   }
+
+   for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++)
+      if (shader->SamplersUsed & (1 << i)) {
+         const GGLTexture & texture = ctx->textureState.textures[i];
+         key->textureFormats[i] = texture.format;
+         assert((1 << 2) > texture.wrapS);
+         key->textureParameters[i] |= texture.wrapS;
+         assert((1 << 2) > texture.wrapT);
+         key->textureParameters[i] |= texture.wrapT << 2;
+         assert((1 << 3) > texture.minFilter);
+         key->textureParameters[i] |= texture.minFilter << (2 + 2);
+         assert((1 << 1) > texture.magFilter);
+         key->textureParameters[i] |= texture.magFilter << (2 + 2 + 3);
+      }
 }
 
 static inline char HexDigit(unsigned char d)
@@ -204,47 +243,127 @@ static const unsigned SHADER_KEY_STRING_LEN = GGL_MAXCOMBINEDTEXTUREIMAGEUNITS *
 static void GetShaderKeyString(const GLenum type, const ShaderKey * key,
                                char * buffer, const unsigned bufferSize)
 {
-//    assert(1 == sizeof(char));
-//    assert(0xff >= GGL_PIXEL_FORMAT_COUNT);
-//    assert(SHADER_KEY_STRING_LEN <= bufferSize);
-//    char * str = buffer;
-//    if (GL_VERTEX_SHADER == type)
-//        *str++ = 'v';
-//    else if (GL_FRAGMENT_SHADER == type)
-//        *str++ = 'f';
-//    else
-//        assert(0);
-//    for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++)
-//    {
-//        *str++ = HexDigit(key->textureFormats[i] / 16);
-//        *str++ = HexDigit(key->textureFormats[i] % 16);
-//        *str++ = HexDigit(key->textureParameters[i] / 16);
-//        *str++ = HexDigit(key->textureParameters[i] % 16);
-//    }
-//    *str++ = '\0';
+   assert(1 == sizeof(char));
+   assert(0xff >= GGL_PIXEL_FORMAT_COUNT);
+   assert(SHADER_KEY_STRING_LEN <= bufferSize);
+   char * str = buffer;
+   if (GL_VERTEX_SHADER == type)
+      *str++ = 'v';
+   else if (GL_FRAGMENT_SHADER == type)
+      *str++ = 'f';
+   else
+      assert(0);
+   for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++) {
+      *str++ = HexDigit(key->textureFormats[i] / 16);
+      *str++ = HexDigit(key->textureFormats[i] % 16);
+      *str++ = HexDigit(key->textureParameters[i] / 16);
+      *str++ = HexDigit(key->textureParameters[i] % 16);
+   }
+   *str++ = '\0';
 }
 
-//static const unsigned SCANLINE_KEY_STRING_LEN = 2 * sizeof(((ShaderKey *)0)->scanLineKey) +
-//                                            3 + SHADER_KEY_STRING_LEN;
+static const unsigned SCANLINE_KEY_STRING_LEN = 2 * sizeof(ShaderKey::scanLineKey) + 3 + SHADER_KEY_STRING_LEN;
 
 static char * GetScanlineKeyString(const ShaderKey * key, char * buffer,
                                    const unsigned bufferSize)
 {
-//    assert(1 == sizeof(char));
-//    assert(0xff >= GGL_PIXEL_FORMAT_COUNT);
-//    assert(SCANLINE_KEY_STRING_LEN <= bufferSize);
-//    char * str = buffer;
-//    *str++ = 's';
-//    const unsigned char * start = (const unsigned char *)&key->scanLineKey;
-//    const unsigned char * const end = start + sizeof(key->scanLineKey);
-//    for (; start < end; start++)
-//    {
-//        *str++ = HexDigit(*start / 16);
-//        *str++ = HexDigit(*start % 16);
-//    }
-//    GetShaderKeyString(GL_FRAGMENT_SHADER, key, str, bufferSize - (str - buffer));
-//    return buffer;
-   return NULL;
+   assert(1 == sizeof(char));
+   assert(0xff >= GGL_PIXEL_FORMAT_COUNT);
+   assert(SCANLINE_KEY_STRING_LEN <= bufferSize);
+   char * str = buffer;
+   *str++ = 's';
+   const unsigned char * start = (const unsigned char *)&key->scanLineKey;
+   const unsigned char * const end = start + sizeof(key->scanLineKey);
+   for (; start < end; start++) {
+      *str++ = HexDigit(*start / 16);
+      *str++ = HexDigit(*start % 16);
+   }
+   GetShaderKeyString(GL_FRAGMENT_SHADER, key, str, bufferSize - (str - buffer));
+   return buffer;
+}
+
+#include <bcc/bcc.h>
+#include <dlfcn.h>
+
+struct SymbolLookupContext {
+   const GGLContext * gglCtx;
+   const gl_shader_program * program;
+   const gl_shader * shader;
+};
+
+static void* SymbolLookup(void* pContext, const char* name)
+{
+   SymbolLookupContext * ctx = (SymbolLookupContext *)pContext;
+   const gl_shader * shader = ctx->shader;
+   const gl_shader_program * program = ctx->program;
+   const GGLContext * gglCtx = ctx->gglCtx;
+   const void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
+   if (NULL == symbol) {
+      if (!strcmp(_PF2_TEXTURE_DATA_NAME_, name))
+         symbol = (void *)gglCtx->textureState.textureData;
+      else if (!strcmp(_PF2_TEXTURE_DIMENSIONS_NAME_, name))
+         symbol = (void *)gglCtx->textureState.textureDimensions;
+      else {
+         for (unsigned i = 0; i < program->Uniforms->NumUniforms && !symbol; i++)
+            if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
+               symbol = program->ValuesUniform + program->Uniforms->Uniforms[i].Pos;
+         for (unsigned i = 0; i < program->Attributes->NumParameters && !symbol; i++)
+            if (!strcmp(program->Attributes->Parameters[i].Name, name)) {
+               assert(program->Attributes->Parameters[i].Location
+                      < sizeof(VertexInput) / sizeof(float[4]));
+               symbol = program->ValuesVertexInput + program->Attributes->Parameters[i].Location;
+            }
+         for (unsigned i = 0; i < program->Varying->NumParameters && !symbol; i++)
+            if (!strcmp(program->Varying->Parameters[i].Name, name)) {
+               int index = -1;
+               if (GL_VERTEX_SHADER == shader->Type)
+                  index = program->Varying->Parameters[i].BindLocation;
+               else if (GL_FRAGMENT_SHADER == shader->Type)
+                  index = program->Varying->Parameters[i].Location;
+               else
+                  assert(0);
+               assert(index >= 0);
+               assert(index < sizeof(VertexOutput) / sizeof(float[4]));
+               symbol = program->ValuesVertexOutput + index;
+            }
+         assert(symbol >= program->ValuesVertexInput &&
+                symbol < (char *)program->ValuesUniform + 16 * program->Uniforms->Slots - 3);
+      };
+   }
+   printf("symbolLookup '%s'=%p \n", name, symbol);
+   //getchar();
+   assert(symbol);
+   return (void *)symbol;
+}
+
+static void CodeGen(Instance * instance, const char * mainName, gl_shader * shader,
+                    gl_shader_program * program, const GGLContext * gglCtx)
+{
+   SymbolLookupContext ctx = {gglCtx, program, shader};
+   int result = 0;
+
+   BCCScriptRef & script = instance->script;
+   script = bccCreateScript();
+   result = bccReadModule(script, "glsl", (LLVMModuleRef)instance->module, 0);
+   assert(0 == result);
+   result = bccRegisterSymbolCallback(script, SymbolLookup, &ctx);
+   assert(0 == result);
+   result = bccPrepareExecutable(script, NULL, 0);
+
+   result = bccGetError(script);
+   if (result != 0) {
+      puts("failed bcc_compile");
+      assert(0);
+      return;
+   }
+
+   instance->function = (void (*)())bccGetFuncAddr(script, mainName);
+   assert(instance->function);
+   result = bccGetError(script);
+   if (result != BCC_NO_ERROR)
+      fprintf(stderr, "Could not find '%s': %d\n", "main", result);
+   else
+      printf("bcc_compile %s=%p \n", "main", shader->function);
 }
 
 static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
@@ -258,72 +377,51 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
       return;
    }
 
-//    if (program->VertexProgram)
-//    {
-//        if (!program->STVP)
-//        {
-//            program->STVP = CALLOC_STRUCT(st_vertex_program);
-//            program->STVP->Base = *program->VertexProgram;
-//            st_translate_vertex_program(ctx->glCtx, program->STVP, NULL, NULL, NULL);
-//        }
-//
-//        _mesa_update_shader_textures_used(program->VertexProgram);
-//
-//        ShaderKey shaderKey;
-//        GetShaderKey(ctx, program->VertexProgram, &shaderKey);
-//        ShaderFunction_t function = NULL;
-//        if (!program->GLVMVP || NULL == (function = program->GLVMVP->functions[shaderKey]))
-//        {
-//            char shaderName [SHADER_KEY_STRING_LEN] = {0};
-//            GetShaderKeyString(GL_VERTEX_SHADER, &shaderKey, shaderName, Elements(shaderName));
-//            create_program(program->STVP->state.tokens, GALLIVM_VS, &program->GLVMVP,
-//                           &ctx->glCtx->Shader.cpu, ctx, program->VertexProgram,
-//                           shaderName, NULL);
-//            program->GLVMVP->functions[shaderKey] = program->GLVMVP->function;
-//            debug_printf("jit new vertex shader %p \n", program->GLVMVP->function); //getchar();
-//        }
-//        else
-//        {
-//            program->GLVMVP->function = function;
-//            //debug_printf("use cached vertex shader %p \n", function);
-//        }
-//        ctx->PickRaster(iface);
-//    }
-//    if (program->FragmentProgram)
-//    {
-//        if (!program->STFP)
-//        {
-//            program->STFP = CALLOC_STRUCT(st_fragment_program);
-//            program->STFP->Base = *program->FragmentProgram;
-//            st_translate_fragment_program(ctx->glCtx, program->STFP, NULL);
-//        }
-//
-//        _mesa_update_shader_textures_used(program->FragmentProgram);
-//
-//        ShaderKey shaderKey;
-//        GetShaderKey(ctx, program->FragmentProgram, &shaderKey);
-//        ShaderFunction_t function = NULL;
-//        if (!program->GLVMFP || NULL == (function = program->GLVMFP->functions[shaderKey]))
-//        {
-//            char shaderName [SHADER_KEY_STRING_LEN] = {0};
-//            GetShaderKeyString(GL_FRAGMENT_SHADER, &shaderKey, shaderName, Elements(shaderName));
-//
-//            char scanlineName [SCANLINE_KEY_STRING_LEN] = {0};
-//            GetScanlineKeyString(&shaderKey, scanlineName, Elements(scanlineName));
-//            create_program(program->STFP->state.tokens, GALLIVM_FS,  &program->GLVMFP,
-//                           &ctx->glCtx->Shader.cpu, ctx, program->FragmentProgram,
-//                           shaderName, scanlineName);
-//            program->GLVMFP->functions[shaderKey] = program->GLVMFP->function;
-//            debug_printf("jit new fragment shader %p \n", program->GLVMFP->function);
-//        }
-//        else
-//        {
-//            program->GLVMFP->function = function;
-//            //debug_printf("use cached fragment shader %p \n", function);
-//        }
-//        ctx->PickScanLine(iface);
-//    }
-//    ctx->glCtx->CurrentProgram = program;
+   for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
+      if (!program->_LinkedShaders[i])
+         continue;
+      gl_shader * shader = program->_LinkedShaders[i];
+      if (!shader->executable) {
+         shader->executable = hieralloc_zero(shader, Executable);
+         shader->executable->instances = std::map<ShaderKey, Instance *>();
+      }
+
+      ShaderKey shaderKey;
+      GetShaderKey(ctx, shader, &shaderKey);
+      Instance * instance = shader->executable->instances[shaderKey];
+      if (!instance) {
+         instance = hieralloc_zero(shader->executable, Instance);
+         instance->module = new llvm::Module("glsl", *ctx->llvmCtx);
+
+         char shaderName [SHADER_KEY_STRING_LEN] = {0};
+         GetShaderKeyString(shader->Type, &shaderKey, shaderName, sizeof shaderName / sizeof *shaderName);
+
+         char mainName [SHADER_KEY_STRING_LEN + 6] = {"main"};
+         strcat(mainName, shaderName);
+
+         do_mat_op_to_vec(shader->ir);
+
+         llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, ctx, shaderName);
+         if (!module)
+            assert(0); // ir to llvm failed
+         CodeGen(instance, mainName, shader, program, ctx);
+         shader->executable->instances[shaderKey] = instance;
+         debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function); //getchar();
+      } else
+         debug_printf("use cached shader %p \n", instance->function);
+
+
+      shader->function  = instance->function;
+
+      if (GL_VERTEX_SHADER == shader->Type)
+         ctx->PickRaster(iface);
+      else if (GL_FRAGMENT_SHADER == shader->Type)
+         ctx->PickScanLine(iface);
+      else
+         assert(0);
+   }
+
+   ctx->glCtx->CurrentProgram = program;
 }
 
 static void ShaderProgramDelete(const GGLInterface * iface, gl_shader_program * program)
@@ -368,7 +466,6 @@ static GLint ShaderUniformLocation(const GGLInterface * iface, const gl_shader_p
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
       if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
          return program->Uniforms->Uniforms[i].Pos;
-//    return _mesa_get_shader_uniform_location(ctx->glCtx, program, name);
    return -2;
 }
 

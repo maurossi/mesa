@@ -61,6 +61,7 @@ using namespace tr1;
 #include "ir.h"
 #include "ir_visitor.h"
 #include "glsl_types.h"
+#include "src/mesa/main/mtypes.h"
 
 struct GGLContext;
 
@@ -84,10 +85,11 @@ public:
    llvm::IRBuilder<> bld;
    
    const GGLContext * gglCtx;
-
-   ir_to_llvm_visitor(llvm::LLVMContext& p_ctx, llvm::Module* p_mod, const GGLContext * GGLCtx)
-   : ctx(p_ctx), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, 
-      (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx)
+   const char * shaderSuffix;
+   
+   ir_to_llvm_visitor(llvm::Module* p_mod, const GGLContext * GGLCtx, const char * suffix)
+   : ctx(p_mod->getContext()), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, 
+      (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx), shaderSuffix(suffix)
    {
    }
 
@@ -181,18 +183,24 @@ public:
       }
    }
 
-   typedef std::map<ir_function_signature*, llvm::Function*> llvm_functions_t;
+   //typedef std::map<ir_function_signature*, llvm::Function*> llvm_functions_t;
    //typedef std::unordered_map<ir_function_signature*, llvm::Function*> llvm_functions_t;
-   llvm_functions_t llvm_functions;
+   //llvm_functions_t llvm_functions;
 
    llvm::Function* llvm_function(class ir_function_signature* sig)
    {
-      llvm_functions_t::iterator funi = llvm_functions.find(sig);
-      if(funi != llvm_functions.end())
-         return funi->second;
+      const char* name = sig->function_name();
+      char * functionName = (char *)malloc(strlen(name) + strlen(shaderSuffix) + 1);
+      strcpy(functionName, name);
+      strcat(functionName, shaderSuffix);
+      llvm::Function * function = mod->getFunction(functionName);
+      if (function)
+      {
+         free(functionName);
+         return function;
+      }
       else
       {
-         const char* name = sig->function_name();
          llvm::Function::LinkageTypes linkage;
          if(!strcmp(name, "main") || !sig->is_defined)
             linkage = llvm::Function::ExternalLinkage;
@@ -205,12 +213,10 @@ public:
          }
 
          llvm::FunctionType* ft = llvm::FunctionType::get(llvm_type(sig->return_type), params, false);
-
-         llvm::Function* f = llvm::Function::Create(ft, linkage, name, mod);
-         llvm_functions[sig] = f;
-         return f;
+         function = llvm::Function::Create(ft, linkage, functionName, mod);
+         free(functionName);
+         return function;
       }
-
    }
 
    llvm::Value* llvm_value(class ir_instruction* ir)
@@ -1257,20 +1263,18 @@ public:
 };
 
 struct llvm::Module *
-glsl_ir_to_llvm_module(struct exec_list *ir, const GGLContext * gglCtx)
+glsl_ir_to_llvm_module(struct exec_list *ir, llvm::Module * mod, 
+                        const struct GGLContext * gglCtx, const char * shaderSuffix)
 {
-   llvm::LLVMContext& ctx = llvm::getGlobalContext();
-   llvm::Module* mod = new llvm::Module("glsl", ctx);
-   ir_to_llvm_visitor v(ctx, mod, gglCtx);
+   ir_to_llvm_visitor v(mod, gglCtx, shaderSuffix);
 
    visit_exec_list(ir, &v);
 
 //   mod->dump();
    if(llvm::verifyModule(*mod, llvm::PrintMessageAction, 0))
    {
-      delete mod;
       assert(0);
-      return 0;
+      return NULL;
    }
 
    return mod;

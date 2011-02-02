@@ -190,12 +190,6 @@ compile_shader(struct gl_context *ctx, struct gl_shader *shader)
    return;
 }
 
-struct SymbolLookupContext
-{
-   const GGLContext * gglCtx;
-   const gl_shader_program * program;
-   const gl_shader * shader;
-};
 
 #define DRAW_TO_SCREEN 1
 #include "image_file.h"
@@ -206,9 +200,9 @@ extern "C" void * PresentDrawingSurface();
 extern "C" void DisposeDrawingSurface();
 #endif 
 
-void execute(SymbolLookupContext * ctx)
+void execute(const GGLContext * ctx)
 {
-   const gl_shader * shader = ctx->shader;
+   const gl_shader * shader = ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT];
 #if defined __arm__ && DRAW_TO_SCREEN
    unsigned width = 0, height = 0, bpp = 0;
    int err = SetupDrawingSurface(&width, &height, &bpp);
@@ -220,13 +214,13 @@ void execute(SymbolLookupContext * ctx)
    unsigned * frameSurface = new unsigned [width * height];
 #endif
    //const unsigned scale = 16, portWidth = 80, portHeight = 50;
-   //unsigned scale = 1, portWidth = width / scale, portHeight = height / scale;
-   unsigned scale = 1, portWidth = width / 4, portHeight = height / 4;
+   unsigned scale = 1, portWidth = width / scale, portHeight = height / scale;
+   //unsigned scale = 1, portWidth = width / 4, portHeight = height / 4;
       
-   float * uniform = (float *)ctx->program->ValuesUniform;
-   float * attribute = (float *)ctx->program->ValuesVertexInput;
-   float * varying = (float *)ctx->program->ValuesVertexOutput;
-   float * output = ((VertexOutput*)ctx->program->ValuesVertexOutput)->fragColor[0].f;
+   float * uniform = (float *)ctx->glCtx->CurrentProgram->ValuesUniform;
+   float * attribute = (float *)ctx->glCtx->CurrentProgram->ValuesVertexInput;
+   float * varying = (float *)ctx->glCtx->CurrentProgram->ValuesVertexOutput;
+   float * output = ((VertexOutput*)ctx->glCtx->CurrentProgram->ValuesVertexOutput)->fragColor[0].f;
    int glFragColorLocation = 0;
    int vTexCoordLocation = -1;
    if (shader->symbols->get_variable("vTexCoord"))
@@ -327,144 +321,6 @@ void execute(SymbolLookupContext * ctx)
 #endif
  
 }
-
-#if USE_LLVM_EXECUTIONENGINE
-
-#include <llvm/ExecutionEngine/JIT.h>
-#include <llvm/Target/TargetSelect.h>
-
-/*void jit(llvm::Module * mod, gl_shader * shader)
-{
-#ifndef __arm__
-   __attribute__ ((aligned (16))) // LLVM generates movaps on X86, needs 16 bytes align
-#endif
-   float data [64];
-   memset(data, 0xff, sizeof(data));
-
-   llvm::InitializeNativeTarget();
-
-   std::string errorString;
-   llvm::EngineBuilder engineBuilder(mod);
-   engineBuilder.setEngineKind(llvm::EngineKind::JIT);
-   engineBuilder.setErrorStr(&errorString);
-#ifdef __arm__
-   engineBuilder.setMAttrs(llvm::SmallVector<std::string, 1>(1,"vfp3"));
-   mod->setTargetTriple("armv7-none-linux-gnueabi");
-#endif
-
-   llvm::ExecutionEngine * ee = engineBuilder.create();
-   if (!ee)
-      puts(errorString.c_str());
-   assert(ee);
-
-   ee->DisableLazyCompilation();
-
-   if ((mod->getFunction("putchar")))
-      ee->updateGlobalMapping(mod->getFunction("putchar"), (void *)putchar);
-   if ((mod->getFunction("sinf")))
-      ee->updateGlobalMapping(mod->getFunction("sinf"), (void *)sinf);
-   if ((mod->getFunction("cosf")))
-      ee->updateGlobalMapping(mod->getFunction("cosf"), (void *)cosf);
-   if ((mod->getFunction("powf")))
-      ee->updateGlobalMapping(mod->getFunction("powf"), (void *)cosf);
-
-   ee->updateGlobalMapping(mod->getGlobalVariable("gl_FragColor"), (void *)(data + 0));
-   ee->updateGlobalMapping(mod->getGlobalVariable("gl_FragCoord"), (void *)(data + 4));
-   ee->updateGlobalMapping(mod->getGlobalVariable("gl_FrontFacing"), (void *)(data + 8));
-   ee->updateGlobalMapping(mod->getGlobalVariable("vTexCoord"), (void *)(data + 12));
-   ee->updateGlobalMapping(mod->getGlobalVariable("t"), (void *)(data + 36));
-
-   llvm::Function * func = mod->getFunction("main");
-   assert(func);
-
-   void (* function)() = (void (*)())ee->getPointerToFunction(func);
-   execute(function, data);
-   puts("USE_LLVM_EXECUTIONENGINE");
-}*/
-
-#else
-
-#include <bcc/bcc.h>
-#include <dlfcn.h>
-
-static void* symbolLookup(void* pContext, const char* name)
-{
-   SymbolLookupContext * ctx = (SymbolLookupContext *)pContext;
-   const gl_shader * shader = ctx->shader;
-   const gl_shader_program * program = ctx->program;
-   const GGLContext * gglCtx = ctx->gglCtx;
-   const void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
-   if (NULL == symbol) {
-      if (!strcmp(_PF2_TEXTURE_DATA_NAME_, name))
-         symbol = (void *)gglCtx->textureState.textureData;
-      else if (!strcmp(_PF2_TEXTURE_DIMENSIONS_NAME_, name))
-         symbol = (void *)gglCtx->textureState.textureDimensions;
-      else
-      {
-         for (unsigned i = 0; i < program->Uniforms->NumUniforms && !symbol; i++)
-            if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
-               symbol = program->ValuesUniform + program->Uniforms->Uniforms[i].Pos;
-         for (unsigned i = 0; i < program->Attributes->NumParameters && !symbol; i++)
-            if (!strcmp(program->Attributes->Parameters[i].Name, name))
-            {
-               assert(program->Attributes->Parameters[i].Location
-                  < sizeof(VertexInput) / sizeof(float[4]));
-               symbol = program->ValuesVertexInput + program->Attributes->Parameters[i].Location;
-            }
-         for (unsigned i = 0; i < program->Varying->NumParameters && !symbol; i++)
-            if (!strcmp(program->Varying->Parameters[i].Name, name))
-            {
-               int index = -1;
-               if (GL_VERTEX_SHADER == shader->Type)
-                  index = program->Varying->Parameters[i].BindLocation;
-               else if (GL_FRAGMENT_SHADER == shader->Type)
-                  index = program->Varying->Parameters[i].Location;
-               else 
-                  assert(0);
-               assert(index >= 0);
-               assert(index < sizeof(VertexOutput) / sizeof(float[4]));
-               symbol = program->ValuesVertexOutput + index;
-            }
-         assert(symbol >= program->ValuesVertexInput &&
-            symbol < (char *)program->ValuesUniform + 16 * program->Uniforms->Slots - 3);
-      };
-   }
-   printf("symbolLookup '%s'=%p \n", name, symbol);
-   //getchar();
-   assert(symbol);
-   return (void *)symbol;
-}
-
-void jit(gl_shader * shader, gl_shader_program * program, const GGLContext * gglCtx)
-{
-   SymbolLookupContext ctx = {gglCtx, program, shader};
-   
-   BCCScriptRef script = bccCreateScript();
-   bccReadModule(script, "glsl", (LLVMModuleRef)shader->module, 0);
-   int result = 0;
-   assert(0 == bccGetError(script));
-   bccRegisterSymbolCallback(script, symbolLookup, &ctx);
-   assert(0 == bccGetError(script));
-   bccPrepareExecutable(script, NULL, 0);
-   result = bccGetError(script);
-   if (result != 0) {
-      puts("failed bcc_compile");
-      assert(0);
-      return;
-   }
-
-   shader->function = (void (*)())bccGetFuncAddr(script, "main");
-   result = bccGetError(script);
-   if (result != BCC_NO_ERROR)
-      fprintf(stderr, "Could not find '%s': %d\n", "main", result);
-   else
-      printf("bcc_compile %s=%p \n", "main", shader->function);
-   
-   if (GL_FRAGMENT_SHADER == shader->Type)
-      execute(&ctx);
-}
-
-#endif
 
 int
 main(int argc, char **argv)
@@ -571,46 +427,48 @@ main(int argc, char **argv)
    }
          
    puts("jit");
-
+   
    GGLTexture texture = {0};  
    LoadTGA(texturePath, &texture.width, &texture.height, &texture.levels);
    texture.format = GGL_PIXEL_FORMAT_RGBA_8888;
    texture.type = GL_TEXTURE_2D;
    texture.levelCount = 1;
    texture.wrapS = texture.wrapT = 0; // repeat = 0 fastest, clamp = 1, mirrored = 2
+   texture.minFilter = texture.magFilter = 0; // nearest = 0, linear = 1
+   ggl->SetSampler(ggl, 0, &texture);
+   
+   ggl->ShaderUse(ggl, program);
+   
    texture.minFilter = texture.magFilter = 1; // nearest = 0, linear = 1
    ggl->SetSampler(ggl, 0, &texture);
+   
+   ggl->ShaderUse(ggl, program);
    
    static unsigned cubeTextureSurface [6] = {0xff0000ff, 0xff00ff00, 0xffff0000, 
    0xff00ffff, 0xffffff00, 0xffff00ff};
    GGLTexture cubeTexture = {GL_TEXTURE_CUBE_MAP, GGL_PIXEL_FORMAT_RGBA_8888, 1, 1, 1, cubeTextureSurface, 1, 2, 1, 1};  
    
-   for (unsigned i = 0; do_jit && i < MESA_SHADER_TYPES; i++) {
-      struct gl_shader *shader = program->_LinkedShaders[i];
-      if (!shader)
-         continue;
-      ir_variable * sampler = NULL;
-      if ((sampler = shader->symbols->get_variable("samp2D")) && sampler->location >= 0)
-         ggl->SetSampler(ggl, sampler->location, &texture);
-      if ((sampler = shader->symbols->get_variable("samp2DA")) && sampler->location >= 0)
-         ggl->SetSampler(ggl, sampler->location, &texture); 
-      if ((sampler = shader->symbols->get_variable("sampCube")) && sampler->location >= 0)
-         ggl->SetSampler(ggl, sampler->location, &cubeTexture);
+
+   int samplerLocation = -1;
+   if (0 <= (samplerLocation = ggl->ShaderUniformLocation(ggl, program, "samp2D")))
+      ggl->SetSampler(ggl, samplerLocation, &texture);
+   if (0 <= (samplerLocation = ggl->ShaderUniformLocation(ggl, program, "samp2DA")))
+      ggl->SetSampler(ggl, samplerLocation, &texture);
+   if (0 <= (samplerLocation = ggl->ShaderUniformLocation(ggl, program, "sampCube")))
+      ggl->SetSampler(ggl, samplerLocation, &texture);
          
-      do_mat_op_to_vec(shader->ir);
-
-      puts("\n *** IR for JIT *** \n");
-      //_mesa_print_ir(ir, NULL);
-
-      llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, (GGLContext *)ggl);
-      assert(module);
-      shader->module = module;
-      puts("\n *** Module for JIT *** \n");
-      //module->dump();
-      jit(shader, program, (GGLContext *)ggl);
-   
-      puts("jitted");
-   }
+   execute((GGLContext *)ggl);
+//      puts("\n *** IR for JIT *** \n");
+//      //_mesa_print_ir(ir, NULL);
+//
+//      shader->executable = hieralloc_zero(shader, Executable);
+//      llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, (GGLContext *)ggl);
+//      assert(module);
+//      shader->executable->module = module;
+//      puts("\n *** Module for JIT *** \n");
+//      //module->dump();
+//      jit(shader, program, (GGLContext *)ggl);
+//      puts("jitted");
    
    free(texture.levels);
    
