@@ -148,15 +148,22 @@ struct GGLInterface {
    GLboolean (* ShaderCompile)(const GGLInterface_t * iface, gl_shader_t * shader,
                                const char * glsl, char ** infoLog);
    // could be used after link if original shaders will not be linked in another program
-   void (* ShaderFree)(const GGLInterface_t * iface, gl_shader_t * shader);
+   void (* ShaderDelete)(const GGLInterface_t * iface, gl_shader_t * shader);
 
    // creates empty program
    gl_shader_program_t * (* ShaderProgramCreate)(const GGLInterface_t * iface);
+   
+   // attaches a shader to program
+   void (* ShaderAttach)(const GGLInterface * iface, gl_shader_program_t * program, gl_shader_t * shader);
+   
+   // detaches a shader from program
+   void (* ShaderDetach)(const GGLInterface * iface, gl_shader_program_t * program, gl_shader_t * shader);
+   
    // duplicates shaders to program, and links varyings / attributes; can link 1 shader
    GLboolean (* ShaderProgramLink)(const GGLInterface_t * iface, gl_shader_program_t * program,
-                                   const unsigned count, gl_shader_t ** shaders, char ** infoLog);
+                                   char ** infoLog);
    // frees program
-   void (* ShaderProgramFree)(const GGLInterface_t * iface, gl_shader_program_t * program);
+   void (* ShaderProgramDelete)(const GGLInterface_t * iface, gl_shader_program_t * program);
 
    // LLVM JIT and set as active program
    void (* ShaderUse)(GGLInterface_t * iface, gl_shader_program_t * program);

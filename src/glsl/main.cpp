@@ -43,74 +43,6 @@
 
 GGLInterface * ggl = NULL;
    
-extern "C" struct gl_shader *
-_mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type);
-
-extern "C" void
-_mesa_reference_shader(struct gl_context *ctx, struct gl_shader **ptr,
-                       struct gl_shader *sh);
-
-/* Copied from shader_api.c for the stand-alone compiler.
- */
-void
-_mesa_reference_shader(struct gl_context *ctx, struct gl_shader **ptr,
-                       struct gl_shader *sh)
-{
-   *ptr = sh;
-}
-
-struct gl_shader *
-_mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type)
-{
-   struct gl_shader *shader;
-
-   (void) ctx;
-
-   assert(type == GL_FRAGMENT_SHADER || type == GL_VERTEX_SHADER);
-   shader = hieralloc_zero(NULL, struct gl_shader);
-   if (shader) {
-      shader->Type = type;
-      shader->Name = name;
-      shader->RefCount = 1;
-   }
-   return shader;
-}
-
-static void
-initialize_context(struct gl_context *ctx, gl_api api)
-{
-   memset(ctx, 0, sizeof(*ctx));
-
-   ctx->API = api;
-
-   ctx->Extensions.ARB_draw_buffers = GL_TRUE;
-   ctx->Extensions.ARB_fragment_coord_conventions = GL_TRUE;
-   ctx->Extensions.EXT_texture_array = GL_TRUE;
-   ctx->Extensions.NV_texture_rectangle = GL_TRUE;
-
-   /* 1.10 minimums. */
-   ctx->Const.MaxLights = 8;
-   ctx->Const.MaxClipPlanes = 8;
-   ctx->Const.MaxTextureUnits = 2;
-
-   /* More than the 1.10 minimum to appease parser tests taken from
-    * apps that (hopefully) already checked the number of coords.
-    */
-   ctx->Const.MaxTextureCoordUnits = 4;
-
-   ctx->Const.VertexProgram.MaxAttribs = 16;
-   ctx->Const.VertexProgram.MaxUniformComponents = 512;
-   ctx->Const.MaxVarying = 8;
-   ctx->Const.MaxVertexTextureImageUnits = 0;
-   ctx->Const.MaxCombinedTextureImageUnits = 2;
-   ctx->Const.MaxTextureImageUnits = 2;
-   ctx->Const.FragmentProgram.MaxUniformComponents = 64;
-
-   ctx->Const.MaxDrawBuffers = 2;
-
-   ctx->Driver.NewShader = _mesa_new_shader;
-}
-
 /* Returned string will have 'ctx' as its hieralloc owner. */
 static char *
 load_text_file(void *ctx, const char *file_name)
@@ -188,7 +120,7 @@ usage_fail(const char *name)
 }
 
 
-void
+extern "C" void
 compile_shader(struct gl_context *ctx, struct gl_shader *shader)
 {
    struct _mesa_glsl_parse_state *state =
@@ -564,9 +496,6 @@ main(int argc, char **argv)
    }
    //*/
    int status = EXIT_SUCCESS;
-   struct gl_context local_ctx;
-   struct gl_context *ctx = &local_ctx;
-
    int c;
    int idx = 0;
    while ((c = getopt_long(argc, argv, "", compiler_opts, &idx)) != -1)
@@ -576,78 +505,68 @@ main(int argc, char **argv)
    if (argc <= optind)
       usage_fail(argv[0]);
 
-   initialize_context(ctx, (glsl_es) ? API_OPENGLES2 : API_OPENGL);
+   //initialize_context(ctx, (glsl_es) ? API_OPENGLES2 : API_OPENGL);
    ggl = CreateGGLInterface();
-   
-   struct gl_shader_program *whole_program;
-
-   whole_program = hieralloc_zero (NULL, struct gl_shader_program);
-   assert(whole_program != NULL);
-   whole_program->Attributes = hieralloc_zero(whole_program, gl_program_parameter_list);
-   whole_program->Varying = hieralloc_zero(whole_program, gl_program_parameter_list);
+   gl_context * ctx = ((GGLContext *)ggl)->glCtx;
+   struct gl_shader_program * program = ggl->ShaderProgramCreate(ggl);
    for (/* empty */; argc > optind; optind++) {
-      whole_program->Shaders = (struct gl_shader **)
-         hieralloc_realloc(whole_program, whole_program->Shaders,
-         struct gl_shader *, whole_program->NumShaders + 1);
-      assert(whole_program->Shaders != NULL);
-
-      struct gl_shader *shader = hieralloc_zero(whole_program, gl_shader);
-
-      whole_program->Shaders[whole_program->NumShaders] = shader;
-      whole_program->NumShaders++;
-
       const unsigned len = strlen(argv[optind]);
       if (len < 6)
-	 usage_fail(argv[0]);
+         usage_fail(argv[0]);
 
       const char *const ext = & argv[optind][len - 5];
+      GLenum Type;
       if (strncmp(".vert", ext, 5) == 0)
-	 shader->Type = GL_VERTEX_SHADER;
+         Type = GL_VERTEX_SHADER;
       else if (strncmp(".geom", ext, 5) == 0)
-	 shader->Type = GL_GEOMETRY_SHADER;
+         Type = GL_GEOMETRY_SHADER;
       else if (strncmp(".frag", ext, 5) == 0)
-	 shader->Type = GL_FRAGMENT_SHADER;
+         Type = GL_FRAGMENT_SHADER;
       else
-	 usage_fail(argv[0]);
+         usage_fail(argv[0]);
+    
+      struct gl_shader * shader = ggl->ShaderCreate(ggl, Type);
 
-      shader->Source = load_text_file(whole_program, argv[optind]);
-      if (shader->Source == NULL) {
-	 printf("File \"%s\" does not exist.\n", argv[optind]);
-	 exit(EXIT_FAILURE);
+      
+      char * source = load_text_file(program, argv[optind]);
+      if (source == NULL) {
+         printf("File \"%s\" does not exist.\n", argv[optind]);
+         exit(EXIT_FAILURE);
       }
 
-      compile_shader(ctx, shader);
-
-      if (!shader->CompileStatus) {
-	 printf("Info log for %s:\n%s\n", argv[optind], shader->InfoLog);
-	 status = EXIT_FAILURE;
-	 break;
+      char * infoLog = NULL;
+      if (!ggl->ShaderCompile(ggl, shader, source, &infoLog)) {
+         printf("Info log for %s:\n%s\n", argv[optind], infoLog);
+         status = EXIT_FAILURE;
+         break;
       }
+      hieralloc_free(source);
+      ggl->ShaderAttach(ggl, program, shader);
    }
 
    puts("link");
    
    if ((status == EXIT_SUCCESS) && do_link)  {
-      link_shaders(ctx, whole_program);
-      status = (whole_program->LinkStatus) ? EXIT_SUCCESS : EXIT_FAILURE;
-
-      if (strlen(whole_program->InfoLog) > 0)
-         printf("Info log for linking:\n%s\n", whole_program->InfoLog);
+      ggl->ShaderProgramLink(ggl, program, NULL);
+      status = (program->LinkStatus) ? EXIT_SUCCESS : EXIT_FAILURE;
+      assert(program->LinkStatus);
+      if (strlen(program->InfoLog) > 0)
+         printf("Info log for linking:\n%s\n", program->InfoLog);
    }
 
-   for (unsigned i = 0; i < whole_program->Attributes->NumParameters; i++)
+   for (unsigned i = 0; i < program->Attributes->NumParameters; i++)
    {
-      const gl_program_parameter & attribute = whole_program->Attributes->Parameters[i];
+      const gl_program_parameter & attribute = program->Attributes->Parameters[i];
       printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
    }
-   for (unsigned i = 0; i < whole_program->Varying->NumParameters; i++)
+   for (unsigned i = 0; i < program->Varying->NumParameters; i++)
    {
-      const gl_program_parameter & varying = whole_program->Varying->Parameters[i];
+      const gl_program_parameter & varying = program->Varying->Parameters[i];
       printf("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
    }
-   for (unsigned i = 0; i < whole_program->Uniforms->NumUniforms; i++)
+   for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
    {
-      const gl_uniform & uniform = whole_program->Uniforms->Uniforms[i];
+      const gl_uniform & uniform = program->Uniforms->Uniforms[i];
       printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
    }
          
@@ -667,7 +586,7 @@ main(int argc, char **argv)
    GGLTexture cubeTexture = {GL_TEXTURE_CUBE_MAP, GGL_PIXEL_FORMAT_RGBA_8888, 1, 1, 1, cubeTextureSurface, 1, 2, 1, 1};  
    
    for (unsigned i = 0; do_jit && i < MESA_SHADER_TYPES; i++) {
-      struct gl_shader *shader = whole_program->_LinkedShaders[i];
+      struct gl_shader *shader = program->_LinkedShaders[i];
       if (!shader)
          continue;
       ir_variable * sampler = NULL;
@@ -688,21 +607,17 @@ main(int argc, char **argv)
       shader->module = module;
       puts("\n *** Module for JIT *** \n");
       //module->dump();
-      jit(shader, whole_program, (GGLContext *)ggl);
+      jit(shader, program, (GGLContext *)ggl);
    
       puts("jitted");
    }
    
    free(texture.levels);
+   
+   ggl->ShaderProgramDelete(ggl, program);
+
    DestroyGGLInterface((GGLInterface *)ggl);
-   for (unsigned i = 0; i < MESA_SHADER_TYPES; i++)
-      hieralloc_free(whole_program->_LinkedShaders[i]);
-
-   hieralloc_free(whole_program);
-      
-   _mesa_glsl_release_types();
-   _mesa_glsl_release_functions();
-
+   
    printf("mesa exit(%d) \n", status);
    hieralloc_report_brief(NULL, stdout);
    return status;

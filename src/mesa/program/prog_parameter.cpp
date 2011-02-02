@@ -8,6 +8,10 @@ typedef unsigned int size_t;
 extern GLint _mesa_add_parameter(struct gl_program_parameter_list * paramList,
                                     const char * name)
 {
+   int index = _mesa_get_parameter(paramList, name);
+   if (index >= 0)
+      return index;
+      
    paramList->NumParameters++;
    if (paramList->NumParameters > paramList->Size) {
       paramList->Size = paramList->NumParameters + 4;

@@ -56,7 +56,7 @@ struct GGLContext
     GGLSurface depthSurface;
     GGLSurface stencilSurface;
     
-    struct __GLcontextRec * glCtx; // mesa constants and others used for shader compiling and executing
+    struct gl_context * glCtx; // hieralloc; mesa constants and others used for shader compiling and executing
     llvm::LLVMContext * llvmCtx;
     
     struct 

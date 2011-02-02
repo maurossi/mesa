@@ -835,7 +835,8 @@ link_intrastage_shaders(void *mem_ctx,
       return NULL;
    }
 
-   gl_shader *linked = ctx->Driver.NewShader(NULL, 0, main->Type);
+   gl_shader *linked = ctx->Driver.NewShader(ctx, 0, main->Type);
+   hieralloc_steal(prog, linked);
    linked->ir = new(linked) exec_list;
    clone_ir_list(mem_ctx, linked->ir, main->ir);
 
@@ -1720,7 +1721,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
             assert(0);
       }
    }
-
+   
    //prog->InputOuputBase = malloc(1024 * 8);
    //memset(prog->InputOuputBase, 0xdd, 1024 * 8);
    prog->InputOuputBase = hieralloc_realloc(prog, prog->InputOuputBase, char, 
