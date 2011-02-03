@@ -249,7 +249,7 @@ static int LoadTGA(const char * filePath, unsigned int * width, unsigned int * h
 static unsigned GenerateMipmaps(void ** data, const unsigned width, const unsigned height)
 {
     unsigned levels = 1;
-    unsigned dim = MAX2(width, height) >> 1;
+    unsigned dim = (width > height ? width : height) >> 1;
     unsigned size = 0, w = width, h = height;
     while (dim)
     {
@@ -275,8 +275,8 @@ static unsigned GenerateMipmaps(void ** data, const unsigned width, const unsign
                     {
                         unsigned s = x * 2 + xx;
                         unsigned t = y * 2 + yy;
-                        s = MIN2(s, w - 1);
-                        t = MIN2(t, h - 1);
+                        s = s < w - 1 ? s : w - 1;
+                        t = t < h - 1 ? t : h - 1;
                         const Pixel * p = previous + t * w + s;
                         for (unsigned i = 0; i < 4; i++)
                             channels[i] += p->channels[i];

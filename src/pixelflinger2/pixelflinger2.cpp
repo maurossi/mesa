@@ -235,4 +235,14 @@ void DestroyGGLInterface(GGLInterface * iface)
    ctx->glCtx = NULL;
 
    free(ctx);
+   
+#if USE_LLVM_TEXTURE_SAMPLER
+   puts("USE_LLVM_TEXTURE_SAMPLER");
+#endif
+#if USE_LLVM_SCANLINE
+   puts("USE_LLVM_SCANLINE");
+#endif
+#if USE_LLVM_EXECUTIONENGINE
+   puts("USE_LLVM_EXECUTIONENGINE");
+#endif
 }

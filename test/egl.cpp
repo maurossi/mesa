@@ -15,6 +15,8 @@
 ** limitations under the License.
 */
 
+#ifdef __arm__
+
 #include <assert.h>
 #include <errno.h>
 #include <stdlib.h>
@@ -2008,3 +2010,5 @@ extern "C" void DisposeDrawingSurface()
    
    puts("DisposeDrawingSurface");
 }
+
+#endif // #ifdef __arm__

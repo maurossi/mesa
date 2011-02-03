@@ -197,7 +197,7 @@ static void ShaderDetach(const GGLInterface * iface, gl_shader_program * program
 }
 
 static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program * program,
-                                   char ** infoLog)
+                                   const char ** infoLog)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
    link_shaders(ctx->glCtx, program);
@@ -465,7 +465,19 @@ static GLint ShaderAttributeLocation(const GGLInterface * iface, const gl_shader
    int i = _mesa_get_parameter(program->Attributes, name);
    if (i >= 0)
       return program->Attributes->Parameters[i].Location;
-   return -2;
+   return -1;
+}
+
+static GLint ShaderVaryingLocation(const GGLInterface_t * iface, const gl_shader_program_t * program,
+                                   const char * name, GLint * vertexOutputLocation)
+{
+   for (unsigned int i = 0; i < program->Varying->NumParameters; i++)
+      if (!strcmp(program->Varying->Parameters[i].Name, name)) {
+         if (vertexOutputLocation)
+            *vertexOutputLocation = program->Varying->Parameters[i].BindLocation;
+         return program->Varying->Parameters[i].Location;
+      }
+   return -1;
 }
 
 static GLint ShaderUniformLocation(const GGLInterface * iface, const gl_shader_program * program,
@@ -475,7 +487,7 @@ static GLint ShaderUniformLocation(const GGLInterface * iface, const gl_shader_p
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
       if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
          return program->Uniforms->Uniforms[i].Pos;
-   return -2;
+   return -1;
 }
 
 static void ShaderUniformGetfv(const GGLInterface * iface, gl_shader_program * program,
@@ -634,6 +646,7 @@ void InitializeShaderFunctions(struct GGLInterface * iface)
    iface->ShaderProgramDelete = ShaderProgramDelete;
    iface->ShaderAttributeBind = ShaderAttributeBind;
    iface->ShaderAttributeLocation = ShaderAttributeLocation;
+   iface->ShaderVaryingLocation = ShaderVaryingLocation;
    iface->ShaderUniformLocation = ShaderUniformLocation;
    iface->ShaderUniformGetfv = ShaderUniformGetfv;
    iface->ShaderUniformGetiv = ShaderUniformGetiv;

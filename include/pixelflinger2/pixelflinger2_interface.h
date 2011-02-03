@@ -154,14 +154,14 @@ struct GGLInterface {
    gl_shader_program_t * (* ShaderProgramCreate)(const GGLInterface_t * iface);
 
    // attaches a shader to program
-   void (* ShaderAttach)(const GGLInterface * iface, gl_shader_program_t * program, gl_shader_t * shader);
+   void (* ShaderAttach)(const GGLInterface_t * iface, gl_shader_program_t * program, gl_shader_t * shader);
 
    // detaches a shader from program
-   void (* ShaderDetach)(const GGLInterface * iface, gl_shader_program_t * program, gl_shader_t * shader);
+   void (* ShaderDetach)(const GGLInterface_t * iface, gl_shader_program_t * program, gl_shader_t * shader);
 
    // duplicates shaders to program, and links varyings / attributes; can link 1 shader
    GLboolean (* ShaderProgramLink)(const GGLInterface_t * iface, gl_shader_program_t * program,
-                                   char ** infoLog);
+                                   const char ** infoLog);
    // frees program
    void (* ShaderProgramDelete)(const GGLInterface_t * iface, gl_shader_program_t * program);
 
@@ -172,6 +172,9 @@ struct GGLInterface {
                                 GLuint index, const GLchar * name);
    GLint (* ShaderAttributeLocation)(const GGLInterface_t * iface, const gl_shader_program_t * program,
                                      const char * name);
+   // returns fragment input location and vertex output location for varying of linked program
+   GLint (* ShaderVaryingLocation)(const GGLInterface_t * iface, const gl_shader_program_t * program,
+                                   const char * name, GLint * vertexOutputLocation);
    // gets uniform location for linked program
    GLint (* ShaderUniformLocation)(const GGLInterface_t * iface, const gl_shader_program_t * program,
                                    const char * name);
