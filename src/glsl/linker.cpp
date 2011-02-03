@@ -1174,7 +1174,7 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
 
    gl_shader *const sh = prog->_LinkedShaders[0];
    assert(sh->Type == GL_VERTEX_SHADER);
-
+   prog->VaryingSlots = 0;
    /* Operate in a total of four passes.
     *
     * 1. Invalidate the location assignments for all vertex shader inputs,
@@ -1358,6 +1358,13 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
       if (0 <= paramIndex)
          prog->Attributes->Parameters[paramIndex].Location = location;
    }
+   
+   for (int i = sizeof(used_locations) * 8 - 1; i >= 0; i--)
+      if (used_locations & (1 << i))
+      {
+         prog->AttributeSlots = i + 1;
+         break;
+      }
 
    return true;
 }
@@ -1385,15 +1392,16 @@ demote_shader_inputs_and_outputs(gl_shader *sh, enum ir_variable_mode mode)
    }
 }
 
-#define VertexOutputOffset(FIELD) (offsetof(VertexOutput,FIELD)/sizeof(Vector4))
-
 void
 assign_varying_locations(struct gl_shader_program *prog,
 			 gl_shader *producer, gl_shader *consumer)
 {
+   prog->VaryingSlots = 0;
+   prog->UsesFragCoord = false;
+   prog->UsesPointCoord = false;
    /* FINISHME: Set dynamically when geometry shader support is added. */
-   unsigned output_index = VertexOutputOffset(varyings); /*VERT_RESULT_VAR0*/;
-   unsigned input_index = VertexOutputOffset(varyings);
+   unsigned output_index = offsetof(VertexOutput,varyings) / sizeof(Vector4); /*VERT_RESULT_VAR0*/;
+   unsigned input_index = offsetof(VertexOutput,varyings) / sizeof(Vector4);
 
    /* Operate in a total of three passes.
     *
@@ -1410,9 +1418,9 @@ assign_varying_locations(struct gl_shader_program *prog,
       if (!var || ir_var_out != var->mode)
          continue;  
       if (!strcmp("gl_Position", var->name))
-         var->location = VertexOutputOffset(position);
+         var->location = offsetof(VertexOutput,position) / sizeof(Vector4);
       else if (!strcmp("gl_PointSize", var->name))
-         var->location = VertexOutputOffset(pointSize);
+         var->location = offsetof(VertexOutput,pointSize) / sizeof(Vector4);
       else
          var->location = -1;
    }
@@ -1421,11 +1429,17 @@ assign_varying_locations(struct gl_shader_program *prog,
       if (!var || ir_var_in != var->mode)
          continue;  
       if (!strcmp("gl_FragCoord", var->name))
-         var->location = VertexOutputOffset(position);
+      {
+         var->location = offsetof(VertexOutput,position)/sizeof(Vector4);
+         prog->UsesFragCoord = true;
+      }
       else if (!strcmp("gl_FrontFacing", var->name))
-         var->location = VertexOutputOffset(frontFacingPointCoord);
+         var->location = offsetof(VertexOutput,frontFacingPointCoord)/sizeof(Vector4);
       else if (!strcmp("gl_PointCoord", var->name))
-         var->location = VertexOutputOffset(frontFacingPointCoord);
+      {
+         var->location = offsetof(VertexOutput,frontFacingPointCoord)/sizeof(Vector4);
+         prog->UsesPointCoord = true;
+      }
       else
          var->location = -1;
    }
@@ -1465,11 +1479,13 @@ assign_varying_locations(struct gl_shader_program *prog,
 
 	 output_index += slots;
 	 input_index += slots;
+    prog->VaryingSlots += slots;
       } else {
 	 const unsigned slots = output_var->type->matrix_columns;
 
 	 output_index += slots;
 	 input_index += slots;
+    prog->VaryingSlots += slots;
       }
    }
 
@@ -1717,7 +1733,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
             int paramIndex = _mesa_get_parameter(prog->Varying, var->name);
             if (0 > paramIndex)
                paramIndex = _mesa_add_parameter(prog->Varying, var->name);
-            var->location= VertexOutputOffset(fragColor);
+            var->location= offsetof(VertexOutput,fragColor)/sizeof(Vector4);
             prog->Varying->Parameters[paramIndex].Location = var->location;
          }
          else
@@ -1746,5 +1762,3 @@ done:
 
    //hieralloc_free(mem_ctx);
 }
-
-#undef VertexOutputOffset

@@ -186,7 +186,7 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
    //    assert(ctx->frameSurface.width == ctx->depthSurface.width);
    //    assert(ctx->frameSurface.height == ctx->depthSurface.height);
 
-   const unsigned int varyingCount = 8;//ctx->glCtx->Shader.CurrentProgram->Varying->NumParameters;
+   const unsigned int varyingCount = ctx->glCtx->CurrentProgram->VaryingSlots;
    const unsigned y = v1->position.y, startX = v1->position.x,
                       endX = v2->position.x;
 
@@ -198,6 +198,7 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
    const VectorComp_t div = VectorComp_t_CTR(1 / (float)(endX - startX));
 
    memcpy(ctx->glCtx->CurrentProgram->ValuesVertexOutput, v1, sizeof(*v1));
+   // shader symbols are mapped to gl_shader_program_Values*
    VertexOutput & vertex(*(VertexOutput*)ctx->glCtx->CurrentProgram->ValuesVertexOutput);
    VertexOutput vertexDx(*v2);
 
@@ -236,17 +237,13 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
 
 #if USE_LLVM_SCANLINE
    typedef void (* ScanLineFunction_t)(VertexOutput * start, VertexOutput * step,
-                                       Vector4 * constants, unsigned * frame,
-                                       int * depth, unsigned char * stencil,
-                                       GGLContext::ActiveStencilState *,
-                                       unsigned count);
+                                       unsigned * frame, int * depth, unsigned char * stencil,
+                                       GGLContext::ActiveStencilState *, unsigned count);
 
-//    ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
-//    ctx->glCtx->Shader.CurrentProgram->GLVMFP->function;
+    ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
+    ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
    if (endX >= startX) {
-//		scanLineFunction(&vertex, &vertexDx, (Vector4 *)
-//                         ctx->glCtx->Shader.CurrentProgram->FragmentProgram->Parameters->ParameterValues,
-//                         frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
+		scanLineFunction(&vertex, &vertexDx, frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
    }
 #else
 
@@ -304,37 +301,43 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
          z = vertex.position.i[2];
          if (z & 0x80000000)  // negative float has leading 1
             z ^= 0x7fffffff;  // bigger negative is smaller
-         bool zCmp = false;
-         switch (0x200 | ctx->bufferState.depthFunc) {
-         case GL_NEVER:
-            zCmp = false;
-            break;
-         case GL_LESS:
-            zCmp = z < *depth;
-            break;
-         case GL_EQUAL:
-            zCmp = z == *depth;
-            break;
-         case GL_LEQUAL:
-            zCmp = z <= *depth;
-            break;
-         case GL_GREATER:
-            zCmp = z > *depth;
-            break;
-         case GL_NOTEQUAL:
-            zCmp = z != *depth;
-            break;
-         case GL_GEQUAL:
-            zCmp = z >= *depth;
-            break;
-         case GL_ALWAYS:
-            zCmp = true;
-            break;
-         default:
-            assert(0);
-            break;
+         bool zCmp = true;
+         if (DepthTest)
+         {
+            switch (0x200 | ctx->bufferState.depthFunc) {
+            case GL_NEVER:
+               zCmp = false;
+               break;
+            case GL_LESS:
+               zCmp = z < *depth;
+               break;
+            case GL_EQUAL:
+               zCmp = z == *depth;
+               break;
+            case GL_LEQUAL:
+               zCmp = z <= *depth;
+               break;
+            case GL_GREATER:
+               zCmp = z > *depth;
+               break;
+            case GL_NOTEQUAL:
+               zCmp = z != *depth;
+               break;
+            case GL_GEQUAL:
+               zCmp = z >= *depth;
+               break;
+            case GL_ALWAYS:
+               zCmp = true;
+               break;
+            default:
+               assert(0);
+               break;
+            }
          }
          if (!DepthTest || zCmp) {
+            float * varying = (float *)ctx->glCtx->CurrentProgram->ValuesVertexOutput;
+            
+            assert((void *)&(vertex.varyings[0]) == &(varying[2 * 4]));
             ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function();
             if (BlendEnable) {
                BlendComp_t sOne = 255, sZero = 0;
@@ -478,14 +481,14 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
          vertex.frontFacingPointCoord.i[3] = vertexDx.frontFacingPointCoord.i[3];
       }
 #else
-//        if (ctx->glCtx->Shader.CurrentProgram->FragmentProgram->UsesFragCoord)
+        if (ctx->glCtx->CurrentProgram->UsesFragCoord)
    vertex.position += vertexDx.position;
-//        else if (ctx->bufferState.depthTest)
+        else if (ctx->bufferState.depthTest)
    vertex.position.z += vertexDx.position.z;
 
    for (unsigned i = 0; i < varyingCount; i++)
       vertex.varyings[i] += vertexDx.varyings[i];
-//        if (ctx->glCtx->Shader.CurrentProgram->FragmentProgram->UsesPointCoord)
+   if (ctx->glCtx->CurrentProgram->UsesPointCoord)
    {
       vertex.frontFacingPointCoord.z += vertexDx.frontFacingPointCoord.z;
       vertex.frontFacingPointCoord.w += vertexDx.frontFacingPointCoord.w;
@@ -505,30 +508,29 @@ static void PickScanLine(GGLInterface * iface)
    GGL_GET_CONTEXT(ctx, iface);
 
    ctx->interface.ScanLine = NULL;
-   const bool DepthWrite = true;
    if (ctx->bufferState.stencilTest) {
       if (ctx->bufferState.depthTest) {
          if (ctx->blendState.enable)
-            ctx->interface.ScanLine = ScanLine<true, true, DepthWrite, true>;
+            ctx->interface.ScanLine = ScanLine<true, true, true, true>;
          else
-            ctx->interface.ScanLine = ScanLine<true, true, DepthWrite, false>;
+            ctx->interface.ScanLine = ScanLine<true, true, true, false>;
       } else {
          if (ctx->blendState.enable)
-            ctx->interface.ScanLine = ScanLine<true, false, DepthWrite, true>;
+            ctx->interface.ScanLine = ScanLine<true, false, false, true>;
          else
-            ctx->interface.ScanLine = ScanLine<true, false, DepthWrite, false>;
+            ctx->interface.ScanLine = ScanLine<true, false, false, false>;
       }
    } else {
       if (ctx->bufferState.depthTest) {
          if (ctx->blendState.enable)
-            ctx->interface.ScanLine = ScanLine<false, true, DepthWrite, true>;
+            ctx->interface.ScanLine = ScanLine<false, true, true, true>;
          else
-            ctx->interface.ScanLine = ScanLine<false, true, DepthWrite, false>;
+            ctx->interface.ScanLine = ScanLine<false, true, true, false>;
       } else {
          if (ctx->blendState.enable)
-            ctx->interface.ScanLine = ScanLine<false, false, DepthWrite, true>;
+            ctx->interface.ScanLine = ScanLine<false, false, false, true>;
          else
-            ctx->interface.ScanLine = ScanLine<false, false, DepthWrite, false>;
+            ctx->interface.ScanLine = ScanLine<false, false, false, false>;
       }
    }
 

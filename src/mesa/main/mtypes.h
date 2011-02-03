@@ -2078,12 +2078,13 @@ struct gl_shader
 
    struct exec_list *ir;
    struct glsl_symbol_table *symbols;
-   struct Executable * executable;
-   void (*function)();     /**< the active function */
-   unsigned SamplersUsed;  /**< bitfield of samplers used by shader */
    /** Shaders containing built-in functions that are used for linking. */
    struct gl_shader *builtins_to_link[16];
    unsigned num_builtins_to_link;
+   
+   struct Executable * executable;
+   void (*function)();     /**< the active function */
+   unsigned SamplersUsed;  /**< bitfield of samplers used by shader */
 };
 
 
@@ -2143,6 +2144,10 @@ struct gl_shader_program
    GLfloat (*ValuesVertexInput)[4];    /**< actually a VertexInput */
    GLfloat (*ValuesVertexOutput)[4];   /**< actually a VertexOutput */
    void * InputOuputBase;              /**< allocation base for Values* */
+   
+   unsigned AttributeSlots;/**< [0,AttributeSlots-1] read by vertex shader */
+   unsigned VaryingSlots;  /**< [0,VaryingSlots-1] read by fragment shader */
+   unsigned UsesFragCoord : 1, UsesPointCoord : 1;
 };   
 
 

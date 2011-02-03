@@ -54,7 +54,6 @@ struct Instance {
          bccDisposeScript(script);
       else if (module)
          delete module;
-      getchar();
    }
 };
 
@@ -95,10 +94,9 @@ extern "C" void _mesa_delete_shader(struct gl_context *ctx, struct gl_shader *sh
       shader->DeletePending = true;
       return;
    }
-   if (shader->executable)
-   {
+   if (shader->executable) {
       for (std::map<ShaderKey, Instance *>::iterator it=shader->executable->instances.begin();
-         it != shader->executable->instances.end(); it++)
+            it != shader->executable->instances.end(); it++)
          (*it).second->~Instance();
       shader->executable->instances.~map();
    }
@@ -363,8 +361,11 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
    if (result != BCC_NO_ERROR)
       fprintf(stderr, "Could not find '%s': %d\n", "main", result);
    else
-      printf("bcc_compile %s=%p \n", "main", shader->function);
+      printf("bcc_compile %s=%p \n", mainName, instance->function);
 }
+
+void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * program, llvm::Module * mod,
+                      const char * shaderName, const char * scanlineName);
 
 static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
 {
@@ -404,7 +405,15 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
          llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, ctx, shaderName);
          if (!module)
             assert(0); // ir to llvm failed
-         CodeGen(instance, mainName, shader, program, ctx);
+#if USE_LLVM_SCANLINE
+         if (GL_FRAGMENT_SHADER == shader->Type) {
+            char scanlineName [SCANLINE_KEY_STRING_LEN] = {0};
+            GetScanlineKeyString(&shaderKey, scanlineName, sizeof scanlineName / sizeof *scanlineName);
+            GenerateScanLine(ctx, program, module, mainName, scanlineName);
+            CodeGen(instance, scanlineName, shader, program, ctx);
+         } else
+#endif
+            CodeGen(instance, mainName, shader, program, ctx);
          shader->executable->instances[shaderKey] = instance;
          debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function); //getchar();
       } else

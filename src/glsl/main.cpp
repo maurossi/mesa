@@ -190,6 +190,7 @@ compile_shader(struct gl_context *ctx, struct gl_shader *shader)
    return;
 }
 
+#if 1 // build executable
 
 #define DRAW_TO_SCREEN 1
 #include "image_file.h"
@@ -216,7 +217,11 @@ void execute(const GGLContext * ctx)
    //const unsigned scale = 16, portWidth = 80, portHeight = 50;
    unsigned scale = 1, portWidth = width / scale, portHeight = height / scale;
    //unsigned scale = 1, portWidth = width / 4, portHeight = height / 4;
-      
+   
+   GGLSurface colorSurface = {width, height, GGL_PIXEL_FORMAT_RGBA_8888, frameSurface, width, sizeof(GGLSurface)};
+   ggl->SetBuffer(ggl, GL_COLOR_BUFFER_BIT, &colorSurface);
+   ggl->EnableDisable(ggl, GL_DEPTH_TEST, false);
+   
    float * uniform = (float *)ctx->glCtx->CurrentProgram->ValuesUniform;
    float * attribute = (float *)ctx->glCtx->CurrentProgram->ValuesVertexInput;
    float * varying = (float *)ctx->glCtx->CurrentProgram->ValuesVertexOutput;
@@ -258,36 +263,42 @@ void execute(const GGLContext * ctx)
    clock_t c0 = clock();
    
    //while(true)
-   for (frames = 1; frames <= 10; frames++)
+   for (frames = 1; frames <= 20; frames++)
    {
-      for (unsigned y = 0; y < portHeight; y++)
-         for (unsigned x = 0; x < portWidth; x++) {
-            if (vTexCoordLocation > -1)
-            {
-               varying[vTexCoordLocation * 4 + 0] = ((float)x) / (portWidth - 1);
-               varying[vTexCoordLocation * 4 + 1] = ((float)y) / (portHeight - 1);
-               varying[vTexCoordLocation * 4 + 2] = 0;
-               varying[vTexCoordLocation * 4 + 3] = 1;
-            }
-            if (vNormalLocation > -1)
-            {
-               varying[vNormalLocation * 4 + 0] = 0;
-               varying[vNormalLocation * 4 + 1] = 1;
-               varying[vNormalLocation * 4 + 2] = 0;
-               varying[vNormalLocation * 4 + 3] = 1;
-            }
-            shader->function();
-            unsigned r = output[0] * 255;
-            unsigned g = output[1] * 255;
-            unsigned b = output[2] * 255;
-            unsigned a = output[3] * 255;
-//            unsigned r = *(unsigned *)(outputs + 0);
-//            unsigned g = *(unsigned *)(outputs + 1);
-//            unsigned b = *(unsigned *)(outputs + 2);
-//            unsigned a = *(unsigned *)(outputs + 3);
-            frameSurface[y * width + x] = (a << 24) | (b << 16) | (g << 8) | r;
-//            frameSurface[y * width + x] = *(unsigned *)outputs;
+      for (unsigned y = 0; y < portHeight; y++) {
+         VertexOutput v0, v1;
+         v0.position = Vector4(0, y, 0, 0);
+         v1.position = Vector4(portWidth - 1, y ,0 ,0);
+         if (vTexCoordLocation > -1)
+         {
+            v0.varyings[vTexCoordLocation - 2] = Vector4(0, (float)y / (portHeight - 1), 0, 1);
+            v1.varyings[vTexCoordLocation - 2] = Vector4(1, (float)y / (portHeight - 1), 0, 1);
          }
+         ggl->ScanLine(ggl, &v0, &v1);
+
+//         for (unsigned x = 0; x < portWidth; x++) {
+//            if (vTexCoordLocation > -1)
+//            {
+//               varying[vTexCoordLocation * 4 + 0] = ((float)x) / (portWidth - 1);
+//               varying[vTexCoordLocation * 4 + 1] = ((float)y) / (portHeight - 1);
+//               varying[vTexCoordLocation * 4 + 2] = 0;
+//               varying[vTexCoordLocation * 4 + 3] = 1;
+//            }
+////            if (vNormalLocation > -1)
+////            {
+////               varying[vNormalLocation * 4 + 0] = 0;
+////               varying[vNormalLocation * 4 + 1] = 1;
+////               varying[vNormalLocation * 4 + 2] = 0;
+////               varying[vNormalLocation * 4 + 3] = 1;
+////            }
+//            shader->function();
+//            unsigned r = output[0] * 255;
+//            unsigned g = output[1] * 255;
+//            unsigned b = output[2] * 255;
+//            unsigned a = output[3] * 255;
+//            frameSurface[y * width + x] = (a << 24) | (b << 16) | (g << 8) | r;
+//         }
+      }
       //*
       if (scale > 1)
          for (int y = portHeight - 1; y >= 0; y--)
@@ -301,6 +312,8 @@ void execute(const GGLContext * ctx)
       //*/
 #if defined __arm__ && DRAW_TO_SCREEN
       frameSurface = (unsigned *)PresentDrawingSurface();
+      colorSurface.data = frameSurface;
+      ggl->SetBuffer(ggl, GL_COLOR_BUFFER_BIT, &colorSurface);
 #endif
    }
 
@@ -308,12 +321,12 @@ void execute(const GGLContext * ctx)
    printf ("\n *** test_scan elapsed CPU time: %fs \n *** fps=%.2f, tpf=%.2fms \n",
            elapsed, frames / elapsed, elapsed / frames * 1000);
    printf("gl_FragColor=%.2f, %.2f, %.2f %.2f \n", output[0], output[1], output[2], output[3]);
-   //assert(0.1f < outputs[3]);
 #if defined __arm__
    SaveBMP("/sdcard/mesa.bmp", frameSurface, width, height);
 #else
    SaveBMP("mesa.bmp", frameSurface, width, height);
 #endif
+   assert(0.1f < output[3]);
 #if DRAW_TO_SCREEN
    void DisposeDrawingSurface();
 #else
@@ -480,3 +493,5 @@ main(int argc, char **argv)
    hieralloc_report_brief(NULL, stdout);
    return status;
 }
+
+#endif // build executable

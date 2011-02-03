@@ -85,7 +85,7 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
    assert(fabs(tl->position.y - tr->position.y) < 1 && fabs(bl->position.y - br->position.y) < 1);
 
    const unsigned width = ctx->frameSurface.width, height = ctx->frameSurface.height;
-   const unsigned varyingCount = 8;//ctx->glCtx->Shader.CurrentProgram->Varying->NumParameters;
+   const unsigned varyingCount = ctx->glCtx->CurrentProgram->VaryingSlots;
 
 
    // tlv-trv and blv-brv are parallel and horizontal

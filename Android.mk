@@ -107,6 +107,7 @@ mesa_SRC_FILES :=	\
 	src/mesa/program/symbol_table.c \
 	src/pixelflinger2/buffer.cpp \
 	src/pixelflinger2/format.cpp \
+	src/pixelflinger2/llvm_scanline.cpp \
 	src/pixelflinger2/pixelflinger2.cpp \
 	src/pixelflinger2/raster.cpp \
 	src/pixelflinger2/scanline.cpp \

@@ -1,3 +1,20 @@
+/** 
+ **
+ ** Copyright 2011, The Android Open Source Project
+ **
+ ** Licensed under the Apache License, Version 2.0 (the "License"); 
+ ** you may not use this file except in compliance with the License. 
+ ** You may obtain a copy of the License at 
+ **
+ **     http://www.apache.org/licenses/LICENSE-2.0 
+ **
+ ** Unless required by applicable law or agreed to in writing, software 
+ ** distributed under the License is distributed on an "AS IS" BASIS, 
+ ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
+ ** See the License for the specific language governing permissions and 
+ ** limitations under the License.
+ */
+ 
 #include <stack>
 #include <stdio.h>
 
@@ -6,93 +23,13 @@
 #include <llvm/Support/IRBuilder.h>
 #include <llvm/Module.h>
 
+#include "src/pixelflinger2/llvm_helper.h"
+
 using namespace llvm;
-
-static const char * name(const char * str)
-{
-   return str;
-}
-
-static Value * minIntScalar(IRBuilder<> &builder, Value * in1, Value * in2)
-{
-   Value * cmp = builder.CreateICmpSLT(in1, in2);
-   return builder.CreateSelect(cmp, in1, in2);
-}
-
-static Value * maxIntScalar(IRBuilder<> &builder, Value * in1, Value * in2)
-{
-   Value * cmp = builder.CreateICmpSGT(in1, in2);
-   return builder.CreateSelect(cmp, in1, in2);
-}
-
-static Constant * constFloat(IRBuilder<> & builder, float x)
-{
-   return ConstantFP::get(builder.getContext(), APFloat(x));
-}
-
-static VectorType * intVecType(IRBuilder<> & builder)
-{
-   return VectorType::get(Type::getInt32Ty(builder.getContext()), 4);
-}
-
-static VectorType * floatVecType(IRBuilder<> & builder)
-{
-   return VectorType::get(Type::getFloatTy(builder.getContext()), 4);
-}
-
-static Value * constIntVec(IRBuilder<> & builder, int x, int y, int z, int w)
-{
-   std::vector<Constant *> vec(4);
-   vec[0] = builder.getInt32(x);
-   vec[1] = builder.getInt32(y);
-   vec[2] = builder.getInt32(z);
-   vec[3] = builder.getInt32(w);
-   return ConstantVector::get(intVecType(builder), vec);
-}
-
-static Value * intVec(IRBuilder<> & builder, Value * x, Value * y, Value * z, Value * w)
-{
-   Value * res = Constant::getNullValue(intVecType(builder));
-   res = builder.CreateInsertElement(res, x, builder.getInt32(0), name("vecx"));
-   res = builder.CreateInsertElement(res, y, builder.getInt32(1), name("vecy"));
-   res = builder.CreateInsertElement(res, z, builder.getInt32(2), name("vecz"));
-   if (w)
-      res = builder.CreateInsertElement(res, w, builder.getInt32(3), name("vecw"));
-   return res;
-}
-
-static Value * constFloatVec(IRBuilder<> & builder, float x, float y, float z, float w)
-{
-   std::vector<Constant *> vec(4);
-   vec[0] = constFloat(builder, x);
-   vec[1] = constFloat(builder, y);
-   vec[2] = constFloat(builder, z);
-   vec[3] = constFloat(builder, w);
-   return ConstantVector::get(floatVecType(builder), vec);
-}
-
-std::vector<Value *> extractVector(IRBuilder<> & builder, Value *vec)
-{
-   std::vector<Value*> elems(4);
-   elems[0] = builder.CreateExtractElement(vec, builder.getInt32(0), name("x"));
-   elems[1] = builder.CreateExtractElement(vec, builder.getInt32(1), name("y"));
-   elems[2] = builder.CreateExtractElement(vec, builder.getInt32(2), name("z"));
-   elems[3] = builder.CreateExtractElement(vec, builder.getInt32(3), name("w"));
-   return elems;
-}
-
-// <4 x i32> [0, 255] to <4 x float> [0.0, 1.0]
-static Value * intColorVecToFloatColorVec(IRBuilder<> & builder, Value * vec)
-{
-//   return builder.CreateBitCast(vec, floatVecType(builder));
-   vec = builder.CreateUIToFP(vec, floatVecType(builder));
-   return builder.CreateFMul(vec, constFloatVec(builder, 1 / 255.0f,  1 / 255.0f,
-                             1 / 255.0f, 1 / 255.0f));
-}
 
 // texture data is int pointer to surface (will cast to short for 16bpp), index is linear texel index,
 // format is GGLPixelFormat for surface, return type is <4 x i32> rgba
-Value * pointSample(IRBuilder<> & builder, Value * textureData, Value * index, const GGLPixelFormat format)
+static Value * pointSample(IRBuilder<> & builder, Value * textureData, Value * index, const GGLPixelFormat format)
 {
    Value * texel = NULL;
    switch (format) {
@@ -176,7 +113,7 @@ Value * pointSample(IRBuilder<> & builder, Value * textureData, Value * index, c
 static const unsigned SHIFT = 16;
 
 // w  = width - 1, h = height - 1; similar to pointSample; returns <4 x i32> rgba
-Value * linearSample(IRBuilder<> & builder, Value * textureData, Value * indexOffset,
+static Value * linearSample(IRBuilder<> & builder, Value * textureData, Value * indexOffset,
                      Value * x0, Value * y0, Value * xLerp, Value * yLerp,
                      Value * w, Value * h,  Value * width, Value * height,
                      const GGLPixelFormat format/*, const RegDesc * dstDesc*/)
@@ -251,56 +188,6 @@ Value * linearSample(IRBuilder<> & builder, Value * textureData, Value * indexOf
 //   } else
 //      assert(0);
 }
-
-class CondBranch
-{
-   IRBuilder<> & m_builder;
-   std::stack<BasicBlock *> m_ifStack;
-
-public:
-   CondBranch(IRBuilder<> & builder) : m_builder(builder) {}
-   ~CondBranch() {
-      assert(m_ifStack.empty());
-   }
-
-   void ifCond(Value * cmp, const char * trueBlock = "ifT", const char * falseBlock = "ifF") {
-      Function * function = m_builder.GetInsertBlock()->getParent();
-      BasicBlock * ifthen = BasicBlock::Create(m_builder.getContext(), name(trueBlock), function, NULL);
-      BasicBlock * ifend = BasicBlock::Create(m_builder.getContext(), name(falseBlock), function, NULL);
-      m_builder.CreateCondBr(cmp, ifthen, ifend);
-      m_builder.SetInsertPoint(ifthen);
-      m_ifStack.push(ifend);
-   }
-
-   void elseop() {
-      assert(!m_ifStack.empty());
-      BasicBlock *ifend = BasicBlock::Create(m_builder.getContext(), name("else_end"), m_builder.GetInsertBlock()->getParent(),0);
-      if (!m_builder.GetInsertBlock()->getTerminator()) // ret void is a block terminator
-         m_builder.CreateBr(ifend); // branch is also a block terminator
-      else {
-         debug_printf("Instructions::elseop block alread has terminator \n");
-         m_builder.GetInsertBlock()->getTerminator()->dump();
-         assert(0);
-      }
-      m_builder.SetInsertPoint(m_ifStack.top());
-      m_builder.GetInsertBlock()->setName(name("else_then"));
-      m_ifStack.pop();
-      m_ifStack.push(ifend);
-   }
-
-   void endif() {
-      assert(!m_ifStack.empty());
-      if (!m_builder.GetInsertBlock()->getTerminator()) // ret void is a block terminator
-         m_builder.CreateBr(m_ifStack.top()); // branch is also a block terminator
-      else {
-         debug_printf("Instructions::endif block alread has terminator");
-         m_builder.GetInsertBlock()->getTerminator()->dump();
-         assert(0);
-      }
-      m_builder.SetInsertPoint(m_ifStack.top());
-      m_ifStack.pop();
-   }
-};
 
 // dim is size - 1, since [0.0f,1.0f]->[0, size - 1]
 static Value * texcoordWrap(IRBuilder<> & builder, const unsigned wrap,
