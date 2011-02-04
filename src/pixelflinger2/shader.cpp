@@ -569,9 +569,18 @@ static void ShaderUniformMatrix(const GGLInterface * iface, gl_shader_program * 
                                 GLboolean transpose, const GLfloat *values)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-//    if (!program)
-//        return gglError(GL_INVALID_OPERATION);
-//    _mesa_uniform_matrix(ctx->glCtx, program, cols, rows, location, count, transpose, values);
+   if (location == -1)
+      return;
+   assert(cols == rows);
+   int start = location, slots = cols * count;
+   if (start < 0 || start + slots > ctx->glCtx->CurrentProgram->Uniforms->Slots)
+      return gglError(GL_INVALID_OPERATION);
+   for (unsigned i = 0; i < slots; i++)
+   {
+      float * column = ctx->glCtx->CurrentProgram->ValuesUniform[start + i];
+      for (unsigned j = 0; j < rows; j++)
+         column[j] = *(values++);
+   }
 }
 
 static void ShaderVerifyProcessVertex(const GGLInterface * iface, const VertexInput * input,

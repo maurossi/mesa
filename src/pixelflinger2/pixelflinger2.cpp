@@ -17,13 +17,11 @@
 
 #include "pixelflinger2.h"
 
-//#include "src/pixelflinger2/texture.h"
-
-//#include "src/mesa/main/context.h"
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+
+#include "src/talloc/hieralloc.h"
 
 void gglError(unsigned error)
 {
@@ -245,4 +243,5 @@ void DestroyGGLInterface(GGLInterface * iface)
 #if USE_LLVM_EXECUTIONENGINE
    puts("USE_LLVM_EXECUTIONENGINE");
 #endif
+   hieralloc_report_brief(NULL, stdout);
 }

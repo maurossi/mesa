@@ -16,7 +16,7 @@ void main(void)
     //gl_FragColor += vec4(0,0,0,0);
     //gl_FragColor = vTexCoord.xyzw;
     //gl_FragColor = texture2D(samp2DArray[int(vTexCoord.z)], vTexCoord.xy);
-    gl_FragColor = texture2D(samp2D, vTexCoord.xy) * vTexCoord;
+    gl_FragColor = texture2D(samp2D, vTexCoord.xy);
     //gl_FragColor = textureCube(sampCube, vTexCoord.xyz);
     //gl_FragColor *= vNormal;
     //gl_FragColor = textureCube(samplercube, vNormal.xyz);
@@ -24,24 +24,23 @@ void main(void)
     //gl_FragColor.a = 1;
     //gl_FragColor *= (vTexCoord.wwww - vTexCoord * vTexCoord);
 
-
-    //gl_FragColor = gl_FragColor * gl_FragColor * gl_FragColor;
-
-
-    //gl_FragColor = gl_FragColor * gl_FragColor;
-    //gl_FragColor -= vec4(0.5);
-    //gl_FragColor.a = 0;
-    //gl_FragColor = uRotM * gl_FragColor;
-    //gl_FragColor += vec4(0.5);
-
-    //float dot = dot(vNormal.xyz, vec3(-1.414213562373095, 0, -1.414213562373095));
-    //float dot = dot(vNormal.xyz, vNormal.xyz);
-    //gl_FragColor.rgb *= vec3(dot);
+    //*
+    gl_FragColor -= vec4(0.5);
+    gl_FragColor.a = 0.0;
+    gl_FragColor = uRotM * gl_FragColor;
+    gl_FragColor += vec4(0.5);
+    //*/
+    
+    //*
+    float dot = dot(vNormal.xyz, vec3(-1.414213562373095, 0, -1.414213562373095));
+    gl_FragColor.rgb *= vec3(dot);
+	//*/
+	
 	//gl_FragColor.rgb += vNormal.xyz;
     //gl_FragColor = (gl_FragCoord / vec4(480, 800, 1, 1));
     //gl_FragColor.r = gl_FrontFacing == true ? 1.0 : 0.0;
     //gl_FragColor.gb = gl_PointCoord;
     //gl_FragColor = vTexCoord;
 
-    //gl_FragColor.a = 1;
+    gl_FragColor.a = 1.0;
 }

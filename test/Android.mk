@@ -7,6 +7,7 @@ LOCAL_PATH := $(call my-dir)
 mesa_SRC_FILES :=	\
     egl.cpp \
 	cmain.c \
+	m_matrix.c \
 	main.cpp
 	
 # Executable for host

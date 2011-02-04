@@ -240,10 +240,10 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
                                        unsigned * frame, int * depth, unsigned char * stencil,
                                        GGLContext::ActiveStencilState *, unsigned count);
 
-    ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
-    ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
+   ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
+                                         ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
    if (endX >= startX) {
-		scanLineFunction(&vertex, &vertexDx, frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
+      scanLineFunction(&vertex, &vertexDx, frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
    }
 #else
 
@@ -302,8 +302,7 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
          if (z & 0x80000000)  // negative float has leading 1
             z ^= 0x7fffffff;  // bigger negative is smaller
          bool zCmp = true;
-         if (DepthTest)
-         {
+         if (DepthTest) {
             switch (0x200 | ctx->bufferState.depthFunc) {
             case GL_NEVER:
                zCmp = false;
@@ -336,7 +335,7 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
          }
          if (!DepthTest || zCmp) {
             float * varying = (float *)ctx->glCtx->CurrentProgram->ValuesVertexOutput;
-            
+
             assert((void *)&(vertex.varyings[0]) == &(varying[2 * 4]));
             ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function();
             if (BlendEnable) {
@@ -481,15 +480,14 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
          vertex.frontFacingPointCoord.i[3] = vertexDx.frontFacingPointCoord.i[3];
       }
 #else
-        if (ctx->glCtx->CurrentProgram->UsesFragCoord)
-   vertex.position += vertexDx.position;
-        else if (ctx->bufferState.depthTest)
-   vertex.position.z += vertexDx.position.z;
+   if (ctx->glCtx->CurrentProgram->UsesFragCoord)
+      vertex.position += vertexDx.position;
+   else if (ctx->bufferState.depthTest)
+      vertex.position.z += vertexDx.position.z;
 
    for (unsigned i = 0; i < varyingCount; i++)
       vertex.varyings[i] += vertexDx.varyings[i];
-   if (ctx->glCtx->CurrentProgram->UsesPointCoord)
-   {
+   if (ctx->glCtx->CurrentProgram->UsesPointCoord) {
       vertex.frontFacingPointCoord.z += vertexDx.frontFacingPointCoord.z;
       vertex.frontFacingPointCoord.w += vertexDx.frontFacingPointCoord.w;
    }

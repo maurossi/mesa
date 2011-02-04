@@ -1707,8 +1707,8 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
    }
 
    if (prog->_LinkedShaders[MESA_SHADER_VERTEX] != NULL) {
-      //demote_shader_inputs_and_outputs(prog->_LinkedShaders[MESA_SHADER_VERTEX],
-		//		       ir_var_out); for testing, don't demote
+      demote_shader_inputs_and_outputs(prog->_LinkedShaders[MESA_SHADER_VERTEX],
+				       ir_var_out);
    }
 
    if (prog->_LinkedShaders[MESA_SHADER_GEOMETRY] != NULL) {
@@ -1722,7 +1722,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
    if (prog->_LinkedShaders[MESA_SHADER_FRAGMENT] != NULL) {
       gl_shader *const sh = prog->_LinkedShaders[MESA_SHADER_FRAGMENT];
 
-      //demote_shader_inputs_and_outputs(sh, ir_var_in); for testing, don't demote
+      demote_shader_inputs_and_outputs(sh, ir_var_in);
       
       foreach_list(node, sh->ir) {
          ir_variable *const var = ((ir_instruction *) node)->as_variable();

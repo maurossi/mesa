@@ -188,7 +188,7 @@ static void RasterTriangle(const GGLInterface * iface, const VertexOutput * v1,
                            const VertexOutput * v2, const VertexOutput * v3)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   const unsigned varyingCount = 0;//ctx->glCtx->Shader.CurrentProgram->Varying->NumParameters;
+   const unsigned varyingCount = ctx->glCtx->CurrentProgram->VaryingSlots;
    const unsigned height = ctx->frameSurface.height;
    const VertexOutput * a = v1, * b = v2, * d = v3;
    //abc is a triangle, bcd is another triangle, they share bc as horizontal edge

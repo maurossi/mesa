@@ -1924,11 +1924,23 @@ static struct S
    sp<SurfaceComposerClient> client;
    sp<SurfaceControl> surfaceControl;
    sp<Surface> surface;
+   ~S()
+   {
+      //surface->dispose();
+      surface.~sp();
+      puts("surface.~sp()");
+      //surfaceControl->dispose();
+      surfaceControl.~sp();
+      puts("surfaceControl.~sp()");
+      client->dispose();
+      client.~sp();
+      puts("client.~sp()");
+   }
 } * s = NULL;
-ANativeWindow * window;
-EGLDisplay display;
-EGLContext eglCtx;
-EGLSurface drawSurface;
+static ANativeWindow * window;
+static EGLDisplay display;
+static EGLContext eglCtx;
+static EGLSurface drawSurface;
 
 extern "C" int SetupDrawingSurface(unsigned * width, unsigned * height, unsigned * bpp)
 {
@@ -1936,16 +1948,17 @@ extern "C" int SetupDrawingSurface(unsigned * width, unsigned * height, unsigned
    // create a client to surfaceflinger
    s->client = new SurfaceComposerClient();
 
-   s->surfaceControl = s->client->createSurface(getpid(), 0, 1280, 800, PIXEL_FORMAT_RGBA_8888);
+   s->surfaceControl = s->client->createSurface(getpid(), 0, 640, 400, PIXEL_FORMAT_RGBA_8888);
    s->client->openTransaction();
    s->surfaceControl->setLayer(25000);
+   s->surfaceControl->show();
    s->client->closeTransaction();
 
    s->surface = s->surfaceControl->getSurface();
    window = s->surface.get();
 
    printf("window=%p\n", window);
-
+   assert(window);
    display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
 
    EGLint attrib_list[] = {
@@ -2003,9 +2016,11 @@ extern "C" void DisposeDrawingSurface()
 {
    puts("DisposeDrawingSurface");
    eglDestroySurface(display, drawSurface);
+   puts("eglDestroySurface");
    eglDestroyContext(display, eglCtx);
-
+   puts("eglDestroyContext");
    delete s;
+   puts("delete s");
    s = NULL;
    
    puts("DisposeDrawingSurface");
