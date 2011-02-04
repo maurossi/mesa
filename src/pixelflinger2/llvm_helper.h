@@ -89,11 +89,11 @@ static Value * constFloatVec(IRBuilder<> & builder, float x, float y, float z, f
 
 static std::vector<Value *> extractVector(IRBuilder<> & builder, Value *vec)
 {
+   const VectorType * type = (const VectorType *)vec->getType();
    std::vector<Value*> elems(4);
-   elems[0] = builder.CreateExtractElement(vec, builder.getInt32(0), name("x"));
-   elems[1] = builder.CreateExtractElement(vec, builder.getInt32(1), name("y"));
-   elems[2] = builder.CreateExtractElement(vec, builder.getInt32(2), name("z"));
-   elems[3] = builder.CreateExtractElement(vec, builder.getInt32(3), name("w"));
+   assert(type->getNumElements() <= 4);
+   for (unsigned i = 0; i < type->getNumElements(); i++)
+      elems[i] = builder.CreateExtractElement(vec, builder.getInt32(i), name("xtract"));
    return elems;
 }
 

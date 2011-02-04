@@ -181,7 +181,7 @@ void execute(const gl_shader_program * program)
    clock_t c0 = clock();
 
    //while(true)
-   for (frames = 1; frames <= 20; frames++) {
+   for (frames = 1; frames <= 10; frames++) {
       for (unsigned y = 0; y < portHeight; y++) {
          VertexOutput v0, v1;
          v0.position = Vector4(0, y, 0, 0);
@@ -250,9 +250,12 @@ void execute(const gl_shader_program * program)
 
 }
 
+extern "C" int cmain(int,char**);
 int
 main(int argc, char **argv)
 {
+   cmain(0,NULL);
+   
    static char basePath [256] = {0};
    static char texturePath [256] = {0};
    static char fragPath [256] = {0};
@@ -319,7 +322,7 @@ main(int argc, char **argv)
          exit(EXIT_FAILURE);
       }
 
-      char * infoLog = NULL;
+      const char * infoLog = NULL;
       if (!ggl->ShaderCompile(ggl, shader, source, &infoLog)) {
          printf("Info log for %s:\n%s\n", argv[optind], infoLog);
          status = EXIT_FAILURE;

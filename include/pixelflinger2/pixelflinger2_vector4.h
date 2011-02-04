@@ -192,8 +192,24 @@ typedef struct Vec4<VectorComp_t> Vector4;
 
 #else // #ifdef __cplusplus
 
-typedef float Vector4 [4];
+//typedef float Vector4 [4];
+typedef struct { float x, y, z, w; } Vector4;
 
+#define VECTOR4_OP_UNARY(v,op,s) \
+   v.x op s.x; \
+   v.y op s.y; \
+   v.z op s.z; \
+   v.w op s.w;
+   
+#define VECTOR4_OP_UNARY_SCALAR(v,op,s) \
+   v.x op s; \
+   v.y op s; \
+   v.z op s; \
+   v.w op s;
+
+#define VECTOR4_CTR(x,y,z,w) \
+   ((Vector4){x,y,z,w})
+      
 #endif // #ifdef __cplusplus
 
 #endif // #ifndef _PIXELFLINGER2_VECTOR4_H_

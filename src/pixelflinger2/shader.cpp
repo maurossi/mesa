@@ -23,6 +23,8 @@
 #include <llvm/LLVMContext.h>
 #include <llvm/Module.h>
 #include <bcc/bcc.h>
+#include <dlfcn.h>
+
 
 #include "src/talloc/hieralloc.h"
 #include "src/mesa/main/mtypes.h"
@@ -118,7 +120,7 @@ static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
 }
 
 static GLboolean ShaderCompile(const GGLInterface * iface, gl_shader * shader,
-                               const char * glsl, char ** infoLog)
+                               const char * glsl, const char ** infoLog)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
    if (!glsl) {
@@ -201,6 +203,18 @@ static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
    link_shaders(ctx->glCtx, program);
+   for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
+      const gl_program_parameter & attribute = program->Attributes->Parameters[i];
+      printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+   }
+   for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
+      const gl_program_parameter & varying = program->Varying->Parameters[i];
+      printf("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+   }
+   for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++) {
+      const gl_uniform & uniform = program->Uniforms->Uniforms[i];
+      printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
+   }
    if (infoLog)
       *infoLog = program->InfoLog;
    return program->LinkStatus;
@@ -280,9 +294,6 @@ static char * GetScanlineKeyString(const ShaderKey * key, char * buffer,
    return buffer;
 }
 
-#include <bcc/bcc.h>
-#include <dlfcn.h>
-
 struct SymbolLookupContext {
    const GGLContext * gglCtx;
    const gl_shader_program * program;
@@ -329,7 +340,6 @@ static void* SymbolLookup(void* pContext, const char* name)
       };
    }
    printf("symbolLookup '%s'=%p \n", name, symbol);
-   //getchar();
    assert(symbol);
    return (void *)symbol;
 }
@@ -510,13 +520,48 @@ static GLint ShaderUniform(const GGLInterface * iface, gl_shader_program * progr
 {
    // TODO: sampler uniform
    GGL_GET_CONST_CONTEXT(ctx, iface);
-//    if (!program)
-//    {
-//        gglError(GL_INVALID_OPERATION);
-//        return -2;
-//    }
-//    return _mesa_uniform(ctx->glCtx, program, location, count, values, type);
-   return -2;
+   if (!program)
+   {
+      gglError(GL_INVALID_OPERATION);
+      return -2;
+   }
+   int start = location;
+   int slots = 0, elems = 0;
+   switch (type) {
+   case GL_INT:
+   case GL_FLOAT:
+   case  GL_BOOL:
+      slots = count;
+      elems = 1;
+      break;
+   case GL_FLOAT_VEC2: // fall through
+   case  GL_INT_VEC2: // fall through
+   case  GL_BOOL_VEC2:
+      slots = count;
+      elems = 2;
+      break;
+   case  GL_INT_VEC3: // fall through
+   case  GL_BOOL_VEC3: // fall through
+   case  GL_FLOAT_VEC3: // fall through
+      slots = count;
+      elems = 3;
+      break;
+   case  GL_INT_VEC4: // fall through
+   case  GL_FLOAT_VEC4: // fall through
+   case  GL_BOOL_VEC4: // fall through
+      slots = count;
+      elems = 4;
+      break;
+   default:
+      assert(0);
+   }
+   if (0 < start)
+      return -1;
+   if (start + slots > program->Uniforms->Slots)
+      return -1;
+   for (int i = 0; i < slots; i++)
+      memcpy(program->ValuesUniform + start + i, values, elems * sizeof(float));
+   return start;
 }
 
 static void ShaderUniformMatrix(const GGLInterface * iface, gl_shader_program * program,

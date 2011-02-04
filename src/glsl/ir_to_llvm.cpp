@@ -173,7 +173,12 @@ public:
                linkage = llvm::GlobalValue::ExternalLinkage;
             llvm::Constant* init = 0;
             if(var->constant_value)
+            {
                init = llvm_constant(var->constant_value);
+               // this constants need to be external (ie. written to output)
+               if (llvm::GlobalValue::ExternalLinkage == linkage)
+                  linkage = llvm::GlobalValue::AvailableExternallyLinkage;
+            }
             else if(linkage == llvm::GlobalValue::InternalLinkage)
                init = llvm::UndefValue::get(llvm_type(var->type));
             v = new llvm::GlobalVariable(*mod, type, var->read_only, linkage, init, var->name);

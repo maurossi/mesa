@@ -146,7 +146,7 @@ struct GGLInterface {
    gl_shader_t * (* ShaderCreate)(const GGLInterface_t * iface, GLenum type);
    // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call; use infoLog to retrieve status
    GLboolean (* ShaderCompile)(const GGLInterface_t * iface, gl_shader_t * shader,
-                               const char * glsl, char ** infoLog);
+                               const char * glsl, const char ** infoLog);
    // could be used after link if original shaders will not be linked in another program
    void (* ShaderDelete)(const GGLInterface_t * iface, gl_shader_t * shader);
 

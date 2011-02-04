@@ -1707,8 +1707,8 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
    }
 
    if (prog->_LinkedShaders[MESA_SHADER_VERTEX] != NULL) {
-      demote_shader_inputs_and_outputs(prog->_LinkedShaders[MESA_SHADER_VERTEX],
-				       ir_var_out);
+      //demote_shader_inputs_and_outputs(prog->_LinkedShaders[MESA_SHADER_VERTEX],
+		//		       ir_var_out); for testing, don't demote
    }
 
    if (prog->_LinkedShaders[MESA_SHADER_GEOMETRY] != NULL) {
