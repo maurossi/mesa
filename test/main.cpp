@@ -8,7 +8,7 @@
 
 
 #define DRAW_TO_SCREEN 1
-#define USE_16BPP_TEXTURE 0 // forces texture to load as 16bpp
+#define USE_16BPP_TEXTURE 0 // forces texture to load as 16bpp, define before image_file.h
 
 #ifdef __arm__
 #define PATH_PREFIX "/data/"
@@ -101,7 +101,7 @@ void test_scan()
    SetupDrawingSurface(&width, &height, &bpp);
    frameSurface.data = PresentDrawingSurface();
 #else
-   const unsigned width = 1280, height = 800;
+   const unsigned width = 640, height = 400;
    frameSurface.data = (unsigned int *)malloc(width * height * 4);
 #endif
 
@@ -262,7 +262,7 @@ void test_scan()
    //ggl->ClearDepthf(ggl, pos.z + 0.0001f); // when there is no transform in vs
    ggl->ClearDepthf(ggl, 1);
    ggl->EnableDisable(ggl, GL_BLEND, false);
-   //ggl->EnableDisable(ggl, GL_DEPTH_TEST, false);
+   ggl->EnableDisable(ggl, GL_DEPTH_TEST, true);
    ggl->EnableDisable(ggl, GL_STENCIL_TEST, false);
    
    
@@ -278,12 +278,12 @@ void test_scan()
 #endif
    for (
 #ifdef __arm__
-      unsigned i = 0; i <= 100; i++
+      unsigned i = 0; i <= 360; i++
 #else
-      unsigned i = 0; i <= 1; i+= 1
+      unsigned i = 0; i <= 10; i+= 1
 #endif
    ) {
-   
+//      printf("frame=%d \n", i);
       ggl->Clear(ggl, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
       //ggl->Clear(ggl, GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 
@@ -304,7 +304,7 @@ void test_scan()
 
       //_math_matrix_scale(&m0, 0.2, 0.2, 0.2);
       //_math_matrix_translate(&m2, 1, 1, 1);
-      _math_matrix_rotate(&m2, i, 1, 2, 3);
+      _math_matrix_rotate(&m2, i * 2, 1, 2, 3);
       //_math_matrix_rotate(&m2, i, 0, 0, 1);
 
       // matrix on the right is applied to vector first

@@ -47,6 +47,8 @@ class LLVMContext;
 typedef int BlendComp_t;
 #endif
 
+typedef void (*ShaderFunction_t)(const void*,void*,const void*);
+   
 #define GGL_GET_CONTEXT(context, interface) GGLContext * context = (GGLContext *)interface;
 #define GGL_GET_CONST_CONTEXT(context, interface) const GGLContext * context = \
     (const GGLContext *)interface; (void)context;
@@ -67,60 +69,13 @@ struct GGLContext {
       unsigned stencil; // s_8; repeated to clear 4 pixels at a time
    } clearState;
 
-   struct StencilState {
-      unsigned char ref, mask; // ref is masked during StencilFuncSeparate
+   GGLStencilState frontStencil, backStencil; // all affect scanline jit
 
-      // GL_NEVER = 0, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL,
-      // GL_ALWAYS; value = GLenum  & 0x7 (GLenum is 0x200-0x207)
-      unsigned char func; // compare function
+   mutable GGLActiveStencilState activeStencil; // after primitive assembly, call StencilSelect
 
-      // GL_ZERO = 0, GL_KEEP = 1, GL_REPLACE, GL_INCR, GL_DECR, GL_INVERT, GL_INCR_WRAP,
-      // GL_DECR_WRAP = 7; value = 0 | GLenum - GL_KEEP | GL_INVERT | GLenum - GL_INCR_WRAP
-      unsigned char sFail, dFail, dPass; // operations
-   } frontStencil, backStencil; // all affect scanline jit
+   GGLBufferState bufferState; // all affect scanline jit
 
-   mutable struct ActiveStencilState { // do not change layout, used in GenerateScanLine
-      unsigned char face; // FRONT = 0, BACK = 1
-      unsigned char ref, mask;
-   } activeStencil; // after primitive assembly, call StencilSelect
-
-   struct BufferState { // all affect scanline jit
-unsigned stencilTest :
-      1;
-unsigned depthTest :
-      1;
-      // same as sf/bFunc; GL_NEVER = 0, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL,
-      // GL_GEQUAL, GL_ALWAYS = 7; value = GLenum  & 0x7 (GLenum is 0x200-0x207)
-unsigned depthFunc :
-      3;
-   } bufferState;
-
-   struct BlendState { // all values affect scanline jit
-#if USE_LLVM_SCANLINE
-      unsigned char color[4]; // rgba[0,255]
-#else
-      Vec4<BlendComp_t> color;
-#endif
-
-unsigned scf :
-4, saf :
-4, dcf :
-4, daf :
-      4; // GL_ZERO = 0, GL_ONE, GL_SRC_COLOR = 2,
-      // GL_ONE_MINUS_SRC_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
-      // GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR,
-      // GL_SRC_ALPHA_SATURATE, GL_CONSTANT_COLOR = 11, GL_ONE_MINUS_CONSTANT_COLOR,
-      // GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA;
-      // value = 0,1 | GLenum - GL_SRC_COLOR + 2 | GLenum - GL_CONSTANT_COLOR + 11
-
-unsigned ce :
-3, ae :
-      3; // GL_FUNC_ADD = 0, GL_FUNC_SUBTRACT = 4,
-      // GL_FUNC_REVERSE_SUBTRACT = 5; value = GLenum - GL_FUNC_ADD
-
-unsigned enable :
-      1;
-   } blendState;
+   GGLBlendState blendState; // all affect scanline jit
 
    struct {
       // format affects vs and fs jit

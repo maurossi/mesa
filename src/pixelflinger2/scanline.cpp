@@ -197,9 +197,10 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
                       + y * ctx->frameSurface.width + startX;
    const VectorComp_t div = VectorComp_t_CTR(1 / (float)(endX - startX));
 
-   memcpy(ctx->glCtx->CurrentProgram->ValuesVertexOutput, v1, sizeof(*v1));
+   //memcpy(ctx->glCtx->CurrentProgram->ValuesVertexOutput, v1, sizeof(*v1));
    // shader symbols are mapped to gl_shader_program_Values*
-   VertexOutput & vertex(*(VertexOutput*)ctx->glCtx->CurrentProgram->ValuesVertexOutput);
+   //VertexOutput & vertex(*(VertexOutput*)ctx->glCtx->CurrentProgram->ValuesVertexOutput);
+   VertexOutput vertex(*v1);
    VertexOutput vertexDx(*v2);
 
    vertexDx.position -= v1->position;
@@ -236,14 +237,14 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
    // TODO DXL consider inverting gl_FragCoord.y
 
 #if USE_LLVM_SCANLINE
-   typedef void (* ScanLineFunction_t)(VertexOutput * start, VertexOutput * step,
+   typedef void (* ScanLineFunction_t)(VertexOutput * start, VertexOutput * step, float (*constants)[4],
                                        unsigned * frame, int * depth, unsigned char * stencil,
-                                       GGLContext::ActiveStencilState *, unsigned count);
+                                       GGLActiveStencilState *, unsigned count);
 
    ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
                                          ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
    if (endX >= startX) {
-      scanLineFunction(&vertex, &vertexDx, frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
+      scanLineFunction(&vertex, &vertexDx, ctx->glCtx->CurrentProgram->ValuesUniform, frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
    }
 #else
 
@@ -335,9 +336,9 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
          }
          if (!DepthTest || zCmp) {
             float * varying = (float *)ctx->glCtx->CurrentProgram->ValuesVertexOutput;
-
-            assert((void *)&(vertex.varyings[0]) == &(varying[2 * 4]));
-            ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function();
+            ShaderFunction_t function = (ShaderFunction_t)ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
+            function(&vertex, &vertex, ctx->glCtx->CurrentProgram->ValuesUniform);
+            //ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function();
             if (BlendEnable) {
                BlendComp_t sOne = 255, sZero = 0;
                Vec4<BlendComp_t> one = sOne, zero = sZero;
@@ -365,21 +366,23 @@ void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexO
                dst.a = (dc >>= 8) & 255;
 
                Vec4<BlendComp_t> sf, df;
+               Vec4<BlendComp_t> blendStateColor(ctx->blendState.color[0], ctx->blendState.color[1],
+                                                 ctx->blendState.color[2], ctx->blendState.color[3]);
 
                BlendFactor(ctx->blendState.scf, sf, src, dst,
-                           ctx->blendState.color, one, zero, src.a, dst.a,
-                           ctx->blendState.color.a, sOne);
+                           blendStateColor, one, zero, src.a, dst.a,
+                           blendStateColor.a, sOne);
                if (ctx->blendState.scf != ctx->blendState.saf)
                   BlendFactor(ctx->blendState.saf, sf.a, src.a, dst.a,
-                              ctx->blendState.color.a, sOne, sZero, src.a, dst.a,
-                              ctx->blendState.color.a, sOne);
+                              blendStateColor.a, sOne, sZero, src.a, dst.a,
+                              blendStateColor.a, sOne);
                BlendFactor(ctx->blendState.dcf, df, src, dst,
-                           ctx->blendState.color, one, zero, src.a, dst.a,
-                           ctx->blendState.color.a, sOne);
+                           blendStateColor, one, zero, src.a, dst.a,
+                           blendStateColor.a, sOne);
                if (ctx->blendState.dcf != ctx->blendState.daf)
                   BlendFactor(ctx->blendState.daf, df.a, src.a, dst.a,
-                              ctx->blendState.color.a, sOne, sZero, src.a, dst.a,
-                              ctx->blendState.color.a, sOne);
+                              blendStateColor.a, sOne, sZero, src.a, dst.a,
+                              blendStateColor.a, sOne);
 
                Vec4<BlendComp_t> sfs(sf), dfs(df);
                sfs.LShr(7);

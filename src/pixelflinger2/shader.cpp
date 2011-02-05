@@ -35,9 +35,9 @@
 
 struct ShaderKey {
    struct ScanLineKey {
-      GGLContext::StencilState frontStencil, backStencil;
-      GGLContext::BufferState bufferState;
-      GGLContext::BlendState blendState;
+      GGLStencilState frontStencil, backStencil;
+      GGLBufferState bufferState;
+      GGLBlendState blendState;
    } scanLineKey;
    GGLPixelFormat textureFormats[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS];
    unsigned char textureParameters[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]; // wrap and filter
@@ -203,6 +203,10 @@ static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
    link_shaders(ctx->glCtx, program);
+   if (infoLog)
+      *infoLog = program->InfoLog;
+   if (!program->LinkStatus)
+      return program->LinkStatus;
    for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
       const gl_program_parameter & attribute = program->Attributes->Parameters[i];
       printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
@@ -215,8 +219,6 @@ static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program
       const gl_uniform & uniform = program->Uniforms->Uniforms[i];
       printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
    }
-   if (infoLog)
-      *infoLog = program->InfoLog;
    return program->LinkStatus;
 }
 
@@ -401,6 +403,7 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
       GetShaderKey(ctx, shader, &shaderKey);
       Instance * instance = shader->executable->instances[shaderKey];
       if (!instance) {
+         puts("begin jit new shader");
          instance = hieralloc_zero(shader->executable, Instance);
          instance->module = new llvm::Module("glsl", *ctx->llvmCtx);
 
@@ -414,7 +417,7 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
 
          llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, ctx, shaderName);
          if (!module)
-            assert(0); // ir to llvm failed
+            assert(0);
 #if USE_LLVM_SCANLINE
          if (GL_FRAGMENT_SHADER == shader->Type) {
             char scanlineName [SCANLINE_KEY_STRING_LEN] = {0};
@@ -425,10 +428,10 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
 #endif
             CodeGen(instance, mainName, shader, program, ctx);
          shader->executable->instances[shaderKey] = instance;
-         debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function); //getchar();
+         debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function);
       } else
-         debug_printf("use cached shader %p \n", instance->function);
-
+//         debug_printf("use cached shader %p \n", instance->function);
+      ;
 
       shader->function  = instance->function;
 
@@ -493,7 +496,6 @@ static GLint ShaderVaryingLocation(const GGLInterface_t * iface, const gl_shader
 static GLint ShaderUniformLocation(const GGLInterface * iface, const gl_shader_program * program,
                                    const char * name)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
       if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
          return program->Uniforms->Uniforms[i].Pos;
@@ -503,7 +505,6 @@ static GLint ShaderUniformLocation(const GGLInterface * iface, const gl_shader_p
 static void ShaderUniformGetfv(const GGLInterface * iface, gl_shader_program * program,
                                GLint location, GLfloat * params)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
    memcpy(params, program->ValuesUniform + location, sizeof(*program->ValuesUniform));
 }
 
@@ -519,7 +520,6 @@ static GLint ShaderUniform(const GGLInterface * iface, gl_shader_program * progr
                            GLint location, GLsizei count, const GLvoid *values, GLenum type)
 {
    // TODO: sampler uniform
-   GGL_GET_CONST_CONTEXT(ctx, iface);
    if (!program)
    {
       gglError(GL_INVALID_OPERATION);
@@ -568,16 +568,15 @@ static void ShaderUniformMatrix(const GGLInterface * iface, gl_shader_program * 
                                 GLint cols, GLint rows, GLint location, GLsizei count,
                                 GLboolean transpose, const GLfloat *values)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
    if (location == -1)
       return;
    assert(cols == rows);
    int start = location, slots = cols * count;
-   if (start < 0 || start + slots > ctx->glCtx->CurrentProgram->Uniforms->Slots)
+   if (start < 0 || start + slots > program->Uniforms->Slots)
       return gglError(GL_INVALID_OPERATION);
    for (unsigned i = 0; i < slots; i++)
    {
-      float * column = ctx->glCtx->CurrentProgram->ValuesUniform[start + i];
+      float * column = program->ValuesUniform[start + i];
       for (unsigned j = 0; j < rows; j++)
          column[j] = *(values++);
    }

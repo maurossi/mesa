@@ -65,17 +65,10 @@ static void FrontFace(GGLInterface * iface, GLenum mode)
 static void BlendColor(GGLInterface * iface, GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha)
 {
    GGL_GET_CONTEXT(ctx, iface);
-#if USE_LLVM_SCANLINE
    ctx->blendState.color[0] = MIN2(MAX2(red * 255, 0.0f), 255.0f);
    ctx->blendState.color[1] = MIN2(MAX2(green * 255, 0.0f), 255.0f);
    ctx->blendState.color[2] = MIN2(MAX2(blue * 255, 0.0f), 255.0f);
    ctx->blendState.color[3] = MIN2(MAX2(alpha * 255, 0.0f), 255.0f);
-#else
-   ctx->blendState.color.r = MIN2(MAX2(red * 255, 0), 255);
-   ctx->blendState.color.g = MIN2(MAX2(green * 255, 0), 255);
-   ctx->blendState.color.b = MIN2(MAX2(blue * 255, 0), 255);
-   ctx->blendState.color.a = MIN2(MAX2(alpha * 255, 0), 255);
-#endif
    SetShaderVerifyFunctions(iface);
 }
 

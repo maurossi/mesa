@@ -86,11 +86,28 @@ public:
    
    const GGLContext * gglCtx;
    const char * shaderSuffix;
+   llvm::Value * inputsPtr, * outputsPtr, * constantsPtr; // internal globals to store inputs/outputs/constants pointers
+   llvm::Value * inputs, * outputs, * constants;
    
    ir_to_llvm_visitor(llvm::Module* p_mod, const GGLContext * GGLCtx, const char * suffix)
    : ctx(p_mod->getContext()), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, 
-      (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx), shaderSuffix(suffix)
+      (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx), shaderSuffix(suffix),
+      inputsPtr(NULL), outputsPtr(NULL), constantsPtr(NULL),
+      inputs(NULL), outputs(NULL), constants(NULL)
    {
+      const llvm::PointerType * const floatVecPtrType = llvm::PointerType::get(llvm::VectorType::get(bld.getFloatTy(),4), 0);
+      llvm::Constant * const nullFloatVecPtr = llvm::Constant::getNullValue(floatVecPtrType);
+      // make input, output and consts global pointers so they can be used in
+      // different LLVM functions since the shader shares these "registers" across "functions"
+          
+      inputsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false, 
+         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_inputPtr");  
+
+      outputsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false,
+         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_outputsPtr");    
+         
+      constantsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false, 
+         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_constantsPtr");    
    }
 
    const llvm::Type* llvm_base_type(unsigned base_type)
@@ -156,33 +173,76 @@ public:
       {
          const llvm::Type* type = llvm_type(var->type);
 
-         llvm::Value* v;
+         llvm::Value* v = NULL;
          if(fun)
          {
-            if(bb == &fun->getEntryBlock())
-               v = bld.CreateAlloca(type, 0, var->name);
+            if (ir_var_in == var->mode)
+            {
+               assert(var->location >= 0);
+               v = bld.CreateConstGEP1_32(inputs, var->location);
+               v = bld.CreateBitCast(v, llvm::PointerType::get(llvm_type(var->type), 0), var->name);
+            }
+            else if (ir_var_out == var->mode)
+            {
+               assert(var->location >= 0);
+               v = bld.CreateConstGEP1_32(outputs, var->location);
+               v = bld.CreateBitCast(v, llvm::PointerType::get(llvm_type(var->type), 0), var->name);
+            }
+            else if (ir_var_uniform == var->mode)
+            {
+               assert(var->location >= 0);
+               v = bld.CreateConstGEP1_32(constants, var->location);
+               v = bld.CreateBitCast(v, llvm::PointerType::get(llvm_type(var->type), 0), var->name);
+            }
             else
-               v = new llvm::AllocaInst(type, 0, var->name, fun->getEntryBlock().getTerminator());
+            {
+               if(bb == &fun->getEntryBlock())
+                  v = bld.CreateAlloca(type, 0, var->name);
+               else
+                  v = new llvm::AllocaInst(type, 0, var->name, fun->getEntryBlock().getTerminator());
+            }
          }
          else // TODO: can anything global be non-constant in GLSL?; fix linkage
          {
-            llvm::Function::LinkageTypes linkage;
-            if(var->mode == ir_var_auto || var->mode == ir_var_temporary)
-               linkage = llvm::GlobalValue::InternalLinkage;
-            else
-               linkage = llvm::GlobalValue::ExternalLinkage;
-            llvm::Constant* init = 0;
-            if(var->constant_value)
+            //printf("var '%s' mode=%d location=%d \n", var->name, var->mode, var->location);
+            switch(var->mode)
             {
-               init = llvm_constant(var->constant_value);
-               // this constants need to be external (ie. written to output)
-               if (llvm::GlobalValue::ExternalLinkage == linkage)
-                  linkage = llvm::GlobalValue::AvailableExternallyLinkage;
+               case ir_var_auto: // fall through
+               case ir_var_temporary:
+               {
+                  llvm::Constant * init = llvm::UndefValue::get(llvm_type(var->type));
+                  if(var->constant_value)
+                     init = llvm_constant(var->constant_value);
+                  v = new llvm::GlobalVariable(*mod, type, var->read_only, llvm::GlobalValue::InternalLinkage, init, var->name);
+                  break;
+               }
+               case ir_var_in: // fall through
+               case ir_var_out: // fall through
+               case ir_var_uniform: // fall through
+                  assert(var->location >= 0);
+                  return NULL; // variable outside of function means declaration
+               default:
+                  assert(0);
             }
-            else if(linkage == llvm::GlobalValue::InternalLinkage)
-               init = llvm::UndefValue::get(llvm_type(var->type));
-            v = new llvm::GlobalVariable(*mod, type, var->read_only, linkage, init, var->name);
+
+//            llvm::Function::LinkageTypes linkage;
+//            if(var->mode == ir_var_auto || var->mode == ir_var_temporary)
+//               linkage = llvm::GlobalValue::InternalLinkage;
+//            else
+//               linkage = llvm::GlobalValue::ExternalLinkage;
+//            llvm::Constant* init = 0;
+//            if(var->constant_value)
+//            {
+//               init = llvm_constant(var->constant_value);
+//               // this constants need to be external (ie. written to output)
+//               if (llvm::GlobalValue::ExternalLinkage == linkage)
+//                  linkage = llvm::GlobalValue::AvailableExternallyLinkage;
+//            }
+//            else if(linkage == llvm::GlobalValue::InternalLinkage)
+//               init = llvm::UndefValue::get(llvm_type(var->type));
+//            v = new llvm::GlobalVariable(*mod, type, var->read_only, linkage, init, var->name);
          }
+         assert(v);
          llvm_variables[var] = v;
          return v;
       }
@@ -207,16 +267,23 @@ public:
       else
       {
          llvm::Function::LinkageTypes linkage;
-         if(!strcmp(name, "main") || !sig->is_defined)
-            linkage = llvm::Function::ExternalLinkage;
-         else
-            linkage = llvm::Function::InternalLinkage;
          std::vector<const llvm::Type*> params;
          foreach_iter(exec_list_iterator, iter, sig->parameters) {
             ir_variable* arg = (ir_variable*)iter.get();
             params.push_back(llvm_type(arg->type));
          }
-
+         
+         if(!strcmp(name, "main") || !sig->is_defined)
+         {
+            linkage = llvm::Function::ExternalLinkage;
+            llvm::PointerType * vecPtrTy = llvm::PointerType::get(llvm::VectorType::get(bld.getFloatTy(), 4), 0);
+            assert(0 == params.size());
+            params.push_back(vecPtrTy); // inputs
+            params.push_back(vecPtrTy); // outputs
+            params.push_back(vecPtrTy); // constants
+         }
+         else
+            linkage = llvm::Function::InternalLinkage;
          llvm::FunctionType* ft = llvm::FunctionType::get(llvm_type(sig->return_type), params, false);
          function = llvm::Function::Create(ft, linkage, functionName, mod);
          free(functionName);
@@ -826,7 +893,7 @@ public:
 
    virtual void visit(class ir_dereference_variable *ir)
    {
-      result = bld.CreateLoad(llvm_pointer(ir));
+      result = bld.CreateLoad(llvm_pointer(ir), ir->variable_referenced()->name);
    }
 
    virtual void visit(class ir_texture * ir)
@@ -1235,12 +1302,36 @@ public:
       bld.SetInsertPoint(bb);
 
       llvm::Function::arg_iterator ai = fun->arg_begin();
-      foreach_iter(exec_list_iterator, iter, sig->parameters) {
-         ir_variable* arg = (ir_variable*)iter.get();
-         ai->setName(arg->name);
-         bld.CreateStore(ai, llvm_variable(arg));
-         ++ai;
+      if (!strcmp("main",sig->function_name()))
+      {
+         assert(3 == fun->arg_size());
+         bld.CreateStore(ai, inputsPtr);
+         inputs = ai;
+         ai++;
+         bld.CreateStore(ai, outputsPtr);
+         outputs = ai;
+         ai++;
+         bld.CreateStore(ai, constantsPtr);
+         constants = ai;
+         ai++;
       }
+      else
+      {
+         foreach_iter(exec_list_iterator, iter, sig->parameters) {
+            ir_variable* arg = (ir_variable*)iter.get();
+            ai->setName(arg->name);
+            bld.CreateStore(ai, llvm_variable(arg));
+            ++ai;
+         }
+         inputs = bld.CreateLoad(inputsPtr);
+         outputs = bld.CreateLoad(outputsPtr);
+         constants = bld.CreateLoad(constantsPtr);
+      }
+      inputs->setName("gl_inputs");
+      outputs->setName("gl_outputs");
+      constants->setName("gl_constants");
+      
+      
 
       foreach_iter(exec_list_iterator, iter, sig->body) {
          ir_instruction *ir = (ir_instruction *)iter.get();
@@ -1278,6 +1369,8 @@ glsl_ir_to_llvm_module(struct exec_list *ir, llvm::Module * mod,
 //   mod->dump();
    if(llvm::verifyModule(*mod, llvm::PrintMessageAction, 0))
    {
+      puts("**\n module verification failed **\n");
+      mod->dump();
       assert(0);
       return NULL;
    }

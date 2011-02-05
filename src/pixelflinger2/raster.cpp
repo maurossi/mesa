@@ -19,6 +19,7 @@
 #include <assert.h>
 #include <math.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "pixelflinger2.h"
 #include "src/mesa/main/mtypes.h"
@@ -62,9 +63,13 @@ static void ProcessVertex(const GGLInterface * iface, const VertexInput * input,
 //    textureGGLContext = ctx;
 //#endif
 //
-   memcpy(ctx->glCtx->CurrentProgram->ValuesVertexInput, input, sizeof(*input));
-   ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_VERTEX]->function();
-   memcpy(output, ctx->glCtx->CurrentProgram->ValuesVertexOutput, sizeof(*output));
+
+//   memcpy(ctx->glCtx->CurrentProgram->ValuesVertexInput, input, sizeof(*input));
+//   ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_VERTEX]->function();
+//   memcpy(output, ctx->glCtx->CurrentProgram->ValuesVertexOutput, sizeof(*output));
+   
+   ShaderFunction_t function = (ShaderFunction_t)ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_VERTEX]->function;
+   function(input, output, ctx->glCtx->CurrentProgram->ValuesUniform);
 //   const Vector4 * constants = (Vector4 *)
 //    ctx->glCtx->Shader.CurrentProgram->VertexProgram->Parameters->ParameterValues;
 //	ctx->glCtx->Shader.CurrentProgram->GLVMVP->function(input, output, constants);

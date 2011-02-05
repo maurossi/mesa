@@ -384,6 +384,7 @@ static FunctionType * ScanLineFunctionType(IRBuilder<> & builder)
 
    funcArgs.push_back(vectorPtr); // start
    funcArgs.push_back(vectorPtr); // step
+   funcArgs.push_back(vectorPtr); // constants
    funcArgs.push_back(intPointerType); // frame
    funcArgs.push_back(intPointerType); // depth
    funcArgs.push_back(bytePointerType); // stencil
@@ -399,7 +400,7 @@ static FunctionType * ScanLineFunctionType(IRBuilder<> & builder)
 
 // generated scanline function parameters are VertexOutput * start, VertexOutput * step, 
 // unsigned * frame, int * depth, unsigned char * stencil,
-// ActiveStencilState * stencilState, unsigned count
+// GGLActiveStencilState * stencilState, unsigned count
 void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * program, Module * mod,
                       const char * shaderName, const char * scanlineName)
 {
@@ -427,6 +428,8 @@ void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * progr
    start->setName("start");
    Value * step = args++;
    step->setName("step");
+   Value * constants = args++;
+   constants->setName("constants");
 
    // need alloc to be able to assign to it by using store
    Value * framePtr = builder.CreateAlloca(intPointerType);
@@ -567,14 +570,18 @@ void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * progr
    condBranch.ifCond(sCmp, "if_sCmp", "sCmp_fail");
    condBranch.ifCond(zCmp, "if_zCmp", "zCmp_fail");
 
-   Value * fsInputs = builder.CreateConstInBoundsGEP1_32(start, 
-                            offsetof(VertexOutput,position)/sizeof(Vector4));
+//   Value * fsInputs = builder.CreateConstInBoundsGEP1_32(start, 
+//                            offsetof(VertexOutput,position)/sizeof(Vector4));
+   Value * inputs = start;
+   Value * outputs = inputs;
+   
    Value * fsOutputs = builder.CreateConstInBoundsGEP1_32(start, 
                             offsetof(VertexOutput,fragColor)/sizeof(Vector4));
     
    Function * fsFunction = mod->getFunction(shaderName);
    assert(fsFunction);
-   CallInst *call = builder.CreateCall(fsFunction);
+//   CallInst *call = builder.CreateCall(fsFunction);
+   CallInst *call = builder.CreateCall3(fsFunction,inputs, outputs, constants);
    call->setCallingConv(CallingConv::C);
    call->setTailCall(false);
 

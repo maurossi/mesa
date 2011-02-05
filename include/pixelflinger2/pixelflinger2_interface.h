@@ -84,6 +84,57 @@ unsigned magFilter :
    1; // GL_NEAREST = 0, GL_LINEAR
 } GGLTexture_t;
 
+typedef struct GGLStencilState {
+   unsigned char ref, mask; // ref is masked during StencilFuncSeparate
+
+   // GL_NEVER = 0, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL, GL_GEQUAL,
+   // GL_ALWAYS; value = GLenum  & 0x7 (GLenum is 0x200-0x207)
+   unsigned char func; // compare function
+
+   // GL_ZERO = 0, GL_KEEP = 1, GL_REPLACE, GL_INCR, GL_DECR, GL_INVERT, GL_INCR_WRAP,
+   // GL_DECR_WRAP = 7; value = 0 | GLenum - GL_KEEP | GL_INVERT | GLenum - GL_INCR_WRAP
+   unsigned char sFail, dFail, dPass; // operations
+}  StencilState_t;
+
+typedef struct GGLActiveStencilState { // do not change layout, used in GenerateScanLine
+   unsigned char face; // FRONT = 0, BACK = 1
+   unsigned char ref, mask;
+} ActiveStencilState_t;
+
+typedef struct GGLBufferState { // all affect scanline jit
+unsigned stencilTest :
+   1;
+unsigned depthTest :
+   1;
+   // same as sf/bFunc; GL_NEVER = 0, GL_LESS, GL_EQUAL, GL_LEQUAL, GL_GREATER, GL_NOTEQUAL,
+   // GL_GEQUAL, GL_ALWAYS = 7; value = GLenum  & 0x7 (GLenum is 0x200-0x207)
+unsigned depthFunc :
+   3;
+} BufferState_t;
+
+typedef struct GGLBlendState { // all values affect scanline jit
+   unsigned char color[4]; // rgba[0,255]
+
+unsigned scf :
+4, saf :
+4, dcf :
+4, daf :
+   4; // GL_ZERO = 0, GL_ONE, GL_SRC_COLOR = 2,
+   // GL_ONE_MINUS_SRC_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+   // GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR,
+   // GL_SRC_ALPHA_SATURATE, GL_CONSTANT_COLOR = 11, GL_ONE_MINUS_CONSTANT_COLOR,
+   // GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA;
+   // value = 0,1 | GLenum - GL_SRC_COLOR + 2 | GLenum - GL_CONSTANT_COLOR + 11
+
+unsigned ce :
+3, ae :
+   3; // GL_FUNC_ADD = 0, GL_FUNC_SUBTRACT = 4,
+   // GL_FUNC_REVERSE_SUBTRACT = 5; value = GLenum - GL_FUNC_ADD
+
+unsigned enable :
+   1;
+} BlendState_t;
+
 // most functions are according to GL ES 2.0 spec and uses GLenum values
 // there is some error checking for invalid GLenum
 typedef struct GGLInterface GGLInterface_t;
