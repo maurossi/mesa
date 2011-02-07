@@ -36,7 +36,7 @@ extern "C" {
 #include "ir_optimization.h"
 #include "loop_analysis.h"
 
-_mesa_glsl_parse_state::_mesa_glsl_parse_state(struct gl_context *ctx,
+_mesa_glsl_parse_state::_mesa_glsl_parse_state(const struct gl_context *ctx,
 					       GLenum target, void *mem_ctx)
 {
    switch (target) {

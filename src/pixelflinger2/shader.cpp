@@ -67,7 +67,7 @@ bool do_mat_op_to_vec(exec_list *instructions);
 
 extern void link_shaders(struct gl_context *ctx, struct gl_shader_program *prog);
 
-extern "C" void compile_shader(struct gl_context *ctx, struct gl_shader *shader);
+extern "C" void compile_shader(const struct gl_context *ctx, struct gl_shader *shader);
 
 extern "C" void _mesa_reference_shader(struct gl_context *ctx, struct gl_shader **ptr,
                                           struct gl_shader *sh)
@@ -105,6 +105,11 @@ extern "C" void _mesa_delete_shader(struct gl_context *ctx, struct gl_shader *sh
    hieralloc_free(shader);
 }
 
+gl_shader * GGLShaderCreate(GLenum type)
+{
+   return _mesa_new_shader(NULL, 0, type);
+}
+
 static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
@@ -119,6 +124,17 @@ static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
    return shader;
 }
 
+GLboolean GGLShaderCompile(const gl_context * glCtx, gl_shader * shader,
+                           const char * glsl, const char ** infoLog)
+{
+   shader->Source = glsl;
+   compile_shader(glCtx, shader);
+   shader->Source = NULL;
+   if (infoLog)
+      *infoLog = shader->InfoLog;
+   return shader->CompileStatus;
+}
+
 static GLboolean ShaderCompile(const GGLInterface * iface, gl_shader * shader,
                                const char * glsl, const char ** infoLog)
 {
@@ -127,18 +143,36 @@ static GLboolean ShaderCompile(const GGLInterface * iface, gl_shader * shader,
       gglError(GL_INVALID_VALUE);
       return GL_FALSE;
    }
-   shader->Source = glsl;
-   compile_shader(ctx->glCtx, shader);
-   shader->Source = NULL;
-   if (infoLog)
-      *infoLog = shader->InfoLog;
-   return shader->CompileStatus;
+   return GGLShaderCompile(ctx->glCtx, shader, glsl, infoLog);
+}
+
+void GGLShaderDelete(gl_shader * shader)
+{
+   _mesa_delete_shader(NULL, shader);
 }
 
 static void ShaderDelete(const GGLInterface * iface, gl_shader * shader)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
    _mesa_delete_shader(ctx->glCtx, shader);
+}
+
+gl_shader_program * GGLShaderProgramCreate()
+{
+   gl_shader_program * program = hieralloc_zero(NULL, struct gl_shader_program);
+   if (!program)
+      return NULL;
+   program->Attributes = hieralloc_zero(program, gl_program_parameter_list);
+   if (!program->Attributes) {
+      hieralloc_free(program);
+      return NULL;
+   }
+   program->Varying = hieralloc_zero(program, gl_program_parameter_list);
+   if (!program->Varying) {
+      hieralloc_free(program);
+      return NULL;
+   }
+   return program;
 }
 
 static gl_shader_program * ShaderProgramCreate(const GGLInterface * iface)
@@ -164,27 +198,33 @@ static gl_shader_program * ShaderProgramCreate(const GGLInterface * iface)
    return program;
 }
 
-static void ShaderAttach(const GGLInterface * iface, gl_shader_program * program,
-                         gl_shader * shader)
+unsigned GGLShaderAttach(gl_shader_program * program, gl_shader * shader)
 {
    for (unsigned i = 0; i < program->NumShaders; i++)
       if (program->Shaders[i]->Type == shader->Type || program->Shaders[i] == shader)
-         return gglError(GL_INVALID_OPERATION);
+         return GL_INVALID_OPERATION;
 
    program->Shaders = (gl_shader **)hieralloc_realloc
                       (program, program->Shaders, gl_shader *, program->NumShaders + 1);
    if (!program->Shaders) {
-      gglError(GL_OUT_OF_MEMORY);
       assert(0);
-      return;
+      return GL_OUT_OF_MEMORY;
    }
    program->Shaders[program->NumShaders] = shader;
    program->NumShaders++;
    shader->RefCount++;
+   return GL_NO_ERROR;
 }
 
-static void ShaderDetach(const GGLInterface * iface, gl_shader_program * program,
+static void ShaderAttach(const GGLInterface * iface, gl_shader_program * program,
                          gl_shader * shader)
+{
+   unsigned error = GGLShaderAttach(program, shader);
+   if (GL_NO_ERROR != error)
+      gglError(error);
+}
+
+unsigned GGLShaderDetach(gl_shader_program * program, gl_shader * shader)
 {
    for (unsigned i = 0; i < program->NumShaders; i++)
       if (program->Shaders[i] == shader) {
@@ -192,17 +232,24 @@ static void ShaderDetach(const GGLInterface * iface, gl_shader_program * program
          program->Shaders[i] = program->Shaders[program->NumShaders];
          shader->RefCount--;
          if (1 == shader->RefCount && shader->DeletePending)
-            iface->ShaderDelete(iface, shader);
-         return;
+            GGLShaderDelete(shader);
+         return GL_NO_ERROR;
       }
-   gglError(GL_INVALID_OPERATION);
+   return (GL_INVALID_OPERATION);
 }
 
-static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program * program,
-                                   const char ** infoLog)
+static void ShaderDetach(const GGLInterface * iface, gl_shader_program * program,
+                         gl_shader * shader)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
-   link_shaders(ctx->glCtx, program);
+   unsigned error = GGLShaderDetach(program, shader);
+   if (GL_NO_ERROR != error)
+      gglError(error);
+}
+
+GLboolean GGLShaderProgramLink(gl_context * glCtx, gl_shader_program * program,
+                               const char ** infoLog)
+{
+   link_shaders(glCtx, program);
    if (infoLog)
       *infoLog = program->InfoLog;
    if (!program->LinkStatus)
@@ -220,6 +267,12 @@ static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program
       printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
    }
    return program->LinkStatus;
+}
+static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program * program,
+                                   const char ** infoLog)
+{
+   GGL_GET_CONST_CONTEXT(ctx, iface);
+   return GGLShaderProgramLink(ctx->glCtx, program, infoLog);
 }
 
 static void GetShaderKey(const GGLContext * ctx, const gl_shader * shader, ShaderKey * key)
@@ -431,7 +484,7 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
          debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function);
       } else
 //         debug_printf("use cached shader %p \n", instance->function);
-      ;
+         ;
 
       shader->function  = instance->function;
 
@@ -520,8 +573,7 @@ static GLint ShaderUniform(const GGLInterface * iface, gl_shader_program * progr
                            GLint location, GLsizei count, const GLvoid *values, GLenum type)
 {
    // TODO: sampler uniform
-   if (!program)
-   {
+   if (!program) {
       gglError(GL_INVALID_OPERATION);
       return -2;
    }
@@ -574,8 +626,7 @@ static void ShaderUniformMatrix(const GGLInterface * iface, gl_shader_program * 
    int start = location, slots = cols * count;
    if (start < 0 || start + slots > program->Uniforms->Slots)
       return gglError(GL_INVALID_OPERATION);
-   for (unsigned i = 0; i < slots; i++)
-   {
+   for (unsigned i = 0; i < slots; i++) {
       float * column = program->ValuesUniform[start + i];
       for (unsigned j = 0; j < rows; j++)
          column[j] = *(values++);

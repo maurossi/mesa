@@ -43,7 +43,7 @@ enum _mesa_glsl_parser_targets {
 struct gl_context;
 
 struct _mesa_glsl_parse_state {
-   _mesa_glsl_parse_state(struct gl_context *ctx, GLenum target,
+   _mesa_glsl_parse_state(const struct gl_context *ctx, GLenum target,
 			  void *mem_ctx);
 
    /* Callers of this hieralloc-based new need not call delete. It's

@@ -77,14 +77,7 @@ struct GGLContext {
 
    GGLBlendState blendState; // all affect scanline jit
 
-   struct {
-      // format affects vs and fs jit
-      GGLTexture textures[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]; // the active samplers
-      // array of pointers to texture surface data; used by LLVM generated texture sampler
-      void * textureData[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS];
-      // array of texture dimensions; used by LLVM generated texture sampler
-      unsigned textureDimensions[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS * 2];
-   } textureState;
+   GGLTextureState textureState;
 
    // called by ShaderUse to set to proper rendering functions
    void (* PickScanLine)(GGLInterface * iface);

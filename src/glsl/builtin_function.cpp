@@ -33,11 +33,11 @@ extern "C" struct gl_shader *
 _mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type);
 
 gl_shader *
-read_builtins(GLenum target, const char *protos, const char **functions, unsigned count)
+read_builtins(void * mem_ctx, GLenum target, const char *protos, const char **functions, unsigned count)
 {
    struct gl_context fakeCtx;
    fakeCtx.API = API_OPENGL;
-   gl_shader *sh = _mesa_new_shader(NULL, 0, target);
+   gl_shader *sh = _mesa_new_shader((gl_context *)mem_ctx, 0, target);
    struct _mesa_glsl_parse_state *st =
       new(sh) _mesa_glsl_parse_state(&fakeCtx, target, sh);
 
@@ -13556,7 +13556,7 @@ _mesa_read_profile(struct _mesa_glsl_parse_state *state,
    gl_shader *sh = builtin_profiles[profile_index];
 
    if (sh == NULL) {
-      sh = read_builtins(GL_VERTEX_SHADER, prototypes, functions, count);
+      sh = read_builtins(state, GL_VERTEX_SHADER, prototypes, functions, count);
       hieralloc_steal(builtin_mem_ctx, sh);
       builtin_profiles[profile_index] = sh;
    }

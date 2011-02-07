@@ -46,7 +46,7 @@ static int dump_hir = 1;
 static int dump_lir = 0;
 
 extern "C" void
-compile_shader(struct gl_context *ctx, struct gl_shader *shader)
+compile_shader(const struct gl_context *ctx, struct gl_shader *shader)
 {
    struct _mesa_glsl_parse_state *state =
       new(shader) _mesa_glsl_parse_state(ctx, shader->Type, shader);

@@ -25,6 +25,8 @@
 
 void gglError(unsigned error)
 {
+   if (GL_NO_ERROR == error)
+      return;
    assert(0);
 }
 
