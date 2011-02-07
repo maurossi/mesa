@@ -86,6 +86,8 @@ extern "C" {
 #include "main/shaderobj.h"
 }
 
+extern "C" void _mesa_delete_shader(gl_context * ctx, gl_shader * shader);
+
 /**
  * Visitor that determines whether or not a variable is ever written.
  */
@@ -835,7 +837,7 @@ link_intrastage_shaders(void *mem_ctx,
       return NULL;
    }
 
-   gl_shader *linked = ctx->Driver.NewShader(ctx, 0, main->Type);
+   gl_shader *linked = _mesa_new_shader(ctx, 0, main->Type);
    hieralloc_steal(prog, linked);
    linked->ir = new(linked) exec_list;
    clone_ir_list(mem_ctx, linked->ir, main->ir);
@@ -885,7 +887,7 @@ link_intrastage_shaders(void *mem_ctx,
 
    if (!link_function_calls(prog, linked, linking_shaders,
 			    num_linking_shaders)) {
-      ctx->Driver.DeleteShader(ctx, linked);
+      _mesa_delete_shader(ctx, linked);
       linked = NULL;
    }
 
@@ -1595,7 +1597,7 @@ link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
 
    for (unsigned int i = 0; i < MESA_SHADER_TYPES; i++) {
       if (prog->_LinkedShaders[i] != NULL)
-	 ctx->Driver.DeleteShader(ctx, prog->_LinkedShaders[i]);
+         _mesa_delete_shader(ctx, prog->_LinkedShaders[i]);
 
       prog->_LinkedShaders[i] = NULL;
    }

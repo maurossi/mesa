@@ -3077,7 +3077,6 @@ struct gl_context
    /** State possibly shared with other contexts in the address space */
 //   struct gl_shared_state *Shared;
 
-   struct gl_shader_program * CurrentProgram;    /**< currently active for rendering ř*/
    /** \name API function pointer tables */
    /*@{*/
    gl_api API;
@@ -3095,7 +3094,7 @@ struct gl_context
    /**
     * Device driver function pointer table
     */
-   struct dd_function_table Driver;
+//   struct dd_function_table Driver;
 
 //   void *DriverCtx;	/**< Points to device driver context/state */
 

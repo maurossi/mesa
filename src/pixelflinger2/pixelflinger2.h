@@ -69,15 +69,11 @@ struct GGLContext {
       unsigned stencil; // s_8; repeated to clear 4 pixels at a time
    } clearState;
 
-   GGLStencilState frontStencil, backStencil; // all affect scanline jit
+   gl_shader_program * CurrentProgram;
+   
+   mutable GGLActiveStencil activeStencil; // after primitive assembly, call StencilSelect
 
-   mutable GGLActiveStencilState activeStencil; // after primitive assembly, call StencilSelect
-
-   GGLBufferState bufferState; // all affect scanline jit
-
-   GGLBlendState blendState; // all affect scanline jit
-
-   GGLTextureState textureState;
+   GGLState state; // states affecting jit
 
    // called by ShaderUse to set to proper rendering functions
    void (* PickScanLine)(GGLInterface * iface);

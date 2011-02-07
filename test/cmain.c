@@ -66,8 +66,8 @@ int cmain(int argc, char **argv)
 
    ggl->ShaderAttach(ggl, program0, shader0);
    ggl->ShaderAttach(ggl, program0, shader1);
-   ggl->ShaderAttributeBind(ggl, program0, 2, "aTexCoord");
-   ggl->ShaderAttributeBind(ggl, program0, 3, "aPosition");
+   ggl->ShaderAttributeBind(program0, 2, "aTexCoord");
+   ggl->ShaderAttributeBind(program0, 3, "aPosition");
 
    GLboolean linkStatus = ggl->ShaderProgramLink(ggl, program0, &infoLog);
    if (!linkStatus)
@@ -82,7 +82,7 @@ int cmain(int argc, char **argv)
                             texels0, 1, 2, 1, 1
                            }; // levels, wrapS, wrapT, minFilter, magFilter
 
-   int sampler2dLoc = ggl->ShaderUniformLocation(ggl, program0, "sampler2d");
+   int sampler2dLoc = ggl->ShaderUniformLocation(program0, "sampler2d");
    if (0 <= sampler2dLoc) {
       int samplerUnit = -1;
       //ggl->ShaderUniformGetiv(ggl, program0, sampler2dLoc, &samplerUnit);
@@ -91,8 +91,8 @@ int cmain(int argc, char **argv)
    }
 
    Vector4 uVec4 = {1.125f, 1.5f, 1.75f, 1.75f};
-   int uVec4Loc = ggl->ShaderUniformLocation(ggl, program0, "uVec4");
-   ggl->ShaderUniform(ggl, program0, uVec4Loc, 1, &uVec4, GL_FLOAT_VEC4);
+   int uVec4Loc = ggl->ShaderUniformLocation(program0, "uVec4");
+   ggl->ShaderUniform(program0, uVec4Loc, 1, &uVec4, GL_FLOAT_VEC4);
 
    VertexInput_t v0 = {0};
    v0.attributes[2] = VECTOR4_CTR(0,0,1,1); // aTexCoord
@@ -105,14 +105,14 @@ int cmain(int argc, char **argv)
       assert(0);
    }
 
-   int vTexCoordIndex = ggl->ShaderVaryingLocation(ggl, program0, "vTexCoord", NULL) - 2;
+   int vTexCoordIndex = ggl->ShaderVaryingLocation(program0, "vTexCoord", NULL) - 2;
    VECTOR4_OP_UNARY(vout0.varyings[vTexCoordIndex],-=,uVec4);
    if (memcmp(&vout0.varyings[vTexCoordIndex],&v0.attributes[2],sizeof uVec4)) {
       fprintf(stderr, "vTexCoord != aTexCoord + uVec4 \n");
       assert(0);
    }
    Vector4 ones = {1,1,1,1};
-   int vTexColorIndex = ggl->ShaderVaryingLocation(ggl, program0, "vTexColor", NULL) - 2;
+   int vTexColorIndex = ggl->ShaderVaryingLocation(program0, "vTexColor", NULL) - 2;
    if (memcmp(&vout0.varyings[vTexColorIndex],&ones,sizeof ones)) { // should be the last texel color
       fprintf(stderr, "vTexColor != Vector4(1,1,1,1) \n");
       assert(0);

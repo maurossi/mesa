@@ -144,7 +144,6 @@ static inline void BlendFactor(const unsigned mode, T & factor, const T & src,
       return;
    }
 }
-#endif // #if !USE_LLVM_SCANLINE
 
 unsigned char StencilOp(const unsigned op, unsigned char s, const unsigned char ref)
 {
@@ -175,333 +174,390 @@ unsigned char StencilOp(const unsigned op, unsigned char s, const unsigned char 
    }
 }
 
-template <bool StencilTest, bool DepthTest, bool DepthWrite, bool BlendEnable>
-void ScanLine(const GGLInterface * iface, const VertexOutput * v1, const VertexOutput * v2)
-{
-   GGL_GET_CONST_CONTEXT(ctx, iface);
-   //    assert((unsigned)v1->position.y == (unsigned)v2->position.y);
-   //
-   //    assert(GGL_PIXEL_FORMAT_RGBA_8888 == ctx->frameSurface.format);
-   //    assert(GGL_PIXEL_FORMAT_Z_32 == ctx->depthSurface.format);
-   //    assert(ctx->frameSurface.width == ctx->depthSurface.width);
-   //    assert(ctx->frameSurface.height == ctx->depthSurface.height);
+#endif // #if !USE_LLVM_SCANLINE
 
-   const unsigned int varyingCount = ctx->glCtx->CurrentProgram->VaryingSlots;
-   const unsigned y = v1->position.y, startX = v1->position.x,
-                      endX = v2->position.x;
+#ifdef USE_LLVM_SCANLINE
+typedef void (* ScanLineFunction_t)(VertexOutput * start, VertexOutput * step,
+                                    const float (*constants)[4], unsigned * frame,
+                                    int * depth, unsigned char * stencil,
+                                    GGLActiveStencil *, unsigned count);
+#endif
+
+void GGLScanLine(const gl_shader_program * program, unsigned * frameBuffer,
+                 int * depthBuffer, unsigned char * stencilBuffer, unsigned bufferWidth,
+                 unsigned bufferHeight, GGLActiveStencil * activeStencil, const VertexOutput_t * start,
+                 const VertexOutput_t * end, const float (*constants)[4])
+{
+#if !USE_LLVM_SCANLINE
+   assert(!"only for USE_LLVM_SCANLINE");
+#endif
+
+   const unsigned int varyingCount = program->VaryingSlots;
+   const unsigned y = start->position.y, startX = start->position.x,
+                      endX = end->position.x;
 
    //assert(ctx->frameSurface.width > startX && ctx->frameSurface.width > endX);
    //assert(ctx->frameSurface.height > y);
 
-   unsigned * frame = (unsigned *)ctx->frameSurface.data
-                      + y * ctx->frameSurface.width + startX;
+   unsigned * frame = frameBuffer + y * bufferWidth + startX;
    const VectorComp_t div = VectorComp_t_CTR(1 / (float)(endX - startX));
 
-   //memcpy(ctx->glCtx->CurrentProgram->ValuesVertexOutput, v1, sizeof(*v1));
+   //memcpy(ctx->glCtx->CurrentProgram->ValuesVertexOutput, start, sizeof(*start));
    // shader symbols are mapped to gl_shader_program_Values*
    //VertexOutput & vertex(*(VertexOutput*)ctx->glCtx->CurrentProgram->ValuesVertexOutput);
-   VertexOutput vertex(*v1);
-   VertexOutput vertexDx(*v2);
+   VertexOutput vertex(*start);
+   VertexOutput vertexDx(*end);
 
-   vertexDx.position -= v1->position;
+   vertexDx.position -= start->position;
    vertexDx.position *= div;
    //printf("vertexDx.position.z=%.8g \n", vertexDx.position.z);
    for (unsigned i = 0; i < varyingCount; i++) {
-      vertexDx.varyings[i] -= v1->varyings[i];
+      vertexDx.varyings[i] -= start->varyings[i];
       vertexDx.varyings[i] *= div;
    }
-   vertexDx.frontFacingPointCoord -= v1->frontFacingPointCoord;
+   vertexDx.frontFacingPointCoord -= start->frontFacingPointCoord;
    vertexDx.frontFacingPointCoord *= div; // gl_PointCoord, only zw
    vertexDx.frontFacingPointCoord.y = 0; // gl_FrontFacing not interpolated
 
-#if USE_FORCED_FIXEDPOINT
-   for (unsigned j = 0; j < 4; j++) {
-      for (unsigned i = 0; i < varyingCount; i++) {
-         vertex.varyings[i].i[j] = vertex.varyings[i].f[j] * 65536;
-         vertexDx.varyings[i].i[j] = vertexDx.varyings[i].f[j] * 65536;
-      }
-      vertex.position.i[j] = vertex.position.f[j] * 65536;
-      vertexDx.position.i[j] = vertexDx.position.f[j] * 65536;
-      vertex.frontFacingPointCoord.i[j] = vertex.frontFacingPointCoord.f[j] * 65536;
-   }
-#endif
-
-   int * depth = (int *)ctx->depthSurface.data + y * ctx->frameSurface.width + startX;
-   unsigned char * stencil = (unsigned char *)ctx->stencilSurface.data + y * ctx->frameSurface.width + startX;
-
-#if !USE_LLVM_TEXTURE_SAMPLER
-   extern const GGLContext * textureGGLContext;
-   textureGGLContext = ctx;
-#endif
+   int * depth = depthBuffer + y * bufferWidth + startX;
+   unsigned char * stencil = stencilBuffer + y * bufferWidth + startX;
 
    // TODO DXL consider inverting gl_FragCoord.y
-
-#if USE_LLVM_SCANLINE
-   typedef void (* ScanLineFunction_t)(VertexOutput * start, VertexOutput * step, float (*constants)[4],
-                                       unsigned * frame, int * depth, unsigned char * stencil,
-                                       GGLActiveStencilState *, unsigned count);
-
    ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
-                                         ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
-   if (endX >= startX) {
-      scanLineFunction(&vertex, &vertexDx, ctx->glCtx->CurrentProgram->ValuesUniform, frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
-   }
-#else
+                                         program->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
+   if (endX >= startX)
+      scanLineFunction(&vertex, &vertexDx, constants, frame, depth, stencil, activeStencil, endX - startX + 1);
 
-   int z;
-   bool sCmp = true; // default passed, unless failed by stencil test
-   unsigned char s; // masked stored stencil value
-   const unsigned char sMask = ctx->activeStencil.mask;
-   const unsigned char sRef = ctx->activeStencil.ref;
-   const unsigned sFunc = ctx->activeStencil.face ? 0x200 | ctx->backStencil.func :
-                          0x200 | ctx->frontStencil.func;
-   const unsigned ssFail = ctx->activeStencil.face ? ctx->backStencil.sFail :
-                           ctx->frontStencil.sFail;
-   const unsigned sdFail = ctx->activeStencil.face ? ctx->backStencil.dFail :
-                           ctx->frontStencil.dFail;
-   const unsigned sdPass = ctx->activeStencil.face ? ctx->backStencil.dPass :
-                           ctx->frontStencil.dPass;
+}
 
-   for (unsigned x = startX; x <= endX; x++) {
-      //assert(abs((int)(vertex.position.x) - (int)x) < 2);
-      //assert((unsigned)vertex.position.y == y);
-      if (StencilTest) {
-         s = *stencil & sMask;
-         switch (sFunc) {
-         case GL_NEVER:
-            sCmp = false;
-            break;
-         case GL_LESS:
-            sCmp = sRef < s;
-            break;
-         case GL_EQUAL:
-            sCmp = sRef == s;
-            break;
-         case GL_LEQUAL:
-            sCmp = sRef <= s;
-            break;
-         case GL_GREATER:
-            sCmp = sRef > s;
-            break;
-         case GL_NOTEQUAL:
-            sCmp = sRef != s;
-            break;
-         case GL_GEQUAL:
-            sCmp = sRef >= s;
-            break;
-         case GL_ALWAYS:
-            sCmp = true;
-            break;
-         default:
-            assert(0);
-            break;
-         }
-      }
-
-      if (!StencilTest || sCmp) {
-         z = vertex.position.i[2];
-         if (z & 0x80000000)  // negative float has leading 1
-            z ^= 0x7fffffff;  // bigger negative is smaller
-         bool zCmp = true;
-         if (DepthTest) {
-            switch (0x200 | ctx->bufferState.depthFunc) {
-            case GL_NEVER:
-               zCmp = false;
-               break;
-            case GL_LESS:
-               zCmp = z < *depth;
-               break;
-            case GL_EQUAL:
-               zCmp = z == *depth;
-               break;
-            case GL_LEQUAL:
-               zCmp = z <= *depth;
-               break;
-            case GL_GREATER:
-               zCmp = z > *depth;
-               break;
-            case GL_NOTEQUAL:
-               zCmp = z != *depth;
-               break;
-            case GL_GEQUAL:
-               zCmp = z >= *depth;
-               break;
-            case GL_ALWAYS:
-               zCmp = true;
-               break;
-            default:
-               assert(0);
-               break;
-            }
-         }
-         if (!DepthTest || zCmp) {
-            float * varying = (float *)ctx->glCtx->CurrentProgram->ValuesVertexOutput;
-            ShaderFunction_t function = (ShaderFunction_t)ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
-            function(&vertex, &vertex, ctx->glCtx->CurrentProgram->ValuesUniform);
-            //ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function();
-            if (BlendEnable) {
-               BlendComp_t sOne = 255, sZero = 0;
-               Vec4<BlendComp_t> one = sOne, zero = sZero;
-
-               Vec4<BlendComp_t> src;
-//                    if (outputRegDesc.IsInt32Color())
-//                        RGBAIntToRGBAIntx4(vertex.fragColor[0].u[0], &src);
-//                    else if (outputRegDesc.IsVectorType(Float))
-               RGBAFloatx4ToRGBAIntx4(&vertex.fragColor[0], &src);
-//                    else if (outputRegDesc.IsVectorType(Fixed8))
-//                    {
-//                        src.u[0] = vertex.fragColor[0].u[0];
-//                        src.u[1] = vertex.fragColor[0].u[1];
-//                        src.u[2] = vertex.fragColor[0].u[2];
-//                        src.u[3] = vertex.fragColor[0].u[3];
-//                    }
-//                    else
-//                        assert(0);
-
-               Vec4<BlendComp_t> dst;
-               unsigned dc = *frame;
-               dst.r = dc & 255;
-               dst.g = (dc >>= 8) & 255;
-               dst.b = (dc >>= 8) & 255;
-               dst.a = (dc >>= 8) & 255;
-
-               Vec4<BlendComp_t> sf, df;
-               Vec4<BlendComp_t> blendStateColor(ctx->blendState.color[0], ctx->blendState.color[1],
-                                                 ctx->blendState.color[2], ctx->blendState.color[3]);
-
-               BlendFactor(ctx->blendState.scf, sf, src, dst,
-                           blendStateColor, one, zero, src.a, dst.a,
-                           blendStateColor.a, sOne);
-               if (ctx->blendState.scf != ctx->blendState.saf)
-                  BlendFactor(ctx->blendState.saf, sf.a, src.a, dst.a,
-                              blendStateColor.a, sOne, sZero, src.a, dst.a,
-                              blendStateColor.a, sOne);
-               BlendFactor(ctx->blendState.dcf, df, src, dst,
-                           blendStateColor, one, zero, src.a, dst.a,
-                           blendStateColor.a, sOne);
-               if (ctx->blendState.dcf != ctx->blendState.daf)
-                  BlendFactor(ctx->blendState.daf, df.a, src.a, dst.a,
-                              blendStateColor.a, sOne, sZero, src.a, dst.a,
-                              blendStateColor.a, sOne);
-
-               Vec4<BlendComp_t> sfs(sf), dfs(df);
-               sfs.LShr(7);
-               sf += sfs;
-               dfs.LShr(7);
-               df += dfs;
-
-               src *= sf;
-               dst *= df;
-               Vec4<BlendComp_t> res(src);
-               switch (ctx->blendState.ce + GL_FUNC_ADD) {
-               case GL_FUNC_ADD:
-                  res += dst;
-                  break;
-               case GL_FUNC_SUBTRACT:
-                  res -= dst;
-                  break;
-               case GL_FUNC_REVERSE_SUBTRACT:
-                  res = dst;
-                  res -= src;
-                  break;
-               default:
-                  assert(0);
-                  break;
-               }
-               if (ctx->blendState.ce != ctx->blendState.ae)
-                  switch (ctx->blendState.ce + GL_FUNC_ADD) {
-                  case GL_FUNC_ADD:
-                     res.a = src.a + dst.a;
-                     break;
-                  case GL_FUNC_SUBTRACT:
-                     res.a = src.a - dst.a;
-                     break;
-                  case GL_FUNC_REVERSE_SUBTRACT:
-                     res.a = dst.a - src.a;
-                     break;
-                  default:
-                     assert(0);
-                     break;
-                  }
-
-               res.AShr(8);
-               Saturate(&res);
-               *frame = RGBAIntx4ToRGBAInt(&res);
-            } else {
-//                    if (outputRegDesc.IsInt32Color())
-//                        *frame = vertex.fragColor[0].u[0];
-//                    else if (outputRegDesc.IsVectorType(Float))
-               {
-                  Vec4<BlendComp_t> src;
-                  RGBAFloatx4ToRGBAIntx4(&vertex.fragColor[0], &src);
-                  Saturate(&src);
-                  *frame = RGBAIntx4ToRGBAInt(&src);
-               }
-//                    else if (outputRegDesc.IsVectorType(Fixed16))
-//                    {
-//                        Vec4<BlendComp_t> & src = (Vec4<BlendComp_t> &)vertex.fragColor[0];
-//                        src.r = (src.r * 255 >> 16);
-//                        src.g = (src.g * 255 >> 16);
-//                        src.b = (src.b * 255 >> 16);
-//                        src.a = (src.a * 255 >> 16);
-//                        Saturate(&src);
-//                        *frame = RGBAIntx4ToRGBAInt(&src);
-//                    }
-//                    else if (outputRegDesc.IsVectorType(Fixed8))
-//                    {
-//                        Vec4<BlendComp_t> & src = (Vec4<BlendComp_t> &)vertex.fragColor[0];
-//                        Saturate(&src);
-//                        *frame = RGBAIntx4ToRGBAInt(&src);
-//                    }
-//                    else
-//                        assert(0);
-            }
-
-            if (DepthWrite)
-               *depth = z;
-            if (StencilTest)
-               *stencil = StencilOp(sdPass, s, sRef);
-         } else if (StencilTest)
-            *stencil = StencilOp(sdFail, s, sRef);
-      } else if (StencilTest)
-         *stencil = StencilOp(ssFail, s, sRef);
-
-      frame++;
-      depth++;
-      stencil++;
-
-#if USE_FORCED_FIXEDPOINT
-      for (unsigned j = 0; j < 4; j++) {
-         if (ctx->glCtx->Shader.CurrentProgram->FragmentProgram->UsesFragCoord)
-            vertex.position.i[j] += vertexDx.position.i[j];
-         for (unsigned i = 0; i < varyingCount; i++)
-            vertex.varyings[i].i[j] += vertexDx.varyings[i].i[j];
-      }
-      vertex.position.i[2] += vertexDx.position.i[2];
-      if (ctx->glCtx->Shader.CurrentProgram->FragmentProgram->UsesPointCoord) {
-         vertex.frontFacingPointCoord.i[2] = vertexDx.frontFacingPointCoord.i[2];
-         vertex.frontFacingPointCoord.i[3] = vertexDx.frontFacingPointCoord.i[3];
-      }
-#else
-   if (ctx->glCtx->CurrentProgram->UsesFragCoord)
-      vertex.position += vertexDx.position;
-   else if (ctx->bufferState.depthTest)
-      vertex.position.z += vertexDx.position.z;
-
-   for (unsigned i = 0; i < varyingCount; i++)
-      vertex.varyings[i] += vertexDx.varyings[i];
-   if (ctx->glCtx->CurrentProgram->UsesPointCoord) {
-      vertex.frontFacingPointCoord.z += vertexDx.frontFacingPointCoord.z;
-      vertex.frontFacingPointCoord.w += vertexDx.frontFacingPointCoord.w;
-   }
-#endif // #if USE_FORCED_FIXEDPOINT
-   }
-
-#endif // #if USE_LLVM_SCANLINE
-
-#if !USE_LLVM_TEXTURE_SAMPLER
-   textureGGLContext = NULL;
-#endif
+template <bool StencilTest, bool DepthTest, bool DepthWrite, bool BlendEnable>
+void ScanLine(const GGLInterface * iface, const VertexOutput * start, const VertexOutput * end)
+{
+   GGL_GET_CONST_CONTEXT(ctx, iface);
+   GGLScanLine(ctx->CurrentProgram, (unsigned *)ctx->frameSurface.data,
+               (int *)ctx->depthSurface.data, (unsigned char *)ctx->stencilSurface.data,
+               ctx->frameSurface.width, ctx->frameSurface.height, &ctx->activeStencil,
+               start, end, ctx->CurrentProgram->ValuesUniform);
+//   GGL_GET_CONST_CONTEXT(ctx, iface);
+//   //    assert((unsigned)start->position.y == (unsigned)end->position.y);
+//   //
+//   //    assert(GGL_PIXEL_FORMAT_RGBA_8888 == ctx->frameSurface.format);
+//   //    assert(GGL_PIXEL_FORMAT_Z_32 == ctx->depthSurface.format);
+//   //    assert(ctx->frameSurface.width == ctx->depthSurface.width);
+//   //    assert(ctx->frameSurface.height == ctx->depthSurface.height);
+//
+//   const unsigned int varyingCount = ctx->glCtx->CurrentProgram->VaryingSlots;
+//   const unsigned y = start->position.y, startX = start->position.x,
+//                      endX = end->position.x;
+//
+//   //assert(ctx->frameSurface.width > startX && ctx->frameSurface.width > endX);
+//   //assert(ctx->frameSurface.height > y);
+//
+//   unsigned * frame = (unsigned *)ctx->frameSurface.data
+//                      + y * ctx->frameSurface.width + startX;
+//   const VectorComp_t div = VectorComp_t_CTR(1 / (float)(endX - startX));
+//
+//   //memcpy(ctx->glCtx->CurrentProgram->ValuesVertexOutput, start, sizeof(*start));
+//   // shader symbols are mapped to gl_shader_program_Values*
+//   //VertexOutput & vertex(*(VertexOutput*)ctx->glCtx->CurrentProgram->ValuesVertexOutput);
+//   VertexOutput vertex(*start);
+//   VertexOutput vertexDx(*end);
+//
+//   vertexDx.position -= start->position;
+//   vertexDx.position *= div;
+//   //printf("vertexDx.position.z=%.8g \n", vertexDx.position.z);
+//   for (unsigned i = 0; i < varyingCount; i++) {
+//      vertexDx.varyings[i] -= start->varyings[i];
+//      vertexDx.varyings[i] *= div;
+//   }
+//   vertexDx.frontFacingPointCoord -= start->frontFacingPointCoord;
+//   vertexDx.frontFacingPointCoord *= div; // gl_PointCoord, only zw
+//   vertexDx.frontFacingPointCoord.y = 0; // gl_FrontFacing not interpolated
+//
+//#if USE_FORCED_FIXEDPOINT
+//   for (unsigned j = 0; j < 4; j++) {
+//      for (unsigned i = 0; i < varyingCount; i++) {
+//         vertex.varyings[i].i[j] = vertex.varyings[i].f[j] * 65536;
+//         vertexDx.varyings[i].i[j] = vertexDx.varyings[i].f[j] * 65536;
+//      }
+//      vertex.position.i[j] = vertex.position.f[j] * 65536;
+//      vertexDx.position.i[j] = vertexDx.position.f[j] * 65536;
+//      vertex.frontFacingPointCoord.i[j] = vertex.frontFacingPointCoord.f[j] * 65536;
+//   }
+//#endif
+//
+//   int * depth = (int *)ctx->depthSurface.data + y * ctx->frameSurface.width + startX;
+//   unsigned char * stencil = (unsigned char *)ctx->stencilSurface.data + y * ctx->frameSurface.width + startX;
+//
+//#if !USE_LLVM_TEXTURE_SAMPLER
+//   extern const GGLContext * textureGGLContext;
+//   textureGGLContext = ctx;
+//#endif
+//
+//   // TODO DXL consider inverting gl_FragCoord.y
+//
+//#if USE_LLVM_SCANLINE
+//   ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
+//                                         ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
+//   if (endX >= startX) {
+//      scanLineFunction(&vertex, &vertexDx, ctx->glCtx->CurrentProgram->ValuesUniform, frame, depth, stencil, &ctx->activeStencil, endX - startX + 1);
+//   }
+//#else
+//
+//   int z;
+//   bool sCmp = true; // default passed, unless failed by stencil test
+//   unsigned char s; // masked stored stencil value
+//   const unsigned char sMask = ctx->activeStencil.mask;
+//   const unsigned char sRef = ctx->activeStencil.ref;
+//   const unsigned sFunc = ctx->activeStencil.face ? 0x200 | ctx->backStencil.func :
+//                          0x200 | ctx->frontStencil.func;
+//   const unsigned ssFail = ctx->activeStencil.face ? ctx->backStencil.sFail :
+//                           ctx->frontStencil.sFail;
+//   const unsigned sdFail = ctx->activeStencil.face ? ctx->backStencil.dFail :
+//                           ctx->frontStencil.dFail;
+//   const unsigned sdPass = ctx->activeStencil.face ? ctx->backStencil.dPass :
+//                           ctx->frontStencil.dPass;
+//
+//   for (unsigned x = startX; x <= endX; x++) {
+//      //assert(abs((int)(vertex.position.x) - (int)x) < 2);
+//      //assert((unsigned)vertex.position.y == y);
+//      if (StencilTest) {
+//         s = *stencil & sMask;
+//         switch (sFunc) {
+//         case GL_NEVER:
+//            sCmp = false;
+//            break;
+//         case GL_LESS:
+//            sCmp = sRef < s;
+//            break;
+//         case GL_EQUAL:
+//            sCmp = sRef == s;
+//            break;
+//         case GL_LEQUAL:
+//            sCmp = sRef <= s;
+//            break;
+//         case GL_GREATER:
+//            sCmp = sRef > s;
+//            break;
+//         case GL_NOTEQUAL:
+//            sCmp = sRef != s;
+//            break;
+//         case GL_GEQUAL:
+//            sCmp = sRef >= s;
+//            break;
+//         case GL_ALWAYS:
+//            sCmp = true;
+//            break;
+//         default:
+//            assert(0);
+//            break;
+//         }
+//      }
+//
+//      if (!StencilTest || sCmp) {
+//         z = vertex.position.i[2];
+//         if (z & 0x80000000)  // negative float has leading 1
+//            z ^= 0x7fffffff;  // bigger negative is smaller
+//         bool zCmp = true;
+//         if (DepthTest) {
+//            switch (0x200 | ctx->state.bufferState.depthFunc) {
+//            case GL_NEVER:
+//               zCmp = false;
+//               break;
+//            case GL_LESS:
+//               zCmp = z < *depth;
+//               break;
+//            case GL_EQUAL:
+//               zCmp = z == *depth;
+//               break;
+//            case GL_LEQUAL:
+//               zCmp = z <= *depth;
+//               break;
+//            case GL_GREATER:
+//               zCmp = z > *depth;
+//               break;
+//            case GL_NOTEQUAL:
+//               zCmp = z != *depth;
+//               break;
+//            case GL_GEQUAL:
+//               zCmp = z >= *depth;
+//               break;
+//            case GL_ALWAYS:
+//               zCmp = true;
+//               break;
+//            default:
+//               assert(0);
+//               break;
+//            }
+//         }
+//         if (!DepthTest || zCmp) {
+//            float * varying = (float *)ctx->glCtx->CurrentProgram->ValuesVertexOutput;
+//            ShaderFunction_t function = (ShaderFunction_t)ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
+//            function(&vertex, &vertex, ctx->glCtx->CurrentProgram->ValuesUniform);
+//            //ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_FRAGMENT]->function();
+//            if (BlendEnable) {
+//               BlendComp_t sOne = 255, sZero = 0;
+//               Vec4<BlendComp_t> one = sOne, zero = sZero;
+//
+//               Vec4<BlendComp_t> src;
+////                    if (outputRegDesc.IsInt32Color())
+////                        RGBAIntToRGBAIntx4(vertex.fragColor[0].u[0], &src);
+////                    else if (outputRegDesc.IsVectorType(Float))
+//               RGBAFloatx4ToRGBAIntx4(&vertex.fragColor[0], &src);
+////                    else if (outputRegDesc.IsVectorType(Fixed8))
+////                    {
+////                        src.u[0] = vertex.fragColor[0].u[0];
+////                        src.u[1] = vertex.fragColor[0].u[1];
+////                        src.u[2] = vertex.fragColor[0].u[2];
+////                        src.u[3] = vertex.fragColor[0].u[3];
+////                    }
+////                    else
+////                        assert(0);
+//
+//               Vec4<BlendComp_t> dst;
+//               unsigned dc = *frame;
+//               dst.r = dc & 255;
+//               dst.g = (dc >>= 8) & 255;
+//               dst.b = (dc >>= 8) & 255;
+//               dst.a = (dc >>= 8) & 255;
+//
+//               Vec4<BlendComp_t> sf, df;
+//               Vec4<BlendComp_t> blendStateColor(ctx->state.blendState.color[0], ctx->state.blendState.color[1],
+//                                                 ctx->state.blendState.color[2], ctx->state.blendState.color[3]);
+//
+//               BlendFactor(ctx->state.blendState.scf, sf, src, dst,
+//                           blendStateColor, one, zero, src.a, dst.a,
+//                           blendStateColor.a, sOne);
+//               if (ctx->state.blendState.scf != ctx->state.blendState.saf)
+//                  BlendFactor(ctx->state.blendState.saf, sf.a, src.a, dst.a,
+//                              blendStateColor.a, sOne, sZero, src.a, dst.a,
+//                              blendStateColor.a, sOne);
+//               BlendFactor(ctx->state.blendState.dcf, df, src, dst,
+//                           blendStateColor, one, zero, src.a, dst.a,
+//                           blendStateColor.a, sOne);
+//               if (ctx->state.blendState.dcf != ctx->state.blendState.daf)
+//                  BlendFactor(ctx->state.blendState.daf, df.a, src.a, dst.a,
+//                              blendStateColor.a, sOne, sZero, src.a, dst.a,
+//                              blendStateColor.a, sOne);
+//
+//               Vec4<BlendComp_t> sfs(sf), dfs(df);
+//               sfs.LShr(7);
+//               sf += sfs;
+//               dfs.LShr(7);
+//               df += dfs;
+//
+//               src *= sf;
+//               dst *= df;
+//               Vec4<BlendComp_t> res(src);
+//               switch (ctx->state.blendState.ce + GL_FUNC_ADD) {
+//               case GL_FUNC_ADD:
+//                  res += dst;
+//                  break;
+//               case GL_FUNC_SUBTRACT:
+//                  res -= dst;
+//                  break;
+//               case GL_FUNC_REVERSE_SUBTRACT:
+//                  res = dst;
+//                  res -= src;
+//                  break;
+//               default:
+//                  assert(0);
+//                  break;
+//               }
+//               if (ctx->state.blendState.ce != ctx->state.blendState.ae)
+//                  switch (ctx->state.blendState.ce + GL_FUNC_ADD) {
+//                  case GL_FUNC_ADD:
+//                     res.a = src.a + dst.a;
+//                     break;
+//                  case GL_FUNC_SUBTRACT:
+//                     res.a = src.a - dst.a;
+//                     break;
+//                  case GL_FUNC_REVERSE_SUBTRACT:
+//                     res.a = dst.a - src.a;
+//                     break;
+//                  default:
+//                     assert(0);
+//                     break;
+//                  }
+//
+//               res.AShr(8);
+//               Saturate(&res);
+//               *frame = RGBAIntx4ToRGBAInt(&res);
+//            } else {
+////                    if (outputRegDesc.IsInt32Color())
+////                        *frame = vertex.fragColor[0].u[0];
+////                    else if (outputRegDesc.IsVectorType(Float))
+//               {
+//                  Vec4<BlendComp_t> src;
+//                  RGBAFloatx4ToRGBAIntx4(&vertex.fragColor[0], &src);
+//                  Saturate(&src);
+//                  *frame = RGBAIntx4ToRGBAInt(&src);
+//               }
+////                    else if (outputRegDesc.IsVectorType(Fixed16))
+////                    {
+////                        Vec4<BlendComp_t> & src = (Vec4<BlendComp_t> &)vertex.fragColor[0];
+////                        src.r = (src.r * 255 >> 16);
+////                        src.g = (src.g * 255 >> 16);
+////                        src.b = (src.b * 255 >> 16);
+////                        src.a = (src.a * 255 >> 16);
+////                        Saturate(&src);
+////                        *frame = RGBAIntx4ToRGBAInt(&src);
+////                    }
+////                    else if (outputRegDesc.IsVectorType(Fixed8))
+////                    {
+////                        Vec4<BlendComp_t> & src = (Vec4<BlendComp_t> &)vertex.fragColor[0];
+////                        Saturate(&src);
+////                        *frame = RGBAIntx4ToRGBAInt(&src);
+////                    }
+////                    else
+////                        assert(0);
+//            }
+//
+//            if (DepthWrite)
+//               *depth = z;
+//            if (StencilTest)
+//               *stencil = StencilOp(sdPass, s, sRef);
+//         } else if (StencilTest)
+//            *stencil = StencilOp(sdFail, s, sRef);
+//      } else if (StencilTest)
+//         *stencil = StencilOp(ssFail, s, sRef);
+//
+//      frame++;
+//      depth++;
+//      stencil++;
+//
+//#if USE_FORCED_FIXEDPOINT
+//      for (unsigned j = 0; j < 4; j++) {
+//         if (ctx->glCtx->Shader.CurrentProgram->FragmentProgram->UsesFragCoord)
+//            vertex.position.i[j] += vertexDx.position.i[j];
+//         for (unsigned i = 0; i < varyingCount; i++)
+//            vertex.varyings[i].i[j] += vertexDx.varyings[i].i[j];
+//      }
+//      vertex.position.i[2] += vertexDx.position.i[2];
+//      if (ctx->glCtx->Shader.CurrentProgram->FragmentProgram->UsesPointCoord) {
+//         vertex.frontFacingPointCoord.i[2] = vertexDx.frontFacingPointCoord.i[2];
+//         vertex.frontFacingPointCoord.i[3] = vertexDx.frontFacingPointCoord.i[3];
+//      }
+//#else
+//   if (ctx->glCtx->CurrentProgram->UsesFragCoord)
+//      vertex.position += vertexDx.position;
+//   else if (ctx->state.bufferState.depthTest)
+//      vertex.position.z += vertexDx.position.z;
+//
+//   for (unsigned i = 0; i < varyingCount; i++)
+//      vertex.varyings[i] += vertexDx.varyings[i];
+//   if (ctx->glCtx->CurrentProgram->UsesPointCoord) {
+//      vertex.frontFacingPointCoord.z += vertexDx.frontFacingPointCoord.z;
+//      vertex.frontFacingPointCoord.w += vertexDx.frontFacingPointCoord.w;
+//   }
+//#endif // #if USE_FORCED_FIXEDPOINT
+//   }
+//
+//#endif // #if USE_LLVM_SCANLINE
+//
+//#if !USE_LLVM_TEXTURE_SAMPLER
+//   textureGGLContext = NULL;
+//#endif
 }
 
 static void PickScanLine(GGLInterface * iface)
@@ -509,26 +565,26 @@ static void PickScanLine(GGLInterface * iface)
    GGL_GET_CONTEXT(ctx, iface);
 
    ctx->interface.ScanLine = NULL;
-   if (ctx->bufferState.stencilTest) {
-      if (ctx->bufferState.depthTest) {
-         if (ctx->blendState.enable)
+   if (ctx->state.bufferState.stencilTest) {
+      if (ctx->state.bufferState.depthTest) {
+         if (ctx->state.blendState.enable)
             ctx->interface.ScanLine = ScanLine<true, true, true, true>;
          else
             ctx->interface.ScanLine = ScanLine<true, true, true, false>;
       } else {
-         if (ctx->blendState.enable)
+         if (ctx->state.blendState.enable)
             ctx->interface.ScanLine = ScanLine<true, false, false, true>;
          else
             ctx->interface.ScanLine = ScanLine<true, false, false, false>;
       }
    } else {
-      if (ctx->bufferState.depthTest) {
-         if (ctx->blendState.enable)
+      if (ctx->state.bufferState.depthTest) {
+         if (ctx->state.blendState.enable)
             ctx->interface.ScanLine = ScanLine<false, true, true, true>;
          else
             ctx->interface.ScanLine = ScanLine<false, true, true, false>;
       } else {
-         if (ctx->blendState.enable)
+         if (ctx->state.blendState.enable)
             ctx->interface.ScanLine = ScanLine<false, false, false, true>;
          else
             ctx->interface.ScanLine = ScanLine<false, false, false, false>;

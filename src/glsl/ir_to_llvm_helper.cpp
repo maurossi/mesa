@@ -246,7 +246,7 @@ static Value * texcoordWrap(IRBuilder<> & builder, const unsigned wrap,
 
 Value * tex2D(IRBuilder<> & builder, Value * in1, const unsigned sampler,
               /*const RegDesc * in1Desc, const RegDesc * dstDesc,*/
-              const GGLContext * gglCtx)
+              const GGLState * gglCtx)
 {
    const Type * intType = builder.getInt32Ty();
    const PointerType * intPointerType = PointerType::get(intType, 0);
@@ -336,7 +336,7 @@ static Value * Fabs(IRBuilder<> & builder, Value * val)
 
 Value * texCube(IRBuilder<> & builder, Value * in1, const unsigned sampler,
                 /*const RegDesc * in1Desc, const RegDesc * dstDesc,*/
-                const GGLContext * gglCtx)
+                const GGLState * gglCtx)
 {
 //   if (in1Desc) // the major axis determination code is only float for now
 //      assert(in1Desc->IsVectorType(Float));

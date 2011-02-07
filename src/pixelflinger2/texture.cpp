@@ -392,31 +392,31 @@ static void SetSampler(GGLInterface * iface, const unsigned sampler, GGLTexture 
     GGL_GET_CONTEXT(ctx, iface);
     if (!texture)
         SetShaderVerifyFunctions(iface);
-    else if (ctx->textureState.textures[sampler].format != texture->format)
+    else if (ctx->state.textureState.textures[sampler].format != texture->format)
         SetShaderVerifyFunctions(iface);
-    else if (ctx->textureState.textures[sampler].wrapS != texture->wrapS)
+    else if (ctx->state.textureState.textures[sampler].wrapS != texture->wrapS)
         SetShaderVerifyFunctions(iface);
-    else if (ctx->textureState.textures[sampler].wrapT != texture->wrapT)
+    else if (ctx->state.textureState.textures[sampler].wrapT != texture->wrapT)
         SetShaderVerifyFunctions(iface);
-    else if (ctx->textureState.textures[sampler].minFilter != texture->minFilter)
+    else if (ctx->state.textureState.textures[sampler].minFilter != texture->minFilter)
         SetShaderVerifyFunctions(iface);
-    else if (ctx->textureState.textures[sampler].magFilter != texture->magFilter)
+    else if (ctx->state.textureState.textures[sampler].magFilter != texture->magFilter)
         SetShaderVerifyFunctions(iface);
              
     if (texture)
     {
-        ctx->textureState.textures[sampler] = *texture; // shallow copy, data pointed to must remain valid 
-        //ctx->textureState.textureData[sampler] = texture->levels[0];
-        ctx->textureState.textureData[sampler] = texture->levels;
-        ctx->textureState.textureDimensions[sampler * 2] = texture->width;
-        ctx->textureState.textureDimensions[sampler * 2 + 1] = texture->height;
+        ctx->state.textureState.textures[sampler] = *texture; // shallow copy, data pointed to must remain valid 
+        //ctx->state.textureState.textureData[sampler] = texture->levels[0];
+        ctx->state.textureState.textureData[sampler] = texture->levels;
+        ctx->state.textureState.textureDimensions[sampler * 2] = texture->width;
+        ctx->state.textureState.textureDimensions[sampler * 2 + 1] = texture->height;
     }
     else
     {
-        memset(ctx->textureState.textures + sampler, 0, sizeof(ctx->textureState.textures[sampler]));
-        ctx->textureState.textureData[sampler] = NULL;
-        ctx->textureState.textureDimensions[sampler * 2] = 0;
-        ctx->textureState.textureDimensions[sampler * 2 + 1] = 0;
+        memset(ctx->state.textureState.textures + sampler, 0, sizeof(ctx->state.textureState.textures[sampler]));
+        ctx->state.textureState.textureData[sampler] = NULL;
+        ctx->state.textureState.textureDimensions[sampler * 2] = 0;
+        ctx->state.textureState.textureDimensions[sampler * 2 + 1] = 0;
     }
 }
 

@@ -213,10 +213,10 @@ static Value * IntVectorToColor(IRBuilder<> & builder, Value * src)
 }
 
 // src is <4 x float> approx [0,1]; dst is <4 x i32> [0,255] from frame buffer; return is i32
-Value * GenerateFSBlend(const GGLContext * gglCtx, /*const RegDesc * regDesc,*/
+Value * GenerateFSBlend(const GGLState * gglCtx, /*const RegDesc * regDesc,*/
                         IRBuilder<> & builder, Value * src, Value * dst)
 {
-   const Type * const intType = Type::getInt32Ty(*gglCtx->llvmCtx);
+   const Type * const intType = builder.getInt32Ty();
 
    // TODO cast the outputs pointer type to int for writing to minimize bandwidth
    if (!gglCtx->blendState.enable) {
@@ -401,15 +401,15 @@ static FunctionType * ScanLineFunctionType(IRBuilder<> & builder)
 // generated scanline function parameters are VertexOutput * start, VertexOutput * step, 
 // unsigned * frame, int * depth, unsigned char * stencil,
 // GGLActiveStencilState * stencilState, unsigned count
-void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * program, Module * mod,
+void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program, Module * mod,
                       const char * shaderName, const char * scanlineName)
 {
    IRBuilder<> builder(mod->getContext());
    debug_printf("GenerateScanLine %s \n", scanlineName);
 
-   const Type * intType = Type::getInt32Ty(*gglCtx->llvmCtx);
+   const Type * intType = builder.getInt32Ty();
    const PointerType * intPointerType = PointerType::get(intType, 0);
-   const Type * byteType = Type::getInt8Ty(*gglCtx->llvmCtx);
+   const Type * byteType = builder.getInt8Ty();
    const PointerType * bytePointerType = PointerType::get(byteType, 0);
 
    Function * func = mod->getFunction(scanlineName);
@@ -485,7 +485,7 @@ void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * progr
       stencil->setName("stencil");
 
       // temporaries to load/store value
-      sCmpPtr = builder.CreateAlloca(Type::getInt1Ty(*gglCtx->llvmCtx));
+      sCmpPtr = builder.CreateAlloca(builder.getInt1Ty());
       sCmpPtr->setName("sCmpPtr");
       sPtr = builder.CreateAlloca(byteType);
       sPtr->setName("sPtr");
@@ -650,7 +650,7 @@ void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * progr
       v = builder.CreateFAdd(v, dx);
       builder.CreateStore(v, vPtr);
    } else if (gglCtx->bufferState.depthTest) {
-      const Type * floatType = Type::getFloatTy(*gglCtx->llvmCtx);
+      const Type * floatType = builder.getFloatTy();
       const PointerType * floatPointerType = PointerType::get(floatType, 0);
       vPtr = builder.CreateBitCast(start, floatPointerType);
       vPtr = builder.CreateConstInBoundsGEP1_32(vPtr,

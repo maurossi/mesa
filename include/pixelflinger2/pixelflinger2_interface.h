@@ -26,6 +26,7 @@
 typedef struct gl_shader gl_shader_t;
 typedef struct gl_shader_program gl_shader_program_t;
 typedef struct gl_context gl_context_t;
+typedef struct GGLContext GGLContext_t;
 
 typedef struct VertexInput {
    Vector4 attributes[GGL_MAXVERTEXATTRIBS]; // vert input
@@ -85,15 +86,6 @@ unsigned magFilter :
    1; // GL_NEAREST = 0, GL_LINEAR
 } GGLTexture_t;
 
-typedef struct GGLTextureState {
-   // format affects vs and fs jit
-   GGLTexture_t textures[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]; // the active samplers
-   // array of pointers to texture surface data synced to textures; used by LLVM generated texture sampler
-   void * textureData[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS];
-   // array of texture dimensions synced to textures; by LLVM generated texture sampler
-   unsigned textureDimensions[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS * 2];
-} TextureState_t;
-
 typedef struct GGLStencilState {
    unsigned char ref, mask; // ref is masked during StencilFuncSeparate
 
@@ -106,10 +98,10 @@ typedef struct GGLStencilState {
    unsigned char sFail, dFail, dPass; // operations
 }  GGLStencilState_t;
 
-typedef struct GGLActiveStencilState { // do not change layout, used in GenerateScanLine
+typedef struct GGLActiveStencil { // do not change layout, used in GenerateScanLine
    unsigned char face; // FRONT = 0, BACK = 1
    unsigned char ref, mask;
-} GGLActiveStencilState_t;
+} GGLActiveStencil_t;
 
 typedef struct GGLBufferState { // all affect scanline jit
 unsigned stencilTest :
@@ -143,7 +135,27 @@ unsigned ce :
 
 unsigned enable :
    1;
-} BlendState_t;
+} GGLBlendState_t;
+
+typedef struct GGLTextureState {
+   // format affects vs and fs jit
+   GGLTexture_t textures[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]; // the active samplers
+   // array of pointers to texture surface data synced to textures; used by LLVM generated texture sampler
+   void * textureData[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS];
+   // array of texture dimensions synced to textures; by LLVM generated texture sampler
+   unsigned textureDimensions[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS * 2];
+} GGLTextureState_t;
+
+typedef struct GGLState {
+   GGLStencilState_t frontStencil, backStencil; // all affect scanline jit
+
+   GGLBufferState_t bufferState; // all affect scanline jit
+
+   GGLBlendState_t blendState; // all affect scanline jit
+
+   GGLTextureState_t textureState; // most affect vs/fs jit
+
+} GGLState_t;
 
 // most functions are according to GL ES 2.0 spec and uses GLenum values
 // there is some error checking for invalid GLenum
@@ -208,7 +220,7 @@ struct GGLInterface {
    // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call; use infoLog to retrieve status
    GLboolean (* ShaderCompile)(const GGLInterface_t * iface, gl_shader_t * shader,
                                const char * glsl, const char ** infoLog);
-   
+
    void (* ShaderDelete)(const GGLInterface_t * iface, gl_shader_t * shader);
 
    // creates empty program
@@ -224,33 +236,33 @@ struct GGLInterface {
    GLboolean (* ShaderProgramLink)(const GGLInterface_t * iface, gl_shader_program_t * program,
                                    const char ** infoLog);
    // frees program
-   void (* ShaderProgramDelete)(const GGLInterface_t * iface, gl_shader_program_t * program);
+   void (* ShaderProgramDelete)(GGLInterface_t * iface, gl_shader_program_t * program);
 
    // LLVM JIT and set as active program
    void (* ShaderUse)(GGLInterface_t * iface, gl_shader_program_t * program);
-   
+
    // bind attribute location before linking
-   void (* ShaderAttributeBind)(const GGLInterface_t * iface, const gl_shader_program_t * program,
+   void (* ShaderAttributeBind)(const gl_shader_program_t * program,
                                 GLuint index, const GLchar * name);
-   GLint (* ShaderAttributeLocation)(const GGLInterface_t * iface, const gl_shader_program_t * program,
+   GLint (* ShaderAttributeLocation)(const gl_shader_program_t * program,
                                      const char * name);
    // returns fragment input location and vertex output location for varying of linked program
-   GLint (* ShaderVaryingLocation)(const GGLInterface_t * iface, const gl_shader_program_t * program,
+   GLint (* ShaderVaryingLocation)(const gl_shader_program_t * program,
                                    const char * name, GLint * vertexOutputLocation);
    // gets uniform location for linked program
-   GLint (* ShaderUniformLocation)(const GGLInterface_t * iface, const gl_shader_program_t * program,
+   GLint (* ShaderUniformLocation)(const gl_shader_program_t * program,
                                    const char * name);
-   void (* ShaderUniformGetfv)(const GGLInterface_t * iface, gl_shader_program_t * program,
+   void (* ShaderUniformGetfv)(gl_shader_program_t * program,
                                GLint location, GLfloat * params);
-   void (* ShaderUniformGetiv)(const GGLInterface_t * iface, gl_shader_program_t * program,
+   void (* ShaderUniformGetiv)(gl_shader_program_t * program,
                                GLint location, GLint * params);
    // updates linked program uniform value by location; return >= 0 indicates sampler assigned
-   GLint (* ShaderUniform)(const GGLInterface_t * iface, gl_shader_program_t * program,
+   GLint (* ShaderUniform)(gl_shader_program_t * program,
                            GLint location, GLsizei count, const GLvoid *values, GLenum type);
 
    // updates linked program uniform matrix value by location
-   void (* ShaderUniformMatrix)(const GGLInterface_t * iface, gl_shader_program_t * program,
-                                GLint cols, GLint rows, GLint location, GLsizei count,
+   void (* ShaderUniformMatrix)(gl_shader_program_t * program, GLint cols,
+                                GLint rows, GLint location, GLsizei count,
                                 GLboolean transpose, const GLfloat *values);
 };
 
@@ -262,13 +274,13 @@ extern "C"
    GGLInterface_t * CreateGGLInterface();
 
    void DestroyGGLInterface(GGLInterface_t * interface);
-   
+
    // creates empty shader
    gl_shader_t * GGLShaderCreate(GLenum type);
-   
+
    // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call; use infoLog to retrieve status
-   GLboolean GGLShaderCompile(const struct gl_context * glCtx, gl_shader_t * shader, const char * glsl, const char ** infoLog);
-   
+   GLboolean GGLShaderCompile(const gl_context_t * glCtx, gl_shader_t * shader, const char * glsl, const char ** infoLog);
+
    void GGLShaderDelete(gl_shader_t * shader);
 
    // creates empty program
@@ -285,28 +297,33 @@ extern "C"
    // frees program
    void GGLShaderProgramDelete(gl_shader_program_t * program);
 
-   // LLVM JIT and set as active program
-   void GGLShaderUse(gl_shader_program_t * program);
+   // LLVM JIT and set as active program, also call after gglState change to re-JIT
+   void GGLShaderUse(const GGLContext_t * gglCtx /*nullable*/, void * llvmCtx, const GGLState_t * gglState, gl_shader_program_t * program);
+
    // bind attribute location before linking
    void GGLShaderAttributeBind(const gl_shader_program_t * program,
-                                GLuint index, const GLchar * name);
+                               GLuint index, const GLchar * name);
    GLint GGLShaderAttributeLocation(const gl_shader_program_t * program,
-                                     const char * name);
+                                    const char * name);
    // returns fragment input location and vertex output location for varying of linked program
    GLint GGLShaderVaryingLocation(const gl_shader_program_t * program,
-                                   const char * name, GLint * vertexOutputLocation);
+                                  const char * name, GLint * vertexOutputLocation);
    // gets uniform location for linked program
    GLint GGLShaderUniformLocation(const gl_shader_program_t * program,
-                                   const char * name);
-                                   
-   void GGLProcessVertex(const VertexInput_t * inputs,
-                          VertexOutput_t * outputs, const float (*constants[4]));
-                          
+                                  const char * name);
+
+   void GGLProcessVertex(const gl_shader_program_t * program, const VertexInput_t * input,
+                         VertexOutput_t * output, const float (*constants)[4]);
+
    // scan line given left and right processed and scizored vertices
-   void GGLScanLine(const VertexOutput_t * v1, const VertexOutput_t * v2);
-   
-   void GGLProcessFragment(const VertexOutput_t * inputs, VertexOutput_t * outputs,
-                     const float (*constants[4]));
+   // depth value bitcast float->int, if negative then ^= 0x7fffffff
+   void GGLScanLine(const gl_shader_program_t * program, unsigned * frameBuffer,
+                    int * depthBuffer, unsigned char * stencilBuffer, unsigned bufferWidth,
+                    unsigned bufferHeight, GGLActiveStencil_t * activeStencil, const VertexOutput_t * start,
+                    const VertexOutput_t * end, const float (*constants)[4]);
+
+//   void GGLProcessFragment(const VertexOutput_t * inputs, VertexOutput_t * outputs,
+//                           const float (*constants[4]));
 
 #ifdef __cplusplus
 }

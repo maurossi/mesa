@@ -53,6 +53,13 @@ static inline void InterpolateVertex(const VertexOutput * a, const VertexOutput 
 
 }
 
+void GGLProcessVertex(const gl_shader_program * program, const VertexInput_t * input,
+                         VertexOutput_t * output, const float (*constants)[4])
+{
+   ShaderFunction_t function = (ShaderFunction_t)program->_LinkedShaders[MESA_SHADER_VERTEX]->function;
+   function(input, output, constants);
+}
+
 static void ProcessVertex(const GGLInterface * iface, const VertexInput * input,
                           VertexOutput * output)
 {
@@ -68,8 +75,7 @@ static void ProcessVertex(const GGLInterface * iface, const VertexInput * input,
 //   ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_VERTEX]->function();
 //   memcpy(output, ctx->glCtx->CurrentProgram->ValuesVertexOutput, sizeof(*output));
    
-   ShaderFunction_t function = (ShaderFunction_t)ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_VERTEX]->function;
-   function(input, output, ctx->glCtx->CurrentProgram->ValuesUniform);
+   GGLProcessVertex(ctx->CurrentProgram, input, output, ctx->CurrentProgram->ValuesUniform);
 //   const Vector4 * constants = (Vector4 *)
 //    ctx->glCtx->Shader.CurrentProgram->VertexProgram->Parameters->ParameterValues;
 //	ctx->glCtx->Shader.CurrentProgram->GLVMVP->function(input, output, constants);
@@ -90,7 +96,7 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
    assert(fabs(tl->position.y - tr->position.y) < 1 && fabs(bl->position.y - br->position.y) < 1);
 
    const unsigned width = ctx->frameSurface.width, height = ctx->frameSurface.height;
-   const unsigned varyingCount = ctx->glCtx->CurrentProgram->VaryingSlots;
+   const unsigned varyingCount = ctx->CurrentProgram->VaryingSlots;
 
 
    // tlv-trv and blv-brv are parallel and horizontal
@@ -193,7 +199,7 @@ static void RasterTriangle(const GGLInterface * iface, const VertexOutput * v1,
                            const VertexOutput * v2, const VertexOutput * v3)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   const unsigned varyingCount = ctx->glCtx->CurrentProgram->VaryingSlots;
+   const unsigned varyingCount = ctx->CurrentProgram->VaryingSlots;
    const unsigned height = ctx->frameSurface.height;
    const VertexOutput * a = v1, * b = v2, * d = v3;
    //abc is a triangle, bcd is another triangle, they share bc as horizontal edge

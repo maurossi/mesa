@@ -71,8 +71,8 @@ gl_shader_program * init_shader()
 
    gl_shader_program * program = ggl->ShaderProgramCreate(ggl);
    // current scan_test assumes the following attribute layout
-   ggl->ShaderAttributeBind(ggl, program, 0, "aPosition");
-   ggl->ShaderAttributeBind(ggl, program, 1, "aTexCoord");
+   ggl->ShaderAttributeBind(program, 0, "aPosition");
+   ggl->ShaderAttributeBind(program, 1, "aTexCoord");
 
    puts("\n -- linking -- \n");
    ggl->ShaderAttach(ggl, program, vertShader);
@@ -191,9 +191,9 @@ void test_scan()
    _math_matrix_ctr(&m3);
    _math_matrix_ctr(&m4);
 
-   int uMatrixLoc = ggl->ShaderUniformLocation(ggl, program, "uMatrix");
-   int uRotMLoc = ggl->ShaderUniformLocation(ggl, program, "uRotM");
-   int uTLoc = ggl->ShaderUniformLocation(ggl, program, "t");
+   int uMatrixLoc = ggl->ShaderUniformLocation(program, "uMatrix");
+   int uRotMLoc = ggl->ShaderUniformLocation(program, "uRotM");
+   int uTLoc = ggl->ShaderUniformLocation(program, "t");
 
    GGLTexture cubeTexture = {GL_TEXTURE_CUBE_MAP, GGL_PIXEL_FORMAT_RGBA_8888, 1, 1, 1, NULL, 1, 2, 1, 1};
    unsigned cubeTextureSurface [6] = {0xff0000ff, 0xff00ff00, 0xffff0000,
@@ -202,9 +202,9 @@ void test_scan()
    void * levels [1] = {cubeTextureSurface};
    cubeTexture.levels = levels;
    if (program) {
-      ggl->ShaderUniformMatrix(ggl, program, 4, 4, uMatrixLoc, 1, GL_FALSE, m0.m);
-      int sampler2dLoc = ggl->ShaderUniformLocation(ggl, program, "sampler2d");
-      int samplercubeLoc = ggl->ShaderUniformLocation(ggl, program, "samplercube");
+      ggl->ShaderUniformMatrix(program, 4, 4, uMatrixLoc, 1, GL_FALSE, m0.m);
+      int sampler2dLoc = ggl->ShaderUniformLocation(program, "sampler2d");
+      int samplercubeLoc = ggl->ShaderUniformLocation(program, "samplercube");
       int samplerUnit = -1;
       if (0 <= sampler2dLoc) { // set 2d texture to sampler if used
          samplerUnit = sampler2dLoc;//ggl->ShaderUniformGetiv(ggl, program, sampler2dLoc, &samplerUnit);
@@ -314,9 +314,9 @@ void test_scan()
 
       float t = i * 0.6f;
       if (program) {
-         ggl->ShaderUniformMatrix(ggl, program, 4, 4, uMatrixLoc, 1, GL_FALSE, m4.m);
-         ggl->ShaderUniformMatrix(ggl, program, 4, 4, uRotMLoc, 1, GL_FALSE, m2.m);
-         ggl->ShaderUniform(ggl, program, uTLoc, 1, &t, GL_FLOAT);
+         ggl->ShaderUniformMatrix(program, 4, 4, uMatrixLoc, 1, GL_FALSE, m4.m);
+         ggl->ShaderUniformMatrix(program, 4, 4, uRotMLoc, 1, GL_FALSE, m2.m);
+         ggl->ShaderUniform(program, uTLoc, 1, &t, GL_FLOAT);
       }
 
       //ggl->EnableDisable(ggl, GL_BLEND, true);
@@ -449,9 +449,11 @@ void test_scan()
    ggl = NULL;
 }
 
+extern "C" int cmain(int,char**);
 
 int main (int argc, char * const argv[])
 {
+   cmain(0,NULL);
    test_scan();
    puts("mesa done");
    return 0;

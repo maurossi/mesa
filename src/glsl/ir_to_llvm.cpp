@@ -63,12 +63,12 @@ using namespace tr1;
 #include "glsl_types.h"
 #include "src/mesa/main/mtypes.h"
 
-struct GGLContext;
+struct GGLState;
 
 llvm::Value * tex2D(llvm::IRBuilder<> & builder, llvm::Value * in1, const unsigned sampler,
-                     const GGLContext * gglCtx);
+                     const GGLState * gglCtx);
 llvm::Value * texCube(llvm::IRBuilder<> & builder, llvm::Value * in1, const unsigned sampler,
-                     const GGLContext * gglCtx);
+                     const GGLState * gglCtx);
 
 class ir_to_llvm_visitor : public ir_visitor {
    ir_to_llvm_visitor();
@@ -84,12 +84,12 @@ public:
    llvm::Value* result;
    llvm::IRBuilder<> bld;
    
-   const GGLContext * gglCtx;
+   const GGLState * gglCtx;
    const char * shaderSuffix;
    llvm::Value * inputsPtr, * outputsPtr, * constantsPtr; // internal globals to store inputs/outputs/constants pointers
    llvm::Value * inputs, * outputs, * constants;
    
-   ir_to_llvm_visitor(llvm::Module* p_mod, const GGLContext * GGLCtx, const char * suffix)
+   ir_to_llvm_visitor(llvm::Module* p_mod, const GGLState * GGLCtx, const char * suffix)
    : ctx(p_mod->getContext()), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, 
       (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx), shaderSuffix(suffix),
       inputsPtr(NULL), outputsPtr(NULL), constantsPtr(NULL),
@@ -1360,7 +1360,7 @@ public:
 
 struct llvm::Module *
 glsl_ir_to_llvm_module(struct exec_list *ir, llvm::Module * mod, 
-                        const struct GGLContext * gglCtx, const char * shaderSuffix)
+                        const struct GGLState * gglCtx, const char * shaderSuffix)
 {
    ir_to_llvm_visitor v(mod, gglCtx, shaderSuffix);
 

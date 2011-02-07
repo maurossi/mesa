@@ -67,10 +67,10 @@ static void FrontFace(GGLInterface * iface, GLenum mode)
 static void BlendColor(GGLInterface * iface, GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha)
 {
    GGL_GET_CONTEXT(ctx, iface);
-   ctx->blendState.color[0] = MIN2(MAX2(red * 255, 0.0f), 255.0f);
-   ctx->blendState.color[1] = MIN2(MAX2(green * 255, 0.0f), 255.0f);
-   ctx->blendState.color[2] = MIN2(MAX2(blue * 255, 0.0f), 255.0f);
-   ctx->blendState.color[3] = MIN2(MAX2(alpha * 255, 0.0f), 255.0f);
+   ctx->state.blendState.color[0] = MIN2(MAX2(red * 255, 0.0f), 255.0f);
+   ctx->state.blendState.color[1] = MIN2(MAX2(green * 255, 0.0f), 255.0f);
+   ctx->state.blendState.color[2] = MIN2(MAX2(blue * 255, 0.0f), 255.0f);
+   ctx->state.blendState.color[3] = MIN2(MAX2(alpha * 255, 0.0f), 255.0f);
    SetShaderVerifyFunctions(iface);
 }
 
@@ -83,8 +83,8 @@ static void BlendEquationSeparate(GGLInterface * iface, GLenum modeRGB, GLenum m
    if (GL_FUNC_ADD != modeRGB && (GL_FUNC_SUBTRACT > modeRGB ||
                                   GL_FUNC_REVERSE_SUBTRACT < modeRGB))
       return gglError(GL_INVALID_ENUM);
-   ctx->blendState.ce = modeRGB - GL_FUNC_ADD;
-   ctx->blendState.ae = modeAlpha - GL_FUNC_ADD;
+   ctx->state.blendState.ce = modeRGB - GL_FUNC_ADD;
+   ctx->state.blendState.ae = modeAlpha - GL_FUNC_ADD;
    SetShaderVerifyFunctions(iface);
 }
 
@@ -111,19 +111,19 @@ static void BlendFuncSeparate(GGLInterface * iface, GLenum srcRGB, GLenum dstRGB
       srcAlpha = GL_ONE;
    // in c++ it's templated function for color and alpha,
    // so it requires setting srcAlpha to GL_ONE to run template again only for alpha
-   ctx->blendState.scf = srcRGB <= GL_ONE ? srcRGB :
+   ctx->state.blendState.scf = srcRGB <= GL_ONE ? srcRGB :
                          (srcRGB <= GL_SRC_ALPHA_SATURATE ? srcRGB - GL_SRC_COLOR + 2
                           : srcRGB - GL_CONSTANT_COLOR + 11);
 
-   ctx->blendState.saf = srcAlpha <= GL_ONE ? srcAlpha :
+   ctx->state.blendState.saf = srcAlpha <= GL_ONE ? srcAlpha :
                          (srcAlpha <= GL_SRC_ALPHA_SATURATE ? srcAlpha - GL_SRC_COLOR + 2
                           : srcAlpha - GL_CONSTANT_COLOR + 11);
 
-   ctx->blendState.dcf = dstRGB <= GL_ONE ? dstRGB :
+   ctx->state.blendState.dcf = dstRGB <= GL_ONE ? dstRGB :
                          (dstRGB <= GL_SRC_ALPHA_SATURATE ? dstRGB - GL_SRC_COLOR + 2
                           : dstRGB - GL_CONSTANT_COLOR + 11);
 
-   ctx->blendState.daf = dstAlpha <= GL_ONE ? dstAlpha :
+   ctx->state.blendState.daf = dstAlpha <= GL_ONE ? dstAlpha :
                          (dstAlpha <= GL_SRC_ALPHA_SATURATE ? dstAlpha - GL_SRC_COLOR + 2
                           : dstAlpha - GL_CONSTANT_COLOR + 11);
 
@@ -137,20 +137,20 @@ static void EnableDisable(GGLInterface * iface, GLenum cap, GLboolean enable)
    bool changed = false;
    switch (cap) {
    case GL_BLEND:
-      changed |= ctx->blendState.enable ^ enable;
-      ctx->blendState.enable = enable;
+      changed |= ctx->state.blendState.enable ^ enable;
+      ctx->state.blendState.enable = enable;
       break;
    case GL_CULL_FACE:
       changed |= ctx->cullState.enable ^ enable;
       ctx->cullState.enable = enable;
       break;
    case GL_DEPTH_TEST:
-      changed |= ctx->bufferState.depthTest ^ enable;
-      ctx->bufferState.depthTest = enable;
+      changed |= ctx->state.bufferState.depthTest ^ enable;
+      ctx->state.bufferState.depthTest = enable;
       break;
    case GL_STENCIL_TEST:
-      changed |= ctx->bufferState.stencilTest ^ enable;
-      ctx->bufferState.stencilTest = enable;
+      changed |= ctx->state.bufferState.stencilTest ^ enable;
+      ctx->state.bufferState.stencilTest = enable;
       break;
    default:
       gglError(GL_INVALID_ENUM);

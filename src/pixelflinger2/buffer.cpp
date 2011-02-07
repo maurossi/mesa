@@ -27,7 +27,7 @@ static void DepthFunc(GGLInterface * iface, GLenum func)
     GGL_GET_CONTEXT(ctx, iface);
     if (GL_NEVER > func || GL_ALWAYS < func)
         return gglError(GL_INVALID_ENUM);
-    ctx->bufferState.depthFunc = func & 0x7;
+    ctx->state.bufferState.depthFunc = func & 0x7;
     SetShaderVerifyFunctions(iface);
 }
 
@@ -43,15 +43,15 @@ static void StencilFuncSeparate(GGLInterface * iface, GLenum face, GLenum func, 
     ref &= mask;
     if (GL_FRONT == face || GL_FRONT_AND_BACK == face)
     {
-        ctx->frontStencil.ref = ref;
-        ctx->frontStencil.mask = mask;
-        ctx->frontStencil.func = func & 0x7;
+        ctx->state.frontStencil.ref = ref;
+        ctx->state.frontStencil.mask = mask;
+        ctx->state.frontStencil.func = func & 0x7;
     }
     if (GL_BACK == face || GL_FRONT_AND_BACK == face)
     {
-        ctx->backStencil.ref = ref;
-        ctx->backStencil.mask = mask;
-        ctx->backStencil.func = func & 0x7;
+        ctx->state.backStencil.ref = ref;
+        ctx->state.backStencil.mask = mask;
+        ctx->state.backStencil.func = func & 0x7;
     }
     SetShaderVerifyFunctions(iface);
 }
@@ -79,15 +79,15 @@ static void StencilOpSeparate(GGLInterface * iface, GLenum face, GLenum sfail, G
         return gglError(GL_INVALID_ENUM);
     if (GL_FRONT == face || GL_FRONT_AND_BACK == face)
     {
-        ctx->frontStencil.sFail = StencilOpEnum(sfail, ctx->frontStencil.sFail);
-        ctx->frontStencil.dFail = StencilOpEnum(dpfail, ctx->frontStencil.dFail);
-        ctx->frontStencil.dPass = StencilOpEnum(dppass, ctx->frontStencil.dPass);
+        ctx->state.frontStencil.sFail = StencilOpEnum(sfail, ctx->state.frontStencil.sFail);
+        ctx->state.frontStencil.dFail = StencilOpEnum(dpfail, ctx->state.frontStencil.dFail);
+        ctx->state.frontStencil.dPass = StencilOpEnum(dppass, ctx->state.frontStencil.dPass);
     }
     if (GL_BACK == face || GL_FRONT_AND_BACK == face)
     {
-        ctx->backStencil.sFail = StencilOpEnum(sfail, ctx->backStencil.sFail);
-        ctx->backStencil.dFail = StencilOpEnum(dpfail, ctx->backStencil.dFail);
-        ctx->backStencil.dPass = StencilOpEnum(dppass, ctx->backStencil.dPass);
+        ctx->state.backStencil.sFail = StencilOpEnum(sfail, ctx->state.backStencil.sFail);
+        ctx->state.backStencil.dFail = StencilOpEnum(dpfail, ctx->state.backStencil.dFail);
+        ctx->state.backStencil.dPass = StencilOpEnum(dppass, ctx->state.backStencil.dPass);
     }
     SetShaderVerifyFunctions(iface);
 }
@@ -98,14 +98,14 @@ static void StencilSelect(const GGLInterface * iface, GLenum face)
     if (GL_FRONT == face)
     {
         ctx->activeStencil.face = 0;
-        ctx->activeStencil.ref = ctx->frontStencil.ref;
-        ctx->activeStencil.mask = ctx->frontStencil.mask;
+        ctx->activeStencil.ref = ctx->state.frontStencil.ref;
+        ctx->activeStencil.mask = ctx->state.frontStencil.mask;
     }
     else if (GL_BACK == face)
     {
         ctx->activeStencil.face = 1;
-        ctx->activeStencil.ref = ctx->backStencil.ref;
-        ctx->activeStencil.mask = ctx->backStencil.mask;
+        ctx->activeStencil.ref = ctx->state.backStencil.ref;
+        ctx->activeStencil.mask = ctx->state.backStencil.mask;
     }
 }
 

@@ -275,7 +275,7 @@ static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program
    return GGLShaderProgramLink(ctx->glCtx, program, infoLog);
 }
 
-static void GetShaderKey(const GGLContext * ctx, const gl_shader * shader, ShaderKey * key)
+static void GetShaderKey(const GGLState * ctx, const gl_shader * shader, ShaderKey * key)
 {
    memset(key, 0, sizeof(*key));
    if (GL_FRAGMENT_SHADER == shader->Type) {
@@ -350,7 +350,7 @@ static char * GetScanlineKeyString(const ShaderKey * key, char * buffer,
 }
 
 struct SymbolLookupContext {
-   const GGLContext * gglCtx;
+   const GGLState * gglCtx;
    const gl_shader_program * program;
    const gl_shader * shader;
 };
@@ -360,7 +360,7 @@ static void* SymbolLookup(void* pContext, const char* name)
    SymbolLookupContext * ctx = (SymbolLookupContext *)pContext;
    const gl_shader * shader = ctx->shader;
    const gl_shader_program * program = ctx->program;
-   const GGLContext * gglCtx = ctx->gglCtx;
+   const GGLState * gglCtx = ctx->gglCtx;
    const void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
    if (NULL == symbol) {
       if (!strcmp(_PF2_TEXTURE_DATA_NAME_, name))
@@ -400,7 +400,7 @@ static void* SymbolLookup(void* pContext, const char* name)
 }
 
 static void CodeGen(Instance * instance, const char * mainName, gl_shader * shader,
-                    gl_shader_program * program, const GGLContext * gglCtx)
+                    gl_shader_program * program, const GGLState * gglCtx)
 {
    SymbolLookupContext ctx = {gglCtx, program, shader};
    int result = 0;
@@ -429,20 +429,11 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
       printf("bcc_compile %s=%p \n", mainName, instance->function);
 }
 
-void GenerateScanLine(const GGLContext * gglCtx, const gl_shader_program * program, llvm::Module * mod,
+void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program, llvm::Module * mod,
                       const char * shaderName, const char * scanlineName);
 
-static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
+void GGLShaderUse(const GGLContext * gglCtx, void * llvmCtx, const GGLState * gglState, gl_shader_program * program)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
-   assert(program);
-   if (!program) {
-      ctx->glCtx->CurrentProgram = NULL;
-      // so drawing calls will do nothing until ShaderUse with a program
-      SetShaderVerifyFunctions(iface);
-      return;
-   }
-
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (!program->_LinkedShaders[i])
          continue;
@@ -453,12 +444,12 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
       }
 
       ShaderKey shaderKey;
-      GetShaderKey(ctx, shader, &shaderKey);
+      GetShaderKey(gglState, shader, &shaderKey);
       Instance * instance = shader->executable->instances[shaderKey];
       if (!instance) {
          puts("begin jit new shader");
          instance = hieralloc_zero(shader->executable, Instance);
-         instance->module = new llvm::Module("glsl", *ctx->llvmCtx);
+         instance->module = new llvm::Module("glsl", *(llvm::LLVMContext *)llvmCtx);
 
          char shaderName [SHADER_KEY_STRING_LEN] = {0};
          GetShaderKeyString(shader->Type, &shaderKey, shaderName, sizeof shaderName / sizeof *shaderName);
@@ -468,18 +459,18 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
 
          do_mat_op_to_vec(shader->ir);
 
-         llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, ctx, shaderName);
+         llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, gglState, shaderName);
          if (!module)
             assert(0);
 #if USE_LLVM_SCANLINE
          if (GL_FRAGMENT_SHADER == shader->Type) {
             char scanlineName [SCANLINE_KEY_STRING_LEN] = {0};
             GetScanlineKeyString(&shaderKey, scanlineName, sizeof scanlineName / sizeof *scanlineName);
-            GenerateScanLine(ctx, program, module, mainName, scanlineName);
-            CodeGen(instance, scanlineName, shader, program, ctx);
+            GenerateScanLine(gglState, program, module, mainName, scanlineName);
+            CodeGen(instance, scanlineName, shader, program, gglState);
          } else
 #endif
-            CodeGen(instance, mainName, shader, program, ctx);
+            CodeGen(instance, mainName, shader, program, gglState);
          shader->executable->instances[shaderKey] = instance;
          debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function);
       } else
@@ -488,54 +479,70 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
 
       shader->function  = instance->function;
 
-      if (GL_VERTEX_SHADER == shader->Type)
-         ctx->PickRaster(iface);
-      else if (GL_FRAGMENT_SHADER == shader->Type)
-         ctx->PickScanLine(iface);
-      else
-         assert(0);
+      if (gglCtx)
+         if (GL_VERTEX_SHADER == shader->Type)
+            gglCtx->PickRaster((GGLInterface *)gglCtx);
+         else if (GL_FRAGMENT_SHADER == shader->Type)
+            gglCtx->PickScanLine((GGLInterface *)gglCtx);
+         else
+            assert(0);
    }
-
-   ctx->glCtx->CurrentProgram = program;
 }
 
-static void ShaderProgramDelete(const GGLInterface * iface, gl_shader_program * program)
+static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
-   if (ctx->glCtx->CurrentProgram == program) {
-      ctx->glCtx->CurrentProgram = NULL;
-      SetShaderVerifyFunctions(const_cast<GGLInterface *>(iface));
+   GGL_GET_CONTEXT(ctx, iface);
+   assert(program);
+   if (!program) {
+      ctx->CurrentProgram = NULL;
+      // so drawing calls will do nothing until ShaderUse with a program
+      SetShaderVerifyFunctions(iface);
+      return;
    }
 
+   GGLShaderUse(ctx, ctx->llvmCtx, &ctx->state, program);
+
+   ctx->CurrentProgram = program;
+}
+
+void GGLShaderProgramDelete(gl_shader_program * program)
+{
    for (unsigned i = 0; i < program->NumShaders; i++) {
-      iface->ShaderDelete(iface, program->Shaders[i]);
-      iface->ShaderDetach(iface, program, program->Shaders[i]);
+      GGLShaderDelete(program->Shaders[i]);
+      GGLShaderDetach(program, program->Shaders[i]);
    }
 
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++)
-      iface->ShaderDelete(iface, program->_LinkedShaders[i]);
+      GGLShaderDelete(program->_LinkedShaders[i]);
 }
 
-static void ShaderAttributeBind(const GGLInterface * iface, const gl_shader_program * program,
-                                GLuint index, const GLchar * name)
+static void ShaderProgramDelete(GGLInterface * iface, gl_shader_program * program)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
+   GGL_GET_CONTEXT(ctx, iface);
+   if (ctx->CurrentProgram == program) {
+      ctx->CurrentProgram = NULL;
+      SetShaderVerifyFunctions(const_cast<GGLInterface *>(iface));
+   }
+
+   GGLShaderProgramDelete(program);
+}
+
+void GGLShaderAttributeBind(const gl_shader_program * program, GLuint index, const GLchar * name)
+{
    int i = _mesa_add_parameter(program->Attributes, name);
    program->Attributes->Parameters[i].BindLocation = index;
 }
 
-static GLint ShaderAttributeLocation(const GGLInterface * iface, const gl_shader_program * program,
-                                     const char * name)
+GLint GGLShaderAttributeLocation(const gl_shader_program * program, const char * name)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
    int i = _mesa_get_parameter(program->Attributes, name);
    if (i >= 0)
       return program->Attributes->Parameters[i].Location;
    return -1;
 }
 
-static GLint ShaderVaryingLocation(const GGLInterface_t * iface, const gl_shader_program_t * program,
-                                   const char * name, GLint * vertexOutputLocation)
+GLint GGLShaderVaryingLocation(const gl_shader_program_t * program,
+                               const char * name, GLint * vertexOutputLocation)
 {
    for (unsigned int i = 0; i < program->Varying->NumParameters; i++)
       if (!strcmp(program->Varying->Parameters[i].Name, name)) {
@@ -546,8 +553,8 @@ static GLint ShaderVaryingLocation(const GGLInterface_t * iface, const gl_shader
    return -1;
 }
 
-static GLint ShaderUniformLocation(const GGLInterface * iface, const gl_shader_program * program,
-                                   const char * name)
+GLint GGLShaderUniformLocation(const gl_shader_program * program,
+                               const char * name)
 {
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
       if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
@@ -555,26 +562,23 @@ static GLint ShaderUniformLocation(const GGLInterface * iface, const gl_shader_p
    return -1;
 }
 
-static void ShaderUniformGetfv(const GGLInterface * iface, gl_shader_program * program,
-                               GLint location, GLfloat * params)
+void GGLShaderUniformGetfv(gl_shader_program * program, GLint location, GLfloat * params)
 {
    memcpy(params, program->ValuesUniform + location, sizeof(*program->ValuesUniform));
 }
 
-static void ShaderUniformGetiv(const GGLInterface * iface, gl_shader_program * program,
-                               GLint location, GLint * params)
+void GGLShaderUniformGetiv(gl_shader_program * program, GLint location, GLint * params)
 {
    // TODO: sampler uniform
-   GGL_GET_CONST_CONTEXT(ctx, iface);
    memcpy(params, program->ValuesUniform + location, sizeof(*program->ValuesUniform));
 }
 
-static GLint ShaderUniform(const GGLInterface * iface, gl_shader_program * program,
-                           GLint location, GLsizei count, const GLvoid *values, GLenum type)
+GLint GGLShaderUniform(gl_shader_program * program, GLint location, GLsizei count,
+                       const GLvoid *values, GLenum type)
 {
    // TODO: sampler uniform
    if (!program) {
-      gglError(GL_INVALID_OPERATION);
+      //gglError(GL_INVALID_OPERATION);
       return -2;
    }
    int start = location;
@@ -616,9 +620,8 @@ static GLint ShaderUniform(const GGLInterface * iface, gl_shader_program * progr
    return start;
 }
 
-static void ShaderUniformMatrix(const GGLInterface * iface, gl_shader_program * program,
-                                GLint cols, GLint rows, GLint location, GLsizei count,
-                                GLboolean transpose, const GLfloat *values)
+void GGLShaderUniformMatrix(gl_shader_program * program, GLint cols, GLint rows,
+                            GLint location, GLsizei count, GLboolean transpose, const GLfloat *values)
 {
    if (location == -1)
       return;
@@ -637,8 +640,8 @@ static void ShaderVerifyProcessVertex(const GGLInterface * iface, const VertexIn
                                       VertexOutput * output)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   if (ctx->glCtx->CurrentProgram) {
-      ShaderUse(const_cast<GGLInterface *>(iface), ctx->glCtx->CurrentProgram);
+   if (ctx->CurrentProgram) {
+      ShaderUse(const_cast<GGLInterface *>(iface), ctx->CurrentProgram);
       if (ShaderVerifyProcessVertex != iface->ProcessVertex)
          iface->ProcessVertex(iface, input, output);
    }
@@ -648,8 +651,8 @@ static void ShaderVerifyDrawTriangle(const GGLInterface * iface, const VertexInp
                                      const VertexInput * v1, const VertexInput * v2)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   if (ctx->glCtx->CurrentProgram) {
-      ShaderUse(const_cast<GGLInterface *>(iface), ctx->glCtx->CurrentProgram);
+   if (ctx->CurrentProgram) {
+      ShaderUse(const_cast<GGLInterface *>(iface), ctx->CurrentProgram);
       if (ShaderVerifyDrawTriangle != iface->DrawTriangle)
          iface->DrawTriangle(iface, v0, v1, v2);
    }
@@ -659,8 +662,8 @@ static void ShaderVerifyRasterTriangle(const GGLInterface * iface, const VertexO
                                        const VertexOutput * v2, const VertexOutput * v3)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   if (ctx->glCtx->CurrentProgram) {
-      ShaderUse(const_cast<GGLInterface *>(iface), ctx->glCtx->CurrentProgram);
+   if (ctx->CurrentProgram) {
+      ShaderUse(const_cast<GGLInterface *>(iface), ctx->CurrentProgram);
       if (ShaderVerifyRasterTriangle != iface->RasterTriangle)
          iface->RasterTriangle(iface, v1, v2, v3);
    }
@@ -671,8 +674,8 @@ static void ShaderVerifyRasterTrapezoid(const GGLInterface * iface, const Vertex
                                         const VertexOutput * br)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   if (ctx->glCtx->CurrentProgram) {
-      ShaderUse(const_cast<GGLInterface *>(iface), ctx->glCtx->CurrentProgram);
+   if (ctx->CurrentProgram) {
+      ShaderUse(const_cast<GGLInterface *>(iface), ctx->CurrentProgram);
       if (ShaderVerifyRasterTrapezoid != iface->RasterTrapezoid)
          iface->RasterTrapezoid(iface, tl, tr, bl, br);
    }
@@ -682,8 +685,8 @@ static void ShaderVerifyScanLine(const GGLInterface * iface, const VertexOutput 
                                  const VertexOutput * v2)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   if (ctx->glCtx->CurrentProgram) {
-      ShaderUse(const_cast<GGLInterface *>(iface), ctx->glCtx->CurrentProgram);
+   if (ctx->CurrentProgram) {
+      ShaderUse(const_cast<GGLInterface *>(iface), ctx->CurrentProgram);
       if (ShaderVerifyScanLine != iface->ScanLine)
          iface->ScanLine(iface, v1, v2);
    }
@@ -727,9 +730,6 @@ static void InitializeGLContext(struct gl_context *ctx)
    ctx->Const.FragmentProgram.MaxUniformComponents = 64;
 
    ctx->Const.MaxDrawBuffers = 2;
-
-   ctx->Driver.NewShader = _mesa_new_shader;
-   ctx->Driver.DeleteShader = _mesa_delete_shader;
 }
 
 void InitializeShaderFunctions(struct GGLInterface * iface)
@@ -748,14 +748,14 @@ void InitializeShaderFunctions(struct GGLInterface * iface)
    iface->ShaderProgramLink = ShaderProgramLink;
    iface->ShaderUse = ShaderUse;
    iface->ShaderProgramDelete = ShaderProgramDelete;
-   iface->ShaderAttributeBind = ShaderAttributeBind;
-   iface->ShaderAttributeLocation = ShaderAttributeLocation;
-   iface->ShaderVaryingLocation = ShaderVaryingLocation;
-   iface->ShaderUniformLocation = ShaderUniformLocation;
-   iface->ShaderUniformGetfv = ShaderUniformGetfv;
-   iface->ShaderUniformGetiv = ShaderUniformGetiv;
-   iface->ShaderUniform = ShaderUniform;
-   iface->ShaderUniformMatrix = ShaderUniformMatrix;
+   iface->ShaderAttributeBind = GGLShaderAttributeBind;
+   iface->ShaderAttributeLocation = GGLShaderAttributeLocation;
+   iface->ShaderVaryingLocation = GGLShaderVaryingLocation;
+   iface->ShaderUniformLocation = GGLShaderUniformLocation;
+   iface->ShaderUniformGetfv = GGLShaderUniformGetfv;
+   iface->ShaderUniformGetiv = GGLShaderUniformGetiv;
+   iface->ShaderUniform = GGLShaderUniform;
+   iface->ShaderUniformMatrix = GGLShaderUniformMatrix;
 }
 
 void DestroyShaderFunctions(GGLInterface * iface)
