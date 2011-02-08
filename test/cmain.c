@@ -37,7 +37,7 @@ int cmain(int argc, char **argv)
       "   gl_Position = aPosition; \n"
       "   vTexCoord = aTexCoord + uVec4; \n"
       "   vTexColor = texture2D(sampler2d, aTexCoord.zw); \n"
-      "   gl_PointSize = 432.0; \n"
+      "   gl_PointSize = 432; \n"
       "}";
    puts(glsl0);
    GLboolean compileStatus = ggl->ShaderCompile(ggl, shader0, glsl0, &infoLog);
@@ -69,7 +69,7 @@ int cmain(int argc, char **argv)
    ggl->ShaderAttributeBind(program0, 2, "aTexCoord");
    ggl->ShaderAttributeBind(program0, 3, "aPosition");
 
-   GLboolean linkStatus = ggl->ShaderProgramLink(ggl, program0, &infoLog);
+   GLboolean linkStatus = ggl->ShaderProgramLink(program0, &infoLog);
    if (!linkStatus)
       fprintf(stderr, "failed to link program 0, infoLog: \n %s \n", infoLog);
    assert(linkStatus);
@@ -79,7 +79,7 @@ int cmain(int argc, char **argv)
    unsigned texels0 [] = {0xffffffff, 0x22222222, 0x66666666, 0xffffffff};
    GGLTexture_t texture0 = {GL_TEXTURE_2D, GGL_PIXEL_FORMAT_RGBA_8888,
                             2, 2, 1, // width, height, levelCount
-                            texels0, 1, 2, 1, 1
+                            texels0, GGL_CLAMP_TO_EDGE, GGL_MIRRORED_REPEAT, GGL_LINEAR, GGL_LINEAR
                            }; // levels, wrapS, wrapT, minFilter, magFilter
 
    int sampler2dLoc = ggl->ShaderUniformLocation(program0, "sampler2d");
@@ -122,8 +122,18 @@ int cmain(int argc, char **argv)
       assert(0);
    }
 
-// TODO DXL linear filtering needs to be fixed for texcoord outside of [0,1]
-   v0.attributes[2] = VECTOR4_CTR(0,0, 0.5f, 0.5f);
+   v0.attributes[2] = VECTOR4_CTR(0,0, 1.5f, 1.5f);
+   texture0.wrapS = GGL_REPEAT;
+   texture0.wrapT = GGL_REPEAT;
+
+   sampler2dLoc = ggl->ShaderUniformLocation(program0, "sampler2d");
+   if (0 <= sampler2dLoc) {
+      int samplerUnit = -1;
+      //ggl->ShaderUniformGetiv(ggl, program0, sampler2dLoc, &samplerUnit);
+      samplerUnit = sampler2dLoc;
+      ggl->SetSampler(ggl, samplerUnit, &texture0);
+   }
+   ggl->ShaderUse(ggl, program0);
    ggl->ProcessVertex(ggl, &v0, &vout0);
    const float filtered = (float)(0xff + 0x22 + 0x66 + 0xff) / (4 * 0xff);
    if (!ApproximatelyEqual(vout0.varyings[vTexColorIndex],
@@ -149,7 +159,7 @@ int cmain(int argc, char **argv)
    ggl->ClearColor(ggl, 0.1f, 0.1f, 0.1f, 1.0f);
    ggl->ClearDepthf(ggl, 0.5f);
 
-// TODO DXL scanline and fs test
+// TODO DXL test scanline and fs
 
    free(colorSurface.data);
    colorSurface.data = NULL;

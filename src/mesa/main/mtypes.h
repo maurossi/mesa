@@ -2628,32 +2628,32 @@ struct gl_constants
 
    GLuint MaxVarying;  /**< Number of float[4] varying parameters */
 
-   GLuint GLSLVersion;  /**< GLSL version supported (ex: 120 = 1.20) */
+//   GLuint GLSLVersion;  /**< GLSL version supported (ex: 120 = 1.20) */
 
-   /** Which texture units support GL_ATI_envmap_bumpmap as targets */
-   GLbitfield SupportedBumpUnits;
-
-   /**
-    * Maximum amount of time, measured in nanseconds, that the server can wait.
-    */
-   GLuint64 MaxServerWaitTimeout;
-
-   /** GL_EXT_provoking_vertex */
-   GLboolean QuadsFollowProvokingVertexConvention;
-
-   /** OpenGL version 3.0 */
-   GLbitfield ContextFlags;  /**< Ex: GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT */
-
-   /** OpenGL version 3.2 */
-   GLbitfield ProfileMask;   /**< Mask of CONTEXT_x_PROFILE_BIT */
-
-   /** GL_EXT_transform_feedback */
-   GLuint MaxTransformFeedbackSeparateAttribs;
-   GLuint MaxTransformFeedbackSeparateComponents;
-   GLuint MaxTransformFeedbackInterleavedComponents;
-
-   /** GL_EXT_gpu_shader4 */
-   GLint MinProgramTexelOffset, MaxProgramTexelOffset;
+//   /** Which texture units support GL_ATI_envmap_bumpmap as targets */
+//   GLbitfield SupportedBumpUnits;
+//
+//   /**
+//    * Maximum amount of time, measured in nanseconds, that the server can wait.
+//    */
+//   GLuint64 MaxServerWaitTimeout;
+//
+//   /** GL_EXT_provoking_vertex */
+//   GLboolean QuadsFollowProvokingVertexConvention;
+//
+//   /** OpenGL version 3.0 */
+//   GLbitfield ContextFlags;  /**< Ex: GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT */
+//
+//   /** OpenGL version 3.2 */
+//   GLbitfield ProfileMask;   /**< Mask of CONTEXT_x_PROFILE_BIT */
+//
+//   /** GL_EXT_transform_feedback */
+//   GLuint MaxTransformFeedbackSeparateAttribs;
+//   GLuint MaxTransformFeedbackSeparateComponents;
+//   GLuint MaxTransformFeedbackInterleavedComponents;
+//
+//   /** GL_EXT_gpu_shader4 */
+//   GLint MinProgramTexelOffset, MaxProgramTexelOffset;
 };
 
 

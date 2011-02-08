@@ -25,8 +25,6 @@
 
 typedef struct gl_shader gl_shader_t;
 typedef struct gl_shader_program gl_shader_program_t;
-typedef struct gl_context gl_context_t;
-typedef struct GGLContext GGLContext_t;
 
 typedef struct VertexInput {
    Vector4 attributes[GGL_MAXVERTEXATTRIBS]; // vert input
@@ -73,17 +71,18 @@ typedef struct GGLTexture {
    void * levels;
 
    // the following affects vs/fs jit; must fit in byte; size used in GetShaderKey
-unsigned wrapS :
+   enum GGLTextureWrap {
+      GGL_REPEAT = 0, GGL_CLAMP_TO_EDGE = 1, GGL_MIRRORED_REPEAT = 2
+} wrapS :
 2, wrapT :
-   2; // GL_REPEAT = 0, GL_CLAMP_TO_EDGE = 1, GL_MIRRORED_REPEAT = 2
+   2;
 
-   // GL_NEAREST = 0, GL_LINEAR, GL_NEAREST_MIPMAP_NEAREST = 2,
-   // GL_LINEAR_MIPMAP_NEAREST, GL_NEAREST_MIPMAP_LINEAR, GL_LINEAR_MIPMAP_LINEAR = 5
-unsigned minFilter :
-   3;
-
-unsigned magFilter :
-   1; // GL_NEAREST = 0, GL_LINEAR
+   enum GGLTextureMinFilter {
+      GGL_NEAREST = 0, GGL_LINEAR, /*GGL_NEAREST_MIPMAP_NEAREST = 2,
+      GGL_LINEAR_MIPMAP_NEAREST, GGL_NEAREST_MIPMAP_LINEAR, GGL_LINEAR_MIPMAP_LINEAR = 5*/
+} minFilter :
+1, magFilter :
+   1; // only GGL_NEAREST and GGL_LINEAR
 } GGLTexture_t;
 
 typedef struct GGLStencilState {
@@ -117,21 +116,25 @@ unsigned depthFunc :
 typedef struct GGLBlendState { // all values affect scanline jit
    unsigned char color[4]; // rgba[0,255]
 
-unsigned scf :
+   // value = 0,1 | GLenum - GL_SRC_COLOR + 2 | GLenum - GL_CONSTANT_COLOR + 11
+   enum GGLBlendFactor {
+      GGL_ZERO = 0, GGL_ONE, GGL_SRC_COLOR = 2, GGL_ONE_MINUS_SRC_COLOR, GGL_SRC_ALPHA, GGL_ONE_MINUS_SRC_ALPHA,
+      GGL_DST_ALPHA, GGL_ONE_MINUS_DST_ALPHA, GGL_DST_COLOR, GGL_ONE_MINUS_DST_COLOR,
+      GGL_SRC_ALPHA_SATURATE, GGL_CONSTANT_COLOR = 11, GGL_ONE_MINUS_CONSTANT_COLOR,
+      GGL_CONSTANT_ALPHA, GGL_ONE_MINUS_CONSTANT_ALPHA
+} scf :
 4, saf :
 4, dcf :
 4, daf :
-   4; // GL_ZERO = 0, GL_ONE, GL_SRC_COLOR = 2,
-   // GL_ONE_MINUS_SRC_COLOR, GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
-   // GL_DST_ALPHA, GL_ONE_MINUS_DST_ALPHA, GL_DST_COLOR, GL_ONE_MINUS_DST_COLOR,
-   // GL_SRC_ALPHA_SATURATE, GL_CONSTANT_COLOR = 11, GL_ONE_MINUS_CONSTANT_COLOR,
-   // GL_CONSTANT_ALPHA, GL_ONE_MINUS_CONSTANT_ALPHA;
-   // value = 0,1 | GLenum - GL_SRC_COLOR + 2 | GLenum - GL_CONSTANT_COLOR + 11
+   4;
 
-unsigned ce :
+   //value = GLenum - GL_FUNC_ADD
+   enum GGLBlendFunc {
+      GGL_FUNC_ADD = 0, GGL_FUNC_SUBTRACT = 4,
+      GGL_FUNC_REVERSE_SUBTRACT = 5
+} ce :
 3, ae :
-   3; // GL_FUNC_ADD = 0, GL_FUNC_SUBTRACT = 4,
-   // GL_FUNC_REVERSE_SUBTRACT = 5; value = GLenum - GL_FUNC_ADD
+   3;
 
 unsigned enable :
    1;
@@ -217,7 +220,7 @@ struct GGLInterface {
 
    // creates empty shader
    gl_shader_t * (* ShaderCreate)(const GGLInterface_t * iface, GLenum type);
-   // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call; use infoLog to retrieve status
+   // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call
    GLboolean (* ShaderCompile)(const GGLInterface_t * iface, gl_shader_t * shader,
                                const char * glsl, const char ** infoLog);
 
@@ -227,14 +230,15 @@ struct GGLInterface {
    gl_shader_program_t * (* ShaderProgramCreate)(const GGLInterface_t * iface);
 
    // attaches a shader to program
-   void (* ShaderAttach)(const GGLInterface_t * iface, gl_shader_program_t * program, gl_shader_t * shader);
+   void (* ShaderAttach)(const GGLInterface_t * iface, gl_shader_program_t * program,
+                         gl_shader_t * shader);
 
    // detaches a shader from program
-   void (* ShaderDetach)(const GGLInterface_t * iface, gl_shader_program_t * program, gl_shader_t * shader);
+   void (* ShaderDetach)(const GGLInterface_t * iface, gl_shader_program_t * program,
+                         gl_shader_t * shader);
 
    // duplicates shaders to program, and links varyings / attributes
-   GLboolean (* ShaderProgramLink)(const GGLInterface_t * iface, gl_shader_program_t * program,
-                                   const char ** infoLog);
+   GLboolean (* ShaderProgramLink)(gl_shader_program_t * program, const char ** infoLog);
    // frees program
    void (* ShaderProgramDelete)(GGLInterface_t * iface, gl_shader_program_t * program);
 
@@ -279,7 +283,7 @@ extern "C"
    gl_shader_t * GGLShaderCreate(GLenum type);
 
    // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call; use infoLog to retrieve status
-   GLboolean GGLShaderCompile(const gl_context_t * glCtx, gl_shader_t * shader, const char * glsl, const char ** infoLog);
+   GLboolean GGLShaderCompile(gl_shader_t * shader, const char * glsl, const char ** infoLog);
 
    void GGLShaderDelete(gl_shader_t * shader);
 
@@ -293,12 +297,13 @@ extern "C"
    unsigned GGLShaderDetach(gl_shader_program_t * program, gl_shader_t * shader);
 
    // duplicates shaders to program, and links varyings / attributes;
-   GLboolean GGLShaderProgramLink(gl_context_t * glCtx, gl_shader_program_t * program, const char ** infoLog);
+   GLboolean GGLShaderProgramLink(gl_shader_program_t * program, const char ** infoLog);
+
    // frees program
    void GGLShaderProgramDelete(gl_shader_program_t * program);
 
    // LLVM JIT and set as active program, also call after gglState change to re-JIT
-   void GGLShaderUse(const GGLContext_t * gglCtx /*nullable*/, void * llvmCtx, const GGLState_t * gglState, gl_shader_program_t * program);
+   void GGLShaderUse(void * llvmCtx, const GGLState_t * gglState, gl_shader_program_t * program);
 
    // bind attribute location before linking
    void GGLShaderAttributeBind(const gl_shader_program_t * program,

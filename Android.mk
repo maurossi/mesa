@@ -101,6 +101,7 @@ libMesa_SRC_FILES :=	\
 	src/glsl/strtod.c \
 	src/glsl/ir_to_llvm.cpp \
 	src/glsl/ir_to_llvm_helper.cpp \
+	src/mesa/main/shaderobj.c \
 	src/mesa/program/hash_table.c \
 	src/mesa/program/prog_parameter.cpp \
 	src/mesa/program/symbol_table.c \

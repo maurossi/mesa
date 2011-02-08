@@ -83,8 +83,8 @@ static void BlendEquationSeparate(GGLInterface * iface, GLenum modeRGB, GLenum m
    if (GL_FUNC_ADD != modeRGB && (GL_FUNC_SUBTRACT > modeRGB ||
                                   GL_FUNC_REVERSE_SUBTRACT < modeRGB))
       return gglError(GL_INVALID_ENUM);
-   ctx->state.blendState.ce = modeRGB - GL_FUNC_ADD;
-   ctx->state.blendState.ae = modeAlpha - GL_FUNC_ADD;
+   ctx->state.blendState.ce = (GGLBlendState::GGLBlendFunc)(modeRGB - GL_FUNC_ADD);
+   ctx->state.blendState.ae = (GGLBlendState::GGLBlendFunc)(modeAlpha - GL_FUNC_ADD);
    SetShaderVerifyFunctions(iface);
 }
 
@@ -111,21 +111,21 @@ static void BlendFuncSeparate(GGLInterface * iface, GLenum srcRGB, GLenum dstRGB
       srcAlpha = GL_ONE;
    // in c++ it's templated function for color and alpha,
    // so it requires setting srcAlpha to GL_ONE to run template again only for alpha
-   ctx->state.blendState.scf = srcRGB <= GL_ONE ? srcRGB :
+   ctx->state.blendState.scf = (GGLBlendState::GGLBlendFactor)(srcRGB <= GL_ONE ? srcRGB :
                          (srcRGB <= GL_SRC_ALPHA_SATURATE ? srcRGB - GL_SRC_COLOR + 2
-                          : srcRGB - GL_CONSTANT_COLOR + 11);
+                          : srcRGB - GL_CONSTANT_COLOR + 11));
 
-   ctx->state.blendState.saf = srcAlpha <= GL_ONE ? srcAlpha :
+   ctx->state.blendState.saf = (GGLBlendState::GGLBlendFactor)(srcAlpha <= GL_ONE ? srcAlpha :
                          (srcAlpha <= GL_SRC_ALPHA_SATURATE ? srcAlpha - GL_SRC_COLOR + 2
-                          : srcAlpha - GL_CONSTANT_COLOR + 11);
+                          : srcAlpha - GL_CONSTANT_COLOR + 11));
 
-   ctx->state.blendState.dcf = dstRGB <= GL_ONE ? dstRGB :
+   ctx->state.blendState.dcf = (GGLBlendState::GGLBlendFactor)(dstRGB <= GL_ONE ? dstRGB :
                          (dstRGB <= GL_SRC_ALPHA_SATURATE ? dstRGB - GL_SRC_COLOR + 2
-                          : dstRGB - GL_CONSTANT_COLOR + 11);
+                          : dstRGB - GL_CONSTANT_COLOR + 11));
 
-   ctx->state.blendState.daf = dstAlpha <= GL_ONE ? dstAlpha :
+   ctx->state.blendState.daf = (GGLBlendState::GGLBlendFactor)(dstAlpha <= GL_ONE ? dstAlpha :
                          (dstAlpha <= GL_SRC_ALPHA_SATURATE ? dstAlpha - GL_SRC_COLOR + 2
-                          : dstAlpha - GL_CONSTANT_COLOR + 11);
+                          : dstAlpha - GL_CONSTANT_COLOR + 11));
 
    SetShaderVerifyFunctions(iface);
 
@@ -224,8 +224,6 @@ void DestroyGGLInterface(GGLInterface * iface)
    assert((void *)ctx == (void *)iface);
 
    DestroyShaderFunctions(iface);
-
-   ctx->glCtx = NULL;
 
    free(ctx);
    

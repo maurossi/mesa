@@ -59,7 +59,7 @@ _mesa_glsl_parse_state::_mesa_glsl_parse_state(const struct gl_context *ctx,
 
    /* OpenGL ES 2.0 has different defaults from desktop GL. */
    if (ctx->API == API_OPENGLES2) {
-      this->language_version = 100;
+      this->language_version = 120;
       this->es_shader = true;
       this->ARB_texture_rectangle_enable = false;
    }

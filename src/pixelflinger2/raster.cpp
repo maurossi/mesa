@@ -53,8 +53,8 @@ static inline void InterpolateVertex(const VertexOutput * a, const VertexOutput 
 
 }
 
-void GGLProcessVertex(const gl_shader_program * program, const VertexInput_t * input,
-                         VertexOutput_t * output, const float (*constants)[4])
+void GGLProcessVertex(const gl_shader_program * program, const VertexInput * input,
+                         VertexOutput * output, const float (*constants)[4])
 {
    ShaderFunction_t function = (ShaderFunction_t)program->_LinkedShaders[MESA_SHADER_VERTEX]->function;
    function(input, output, constants);

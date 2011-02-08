@@ -914,19 +914,17 @@ public:
          sampler = deref->variable_referenced();
       else if(ir_dereference_array* deref = ir->sampler->as_dereference_array())
       {
-         result = llvm::Constant::getNullValue(llvm::VectorType::get(bld.getFloatTy(), 4));
+         assert(0); // not implemented
          return;
-         assert(0);
          deref->array_index;
          deref->array;
       }
       else if(ir->sampler->as_dereference())
       {
-         assert(0);
+         assert(0); // not implemented
          ir_dereference_record* deref = (ir_dereference_record*)ir->sampler;
          int idx = deref->record->type->field_index(deref->field);
          assert(idx >= 0);
-         //return bld.CreateConstInBoundsGEP2_32(llvm_pointer(deref->record), 0, idx);
       }
       else
          assert(0);

@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2010 The Android Open Source Project
+ * Copyright (C) 2011 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -27,11 +27,64 @@
 
 
 #include "src/talloc/hieralloc.h"
-#include "src/mesa/main/mtypes.h"
+#include "src/mesa/main/shaderobj.h"
 #include "src/mesa/program/prog_parameter.h"
 #include "src/mesa/program/prog_uniform.h"
 #include "src/glsl/glsl_types.h"
 #include "src/glsl/ir_to_llvm.h"
+
+static void InitializeGLContext(struct gl_context *ctx)
+{
+   memset(ctx, 0, sizeof(*ctx));
+   ctx->API = API_OPENGLES2;
+   ctx->Extensions.ARB_draw_buffers = GL_TRUE;
+   ctx->Extensions.ARB_fragment_coord_conventions = GL_TRUE;
+   ctx->Extensions.EXT_texture_array = GL_TRUE;
+   ctx->Extensions.NV_texture_rectangle = GL_TRUE;
+
+   /* 1.10 minimums. */
+   ctx->Const.MaxLights = 8;
+   ctx->Const.MaxClipPlanes = 8;
+   ctx->Const.MaxTextureUnits = 2;
+
+   /* More than the 1.10 minimum to appease parser tests taken from
+    * apps that (hopefully) already checked the number of coords.
+    */
+   ctx->Const.MaxTextureCoordUnits = 4;
+
+   ctx->Const.VertexProgram.MaxAttribs = 16;
+   ctx->Const.VertexProgram.MaxUniformComponents = 512;
+   ctx->Const.MaxVarying = 8;
+   ctx->Const.MaxVertexTextureImageUnits = 0;
+   ctx->Const.MaxCombinedTextureImageUnits = 2;
+   ctx->Const.MaxTextureImageUnits = 2;
+   ctx->Const.FragmentProgram.MaxUniformComponents = 64;
+
+   ctx->Const.MaxDrawBuffers = 2;
+}
+
+static const struct GLContext {
+   const gl_context * ctx;
+   GLContext() {
+      ctx = hieralloc_zero(NULL, gl_context);
+//      ctx = (const gl_context*)calloc(1,sizeof(gl_context));
+      InitializeGLContext(const_cast<gl_context *>(ctx));
+   }
+   ~GLContext() {
+      _mesa_glsl_release_types(); // TODO: find when to release to minize memory
+      _mesa_glsl_release_functions(); // the IR has pointers to types
+      hieralloc_free(const_cast<gl_context *>(ctx));
+//      free(const_cast<gl_context *>(ctx));
+      ctx = NULL;
+   }
+} glContext;
+
+void GLContextDctr()
+{
+   _mesa_glsl_release_types(); // TODO: find when to release to minize memory
+   _mesa_glsl_release_functions();
+   //glContext.~GLContext();
+}
 
 struct ShaderKey {
    struct ScanLineKey {
@@ -65,45 +118,9 @@ struct Executable { // codegen info
 
 bool do_mat_op_to_vec(exec_list *instructions);
 
-extern void link_shaders(struct gl_context *ctx, struct gl_shader_program *prog);
+extern void link_shaders(const struct gl_context *ctx, struct gl_shader_program *prog);
 
 extern "C" void compile_shader(const struct gl_context *ctx, struct gl_shader *shader);
-
-extern "C" void _mesa_reference_shader(struct gl_context *ctx, struct gl_shader **ptr,
-                                          struct gl_shader *sh)
-{
-   *ptr = sh;
-}
-
-extern "C" gl_shader * _mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type)
-{
-   struct gl_shader *shader;
-   assert(type == GL_FRAGMENT_SHADER || type == GL_VERTEX_SHADER);
-   shader = hieralloc_zero(ctx, struct gl_shader);
-   if (shader) {
-      shader->Type = type;
-      shader->Name = name;
-      shader->RefCount = 1;
-   }
-   return shader;
-}
-
-extern "C" void _mesa_delete_shader(struct gl_context *ctx, struct gl_shader *shader)
-{
-   if (!shader)
-      return;
-   if (shader->RefCount > 1) {
-      shader->DeletePending = true;
-      return;
-   }
-   if (shader->executable) {
-      for (std::map<ShaderKey, Instance *>::iterator it=shader->executable->instances.begin();
-            it != shader->executable->instances.end(); it++)
-         (*it).second->~Instance();
-      shader->executable->instances.~map();
-   }
-   hieralloc_free(shader);
-}
 
 gl_shader * GGLShaderCreate(GLenum type)
 {
@@ -117,18 +134,17 @@ static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
       gglError(GL_INVALID_ENUM);
       return NULL;
    }
-   gl_shader * shader = _mesa_new_shader(ctx->glCtx, 0, type);
+   gl_shader * shader = _mesa_new_shader(NULL, 0, type);
    if (!shader)
       gglError(GL_OUT_OF_MEMORY);
    assert(1 == shader->RefCount);
    return shader;
 }
 
-GLboolean GGLShaderCompile(const gl_context * glCtx, gl_shader * shader,
-                           const char * glsl, const char ** infoLog)
+GLboolean GGLShaderCompile(gl_shader * shader, const char * glsl, const char ** infoLog)
 {
    shader->Source = glsl;
-   compile_shader(glCtx, shader);
+   compile_shader(glContext.ctx, shader);
    shader->Source = NULL;
    if (infoLog)
       *infoLog = shader->InfoLog;
@@ -143,18 +159,23 @@ static GLboolean ShaderCompile(const GGLInterface * iface, gl_shader * shader,
       gglError(GL_INVALID_VALUE);
       return GL_FALSE;
    }
-   return GGLShaderCompile(ctx->glCtx, shader, glsl, infoLog);
+   return GGLShaderCompile(shader, glsl, infoLog);
 }
 
 void GGLShaderDelete(gl_shader * shader)
 {
+   if (shader && shader->executable) {
+      for (std::map<ShaderKey, Instance *>::iterator it=shader->executable->instances.begin();
+            it != shader->executable->instances.end(); it++)
+         (*it).second->~Instance();
+      shader->executable->instances.~map();
+   }
    _mesa_delete_shader(NULL, shader);
 }
 
 static void ShaderDelete(const GGLInterface * iface, gl_shader * shader)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
-   _mesa_delete_shader(ctx->glCtx, shader);
+   GGLShaderDelete(shader);
 }
 
 gl_shader_program * GGLShaderProgramCreate()
@@ -178,23 +199,9 @@ gl_shader_program * GGLShaderProgramCreate()
 static gl_shader_program * ShaderProgramCreate(const GGLInterface * iface)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   gl_shader_program * program = hieralloc_zero(ctx->glCtx, struct gl_shader_program);
-   if (!program) {
-      gglError(GL_OUT_OF_MEMORY);
-      return NULL;
-   }
-   program->Attributes = hieralloc_zero(program, gl_program_parameter_list);
-   if (!program->Attributes) {
-      hieralloc_free(program);
-      gglError(GL_OUT_OF_MEMORY);
-      return NULL;
-   }
-   program->Varying = hieralloc_zero(program, gl_program_parameter_list);
-   if (!program->Varying) {
-      hieralloc_free(program);
-      gglError(GL_OUT_OF_MEMORY);
-      return NULL;
-   }
+   gl_shader_program * program = GGLShaderProgramCreate();
+   if (!program)
+      gglError(GL_OUT_OF_MEMORY);   
    return program;
 }
 
@@ -224,32 +231,9 @@ static void ShaderAttach(const GGLInterface * iface, gl_shader_program * program
       gglError(error);
 }
 
-unsigned GGLShaderDetach(gl_shader_program * program, gl_shader * shader)
+GLboolean GGLShaderProgramLink(gl_shader_program * program, const char ** infoLog)
 {
-   for (unsigned i = 0; i < program->NumShaders; i++)
-      if (program->Shaders[i] == shader) {
-         program->NumShaders--;
-         program->Shaders[i] = program->Shaders[program->NumShaders];
-         shader->RefCount--;
-         if (1 == shader->RefCount && shader->DeletePending)
-            GGLShaderDelete(shader);
-         return GL_NO_ERROR;
-      }
-   return (GL_INVALID_OPERATION);
-}
-
-static void ShaderDetach(const GGLInterface * iface, gl_shader_program * program,
-                         gl_shader * shader)
-{
-   unsigned error = GGLShaderDetach(program, shader);
-   if (GL_NO_ERROR != error)
-      gglError(error);
-}
-
-GLboolean GGLShaderProgramLink(gl_context * glCtx, gl_shader_program * program,
-                               const char ** infoLog)
-{
-   link_shaders(glCtx, program);
+   link_shaders(glContext.ctx, program);
    if (infoLog)
       *infoLog = program->InfoLog;
    if (!program->LinkStatus)
@@ -268,11 +252,10 @@ GLboolean GGLShaderProgramLink(gl_context * glCtx, gl_shader_program * program,
    }
    return program->LinkStatus;
 }
-static GLboolean ShaderProgramLink(const GGLInterface * iface, gl_shader_program * program,
-                                   const char ** infoLog)
+
+static GLboolean ShaderProgramLink(gl_shader_program * program, const char ** infoLog)
 {
-   GGL_GET_CONST_CONTEXT(ctx, iface);
-   return GGLShaderProgramLink(ctx->glCtx, program, infoLog);
+   return GGLShaderProgramLink(program, infoLog);
 }
 
 static void GetShaderKey(const GGLState * ctx, const gl_shader * shader, ShaderKey * key)
@@ -367,32 +350,8 @@ static void* SymbolLookup(void* pContext, const char* name)
          symbol = (void *)gglCtx->textureState.textureData;
       else if (!strcmp(_PF2_TEXTURE_DIMENSIONS_NAME_, name))
          symbol = (void *)gglCtx->textureState.textureDimensions;
-      else {
-         for (unsigned i = 0; i < program->Uniforms->NumUniforms && !symbol; i++)
-            if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
-               symbol = program->ValuesUniform + program->Uniforms->Uniforms[i].Pos;
-         for (unsigned i = 0; i < program->Attributes->NumParameters && !symbol; i++)
-            if (!strcmp(program->Attributes->Parameters[i].Name, name)) {
-               assert(program->Attributes->Parameters[i].Location
-                      < sizeof(VertexInput) / sizeof(float[4]));
-               symbol = program->ValuesVertexInput + program->Attributes->Parameters[i].Location;
-            }
-         for (unsigned i = 0; i < program->Varying->NumParameters && !symbol; i++)
-            if (!strcmp(program->Varying->Parameters[i].Name, name)) {
-               int index = -1;
-               if (GL_VERTEX_SHADER == shader->Type)
-                  index = program->Varying->Parameters[i].BindLocation;
-               else if (GL_FRAGMENT_SHADER == shader->Type)
-                  index = program->Varying->Parameters[i].Location;
-               else
-                  assert(0);
-               assert(index >= 0);
-               assert(index < sizeof(VertexOutput) / sizeof(float[4]));
-               symbol = program->ValuesVertexOutput + index;
-            }
-         assert(symbol >= program->ValuesVertexInput &&
-                symbol < (char *)program->ValuesUniform + 16 * program->Uniforms->Slots - 3);
-      };
+      else // attributes, varyings and uniforms are mapped to locations in pointers
+         assert(0);
    }
    printf("symbolLookup '%s'=%p \n", name, symbol);
    assert(symbol);
@@ -432,12 +391,13 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
 void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program, llvm::Module * mod,
                       const char * shaderName, const char * scanlineName);
 
-void GGLShaderUse(const GGLContext * gglCtx, void * llvmCtx, const GGLState * gglState, gl_shader_program * program)
+void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program * program)
 {
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (!program->_LinkedShaders[i])
          continue;
       gl_shader * shader = program->_LinkedShaders[i];
+      shader->function = NULL;
       if (!shader->executable) {
          shader->executable = hieralloc_zero(shader, Executable);
          shader->executable->instances = std::map<ShaderKey, Instance *>();
@@ -457,7 +417,7 @@ void GGLShaderUse(const GGLContext * gglCtx, void * llvmCtx, const GGLState * gg
          char mainName [SHADER_KEY_STRING_LEN + 6] = {"main"};
          strcat(mainName, shaderName);
 
-         do_mat_op_to_vec(shader->ir);
+         do_mat_op_to_vec(shader->ir); // TODO: move these passes to link?
 
          llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, gglState, shaderName);
          if (!module)
@@ -478,42 +438,71 @@ void GGLShaderUse(const GGLContext * gglCtx, void * llvmCtx, const GGLState * gg
          ;
 
       shader->function  = instance->function;
-
-      if (gglCtx)
-         if (GL_VERTEX_SHADER == shader->Type)
-            gglCtx->PickRaster((GGLInterface *)gglCtx);
-         else if (GL_FRAGMENT_SHADER == shader->Type)
-            gglCtx->PickScanLine((GGLInterface *)gglCtx);
-         else
-            assert(0);
    }
 }
 
 static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
 {
    GGL_GET_CONTEXT(ctx, iface);
-   assert(program);
+   // so drawing calls will do nothing until ShaderUse with a program
+   SetShaderVerifyFunctions(iface);
    if (!program) {
       ctx->CurrentProgram = NULL;
-      // so drawing calls will do nothing until ShaderUse with a program
-      SetShaderVerifyFunctions(iface);
       return;
    }
 
-   GGLShaderUse(ctx, ctx->llvmCtx, &ctx->state, program);
+   GGLShaderUse(ctx->llvmCtx, &ctx->state, program);
+   for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
+      if (!program->_LinkedShaders[i])
+         continue;
+      if (!program->_LinkedShaders[i]->function)
+         continue;
+      if (GL_VERTEX_SHADER == program->_LinkedShaders[i]->Type)
+         ctx->PickRaster(iface);
+      else if (GL_FRAGMENT_SHADER == program->_LinkedShaders[i]->Type)
+         ctx->PickScanLine(iface);
+      else
+         assert(0);
+   }
 
    ctx->CurrentProgram = program;
+}
+
+unsigned GGLShaderDetach(gl_shader_program * program, gl_shader * shader)
+{
+   for (unsigned i = 0; i < program->NumShaders; i++)
+      if (program->Shaders[i] == shader) {
+         program->NumShaders--;
+         // just swap end to deleted shader
+         program->Shaders[i] = program->Shaders[program->NumShaders];
+         shader->RefCount--;
+         if (1 == shader->RefCount && shader->DeletePending)
+            GGLShaderDelete(shader);
+         return GL_NO_ERROR;
+      }
+   return (GL_INVALID_OPERATION);
+}
+
+static void ShaderDetach(const GGLInterface * iface, gl_shader_program * program,
+                         gl_shader * shader)
+{
+   unsigned error = GGLShaderDetach(program, shader);
+   if (GL_NO_ERROR != error)
+      gglError(error);
 }
 
 void GGLShaderProgramDelete(gl_shader_program * program)
 {
    for (unsigned i = 0; i < program->NumShaders; i++) {
-      GGLShaderDelete(program->Shaders[i]);
-      GGLShaderDetach(program, program->Shaders[i]);
+      GGLShaderDelete(program->Shaders[i]); // actually just mark for delete
+      GGLShaderDetach(program, program->Shaders[i]); // detach will delete if ref == 1
+      i--; // GGLShaderDetach just swaps end to detached shader
    }
 
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++)
       GGLShaderDelete(program->_LinkedShaders[i]);
+      
+   hieralloc_free(program);
 }
 
 static void ShaderProgramDelete(GGLInterface * iface, gl_shader_program * program)
@@ -521,9 +510,8 @@ static void ShaderProgramDelete(GGLInterface * iface, gl_shader_program * progra
    GGL_GET_CONTEXT(ctx, iface);
    if (ctx->CurrentProgram == program) {
       ctx->CurrentProgram = NULL;
-      SetShaderVerifyFunctions(const_cast<GGLInterface *>(iface));
+      SetShaderVerifyFunctions(iface);
    }
-
    GGLShaderProgramDelete(program);
 }
 
@@ -626,7 +614,8 @@ void GGLShaderUniformMatrix(gl_shader_program * program, GLint cols, GLint rows,
    if (location == -1)
       return;
    assert(cols == rows);
-   int start = location, slots = cols * count;
+   int start = location;
+   unsigned slots = cols * count;
    if (start < 0 || start + slots > program->Uniforms->Slots)
       return gglError(GL_INVALID_OPERATION);
    for (unsigned i = 0; i < slots; i++) {
@@ -702,42 +691,10 @@ void SetShaderVerifyFunctions(struct GGLInterface * iface)
    iface->ScanLine = ShaderVerifyScanLine;
 }
 
-static void InitializeGLContext(struct gl_context *ctx)
-{
-   memset(ctx, 0, sizeof(*ctx));
-   ctx->API = API_OPENGLES2;
-   ctx->Extensions.ARB_draw_buffers = GL_TRUE;
-   ctx->Extensions.ARB_fragment_coord_conventions = GL_TRUE;
-   ctx->Extensions.EXT_texture_array = GL_TRUE;
-   ctx->Extensions.NV_texture_rectangle = GL_TRUE;
-
-   /* 1.10 minimums. */
-   ctx->Const.MaxLights = 8;
-   ctx->Const.MaxClipPlanes = 8;
-   ctx->Const.MaxTextureUnits = 2;
-
-   /* More than the 1.10 minimum to appease parser tests taken from
-    * apps that (hopefully) already checked the number of coords.
-    */
-   ctx->Const.MaxTextureCoordUnits = 4;
-
-   ctx->Const.VertexProgram.MaxAttribs = 16;
-   ctx->Const.VertexProgram.MaxUniformComponents = 512;
-   ctx->Const.MaxVarying = 8;
-   ctx->Const.MaxVertexTextureImageUnits = 0;
-   ctx->Const.MaxCombinedTextureImageUnits = 2;
-   ctx->Const.MaxTextureImageUnits = 2;
-   ctx->Const.FragmentProgram.MaxUniformComponents = 64;
-
-   ctx->Const.MaxDrawBuffers = 2;
-}
-
 void InitializeShaderFunctions(struct GGLInterface * iface)
 {
    GGL_GET_CONTEXT(ctx, iface);
    ctx->llvmCtx = new llvm::LLVMContext();
-   ctx->glCtx = hieralloc(NULL, gl_context);
-   InitializeGLContext(ctx->glCtx);
 
    iface->ShaderCreate = ShaderCreate;
    iface->ShaderCompile = ShaderCompile;
@@ -763,6 +720,6 @@ void DestroyShaderFunctions(GGLInterface * iface)
    GGL_GET_CONTEXT(ctx, iface);
    _mesa_glsl_release_types();
    _mesa_glsl_release_functions();
-   hieralloc_free(ctx->glCtx);
    delete ctx->llvmCtx;
+   ctx->llvmCtx = NULL;
 }

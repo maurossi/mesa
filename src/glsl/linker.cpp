@@ -82,11 +82,7 @@ extern "C" {
 #include "linker.h"
 #include "ir_optimization.h"
 
-extern "C" {
 #include "main/shaderobj.h"
-}
-
-extern "C" void _mesa_delete_shader(gl_context * ctx, gl_shader * shader);
 
 /**
  * Visitor that determines whether or not a variable is ever written.
@@ -763,7 +759,7 @@ get_main_function_signature(gl_shader *sh)
  */
 static struct gl_shader *
 link_intrastage_shaders(void *mem_ctx,
-			struct gl_context *ctx,
+			const struct gl_context *ctx,
 			struct gl_shader_program *prog,
 			struct gl_shader **shader_list,
 			unsigned num_shaders)
@@ -837,8 +833,7 @@ link_intrastage_shaders(void *mem_ctx,
       return NULL;
    }
 
-   gl_shader *linked = _mesa_new_shader(ctx, 0, main->Type);
-   hieralloc_steal(prog, linked);
+   gl_shader *linked = _mesa_new_shader(prog, 0, main->Type);
    linked->ir = new(linked) exec_list;
    clone_ir_list(mem_ctx, linked->ir, main->ir);
 
@@ -1533,7 +1528,7 @@ assign_varying_locations(struct gl_shader_program *prog,
 
 
 void
-link_shaders(struct gl_context *ctx, struct gl_shader_program *prog)
+link_shaders(const struct gl_context *ctx, struct gl_shader_program *prog)
 {
    //void *mem_ctx = hieralloc_init("temporary linker context");
    void * mem_ctx = prog; // need linked & cloned ir to persist 

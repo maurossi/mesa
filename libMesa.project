@@ -58,6 +58,7 @@
         <File Name="src/mesa/main/context.h"/>
         <File Name="src/mesa/main/simple_list.h"/>
         <File Name="src/mesa/main/mtypes.h"/>
+        <File Name="src/mesa/main/shaderobj.c"/>
       </VirtualDirectory>
       <VirtualDirectory Name="program">
         <File Name="src/mesa/program/prog_parameter.cpp"/>
@@ -219,9 +220,11 @@
   </VirtualDirectory>
   <Description/>
   <Dependencies/>
+  <Dependencies Name="Release"/>
+  <Dependencies Name="Debug"/>
   <Settings Type="Static Library">
     <Configuration Name="Debug" CompilerType="gnu gcc" DebuggerType="GNU gdb debugger" Type="Static Library" BuildCmpWithGlobalSettings="append" BuildLnkWithGlobalSettings="append" BuildResWithGlobalSettings="append">
-      <Compiler Options="-g;-D__STDC_LIMIT_MACROS;-D__STDC_CONSTANT_MACROS;-m32 -march=i686;-DDEBUG;-UNDEBUG;-O0" Required="yes" PreCompiledHeader="">
+      <Compiler Options="-D__STDC_LIMIT_MACROS;-D__STDC_CONSTANT_MACROS;-m32 -march=i686;-DDEBUG;-UNDEBUG;-O0;-g" Required="yes" PreCompiledHeader="">
         <IncludePath Value="src/mesa/"/>
         <IncludePath Value="include/"/>
         <IncludePath Value="src/talloc/"/>
@@ -315,6 +318,4 @@
       <ResourceCompiler Options=""/>
     </GlobalSettings>
   </Settings>
-  <Dependencies Name="Debug"/>
-  <Dependencies Name="Release"/>
 </CodeLite_Project>

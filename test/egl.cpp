@@ -693,12 +693,6 @@ EGLBoolean egl_window_surface_v2_t::bindDrawSurface(ogles_context_t* gl)
    //puts("egl_window_surface_v2_t::bindDrawSurface");
    //printf("\t width=%d height=%d stride=%d format=%d \n", buffer.width, buffer.height, buffer.stride, buffer.format);
 
-   /*for (unsigned int y = 0; y < buffer.height; y++)
-   {
-      unsigned int * line = (unsigned int *)bits + y * buffer.stride;
-      for (unsigned int x = 0; x < buffer.width; x++)
-         line[x] = 0xff00ff00;
-   }*/
    gl->width = this->buffer->width;
    gl->height = this->buffer->height;
    gl->stride = this->buffer->stride;
@@ -1926,15 +1920,7 @@ static struct S
    sp<Surface> surface;
    ~S()
    {
-      //surface->dispose();
-      surface.~sp();
-      puts("surface.~sp()");
-      //surfaceControl->dispose();
-      surfaceControl.~sp();
-      puts("surfaceControl.~sp()");
       client->dispose();
-      client.~sp();
-      puts("client.~sp()");
    }
 } * s = NULL;
 static ANativeWindow * window;
@@ -2014,15 +2000,10 @@ extern "C" void * PresentDrawingSurface()
 
 extern "C" void DisposeDrawingSurface()
 {
-   puts("DisposeDrawingSurface");
    eglDestroySurface(display, drawSurface);
-   puts("eglDestroySurface");
    eglDestroyContext(display, eglCtx);
-   puts("eglDestroyContext");
    delete s;
-   puts("delete s");
    s = NULL;
-   
    puts("DisposeDrawingSurface");
 }
 

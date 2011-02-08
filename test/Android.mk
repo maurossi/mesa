@@ -3,6 +3,7 @@ DEBUG_BUILD := true
 ifneq ($(TARGET_SIMULATOR),true)
 
 LOCAL_PATH := $(call my-dir)
+LLVM_ROOT_PATH := external/llvm
 
 mesa_SRC_FILES :=	\
     egl.cpp \
@@ -29,6 +30,7 @@ LOCAL_C_INCLUDES :=	\
 	$(LOCAL_PATH)   \
 	frameworks/compile/mesa/include
 
+include $(LLVM_ROOT_PATH)/llvm-host-build.mk
 include $(BUILD_HOST_EXECUTABLE)
 
 # Executable for target
@@ -51,6 +53,7 @@ LOCAL_C_INCLUDES :=	\
 	$(LOCAL_PATH)	\
 	frameworks/compile/mesa/include
 
+include $(LLVM_ROOT_PATH)/llvm-device-build.mk
 include $(BUILD_EXECUTABLE)
 
 endif # TARGET_SIMULATOR != true

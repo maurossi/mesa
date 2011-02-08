@@ -23,14 +23,11 @@
  */
 
 #include <stdio.h>
-#include "main/core.h" /* for struct gl_shader */
+#include "main/shaderobj.h" /* for struct gl_shader */
 #include "glsl_parser_extras.h"
 #include "ir_reader.h"
 #include "program.h"
 #include "ast.h"
-
-extern "C" struct gl_shader *
-_mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type);
 
 gl_shader *
 read_builtins(void * mem_ctx, GLenum target, const char *protos, const char **functions, unsigned count)
