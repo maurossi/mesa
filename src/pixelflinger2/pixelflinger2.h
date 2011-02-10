@@ -99,6 +99,9 @@ unsigned cullFace :
 
 void gglError(unsigned error); // not implmented, just an assert
 
+void InitializeGGLState(GGLInterface * iface); // should be private
+void UninitializeGGLState(GGLInterface * iface); // should be private
+
 // they just set the function pointers
 void InitializeBufferFunctions(GGLInterface * iface);
 void InitializeRasterFunctions(GGLInterface * iface);

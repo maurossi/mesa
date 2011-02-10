@@ -37,7 +37,7 @@
 #include "main/glheader.h"
 #include "main/config.h"
 #include "main/mfeatures.h"
-#include "glapi/glapi.h"
+//#include "glapi/glapi.h"
 //#include "math/m_matrix.h"	/* GLmatrix */
 #include "main/simple_list.h"	/* struct simple_node */
 
@@ -1273,63 +1273,63 @@ typedef enum
 } gl_face_index;
 
 
-/**
- * Texture object state.  Contains the array of mipmap images, border color,
- * wrap modes, filter modes, shadow/texcompare state, and the per-texture
- * color palette.
- */
-struct gl_texture_object
-{
-   _glthread_Mutex Mutex;	/**< for thread safety */
-   GLint RefCount;		/**< reference count */
-   GLuint Name;			/**< the user-visible texture object ID */
-   GLenum Target;               /**< GL_TEXTURE_1D, GL_TEXTURE_2D, etc. */
-   GLfloat Priority;		/**< in [0,1] */
-   union {
-      GLfloat f[4];
-      GLuint ui[4];
-      GLint i[4];
-   } BorderColor;               /**< Interpreted according to texture format */
-   GLenum WrapS;		/**< S-axis texture image wrap mode */
-   GLenum WrapT;		/**< T-axis texture image wrap mode */
-   GLenum WrapR;		/**< R-axis texture image wrap mode */
-   GLenum MinFilter;		/**< minification filter */
-   GLenum MagFilter;		/**< magnification filter */
-   GLfloat MinLod;		/**< min lambda, OpenGL 1.2 */
-   GLfloat MaxLod;		/**< max lambda, OpenGL 1.2 */
-   GLfloat LodBias;		/**< OpenGL 1.4 */
-   GLint BaseLevel;		/**< min mipmap level, OpenGL 1.2 */
-   GLint MaxLevel;		/**< max mipmap level, OpenGL 1.2 */
-   GLfloat MaxAnisotropy;	/**< GL_EXT_texture_filter_anisotropic */
-   GLenum CompareMode;		/**< GL_ARB_shadow */
-   GLenum CompareFunc;		/**< GL_ARB_shadow */
-   GLfloat CompareFailValue;    /**< GL_ARB_shadow_ambient */
-   GLenum DepthMode;		/**< GL_ARB_depth_texture */
-   GLint _MaxLevel;		/**< actual max mipmap level (q in the spec) */
-   GLfloat _MaxLambda;		/**< = _MaxLevel - BaseLevel (q - b in spec) */
-   GLint CropRect[4];           /**< GL_OES_draw_texture */
-   GLenum Swizzle[4];           /**< GL_EXT_texture_swizzle */
-   GLuint _Swizzle;             /**< same as Swizzle, but SWIZZLE_* format */
-   GLboolean GenerateMipmap;    /**< GL_SGIS_generate_mipmap */
-   GLboolean _Complete;		/**< Is texture object complete? */
-   GLboolean _RenderToTexture;  /**< Any rendering to this texture? */
-   GLboolean Purgeable;         /**< Is the buffer purgeable under memory pressure? */
-
-   /** Actual texture images, indexed by [cube face] and [mipmap level] */
-   struct gl_texture_image *Image[MAX_FACES][MAX_TEXTURE_LEVELS];
-
-   /** GL_EXT_paletted_texture */
-   struct gl_color_table Palette;
-
-   /**
-    * \name For device driver.
-    * Note: instead of attaching driver data to this pointer, it's preferable
-    * to instead use this struct as a base class for your own texture object
-    * class.  Driver->NewTextureObject() can be used to implement the
-    * allocation.
-    */
-   void *DriverData;	/**< Arbitrary device driver data */
-};
+///**
+// * Texture object state.  Contains the array of mipmap images, border color,
+// * wrap modes, filter modes, shadow/texcompare state, and the per-texture
+// * color palette.
+// */
+//struct gl_texture_object
+//{
+//   _glthread_Mutex Mutex;	/**< for thread safety */
+//   GLint RefCount;		/**< reference count */
+//   GLuint Name;			/**< the user-visible texture object ID */
+//   GLenum Target;               /**< GL_TEXTURE_1D, GL_TEXTURE_2D, etc. */
+//   GLfloat Priority;		/**< in [0,1] */
+//   union {
+//      GLfloat f[4];
+//      GLuint ui[4];
+//      GLint i[4];
+//   } BorderColor;               /**< Interpreted according to texture format */
+//   GLenum WrapS;		/**< S-axis texture image wrap mode */
+//   GLenum WrapT;		/**< T-axis texture image wrap mode */
+//   GLenum WrapR;		/**< R-axis texture image wrap mode */
+//   GLenum MinFilter;		/**< minification filter */
+//   GLenum MagFilter;		/**< magnification filter */
+//   GLfloat MinLod;		/**< min lambda, OpenGL 1.2 */
+//   GLfloat MaxLod;		/**< max lambda, OpenGL 1.2 */
+//   GLfloat LodBias;		/**< OpenGL 1.4 */
+//   GLint BaseLevel;		/**< min mipmap level, OpenGL 1.2 */
+//   GLint MaxLevel;		/**< max mipmap level, OpenGL 1.2 */
+//   GLfloat MaxAnisotropy;	/**< GL_EXT_texture_filter_anisotropic */
+//   GLenum CompareMode;		/**< GL_ARB_shadow */
+//   GLenum CompareFunc;		/**< GL_ARB_shadow */
+//   GLfloat CompareFailValue;    /**< GL_ARB_shadow_ambient */
+//   GLenum DepthMode;		/**< GL_ARB_depth_texture */
+//   GLint _MaxLevel;		/**< actual max mipmap level (q in the spec) */
+//   GLfloat _MaxLambda;		/**< = _MaxLevel - BaseLevel (q - b in spec) */
+//   GLint CropRect[4];           /**< GL_OES_draw_texture */
+//   GLenum Swizzle[4];           /**< GL_EXT_texture_swizzle */
+//   GLuint _Swizzle;             /**< same as Swizzle, but SWIZZLE_* format */
+//   GLboolean GenerateMipmap;    /**< GL_SGIS_generate_mipmap */
+//   GLboolean _Complete;		/**< Is texture object complete? */
+//   GLboolean _RenderToTexture;  /**< Any rendering to this texture? */
+//   GLboolean Purgeable;         /**< Is the buffer purgeable under memory pressure? */
+//
+//   /** Actual texture images, indexed by [cube face] and [mipmap level] */
+//   struct gl_texture_image *Image[MAX_FACES][MAX_TEXTURE_LEVELS];
+//
+//   /** GL_EXT_paletted_texture */
+//   struct gl_color_table Palette;
+//
+//   /**
+//    * \name For device driver.
+//    * Note: instead of attaching driver data to this pointer, it's preferable
+//    * to instead use this struct as a base class for your own texture object
+//    * class.  Driver->NewTextureObject() can be used to implement the
+//    * allocation.
+//    */
+//   void *DriverData;	/**< Arbitrary device driver data */
+//};
 
 
 /** Up to four combiner sources are possible with GL_NV_texture_env_combine4 */
@@ -1489,27 +1489,27 @@ struct gl_transform_attrib
 //};
 
 
-/**
- * GL_ARB_vertex/pixel_buffer_object buffer object
- */
-struct gl_buffer_object
-{
-   _glthread_Mutex Mutex;
-   GLint RefCount;
-   GLuint Name;
-   GLenum Usage;        /**< GL_STREAM_DRAW_ARB, GL_STREAM_READ_ARB, etc. */
-   GLsizeiptrARB Size;  /**< Size of buffer storage in bytes */
-   GLubyte *Data;       /**< Location of storage either in RAM or VRAM. */
-   /** Fields describing a mapped buffer */
-   /*@{*/
-   GLbitfield AccessFlags; /**< Mask of GL_MAP_x_BIT flags */
-   GLvoid *Pointer;     /**< User-space address of mapping */
-   GLintptr Offset;     /**< Mapped offset */
-   GLsizeiptr Length;   /**< Mapped length */
-   /*@}*/
-   GLboolean Written;   /**< Ever written to? (for debugging) */
-   GLboolean Purgeable; /**< Is the buffer purgeable under memory pressure? */
-};
+///**
+// * GL_ARB_vertex/pixel_buffer_object buffer object
+// */
+//struct gl_buffer_object
+//{
+//   _glthread_Mutex Mutex;
+//   GLint RefCount;
+//   GLuint Name;
+//   GLenum Usage;        /**< GL_STREAM_DRAW_ARB, GL_STREAM_READ_ARB, etc. */
+//   GLsizeiptrARB Size;  /**< Size of buffer storage in bytes */
+//   GLubyte *Data;       /**< Location of storage either in RAM or VRAM. */
+//   /** Fields describing a mapped buffer */
+//   /*@{*/
+//   GLbitfield AccessFlags; /**< Mask of GL_MAP_x_BIT flags */
+//   GLvoid *Pointer;     /**< User-space address of mapping */
+//   GLintptr Offset;     /**< Mapped offset */
+//   GLsizeiptr Length;   /**< Mapped length */
+//   /*@}*/
+//   GLboolean Written;   /**< Ever written to? (for debugging) */
+//   GLboolean Purgeable; /**< Is the buffer purgeable under memory pressure? */
+//};
 
 
 /**
@@ -1552,50 +1552,50 @@ struct gl_client_array
 };
 
 
-/**
- * Collection of vertex arrays.  Defined by the GL_APPLE_vertex_array_object
- * extension, but a nice encapsulation in any case.
- */
-struct gl_array_object
-{
-   /** Name of the array object as received from glGenVertexArrayAPPLE. */
-   GLuint Name;
-
-   GLint RefCount;
-   _glthread_Mutex Mutex;
-   GLboolean VBOonly;  /**< require all arrays to live in VBOs? */
-
-   /** Conventional vertex arrays */
-   /*@{*/
-   struct gl_client_array Vertex;
-   struct gl_client_array Weight;
-   struct gl_client_array Normal;
-   struct gl_client_array Color;
-   struct gl_client_array SecondaryColor;
-   struct gl_client_array FogCoord;
-   struct gl_client_array Index;
-   struct gl_client_array EdgeFlag;
-   struct gl_client_array TexCoord[MAX_TEXTURE_COORD_UNITS];
-   struct gl_client_array PointSize;
-   /*@}*/
-
-   /**
-    * Generic arrays for vertex programs/shaders.
-    * For NV vertex programs, these attributes alias and take priority
-    * over the conventional attribs above.  For ARB vertex programs and
-    * GLSL vertex shaders, these attributes are separate.
-    */
-   struct gl_client_array VertexAttrib[MAX_VERTEX_GENERIC_ATTRIBS];
-
-   /** Mask of _NEW_ARRAY_* values indicating which arrays are enabled */
-   GLbitfield _Enabled;
-
-   /**
-    * Min of all enabled arrays' _MaxElement.  When arrays reside inside VBOs
-    * we can determine the max legal (in bounds) glDrawElements array index.
-    */
-   GLuint _MaxElement;
-};
+///**
+// * Collection of vertex arrays.  Defined by the GL_APPLE_vertex_array_object
+// * extension, but a nice encapsulation in any case.
+// */
+//struct gl_array_object
+//{
+//   /** Name of the array object as received from glGenVertexArrayAPPLE. */
+//   GLuint Name;
+//
+//   GLint RefCount;
+//   _glthread_Mutex Mutex;
+//   GLboolean VBOonly;  /**< require all arrays to live in VBOs? */
+//
+//   /** Conventional vertex arrays */
+//   /*@{*/
+//   struct gl_client_array Vertex;
+//   struct gl_client_array Weight;
+//   struct gl_client_array Normal;
+//   struct gl_client_array Color;
+//   struct gl_client_array SecondaryColor;
+//   struct gl_client_array FogCoord;
+//   struct gl_client_array Index;
+//   struct gl_client_array EdgeFlag;
+//   struct gl_client_array TexCoord[MAX_TEXTURE_COORD_UNITS];
+//   struct gl_client_array PointSize;
+//   /*@}*/
+//
+//   /**
+//    * Generic arrays for vertex programs/shaders.
+//    * For NV vertex programs, these attributes alias and take priority
+//    * over the conventional attribs above.  For ARB vertex programs and
+//    * GLSL vertex shaders, these attributes are separate.
+//    */
+//   struct gl_client_array VertexAttrib[MAX_VERTEX_GENERIC_ATTRIBS];
+//
+//   /** Mask of _NEW_ARRAY_* values indicating which arrays are enabled */
+//   GLbitfield _Enabled;
+//
+//   /**
+//    * Min of all enabled arrays' _MaxElement.  When arrays reside inside VBOs
+//    * we can determine the max legal (in bounds) glDrawElements array index.
+//    */
+//   GLuint _MaxElement;
+//};
 
 
 /**
@@ -2269,167 +2269,167 @@ struct gl_transform_feedback
 
 
 
-/**
- * State which can be shared by multiple contexts:
- */
-struct gl_shared_state
-{
-   _glthread_Mutex Mutex;		   /**< for thread safety */
-   GLint RefCount;			   /**< Reference count */
-   struct _mesa_HashTable *DisplayList;	   /**< Display lists hash table */
-   struct _mesa_HashTable *TexObjects;	   /**< Texture objects hash table */
-
-   /** Default texture objects (shared by all texture units) */
-   struct gl_texture_object *DefaultTex[NUM_TEXTURE_TARGETS];
-
-   /** Fallback texture used when a bound texture is incomplete */
-   struct gl_texture_object *FallbackTex;
-
-   /**
-    * \name Thread safety and statechange notification for texture
-    * objects. 
-    *
-    * \todo Improve the granularity of locking.
-    */
-   /*@{*/
-   _glthread_Mutex TexMutex;		/**< texobj thread safety */
-   GLuint TextureStateStamp;	        /**< state notification for shared tex */
-   /*@}*/
-
-   /** Default buffer object for vertex arrays that aren't in VBOs */
-   struct gl_buffer_object *NullBufferObj;
-
-   /**
-    * \name Vertex/geometry/fragment programs
-    */
-   /*@{*/
-   struct _mesa_HashTable *Programs; /**< All vertex/fragment programs */
-   struct gl_vertex_program *DefaultVertexProgram;
-   struct gl_fragment_program *DefaultFragmentProgram;
-   struct gl_geometry_program *DefaultGeometryProgram;
-   /*@}*/
-
-   /* GL_ATI_fragment_shader */
-   struct _mesa_HashTable *ATIShaders;
-   struct ati_fragment_shader *DefaultFragmentShader;
-
-   struct _mesa_HashTable *BufferObjects;
-
-   /** Table of both gl_shader and gl_shader_program objects */
-   struct _mesa_HashTable *ShaderObjects;
-
-   /* GL_EXT_framebuffer_object */
-   struct _mesa_HashTable *RenderBuffers;
-   struct _mesa_HashTable *FrameBuffers;
-
-   /* GL_ARB_sync */
-   struct simple_node SyncObjects;
-
-   void *DriverData;  /**< Device driver shared state */
-};
-
-
+///**
+// * State which can be shared by multiple contexts:
+// */
+//struct gl_shared_state
+//{
+//   _glthread_Mutex Mutex;		   /**< for thread safety */
+//   GLint RefCount;			   /**< Reference count */
+//   struct _mesa_HashTable *DisplayList;	   /**< Display lists hash table */
+//   struct _mesa_HashTable *TexObjects;	   /**< Texture objects hash table */
+//
+//   /** Default texture objects (shared by all texture units) */
+//   struct gl_texture_object *DefaultTex[NUM_TEXTURE_TARGETS];
+//
+//   /** Fallback texture used when a bound texture is incomplete */
+//   struct gl_texture_object *FallbackTex;
+//
+//   /**
+//    * \name Thread safety and statechange notification for texture
+//    * objects. 
+//    *
+//    * \todo Improve the granularity of locking.
+//    */
+//   /*@{*/
+//   _glthread_Mutex TexMutex;		/**< texobj thread safety */
+//   GLuint TextureStateStamp;	        /**< state notification for shared tex */
+//   /*@}*/
+//
+//   /** Default buffer object for vertex arrays that aren't in VBOs */
+//   struct gl_buffer_object *NullBufferObj;
+//
+//   /**
+//    * \name Vertex/geometry/fragment programs
+//    */
+//   /*@{*/
+//   struct _mesa_HashTable *Programs; /**< All vertex/fragment programs */
+//   struct gl_vertex_program *DefaultVertexProgram;
+//   struct gl_fragment_program *DefaultFragmentProgram;
+//   struct gl_geometry_program *DefaultGeometryProgram;
+//   /*@}*/
+//
+//   /* GL_ATI_fragment_shader */
+//   struct _mesa_HashTable *ATIShaders;
+//   struct ati_fragment_shader *DefaultFragmentShader;
+//
+//   struct _mesa_HashTable *BufferObjects;
+//
+//   /** Table of both gl_shader and gl_shader_program objects */
+//   struct _mesa_HashTable *ShaderObjects;
+//
+//   /* GL_EXT_framebuffer_object */
+//   struct _mesa_HashTable *RenderBuffers;
+//   struct _mesa_HashTable *FrameBuffers;
+//
+//   /* GL_ARB_sync */
+//   struct simple_node SyncObjects;
+//
+//   void *DriverData;  /**< Device driver shared state */
+//};
 
 
-/**
- * A renderbuffer stores colors or depth values or stencil values.
- * A framebuffer object will have a collection of these.
- * Data are read/written to the buffer with a handful of Get/Put functions.
- *
- * Instances of this object are allocated with the Driver's NewRenderbuffer
- * hook.  Drivers will likely wrap this class inside a driver-specific
- * class to simulate inheritance.
- */
-struct gl_renderbuffer
-{
-#define RB_MAGIC 0xaabbccdd
-   int Magic; /** XXX TEMPORARY DEBUG INFO */
-   _glthread_Mutex Mutex;		   /**< for thread safety */
-   GLuint ClassID;        /**< Useful for drivers */
-   GLuint Name;
-   GLint RefCount;
-   GLuint Width, Height;
-   GLboolean Purgeable;   /**< Is the buffer purgeable under memory pressure? */
-
-   GLenum InternalFormat; /**< The user-specified format */
-   GLenum _BaseFormat;    /**< Either GL_RGB, GL_RGBA, GL_DEPTH_COMPONENT or
-                               GL_STENCIL_INDEX. */
-   GLuint Format;         /**< The actual format: MESA_FORMAT_x */
-
-   GLubyte NumSamples;
-
-   GLenum DataType;      /**< Type of values passed to the Get/Put functions */
-   GLvoid *Data;        /**< This may not be used by some kinds of RBs */
-
-   /* Used to wrap one renderbuffer around another: */
-   struct gl_renderbuffer *Wrapped;
-
-   /* Delete this renderbuffer */
-   void (*Delete)(struct gl_renderbuffer *rb);
-
-   /* Allocate new storage for this renderbuffer */
-   GLboolean (*AllocStorage)(struct gl_context *ctx, struct gl_renderbuffer *rb,
-                             GLenum internalFormat,
-                             GLuint width, GLuint height);
-
-   /* Lock/Unlock are called before/after calling the Get/Put functions.
-    * Not sure this is the right place for these yet.
-   void (*Lock)(struct gl_context *ctx, struct gl_renderbuffer *rb);
-   void (*Unlock)(struct gl_context *ctx, struct gl_renderbuffer *rb);
-    */
-
-   /* Return a pointer to the element/pixel at (x,y).
-    * Should return NULL if the buffer memory can't be directly addressed.
-    */
-   void *(*GetPointer)(struct gl_context *ctx, struct gl_renderbuffer *rb,
-                       GLint x, GLint y);
-
-   /* Get/Read a row of values.
-    * The values will be of format _BaseFormat and type DataType.
-    */
-   void (*GetRow)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
-                  GLint x, GLint y, void *values);
-
-   /* Get/Read values at arbitrary locations.
-    * The values will be of format _BaseFormat and type DataType.
-    */
-   void (*GetValues)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
-                     const GLint x[], const GLint y[], void *values);
-
-   /* Put/Write a row of values.
-    * The values will be of format _BaseFormat and type DataType.
-    */
-   void (*PutRow)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
-                  GLint x, GLint y, const void *values, const GLubyte *mask);
-
-   /* Put/Write a row of RGB values.  This is a special-case routine that's
-    * only used for RGBA renderbuffers when the source data is GL_RGB. That's
-    * a common case for glDrawPixels and some triangle routines.
-    * The values will be of format GL_RGB and type DataType.
-    */
-   void (*PutRowRGB)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
-                    GLint x, GLint y, const void *values, const GLubyte *mask);
 
 
-   /* Put/Write a row of identical values.
-    * The values will be of format _BaseFormat and type DataType.
-    */
-   void (*PutMonoRow)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
-                     GLint x, GLint y, const void *value, const GLubyte *mask);
-
-   /* Put/Write values at arbitrary locations.
-    * The values will be of format _BaseFormat and type DataType.
-    */
-   void (*PutValues)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
-                     const GLint x[], const GLint y[], const void *values,
-                     const GLubyte *mask);
-   /* Put/Write identical values at arbitrary locations.
-    * The values will be of format _BaseFormat and type DataType.
-    */
-   void (*PutMonoValues)(struct gl_context *ctx, struct gl_renderbuffer *rb,
-                         GLuint count, const GLint x[], const GLint y[],
-                         const void *value, const GLubyte *mask);
-};
+///**
+// * A renderbuffer stores colors or depth values or stencil values.
+// * A framebuffer object will have a collection of these.
+// * Data are read/written to the buffer with a handful of Get/Put functions.
+// *
+// * Instances of this object are allocated with the Driver's NewRenderbuffer
+// * hook.  Drivers will likely wrap this class inside a driver-specific
+// * class to simulate inheritance.
+// */
+//struct gl_renderbuffer
+//{
+//#define RB_MAGIC 0xaabbccdd
+//   int Magic; /** XXX TEMPORARY DEBUG INFO */
+//   _glthread_Mutex Mutex;		   /**< for thread safety */
+//   GLuint ClassID;        /**< Useful for drivers */
+//   GLuint Name;
+//   GLint RefCount;
+//   GLuint Width, Height;
+//   GLboolean Purgeable;   /**< Is the buffer purgeable under memory pressure? */
+//
+//   GLenum InternalFormat; /**< The user-specified format */
+//   GLenum _BaseFormat;    /**< Either GL_RGB, GL_RGBA, GL_DEPTH_COMPONENT or
+//                               GL_STENCIL_INDEX. */
+//   GLuint Format;         /**< The actual format: MESA_FORMAT_x */
+//
+//   GLubyte NumSamples;
+//
+//   GLenum DataType;      /**< Type of values passed to the Get/Put functions */
+//   GLvoid *Data;        /**< This may not be used by some kinds of RBs */
+//
+//   /* Used to wrap one renderbuffer around another: */
+//   struct gl_renderbuffer *Wrapped;
+//
+//   /* Delete this renderbuffer */
+//   void (*Delete)(struct gl_renderbuffer *rb);
+//
+//   /* Allocate new storage for this renderbuffer */
+//   GLboolean (*AllocStorage)(struct gl_context *ctx, struct gl_renderbuffer *rb,
+//                             GLenum internalFormat,
+//                             GLuint width, GLuint height);
+//
+//   /* Lock/Unlock are called before/after calling the Get/Put functions.
+//    * Not sure this is the right place for these yet.
+//   void (*Lock)(struct gl_context *ctx, struct gl_renderbuffer *rb);
+//   void (*Unlock)(struct gl_context *ctx, struct gl_renderbuffer *rb);
+//    */
+//
+//   /* Return a pointer to the element/pixel at (x,y).
+//    * Should return NULL if the buffer memory can't be directly addressed.
+//    */
+//   void *(*GetPointer)(struct gl_context *ctx, struct gl_renderbuffer *rb,
+//                       GLint x, GLint y);
+//
+//   /* Get/Read a row of values.
+//    * The values will be of format _BaseFormat and type DataType.
+//    */
+//   void (*GetRow)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
+//                  GLint x, GLint y, void *values);
+//
+//   /* Get/Read values at arbitrary locations.
+//    * The values will be of format _BaseFormat and type DataType.
+//    */
+//   void (*GetValues)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
+//                     const GLint x[], const GLint y[], void *values);
+//
+//   /* Put/Write a row of values.
+//    * The values will be of format _BaseFormat and type DataType.
+//    */
+//   void (*PutRow)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
+//                  GLint x, GLint y, const void *values, const GLubyte *mask);
+//
+//   /* Put/Write a row of RGB values.  This is a special-case routine that's
+//    * only used for RGBA renderbuffers when the source data is GL_RGB. That's
+//    * a common case for glDrawPixels and some triangle routines.
+//    * The values will be of format GL_RGB and type DataType.
+//    */
+//   void (*PutRowRGB)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
+//                    GLint x, GLint y, const void *values, const GLubyte *mask);
+//
+//
+//   /* Put/Write a row of identical values.
+//    * The values will be of format _BaseFormat and type DataType.
+//    */
+//   void (*PutMonoRow)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
+//                     GLint x, GLint y, const void *value, const GLubyte *mask);
+//
+//   /* Put/Write values at arbitrary locations.
+//    * The values will be of format _BaseFormat and type DataType.
+//    */
+//   void (*PutValues)(struct gl_context *ctx, struct gl_renderbuffer *rb, GLuint count,
+//                     const GLint x[], const GLint y[], const void *values,
+//                     const GLubyte *mask);
+//   /* Put/Write identical values at arbitrary locations.
+//    * The values will be of format _BaseFormat and type DataType.
+//    */
+//   void (*PutMonoValues)(struct gl_context *ctx, struct gl_renderbuffer *rb,
+//                         GLuint count, const GLint x[], const GLint y[],
+//                         const void *value, const GLubyte *mask);
+//};
 
 
 /**
@@ -2459,79 +2459,79 @@ struct gl_renderbuffer_attachment
 };
 
 
-/**
- * A framebuffer is a collection of renderbuffers (color, depth, stencil, etc).
- * In C++ terms, think of this as a base class from which device drivers
- * will make derived classes.
- */
-struct gl_framebuffer
-{
-   _glthread_Mutex Mutex;  /**< for thread safety */
-   /**
-    * If zero, this is a window system framebuffer.  If non-zero, this
-    * is a FBO framebuffer; note that for some devices (i.e. those with
-    * a natural pixel coordinate system for FBOs that differs from the
-    * OpenGL/Mesa coordinate system), this means that the viewport,
-    * polygon face orientation, and polygon stipple will have to be inverted.
-    */
-   GLuint Name;
-
-   GLint RefCount;
-   GLboolean DeletePending;
-
-   /**
-    * The framebuffer's visual. Immutable if this is a window system buffer.
-    * Computed from attachments if user-made FBO.
-    */
-   struct gl_config Visual;
-
-   GLboolean Initialized;
-
-   GLuint Width, Height;	/**< size of frame buffer in pixels */
-
-   /** \name  Drawing bounds (Intersection of buffer size and scissor box) */
-   /*@{*/
-   GLint _Xmin, _Xmax;  /**< inclusive */
-   GLint _Ymin, _Ymax;  /**< exclusive */
-   /*@}*/
-
-   /** \name  Derived Z buffer stuff */
-   /*@{*/
-   GLuint _DepthMax;	/**< Max depth buffer value */
-   GLfloat _DepthMaxF;	/**< Float max depth buffer value */
-   GLfloat _MRD;	/**< minimum resolvable difference in Z values */
-   /*@}*/
-
-   /** One of the GL_FRAMEBUFFER_(IN)COMPLETE_* tokens */
-   GLenum _Status;
-
-   /** Integer color values */
-   GLboolean _IntegerColor;
-
-   /** Array of all renderbuffer attachments, indexed by BUFFER_* tokens. */
-   struct gl_renderbuffer_attachment Attachment[BUFFER_COUNT];
-
-   /* In unextended OpenGL these vars are part of the GL_COLOR_BUFFER
-    * attribute group and GL_PIXEL attribute group, respectively.
-    */
-   GLenum ColorDrawBuffer[MAX_DRAW_BUFFERS];
-   GLenum ColorReadBuffer;
-
-   /** Computed from ColorDraw/ReadBuffer above */
-   GLuint _NumColorDrawBuffers;
-   GLint _ColorDrawBufferIndexes[MAX_DRAW_BUFFERS]; /**< BUFFER_x or -1 */
-   GLint _ColorReadBufferIndex; /* -1 = None */
-   struct gl_renderbuffer *_ColorDrawBuffers[MAX_DRAW_BUFFERS];
-   struct gl_renderbuffer *_ColorReadBuffer;
-
-   /** The Actual depth/stencil buffers to use.  May be wrappers around the
-    * depth/stencil buffers attached above. */
-   struct gl_renderbuffer *_DepthBuffer;
-   struct gl_renderbuffer *_StencilBuffer;
-
-   /** Delete this framebuffer */
-   void (*Delete)(struct gl_framebuffer *fb);
-};
+///**
+// * A framebuffer is a collection of renderbuffers (color, depth, stencil, etc).
+// * In C++ terms, think of this as a base class from which device drivers
+// * will make derived classes.
+// */
+//struct gl_framebuffer
+//{
+//   _glthread_Mutex Mutex;  /**< for thread safety */
+//   /**
+//    * If zero, this is a window system framebuffer.  If non-zero, this
+//    * is a FBO framebuffer; note that for some devices (i.e. those with
+//    * a natural pixel coordinate system for FBOs that differs from the
+//    * OpenGL/Mesa coordinate system), this means that the viewport,
+//    * polygon face orientation, and polygon stipple will have to be inverted.
+//    */
+//   GLuint Name;
+//
+//   GLint RefCount;
+//   GLboolean DeletePending;
+//
+//   /**
+//    * The framebuffer's visual. Immutable if this is a window system buffer.
+//    * Computed from attachments if user-made FBO.
+//    */
+//   struct gl_config Visual;
+//
+//   GLboolean Initialized;
+//
+//   GLuint Width, Height;	/**< size of frame buffer in pixels */
+//
+//   /** \name  Drawing bounds (Intersection of buffer size and scissor box) */
+//   /*@{*/
+//   GLint _Xmin, _Xmax;  /**< inclusive */
+//   GLint _Ymin, _Ymax;  /**< exclusive */
+//   /*@}*/
+//
+//   /** \name  Derived Z buffer stuff */
+//   /*@{*/
+//   GLuint _DepthMax;	/**< Max depth buffer value */
+//   GLfloat _DepthMaxF;	/**< Float max depth buffer value */
+//   GLfloat _MRD;	/**< minimum resolvable difference in Z values */
+//   /*@}*/
+//
+//   /** One of the GL_FRAMEBUFFER_(IN)COMPLETE_* tokens */
+//   GLenum _Status;
+//
+//   /** Integer color values */
+//   GLboolean _IntegerColor;
+//
+//   /** Array of all renderbuffer attachments, indexed by BUFFER_* tokens. */
+//   struct gl_renderbuffer_attachment Attachment[BUFFER_COUNT];
+//
+//   /* In unextended OpenGL these vars are part of the GL_COLOR_BUFFER
+//    * attribute group and GL_PIXEL attribute group, respectively.
+//    */
+//   GLenum ColorDrawBuffer[MAX_DRAW_BUFFERS];
+//   GLenum ColorReadBuffer;
+//
+//   /** Computed from ColorDraw/ReadBuffer above */
+//   GLuint _NumColorDrawBuffers;
+//   GLint _ColorDrawBufferIndexes[MAX_DRAW_BUFFERS]; /**< BUFFER_x or -1 */
+//   GLint _ColorReadBufferIndex; /* -1 = None */
+//   struct gl_renderbuffer *_ColorDrawBuffers[MAX_DRAW_BUFFERS];
+//   struct gl_renderbuffer *_ColorReadBuffer;
+//
+//   /** The Actual depth/stencil buffers to use.  May be wrappers around the
+//    * depth/stencil buffers attached above. */
+//   struct gl_renderbuffer *_DepthBuffer;
+//   struct gl_renderbuffer *_StencilBuffer;
+//
+//   /** Delete this framebuffer */
+//   void (*Delete)(struct gl_framebuffer *fb);
+//};
 
 
 /**
@@ -2990,7 +2990,7 @@ struct gl_extensions
 
 
 /* This has to be included here. */
-#include "dd.h"
+//#include "dd.h"
 
 
 /**
@@ -3020,38 +3020,38 @@ struct gl_display_list
 };
 
 
-/**
- * State used during display list compilation and execution.
- */
-struct gl_dlist_state
-{
-   GLuint CallDepth;		/**< Current recursion calling depth */
-
-   struct gl_display_list *CurrentList; /**< List currently being compiled */
-   union gl_dlist_node *CurrentBlock; /**< Pointer to current block of nodes */
-   GLuint CurrentPos;		/**< Index into current block of nodes */
-
-   GLvertexformat ListVtxfmt;
-
-   GLubyte ActiveAttribSize[VERT_ATTRIB_MAX];
-   GLfloat CurrentAttrib[VERT_ATTRIB_MAX][4];
-   
-   GLubyte ActiveMaterialSize[MAT_ATTRIB_MAX];
-   GLfloat CurrentMaterial[MAT_ATTRIB_MAX][4];
-
-   GLubyte ActiveIndex;
-   GLfloat CurrentIndex;
-   
-   GLubyte ActiveEdgeFlag;
-   GLboolean CurrentEdgeFlag;
-
-   struct {
-      /* State known to have been set by the currently-compiling display
-       * list.  Used to eliminate some redundant state changes.
-       */
-      GLenum ShadeModel;
-   } Current;
-};
+///**
+// * State used during display list compilation and execution.
+// */
+//struct gl_dlist_state
+//{
+//   GLuint CallDepth;		/**< Current recursion calling depth */
+//
+//   struct gl_display_list *CurrentList; /**< List currently being compiled */
+//   union gl_dlist_node *CurrentBlock; /**< Pointer to current block of nodes */
+//   GLuint CurrentPos;		/**< Index into current block of nodes */
+//
+//   GLvertexformat ListVtxfmt;
+//
+//   GLubyte ActiveAttribSize[VERT_ATTRIB_MAX];
+//   GLfloat CurrentAttrib[VERT_ATTRIB_MAX][4];
+//   
+//   GLubyte ActiveMaterialSize[MAT_ATTRIB_MAX];
+//   GLfloat CurrentMaterial[MAT_ATTRIB_MAX][4];
+//
+//   GLubyte ActiveIndex;
+//   GLfloat CurrentIndex;
+//   
+//   GLubyte ActiveEdgeFlag;
+//   GLboolean CurrentEdgeFlag;
+//
+//   struct {
+//      /* State known to have been set by the currently-compiling display
+//       * list.  Used to eliminate some redundant state changes.
+//       */
+//      GLenum ShadeModel;
+//   } Current;
+//};
 
 /**
  * Enum for the OpenGL APIs we know about and may support.

@@ -34,7 +34,7 @@ enum GGLPixelFormat {
 //    GGL_PIXEL_FORMAT_RGBA_5551   =   6,  // 16-bit RGBA
 //    GGL_PIXEL_FORMAT_RGBA_4444   =   7,  // 16-bit RGBA
 
-//    GGL_PIXEL_FORMAT_A_8         =   8,  // 8-bit A
+    GGL_PIXEL_FORMAT_A_8         =   8,  // 8-bit A
 //    GGL_PIXEL_FORMAT_L_8         =   9,  // 8-bit L (R=G=B = L)
 //    GGL_PIXEL_FORMAT_LA_88       = 0xA,  // 16-bit LA
 //    GGL_PIXEL_FORMAT_RGB_332     = 0xB,  // 8-bit RGB (non paletted)
@@ -50,7 +50,7 @@ enum GGLPixelFormat {
 //    GGL_PIXEL_FORMAT_RESERVED_17 = 0x17,
 
     // reserved/special formats
-//    GGL_PIXEL_FORMAT_Z_16       =  0x18,
+    GGL_PIXEL_FORMAT_Z_16       =  0x18,
     GGL_PIXEL_FORMAT_S_8        =  0x19,
 //    GGL_PIXEL_FORMAT_SZ_24      =  0x1A,
 //    GGL_PIXEL_FORMAT_SZ_8       =  0x1B,

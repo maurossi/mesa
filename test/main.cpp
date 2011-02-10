@@ -455,131 +455,6 @@ extern "C" int cmain(int,char**);
 
 void GLContextDctr();
 
-void contextless_test()
-{
-   static const char vsGLSL [] =
-      "uniform vec4 uVec4; \n"
-      "uniform sampler2D sampler2d; \n"
-      "attribute vec4 aPosition; \n"
-      "attribute vec4 aTexCoord; \n"
-      "varying vec4 vTexCoord; \n"
-      "varying vec4 vTexColor; \n"
-      "void main() { \n"
-      "   gl_Position = aPosition; \n"
-      "   vTexCoord = aTexCoord; \n"
-      "   vTexColor = texture2D(sampler2d, aTexCoord.zw); \n"
-      "   gl_PointSize = 432.0; \n"
-      "}";
-   gl_shader * vs = GGLShaderCreate(GL_VERTEX_SHADER);
-   const char * infoLog = NULL;
-   if (!GGLShaderCompile(vs, vsGLSL, &infoLog)) {
-      printf("GGLShaderCompile vs failed:\n%s\n", infoLog);
-      assert(0);
-   }
-   static const char fsGLSL [] =
-      "uniform vec4 uVec4; \n"
-      "uniform sampler2D sampler2d; \n"
-      "varying vec4 vTexCoord; \n"
-      "varying vec4 vTexColor; \n"
-      "void main() { \n"
-      "   gl_FragColor = texture2D(sampler2d, vTexCoord.zw); \n"
-      "}";
-   gl_shader * fs = GGLShaderCreate(GL_FRAGMENT_SHADER);
-   if (!GGLShaderCompile(fs, fsGLSL, &infoLog)) {
-      printf("GGLShaderCompile fs failed:\n%s\n", infoLog);
-      assert(0);
-   }
-   gl_shader_program * prog = GGLShaderProgramCreate();
-   unsigned glError = GL_NO_ERROR;
-   glError = GGLShaderAttach(prog, vs);
-   assert(GL_NO_ERROR == glError);
-   glError = GGLShaderAttach(prog, fs);
-   assert(GL_NO_ERROR == glError);
-   GGLShaderAttributeBind(prog, 4, "aPosition");
-   GGLShaderAttributeBind(prog, 5, "aTexCoord");
-   if (!GGLShaderProgramLink(prog, &infoLog)) {
-      printf("GGLShaderProgramLink failed:\n%s\n", infoLog);
-      assert(0);
-   }
-   llvm::LLVMContext * llvmCtx = new llvm::LLVMContext();
-   GGLState gglState = {0};
-   unsigned texels0 [] = {0xff10ffff, 0x22222222, 0x66666666, 0xffffffff};
-   GGLTexture_t texture0 = {GL_TEXTURE_2D, GGL_PIXEL_FORMAT_RGBA_8888,
-                            2, 2, 1, // width, height, levelCount
-                            texels0, GGLTexture::GGL_CLAMP_TO_EDGE, GGLTexture::GGL_CLAMP_TO_EDGE,
-                            GGLTexture::GGL_NEAREST, GGLTexture::GGL_NEAREST
-                           };
-   gglState.textureState.textures[0] = texture0;
-   gglState.textureState.textureData[0] = gglState.textureState.textures[0].levels;
-   gglState.textureState.textureDimensions[0 * 2 + 0] = gglState.textureState.textures[0].width;
-   gglState.textureState.textureDimensions[0 * 2 + 1] = gglState.textureState.textures[0].height;
-   GGLShaderUse(llvmCtx, &gglState, prog);
-
-   VertexInput input = {0, 0, 0, 0, Vector4(0,0,0,1), Vector4(0,0,0,0)};
-   VertexOutput output = {0};
-   GGLProcessVertex(prog, &input, &output, NULL);
-   int vTexColor = -1;
-   GGLShaderVaryingLocation(prog, "vTexColor", &vTexColor);
-   if (vTexColor >= 0) {
-      if (((Vector4 *)&output)[vTexColor] != Vector4(1,1,16/255.0f,1)) {
-         puts("((Vector4 *)&output)[vTexColor] != Vector4(1,1,0,1)");
-         assert(0);
-      }
-   } else {
-      puts("vTexColor < 0");
-      assert(0);
-   }
-
-   static const char fsGLSL1 [] =
-      "uniform vec4 uVec4; \n"
-      "uniform sampler2D sampler2d; \n"
-      "varying vec4 vTexCoord; \n"
-      "varying vec4 vTexColor; \n"
-      "void main() { \n"
-      "   gl_FragColor = vTexColor; \n"
-      "}";
-   gl_shader * fs1 = GGLShaderCreate(GL_FRAGMENT_SHADER);
-   if (!GGLShaderCompile(fs1, fsGLSL1, &infoLog)) {
-      printf("GGLShaderCompile fs failed:\n%s\n", infoLog);
-      assert(0);
-   }
-   gl_shader_program * prog1 = GGLShaderProgramCreate();
-   glError = GGLShaderAttach(prog1, vs);
-   assert(GL_NO_ERROR == glError);
-   glError = GGLShaderAttach(prog1, fs1);
-   assert(GL_NO_ERROR == glError);
-   GGLShaderAttributeBind(prog1, 1, "aPosition");
-   GGLShaderAttributeBind(prog1, 2, "aTexCoord");
-   if (!GGLShaderProgramLink(prog1, &infoLog)) {
-      printf("GGLShaderProgramLink failed:\n%s\n", infoLog);
-      assert(0);
-   }
-
-   GGLShaderUse(llvmCtx, &gglState, prog1);
-   VertexInput input1 = {0, Vector4(1,1,0,1), Vector4(1,1,0,0)};
-   VertexOutput output1 = {0};
-   GGLProcessVertex(prog1, &input1, &output1, NULL);
-   int vTexCoord = -1;
-   assert(2 == GGLShaderAttributeLocation(prog1, "aTexCoord"));
-   GGLShaderVaryingLocation(prog1, "vTexCoord", &vTexCoord);
-   if (vTexCoord >= 0) {
-      if (((Vector4 *)&output1)[vTexCoord] != input1.attributes[2]) {
-         puts("((Vector4 *)&output1)[vTexCoord] != input1.attributes[1]");
-         assert(0);
-      }
-   } else {
-      puts("vTexCoord < 0");
-      assert(0);
-   }
-
-   puts("***\n finished contextless_test \n***");
-
-   GGLShaderProgramDelete(prog);
-   GGLShaderProgramDelete(prog1);
-   
-   GLContextDctr();
-}
-
 extern "C" void hieralloc_report(const void *, FILE *);
 extern "C" void hieralloc_report_brief(const void *, FILE *);
 
@@ -587,7 +462,7 @@ int main (int argc, char * const argv[])
 {
    cmain(0,NULL);
 
-   contextless_test();
+//   contextless_test();
    
 //   contextless_test();
    

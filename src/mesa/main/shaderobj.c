@@ -11,9 +11,6 @@ void _mesa_reference_shader(const void * ctx, struct gl_shader **ptr,
    *ptr = sh;
 }
 
-static struct gl_shader * (watches[20]) = {0};
-static unsigned watch = 0;
-
 struct gl_shader * _mesa_new_shader(const void * ctx, GLuint name, GLenum type)
 {
    assert(type == GL_FRAGMENT_SHADER || type == GL_VERTEX_SHADER);
@@ -36,9 +33,5 @@ void _mesa_delete_shader(const void * ctx, struct gl_shader *shader)
       shader->DeletePending = GL_TRUE;
       return;
    }
-   unsigned i = 0;
-   for (i = 0; i < watch; i++)
-      if (watches[i] == shader)
-         watches[i] = watches[--watch];
    hieralloc_free(shader);
 }

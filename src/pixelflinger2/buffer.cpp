@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <string.h>
+#include <stdio.h>
 
 void SetShaderVerifyFunctions(GGLInterface *);
 
@@ -141,7 +142,7 @@ static void Clear(const GGLInterface * iface, GLbitfield buf)
     GGL_GET_CONST_CONTEXT(ctx, iface);
     
     // TODO DXL scissor test
-    if (GL_COLOR_BUFFER_BIT & buf)
+    if (GL_COLOR_BUFFER_BIT & buf && ctx->frameSurface.data)
     {
         assert(GGL_PIXEL_FORMAT_RGBA_8888 == ctx->frameSurface.format);
         unsigned * const end = (unsigned *)ctx->frameSurface.data + 
@@ -150,7 +151,7 @@ static void Clear(const GGLInterface * iface, GLbitfield buf)
         for (unsigned * start = (unsigned *)ctx->frameSurface.data; start < end; start++)
             *start = color;
     }
-    if (GL_DEPTH_BUFFER_BIT & buf)
+    if (GL_DEPTH_BUFFER_BIT & buf && ctx->depthSurface.data)
     {
         assert(GGL_PIXEL_FORMAT_Z_32 == ctx->depthSurface.format);
         unsigned * const end = (unsigned *)ctx->depthSurface.data + 
@@ -159,7 +160,7 @@ static void Clear(const GGLInterface * iface, GLbitfield buf)
         for (unsigned * start = (unsigned *)ctx->depthSurface.data; start < end; start++)
             *start = depth;
     }
-    if (GL_STENCIL_BUFFER_BIT & buf)
+    if (GL_STENCIL_BUFFER_BIT & buf && ctx->stencilSurface.data)
     {
         assert(GGL_PIXEL_FORMAT_S_8 == ctx->stencilSurface.format);
         unsigned * const end = (unsigned *)((unsigned char *)ctx->stencilSurface.data +

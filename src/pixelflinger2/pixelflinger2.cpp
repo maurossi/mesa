@@ -27,6 +27,7 @@ void gglError(unsigned error)
 {
    if (GL_NO_ERROR == error)
       return;
+   printf("pf2: gglError 0x%.4X \n", error);
    assert(0);
 }
 
@@ -160,7 +161,7 @@ static void EnableDisable(GGLInterface * iface, GLenum cap, GLboolean enable)
       SetShaderVerifyFunctions(iface);
 }
 
-static void InitializeGGLState(GGLInterface * iface)
+void InitializeGGLState(GGLInterface * iface)
 {
    iface->DepthRangef = DepthRangef;
    iface->Viewport = Viewport;
@@ -218,14 +219,12 @@ GGLInterface * CreateGGLInterface()
    return &ctx->interface;
 }
 
-void DestroyGGLInterface(GGLInterface * iface)
+void UninitializeGGLState(GGLInterface * iface)
 {
    GGLContext * ctx = (GGLContext *)iface;
    assert((void *)ctx == (void *)iface);
-
+   
    DestroyShaderFunctions(iface);
-
-   free(ctx);
    
 #if USE_LLVM_TEXTURE_SAMPLER
    puts("USE_LLVM_TEXTURE_SAMPLER");
@@ -237,4 +236,12 @@ void DestroyGGLInterface(GGLInterface * iface)
    puts("USE_LLVM_EXECUTIONENGINE");
 #endif
    hieralloc_report_brief(NULL, stdout);
+}
+
+void DestroyGGLInterface(GGLInterface * iface)
+{
+   GGLContext * ctx = (GGLContext *)iface;
+   assert((void *)ctx == (void *)iface);
+   UninitializeGGLState(iface);
+   free(ctx);
 }

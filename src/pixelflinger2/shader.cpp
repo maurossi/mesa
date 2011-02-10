@@ -63,12 +63,14 @@ static void InitializeGLContext(struct gl_context *ctx)
    ctx->Const.MaxDrawBuffers = 2;
 }
 
+void * llvmCtx = NULL;
 static const struct GLContext {
    const gl_context * ctx;
    GLContext() {
       ctx = hieralloc_zero(NULL, gl_context);
 //      ctx = (const gl_context*)calloc(1,sizeof(gl_context));
       InitializeGLContext(const_cast<gl_context *>(ctx));
+      llvmCtx = new llvm::LLVMContext();
    }
    ~GLContext() {
       _mesa_glsl_release_types(); // TODO: find when to release to minize memory
@@ -76,10 +78,11 @@ static const struct GLContext {
       hieralloc_free(const_cast<gl_context *>(ctx));
 //      free(const_cast<gl_context *>(ctx));
       ctx = NULL;
+      delete (llvm::LLVMContext *)llvmCtx;
    }
 } glContext;
 
-void GLContextDctr()
+extern "C" void GLContextDctr()
 {
    _mesa_glsl_release_types(); // TODO: find when to release to minize memory
    _mesa_glsl_release_functions();
@@ -141,9 +144,24 @@ static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
    return shader;
 }
 
+void GGLShaderSource(gl_shader_t * shader, GLsizei count, const char ** string, const int * length)
+{
+   hieralloc_free(const_cast<GLchar *>(shader->Source));
+   for (unsigned i = 0; i < count; i++)
+   {
+      int len = strlen(string[i]);
+      if (length && length[i] >= 0)
+         len = length[i];
+      shader->Source = hieralloc_strndup_append(const_cast<GLchar *>(shader->Source), string[i], len);
+   }
+   printf("pf2: GGLShaderSource: \n '%s' \n", shader->Source);
+}
+
 GLboolean GGLShaderCompile(gl_shader * shader, const char * glsl, const char ** infoLog)
 {
-   shader->Source = glsl;
+   if (glsl)
+      shader->Source = glsl;
+   assert(shader->Source);
    compile_shader(glContext.ctx, shader);
    shader->Source = NULL;
    if (infoLog)
@@ -155,8 +173,9 @@ static GLboolean ShaderCompile(const GGLInterface * iface, gl_shader * shader,
                                const char * glsl, const char ** infoLog)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   if (!glsl) {
+   if (!glsl && !shader->Source) {
       gglError(GL_INVALID_VALUE);
+      assert(0);
       return GL_FALSE;
    }
    return GGLShaderCompile(shader, glsl, infoLog);
@@ -201,7 +220,7 @@ static gl_shader_program * ShaderProgramCreate(const GGLInterface * iface)
    GGL_GET_CONST_CONTEXT(ctx, iface);
    gl_shader_program * program = GGLShaderProgramCreate();
    if (!program)
-      gglError(GL_OUT_OF_MEMORY);   
+      gglError(GL_OUT_OF_MEMORY);
    return program;
 }
 
@@ -341,8 +360,8 @@ struct SymbolLookupContext {
 static void* SymbolLookup(void* pContext, const char* name)
 {
    SymbolLookupContext * ctx = (SymbolLookupContext *)pContext;
-   const gl_shader * shader = ctx->shader;
-   const gl_shader_program * program = ctx->program;
+//   const gl_shader * shader = ctx->shader;
+//   const gl_shader_program * program = ctx->program;
    const GGLState * gglCtx = ctx->gglCtx;
    const void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
    if (NULL == symbol) {
@@ -439,6 +458,7 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
 
       shader->function  = instance->function;
    }
+   puts("pf2: GGLShaderUse end");
 }
 
 static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
@@ -450,7 +470,7 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
       ctx->CurrentProgram = NULL;
       return;
    }
-
+   
    GGLShaderUse(ctx->llvmCtx, &ctx->state, program);
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (!program->_LinkedShaders[i])
@@ -464,7 +484,6 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
       else
          assert(0);
    }
-
    ctx->CurrentProgram = program;
 }
 
@@ -501,7 +520,7 @@ void GGLShaderProgramDelete(gl_shader_program * program)
 
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++)
       GGLShaderDelete(program->_LinkedShaders[i]);
-      
+
    hieralloc_free(program);
 }
 
@@ -513,6 +532,63 @@ static void ShaderProgramDelete(GGLInterface * iface, gl_shader_program * progra
       SetShaderVerifyFunctions(iface);
    }
    GGLShaderProgramDelete(program);
+}
+
+void GGLShaderGetiv(gl_shader_t * shader, const GLenum pname, GLint * params)
+{
+   switch (pname) {
+   case GL_SHADER_TYPE:
+      *params = shader->Type;
+      break;
+   case GL_DELETE_STATUS:
+      *params = shader->DeletePending;
+      break;
+   case GL_COMPILE_STATUS:
+      *params = shader->CompileStatus;
+      break;
+   case GL_INFO_LOG_LENGTH:
+      *params = shader->InfoLog ? strlen(shader->InfoLog) + 1 : 0;
+      break;
+   case GL_SHADER_SOURCE_LENGTH:
+      *params = shader->Source ? strlen(shader->Source) + 1 : 0;
+      break;
+   default:
+      assert(0);
+      break;
+   }
+}
+
+void GGLShaderProgramGetiv(gl_shader_program_t * program, const GLenum pname, GLint * params)
+{
+   switch (pname) {
+   case GL_DELETE_STATUS:
+      *params = program->DeletePending;
+      break;
+   case GL_LINK_STATUS:
+      *params = program->LinkStatus;
+      break;
+   case GL_VALIDATE_STATUS:
+      *params = program->LinkStatus;
+      break;
+   case GL_INFO_LOG_LENGTH:
+      *params = program->InfoLog ? strlen(program->InfoLog) + 1 : 0;
+      break;
+   case GL_ATTACHED_SHADERS:
+      *params = program->NumShaders;
+      break;
+   case GL_ACTIVE_ATTRIBUTES:
+      *params = program->Attributes->NumParameters;
+      break;
+   case GL_ACTIVE_UNIFORMS:
+      *params = program->Uniforms->NumUniforms;
+      break;
+   case GL_ACTIVE_ATTRIBUTE_MAX_LENGTH:
+   case GL_ACTIVE_UNIFORM_MAX_LENGTH:
+      printf("pf2:GGLShaderProgramGetiv not implemented: %d \n", pname);
+   default:
+      assert(0);
+      break;
+   }
 }
 
 void GGLShaderAttributeBind(const gl_shader_program * program, GLuint index, const GLchar * name)
@@ -697,6 +773,7 @@ void InitializeShaderFunctions(struct GGLInterface * iface)
    ctx->llvmCtx = new llvm::LLVMContext();
 
    iface->ShaderCreate = ShaderCreate;
+   iface->ShaderSource = GGLShaderSource;
    iface->ShaderCompile = ShaderCompile;
    iface->ShaderDelete = ShaderDelete;
    iface->ShaderProgramCreate = ShaderProgramCreate;
@@ -705,6 +782,8 @@ void InitializeShaderFunctions(struct GGLInterface * iface)
    iface->ShaderProgramLink = ShaderProgramLink;
    iface->ShaderUse = ShaderUse;
    iface->ShaderProgramDelete = ShaderProgramDelete;
+   iface->ShaderGetiv = GGLShaderGetiv;
+   iface->ShaderProgramGetiv = GGLShaderProgramGetiv;
    iface->ShaderAttributeBind = GGLShaderAttributeBind;
    iface->ShaderAttributeLocation = GGLShaderAttributeLocation;
    iface->ShaderVaryingLocation = GGLShaderVaryingLocation;

@@ -220,6 +220,9 @@ struct GGLInterface {
 
    // creates empty shader
    gl_shader_t * (* ShaderCreate)(const GGLInterface_t * iface, GLenum type);
+   
+   void (* ShaderSource)(gl_shader_t * shader, GLsizei count, const char ** string, const int * length);
+
    // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call
    GLboolean (* ShaderCompile)(const GGLInterface_t * iface, gl_shader_t * shader,
                                const char * glsl, const char ** infoLog);
@@ -244,6 +247,10 @@ struct GGLInterface {
 
    // LLVM JIT and set as active program
    void (* ShaderUse)(GGLInterface_t * iface, gl_shader_program_t * program);
+
+   void (* ShaderGetiv)(gl_shader_t * shader, const GLenum pname, GLint * params);
+
+   void (* ShaderProgramGetiv)(gl_shader_program_t * program, const GLenum pname, GLint * params);
 
    // bind attribute location before linking
    void (* ShaderAttributeBind)(const gl_shader_program_t * program,
@@ -304,6 +311,10 @@ extern "C"
 
    // LLVM JIT and set as active program, also call after gglState change to re-JIT
    void GGLShaderUse(void * llvmCtx, const GGLState_t * gglState, gl_shader_program_t * program);
+
+   void GGLShaderGetiv(gl_shader_t * shader, const GLenum pname, GLint * params);
+
+   void GGLShaderProgramGetiv(gl_shader_program_t * program, const GLenum pname, GLint * params);
 
    // bind attribute location before linking
    void GGLShaderAttributeBind(const gl_shader_program_t * program,
