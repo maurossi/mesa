@@ -1,3 +1,5 @@
+ifeq (true,false) # disable everything
+
 # USE_LLVM_EXECUTIONENGINE not fully implemented
 USE_LLVM_EXECUTIONENGINE := false 
 # if using libLLVMExecutionEngine, 
@@ -195,3 +197,5 @@ include $(BUILD_STATIC_LIBRARY)
 include $(call all-makefiles-under,$(LOCAL_PATH))
 
 endif # TARGET_SIMULATOR != true
+
+endif # true != false
