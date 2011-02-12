@@ -11,6 +11,10 @@ mesa_SRC_FILES :=	\
 	m_matrix.c \
 	main.cpp
 	
+mesa_C_INCLUDES :=	\
+	$(LOCAL_PATH)   \
+	$(LOCAL_PATH)/../include
+	
 # Executable for host
 # ========================================================
 include $(CLEAR_VARS)
@@ -18,7 +22,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
-LOCAL_CPPFLAGS += -DDEBUG -UNDEBUG -O0 -g
 LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g 
 endif
 
@@ -26,9 +29,7 @@ LOCAL_MODULE := mesa
 LOCAL_SRC_FILES := $(mesa_SRC_FILES)
 LOCAL_STATIC_LIBRARIES := libMesa
 LOCAL_SHARED_LIBRARIES := libbcc
-LOCAL_C_INCLUDES :=	\
-	$(LOCAL_PATH)   \
-	frameworks/compile/mesa/include
+LOCAL_C_INCLUDES := $(mesa_C_INCLUDES)
 
 include $(LLVM_ROOT_PATH)/llvm-host-build.mk
 include $(BUILD_HOST_EXECUTABLE)
@@ -41,7 +42,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
-LOCAL_CPPFLAGS += -DDEBUG -UNDEBUG -O0 -g
 LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g 
 endif
 
@@ -49,9 +49,7 @@ LOCAL_MODULE := mesa
 LOCAL_SRC_FILES := $(mesa_SRC_FILES)
 LOCAL_STATIC_LIBRARIES := libMesa
 LOCAL_SHARED_LIBRARIES := libstlport libcutils libutils libhardware libsurfaceflinger_client libbcc libdl
-LOCAL_C_INCLUDES :=	\
-	$(LOCAL_PATH)	\
-	frameworks/compile/mesa/include
+LOCAL_C_INCLUDES := $(mesa_C_INCLUDES)
 
 include $(LLVM_ROOT_PATH)/llvm-device-build.mk
 include $(BUILD_EXECUTABLE)

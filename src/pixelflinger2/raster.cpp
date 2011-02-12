@@ -54,7 +54,7 @@ static inline void InterpolateVertex(const VertexOutput * a, const VertexOutput 
 }
 
 void GGLProcessVertex(const gl_shader_program * program, const VertexInput * input,
-                         VertexOutput * output, const float (*constants)[4])
+                      VertexOutput * output, const float (*constants)[4])
 {
    ShaderFunction_t function = (ShaderFunction_t)program->_LinkedShaders[MESA_SHADER_VERTEX]->function;
    function(input, output, constants);
@@ -74,7 +74,7 @@ static void ProcessVertex(const GGLInterface * iface, const VertexInput * input,
 //   memcpy(ctx->glCtx->CurrentProgram->ValuesVertexInput, input, sizeof(*input));
 //   ctx->glCtx->CurrentProgram->_LinkedShaders[MESA_SHADER_VERTEX]->function();
 //   memcpy(output, ctx->glCtx->CurrentProgram->ValuesVertexOutput, sizeof(*output));
-   
+
    GGLProcessVertex(ctx->CurrentProgram, input, output, ctx->CurrentProgram->ValuesUniform);
 //   const Vector4 * constants = (Vector4 *)
 //    ctx->glCtx->Shader.CurrentProgram->VertexProgram->Parameters->ParameterValues;
@@ -84,6 +84,60 @@ static void ProcessVertex(const GGLInterface * iface, const VertexInput * input,
 //    textureGGLContext = NULL;
 //#endif
 }
+
+#include <pthread.h>
+
+struct WorkerArgs {
+   const GGLInterface * iface;
+   unsigned startY, endY, varyingCount;
+   VertexOutput bV, cV, bDx, cDx;
+   int width, height;
+   volatile bool hasWork;
+   bool quit;
+
+   static void * RasterTrapezoidWorker(void * threadArgs) {
+      WorkerArgs * args = (WorkerArgs *)threadArgs;
+      VertexOutput clip0, clip1, * left, * right;
+      while (!args->quit) {
+         if (!args->hasWork)
+            continue;
+         for (unsigned y = args->startY; y <= args->endY; y += 2) {
+            do {
+               if (args->bV.position.x < 0) {
+                  if (args->cV.position.x < 0)
+                     break;
+                  InterpolateVertex(&args->bV, &args->cV, -args->bV.position.x /
+                                    (args->cV.position.x - args->bV.position.x),
+                                    &clip0, args->varyingCount);
+                  left = &clip0;
+               } else
+                  left = &args->bV;
+               if ((int)args->cV.position.x >= (int)args->width) {
+                  if (args->bV.position.x >= (int)args->width)
+                     break;
+                  InterpolateVertex(&args->bV, &args->cV, (args->width - 1 - args->bV.position.x) /
+                                    (args->cV.position.x - args->bV.position.x),
+                                    &clip1, args->varyingCount);
+                  right = &clip1;
+               } else
+                  right = &args->cV;
+               args->iface->ScanLine(args->iface, left, right);
+            } while (false);
+            for (unsigned i = 0; i < args->varyingCount; i++) {
+               args->bV.varyings[i] += args->bDx.varyings[i];
+               args->cV.varyings[i] += args->cDx.varyings[i];
+            }
+            args->bV.position += args->bDx.position;
+            args->cV.position += args->cDx.position;
+            args->bV.frontFacingPointCoord += args->bDx.frontFacingPointCoord;
+            args->cV.frontFacingPointCoord += args->cDx.frontFacingPointCoord;
+         }
+         args->hasWork = false;
+      }
+      pthread_exit(NULL);
+      return NULL;
+   }
+};
 
 static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
                             const VertexOutput * tr, const VertexOutput * bl,
@@ -125,27 +179,27 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
       brv = tmp;
    }
 
-   // horizontally clip
-   if ((int)tlv.position.x < 0) {
-      InterpolateVertex(&tlv, &trv, (0 - tlv.position.x) / (trv.position.x - tlv.position.x),
-                        &tmp, varyingCount);
-      tlv = tmp;
-   }
-   if ((int)blv.position.x < 0) {
-      InterpolateVertex(&blv, &brv, (0 - blv.position.x) / (brv.position.x - blv.position.x),
-                        &tmp, varyingCount);
-      blv = tmp;
-   }
-   if ((int)trv.position.x >= (int)width) {
-      InterpolateVertex(&tlv, &trv, (width - 1 - tlv.position.x) / (trv.position.x - tlv.position.x),
-                        &tmp, varyingCount);
-      trv = tmp;
-   }
-   if ((int)brv.position.x >= (int)width) {
-      InterpolateVertex(&blv, &brv, (width - 1 - blv.position.x) / (brv.position.x - blv.position.x),
-                        &tmp, varyingCount);
-      brv = tmp;
-   }
+//   // horizontally clip
+//   if ((int)tlv.position.x < 0) {
+//      InterpolateVertex(&tlv, &trv, (0 - tlv.position.x) / (trv.position.x - tlv.position.x),
+//                        &tmp, varyingCount);
+//      tlv = tmp;
+//   }
+//   if ((int)blv.position.x < 0) {
+//      InterpolateVertex(&blv, &brv, (0 - blv.position.x) / (brv.position.x - blv.position.x),
+//                        &tmp, varyingCount);
+//      blv = tmp;
+//   }
+//   if ((int)trv.position.x >= (int)width) {
+//      InterpolateVertex(&tlv, &trv, (width - 1 - tlv.position.x) / (trv.position.x - tlv.position.x),
+//                        &tmp, varyingCount);
+//      trv = tmp;
+//   }
+//   if ((int)brv.position.x >= (int)width) {
+//      InterpolateVertex(&blv, &brv, (width - 1 - blv.position.x) / (brv.position.x - blv.position.x),
+//                        &tmp, varyingCount);
+//      brv = tmp;
+//   }
 
    const unsigned int startY = tlv.position.y;
    const unsigned int endY = blv.position.y;
@@ -182,8 +236,67 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
    cDx.frontFacingPointCoord *= yDistInv;
    cDx.frontFacingPointCoord.y = VectorComp_t_Zero; // gl_FrontFacing not interpolated
 
-   for (unsigned y = startY; y <= endY; y++) {
-      iface->ScanLine(iface, &bV, &cV);
+   static WorkerArgs args; // TODO: fix this static
+
+#define DUAL_THREAD 1
+
+#if DUAL_THREAD
+   static pthread_t thread;
+   if (!thread) {
+      int rc = pthread_create(&thread, NULL, WorkerArgs::RasterTrapezoidWorker, &args);
+      assert(!rc);
+   }
+   args.bV = bV;
+   args.cV = cV;
+   for (unsigned i = 0; i < varyingCount; i++) {
+      args.bV.varyings[i] += bDx.varyings[i];
+      bDx.varyings[i] += bDx.varyings[i];
+      args.cV.varyings[i] += cDx.varyings[i];
+      cDx.varyings[i] += cDx.varyings[i];
+   }
+   args.bV.position += bDx.position;
+   bDx.position += bDx.position;
+   args.cV.position += cDx.position;
+   cDx.position += cDx.position;
+   args.bV.frontFacingPointCoord += bDx.frontFacingPointCoord;
+   bDx.frontFacingPointCoord += bDx.frontFacingPointCoord;
+   args.cV.frontFacingPointCoord += cDx.frontFacingPointCoord;
+   cDx.frontFacingPointCoord += cDx.frontFacingPointCoord;
+   args.iface = iface;
+   args.bDx = bDx;
+   args.cDx = cDx;
+   args.varyingCount = varyingCount;
+   args.startY = startY + 1;
+   args.endY = endY;
+   args.width = width;
+   args.height = height;
+   if (args.startY <= args.endY)
+      args.hasWork = true;
+#endif
+
+   VertexOutput * left, * right;
+   VertexOutput clip0, clip1;
+
+   for (unsigned y = startY; y <= endY; y += 1 + DUAL_THREAD) {
+      do {
+         if (bV.position.x < 0) {
+            if (cV.position.x < 0)
+               break;
+            InterpolateVertex(&bV, &cV, -bV.position.x / (cV.position.x - bV.position.x),
+                              &clip0, varyingCount);
+            left = &clip0;
+         } else
+            left = &bV;
+         if ((int)cV.position.x >= (int)width) {
+            if (bV.position.x >= (int)width)
+               break;
+            InterpolateVertex(&bV, &cV, (width - 1 - bV.position.x) / (cV.position.x - bV.position.x),
+                              &clip1, varyingCount);
+            right = &clip1;
+         } else
+            right = &cV;
+         iface->ScanLine(iface, left, right);
+      } while (false);
       for (unsigned i = 0; i < varyingCount; i++) {
          bV.varyings[i] += bDx.varyings[i];
          cV.varyings[i] += cDx.varyings[i];
@@ -193,6 +306,9 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
       bV.frontFacingPointCoord += bDx.frontFacingPointCoord;
       cV.frontFacingPointCoord += cDx.frontFacingPointCoord;
    }
+
+   while (args.hasWork)
+      ; // wait
 }
 
 static void RasterTriangle(const GGLInterface * iface, const VertexOutput * v1,

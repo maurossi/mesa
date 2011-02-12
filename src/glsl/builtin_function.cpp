@@ -34,7 +34,7 @@ read_builtins(void * mem_ctx, GLenum target, const char *protos, const char **fu
 {
    struct gl_context fakeCtx;
    fakeCtx.API = API_OPENGL;
-   gl_shader *sh = _mesa_new_shader((gl_context *)mem_ctx, 0, target);
+   gl_shader *sh = _mesa_new_shader(mem_ctx, 0, target);
    struct _mesa_glsl_parse_state *st =
       new(sh) _mesa_glsl_parse_state(&fakeCtx, target, sh);
 
@@ -60,7 +60,7 @@ read_builtins(void * mem_ctx, GLenum target, const char *protos, const char **fu
       if (st->error) {
          printf("error reading builtin: %.35s ...\n", functions[i]);
          printf("Info log:\n%s\n", st->info_log);
-         hieralloc_free(sh);
+         _mesa_delete_shader(NULL, sh);
          return NULL;
       }
    }
@@ -2458,21 +2458,42 @@ static const char builtin_pow[] =
    "\n"
    "   (signature vec2\n"
    "     (parameters\n"
-   "       (declare (in) vec2 arg0)\n"
-   "       (declare (in) vec2 arg1))\n"
-   "     ((return (expression vec2 pow (var_ref arg0) (var_ref arg1)))))\n"
+   "       (declare (in) vec2 b)\n"
+   "       (declare (in) vec2 e))\n"
+   "      	(\n"
+   "			(declare () vec2 ret)\n"
+   "			(assign (constant bool (1)) (x) (var_ref ret) (call pow ((swiz x (var_ref b)) (swiz x (var_ref e)) )))\n"
+   "			(assign (constant bool (1)) (y) (var_ref ret) (call pow ((swiz y (var_ref b)) (swiz y (var_ref e)) )))\n"
+   "			(return (var_ref ret))\n"
+   "		)\n"
+   "	)\n"
    "\n"
    "   (signature vec3\n"
    "     (parameters\n"
-   "       (declare (in) vec3 arg0)\n"
-   "       (declare (in) vec3 arg1))\n"
-   "     ((return (expression vec3 pow (var_ref arg0) (var_ref arg1)))))\n"
+   "       (declare (in) vec3 b)\n"
+   "       (declare (in) vec3 e))\n"
+   "      	(\n"
+   "			(declare () vec3 ret)\n"
+   "			(assign (constant bool (1)) (x) (var_ref ret) (call pow ((swiz x (var_ref b)) (swiz x (var_ref e)) )))\n"
+   "			(assign (constant bool (1)) (y) (var_ref ret) (call pow ((swiz y (var_ref b)) (swiz y (var_ref e)) )))\n"
+   "			(assign (constant bool (1)) (z) (var_ref ret) (call pow ((swiz z (var_ref b)) (swiz z (var_ref e)) )))\n"
+   "			(return (var_ref ret))\n"
+   "		)\n"
+   "	)\n"
    "\n"
-   "   (signature vec4\n"
+   "	(signature vec4\n"
    "     (parameters\n"
-   "       (declare (in) vec4 arg0)\n"
-   "       (declare (in) vec4 arg1))\n"
-   "     ((return (expression vec4 pow (var_ref arg0) (var_ref arg1)))))\n"
+   "       (declare (in) vec4 b)\n"
+   "       (declare (in) vec4 e))\n"
+   "      	(\n"
+   "			(declare () vec4 ret)\n"
+   "			(assign (constant bool (1)) (x) (var_ref ret) (call pow ((swiz x (var_ref b)) (swiz x (var_ref e)) )))\n"
+   "			(assign (constant bool (1)) (y) (var_ref ret) (call pow ((swiz y (var_ref b)) (swiz y (var_ref e)) )))\n"
+   "			(assign (constant bool (1)) (z) (var_ref ret) (call pow ((swiz z (var_ref b)) (swiz z (var_ref e)) )))\n"
+   "			(assign (constant bool (1)) (w) (var_ref ret) (call pow ((swiz w (var_ref b)) (swiz w (var_ref e)) )))\n"
+   "			(return (var_ref ret))\n"
+   "		)\n"
+   "	)\n"
    "))\n"
    ""
 ;

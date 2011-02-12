@@ -257,6 +257,7 @@ GLboolean GGLShaderProgramLink(gl_shader_program * program, const char ** infoLo
       *infoLog = program->InfoLog;
    if (!program->LinkStatus)
       return program->LinkStatus;
+   printf("slots: attribute=%d varying=%d uniforms=%d \n", program->AttributeSlots, program->VaryingSlots, program->Uniforms->Slots);
    for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
       const gl_program_parameter & attribute = program->Attributes->Parameters[i];
       printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
@@ -577,10 +578,10 @@ void GGLShaderProgramGetiv(gl_shader_program_t * program, const GLenum pname, GL
       *params = program->NumShaders;
       break;
    case GL_ACTIVE_ATTRIBUTES:
-      *params = program->Attributes->NumParameters;
+      *params = program->AttributeSlots;
       break;
    case GL_ACTIVE_UNIFORMS:
-      *params = program->Uniforms->NumUniforms;
+      *params = program->Uniforms->Slots;
       break;
    case GL_ACTIVE_ATTRIBUTE_MAX_LENGTH:
    case GL_ACTIVE_UNIFORM_MAX_LENGTH:
@@ -622,30 +623,55 @@ GLint GGLShaderUniformLocation(const gl_shader_program * program,
 {
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
       if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
-         return program->Uniforms->Uniforms[i].Pos;
+         return i;
    return -1;
 }
 
 void GGLShaderUniformGetfv(gl_shader_program * program, GLint location, GLfloat * params)
 {
-   memcpy(params, program->ValuesUniform + location, sizeof(*program->ValuesUniform));
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   int index = program->Uniforms->Uniforms[location].Pos;
+   assert(0 <= index && program->Uniforms->Slots > index);
+   memcpy(params, program->ValuesUniform + index, sizeof(*program->ValuesUniform));
 }
 
 void GGLShaderUniformGetiv(gl_shader_program * program, GLint location, GLint * params)
 {
-   // TODO: sampler uniform
-   memcpy(params, program->ValuesUniform + location, sizeof(*program->ValuesUniform));
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   int index = program->Uniforms->Uniforms[location].Pos;
+   assert(0 <= index && program->Uniforms->Slots > index);
+   const float * uniform = program->ValuesUniform[index];
+   params[0] = uniform[0];
+   params[1] = uniform[1];
+   params[2] = uniform[2];
+   params[3] = uniform[3];
+}
+
+void GGLShaderUniformGetSamplers(const gl_shader_program_t * program, 
+      int sampler2tmu[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS])
+{
+   memset(sampler2tmu, 0xff, sizeof sampler2tmu);
+   for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
+   {
+      const gl_uniform & uniform = program->Uniforms->Uniforms[i];
+      if (uniform.Type->is_sampler())
+         sampler2tmu[uniform.Pos] = program->ValuesUniform[i][0];
+      else if (uniform.Type->is_array() && uniform.Type->fields.array->is_sampler())
+         assert(0);
+   }
 }
 
 GLint GGLShaderUniform(gl_shader_program * program, GLint location, GLsizei count,
                        const GLvoid *values, GLenum type)
 {
-   // TODO: sampler uniform
+   // TODO: sampler uniform and type checking
    if (!program) {
       //gglError(GL_INVALID_OPERATION);
       return -2;
    }
-   int start = location;
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   const gl_uniform & unifrom = program->Uniforms->Uniforms[location];
+   int start = unifrom.Pos;
    int slots = 0, elems = 0;
    switch (type) {
    case GL_INT:
@@ -676,12 +702,16 @@ GLint GGLShaderUniform(gl_shader_program * program, GLint location, GLsizei coun
       assert(0);
    }
    if (0 < start)
-      return -1;
+      return -2;
    if (start + slots > program->Uniforms->Slots)
-      return -1;
+      return -2;
    for (int i = 0; i < slots; i++)
       memcpy(program->ValuesUniform + start + i, values, elems * sizeof(float));
-   return start;
+   if (unifrom.Type->is_sampler())
+      return program->ValuesUniform[start][0];
+   else if (unifrom.Type->is_array() && unifrom.Type->fields.array->is_sampler())
+      assert(0);
+   return -2;
 }
 
 void GGLShaderUniformMatrix(gl_shader_program * program, GLint cols, GLint rows,
@@ -690,7 +720,8 @@ void GGLShaderUniformMatrix(gl_shader_program * program, GLint cols, GLint rows,
    if (location == -1)
       return;
    assert(cols == rows);
-   int start = location;
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   int start = program->Uniforms->Uniforms[location].Pos;
    unsigned slots = cols * count;
    if (start < 0 || start + slots > program->Uniforms->Slots)
       return gglError(GL_INVALID_OPERATION);
@@ -790,6 +821,7 @@ void InitializeShaderFunctions(struct GGLInterface * iface)
    iface->ShaderUniformLocation = GGLShaderUniformLocation;
    iface->ShaderUniformGetfv = GGLShaderUniformGetfv;
    iface->ShaderUniformGetiv = GGLShaderUniformGetiv;
+   iface->ShaderUniformGetSamplers = GGLShaderUniformGetSamplers;
    iface->ShaderUniform = GGLShaderUniform;
    iface->ShaderUniformMatrix = GGLShaderUniformMatrix;
 }

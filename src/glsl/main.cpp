@@ -42,7 +42,7 @@
 #include "src/pixelflinger2/pixelflinger2.h"
 
 static int dump_ast = 0;
-static int dump_hir = 1;
+static int dump_hir = 0;
 static int dump_lir = 0;
 
 extern "C" void

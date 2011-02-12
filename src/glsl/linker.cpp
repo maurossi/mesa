@@ -1355,13 +1355,6 @@ assign_attribute_locations(gl_shader_program *prog, unsigned max_attribute_index
       if (0 <= paramIndex)
          prog->Attributes->Parameters[paramIndex].Location = location;
    }
-   
-   for (int i = sizeof(used_locations) * 8 - 1; i >= 0; i--)
-      if (used_locations & (1 << i))
-      {
-         prog->AttributeSlots = i + 1;
-         break;
-      }
 
    return true;
 }
@@ -1685,6 +1678,13 @@ link_shaders(const struct gl_context *ctx, struct gl_shader_program *prog)
 	 prog->LinkStatus = false;
 	 goto done;
       }
+      prog->AttributeSlots = 0;
+      for (unsigned i = 0; i < prog->Attributes->NumParameters; i++)
+      {
+         const gl_program_parameter & param = prog->Attributes->Parameters[i];
+         if (param.Location + param.Slots > prog->AttributeSlots)
+            prog->AttributeSlots = param.Location + param.Slots;
+      }
    }
 
    unsigned prev;
@@ -1745,6 +1745,16 @@ link_shaders(const struct gl_context *ctx, struct gl_shader_program *prog)
    prog->ValuesVertexInput = (float (*)[4])((((unsigned long)prog->InputOuputBase) + 15) & (~15L));
    prog->ValuesVertexOutput = (float (*)[4])((unsigned long)prog->ValuesVertexInput + sizeof(VertexInput));
    prog->ValuesUniform = (float (*)[4])((unsigned long)prog->ValuesVertexOutput + sizeof(VertexOutput));
+
+   // default mapping of tmu to sampler
+   for (unsigned i = 0; i < prog->Uniforms->NumUniforms; i++)
+   {
+      const gl_uniform & uniform = prog->Uniforms->Uniforms[i];
+      if (uniform.Type->is_sampler())
+         prog->ValuesUniform[uniform.Pos][0] = uniform.Pos; 
+      else if (uniform.Type->is_array() && uniform.Type->fields.array->is_sampler())
+         assert(0);
+   }
 
 done:
    free(vert_shader_list);

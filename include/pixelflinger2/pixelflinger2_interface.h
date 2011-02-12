@@ -267,10 +267,15 @@ struct GGLInterface {
                                GLint location, GLfloat * params);
    void (* ShaderUniformGetiv)(gl_shader_program_t * program,
                                GLint location, GLint * params);
+                               
+   // retrieves the tmu each sampler is set to, sampler2tmu[sampler] == -1 means not used
+   void (* ShaderUniformGetSamplers)(const gl_shader_program_t * program, 
+      int sampler2tmu[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]);
+
    // updates linked program uniform value by location; return >= 0 indicates sampler assigned
    GLint (* ShaderUniform)(gl_shader_program_t * program,
                            GLint location, GLsizei count, const GLvoid *values, GLenum type);
-
+                           
    // updates linked program uniform matrix value by location
    void (* ShaderUniformMatrix)(gl_shader_program_t * program, GLint cols,
                                 GLint rows, GLint location, GLsizei count,
@@ -327,6 +332,10 @@ extern "C"
    // gets uniform location for linked program
    GLint GGLShaderUniformLocation(const gl_shader_program_t * program,
                                   const char * name);
+   
+   // retrieves the tmu each sampler is set to, sampler2tmu[sampler] == -1 means not used
+   void GGLShaderUniformGetSamplers(const gl_shader_program_t * program, 
+      int sampler2tmu[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]);
 
    void GGLProcessVertex(const gl_shader_program_t * program, const VertexInput_t * input,
                          VertexOutput_t * output, const float (*constants)[4]);

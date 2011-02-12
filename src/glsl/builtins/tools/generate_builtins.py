@@ -128,21 +128,18 @@ if __name__ == "__main__":
  */
 
 #include <stdio.h>
-#include "main/core.h" /* for struct gl_shader */
+#include "main/shaderobj.h" /* for struct gl_shader */
 #include "glsl_parser_extras.h"
 #include "ir_reader.h"
 #include "program.h"
 #include "ast.h"
 
-extern "C" struct gl_shader *
-_mesa_new_shader(struct gl_context *ctx, GLuint name, GLenum type);
-
 gl_shader *
-read_builtins(GLenum target, const char *protos, const char **functions, unsigned count)
+read_builtins(void * mem_ctx, GLenum target, const char *protos, const char **functions, unsigned count)
 {
    struct gl_context fakeCtx;
    fakeCtx.API = API_OPENGL;
-   gl_shader *sh = _mesa_new_shader(NULL, 0, target);
+   gl_shader *sh = _mesa_new_shader(mem_ctx, 0, target);
    struct _mesa_glsl_parse_state *st =
       new(sh) _mesa_glsl_parse_state(&fakeCtx, target, sh);
 
@@ -168,7 +165,7 @@ read_builtins(GLenum target, const char *protos, const char **functions, unsigne
       if (st->error) {
          printf("error reading builtin: %.35s ...\\n", functions[i]);
          printf("Info log:\\n%s\\n", st->info_log);
-         talloc_free(sh);
+         _mesa_delete_shader(NULL, sh);
          return NULL;
       }
    }
@@ -193,7 +190,7 @@ void *builtin_mem_ctx = NULL;
 void
 _mesa_glsl_release_functions(void)
 {
-   talloc_free(builtin_mem_ctx);
+   hieralloc_free(builtin_mem_ctx);
    builtin_mem_ctx = NULL;
    memset(builtin_profiles, 0, sizeof(builtin_profiles));
 }
@@ -209,8 +206,8 @@ _mesa_read_profile(struct _mesa_glsl_parse_state *state,
    gl_shader *sh = builtin_profiles[profile_index];
 
    if (sh == NULL) {
-      sh = read_builtins(GL_VERTEX_SHADER, prototypes, functions, count);
-      talloc_steal(builtin_mem_ctx, sh);
+      sh = read_builtins(state, GL_VERTEX_SHADER, prototypes, functions, count);
+      hieralloc_steal(builtin_mem_ctx, sh);
       builtin_profiles[profile_index] = sh;
    }
 
@@ -223,7 +220,7 @@ _mesa_glsl_initialize_functions(exec_list *instructions,
                                 struct _mesa_glsl_parse_state *state)
 {
    if (builtin_mem_ctx == NULL) {
-      builtin_mem_ctx = talloc_init("GLSL built-in functions");
+      builtin_mem_ctx = hieralloc_init("GLSL built-in functions");
       memset(&builtin_profiles, 0, sizeof(builtin_profiles));
    }
 

@@ -192,6 +192,7 @@
   </VirtualDirectory>
   <Description/>
   <Dependencies/>
+  <Dependencies Name="Release"/>
   <Settings Type="Static Library">
     <Configuration Name="Debug" CompilerType="gnu gcc" DebuggerType="GNU gdb debugger" Type="Static Library" BuildCmpWithGlobalSettings="append" BuildLnkWithGlobalSettings="append" BuildResWithGlobalSettings="append">
       <Compiler Options="-D__STDC_LIMIT_MACROS;-D__STDC_CONSTANT_MACROS;-m32 -march=i686;-DDEBUG;-UNDEBUG;-O0;-g" Required="yes" PreCompiledHeader="">
@@ -199,10 +200,10 @@
         <IncludePath Value="include/"/>
         <IncludePath Value="src/talloc/"/>
         <IncludePath Value="src/mapi/"/>
-        <IncludePath Value="../../../external/llvm/include"/>
-        <IncludePath Value="../../../external/llvm/host/include"/>
-        <IncludePath Value="../libbcc/include"/>
-        <IncludePath Value="../../base/opengl/include"/>
+        <IncludePath Value="../../external/llvm/include"/>
+        <IncludePath Value="../../external/llvm/host/include"/>
+        <IncludePath Value="../../frameworks/compile/libbcc/include"/>
+        <IncludePath Value="../../frameworks/base/opengl/include"/>
       </Compiler>
       <Linker Options="-m32 -lstdc++ -ldl -lpthread" Required="yes">
         <LibraryPath Value="/home/davidxli/Desktop/android/master/out/host/linux-x86/obj/STATIC_LIBRARIES/libLLVMX86CodeGen_intermediates"/>
@@ -289,5 +290,4 @@
     </GlobalSettings>
   </Settings>
   <Dependencies Name="Debug"/>
-  <Dependencies Name="Release"/>
 </CodeLite_Project>
