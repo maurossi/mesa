@@ -20,12 +20,36 @@
 
 #define USE_LLVM_TEXTURE_SAMPLER 1
 #define USE_LLVM_SCANLINE 1
-
 #ifndef USE_LLVM_EXECUTIONENGINE
 #define USE_LLVM_EXECUTIONENGINE 0 // 1 to use llvm::Execution, 0 to use libBCC, requires modifying makefile
 #endif
+#define USE_DUAL_THREAD 1
 
 #define debug_printf printf
+
+#include <stdlib.h>
+#include <assert.h>
+#include <stdio.h>
+
+#ifdef __arm__
+#include <cutils/log.h>
+
+#ifndef __location__
+#define __HIERALLOC_STRING_0__(s)   #s
+#define __HIERALLOC_STRING_1__(s)   __HIERALLOC_STRING_0__(s)
+#define __HIERALLOC_STRING_2__      __HIERALLOC_STRING_1__(__LINE__)
+#define __location__                __FILE__ ":" __HIERALLOC_STRING_2__
+#endif
+#undef assert
+#define assert(EXPR) { do { if (!(EXPR)) {LOGD("\n*\n*\n*\n* assert fail: '"#EXPR"' at "__location__"\n*\n*\n*"); exit(EXIT_FAILURE); } } while (false); }
+
+#else // #ifdef __arm__
+
+#ifndef LOGD
+#define LOGD printf
+#endif //#include <stdio.h>
+
+#endif // #ifdef __arm__
 
 #include "pixelflinger2/pixelflinger2_interface.h"
 
@@ -47,8 +71,12 @@ class LLVMContext;
 typedef int BlendComp_t;
 #endif
 
+#if USE_DUAL_THREAD
+#include <pthread.h>
+#endif
+
 typedef void (*ShaderFunction_t)(const void*,void*,const void*);
-   
+
 #define GGL_GET_CONTEXT(context, interface) GGLContext * context = (GGLContext *)interface;
 #define GGL_GET_CONST_CONTEXT(context, interface) const GGLContext * context = \
     (const GGLContext *)interface; (void)context;
@@ -69,10 +97,27 @@ struct GGLContext {
    } clearState;
 
    gl_shader_program * CurrentProgram;
-   
+
    mutable GGLActiveStencil activeStencil; // after primitive assembly, call StencilSelect
 
    GGLState state; // states affecting jit
+
+#if USE_DUAL_THREAD
+   mutable struct Worker {
+      const GGLInterface * iface;
+      unsigned startY, endY, varyingCount;
+      VertexOutput bV, cV, bDx, cDx;
+      int width, height;
+      volatile bool hasWork;
+      bool quit;
+
+      pthread_cond_t cond;
+      pthread_mutex_t lock;
+      pthread_t thread;
+
+      Worker() : cond(PTHREAD_COND_INITIALIZER), lock(PTHREAD_MUTEX_INITIALIZER), thread(NULL) {}
+   } worker;
+#endif
 
    // called by ShaderUse to set to proper rendering functions
    void (* PickScanLine)(GGLInterface * iface);

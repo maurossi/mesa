@@ -3,7 +3,7 @@ USE_LLVM_EXECUTIONENGINE := false
 # if using libLLVMExecutionEngine, 
 # need to add files to several Android.mk in external/llvm, and comment out some stuff in llvm DynamicLibrary.cpp and Intercept.cpp
 
-DEBUG_BUILD := true
+DEBUG_BUILD := false
 
 ifneq ($(TARGET_SIMULATOR),true)
 
@@ -100,7 +100,6 @@ libMesa_SRC_FILES :=	\
 	src/glsl/s_expression.cpp \
 	src/glsl/strtod.c \
 	src/glsl/ir_to_llvm.cpp \
-	src/glsl/ir_to_llvm_helper.cpp \
 	src/mesa/main/shaderobj.c \
 	src/mesa/program/hash_table.c \
 	src/mesa/program/prog_parameter.cpp \
@@ -108,6 +107,7 @@ libMesa_SRC_FILES :=	\
 	src/pixelflinger2/buffer.cpp \
 	src/pixelflinger2/format.cpp \
 	src/pixelflinger2/llvm_scanline.cpp \
+	src/pixelflinger2/llvm_texture.cpp \
 	src/pixelflinger2/pixelflinger2.cpp \
 	src/pixelflinger2/raster.cpp \
 	src/pixelflinger2/scanline.cpp \

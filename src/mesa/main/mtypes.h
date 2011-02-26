@@ -2140,7 +2140,7 @@ struct gl_shader_program
     * \c NULL.
     */
    struct gl_shader *_LinkedShaders[MESA_SHADER_TYPES];
-   GLfloat (*ValuesUniform)[4];
+   GLfloat (*ValuesUniform)[4]; /** < samplers are at ValuesUniform[gl_uniform_list::Slots + sampler.Pos]*/
    GLfloat (*ValuesVertexInput)[4];    /**< actually a VertexInput */
    GLfloat (*ValuesVertexOutput)[4];   /**< actually a VertexOutput */
    void * InputOuputBase;              /**< allocation base for Values* */

@@ -16,17 +16,18 @@
  */
 
 #include <stdlib.h>
-#include <assert.h>
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
 
 #include "pixelflinger2.h"
 #include "src/mesa/main/mtypes.h"
+#include "src/mesa/program/prog_parameter.h"
+#include "src/mesa/program/prog_uniform.h"
+#include "src/glsl/glsl_types.h"
 
-#ifdef SHADER_SOA
-static struct tgsi_exec_machine machine;
-#endif
+//#undef LOGD
+//#define LOGD(...)
 
 static inline void LerpVector4(const Vector4 * a, const Vector4 * b,
                                const VectorComp_t x, Vector4 * d) __attribute__((always_inline));
@@ -85,59 +86,59 @@ static void ProcessVertex(const GGLInterface * iface, const VertexInput * input,
 //#endif
 }
 
-#include <pthread.h>
+#if USE_DUAL_THREAD
+static void * RasterTrapezoidWorker(void * threadArgs)
+{
+   GGLContext::Worker * args = (GGLContext::Worker *)threadArgs;
+   VertexOutput clip0, clip1, * left, * right;
+   while (!args->quit) {
+      pthread_mutex_lock(&args->lock);
+      while (!args->hasWork && !args->quit)
+         pthread_cond_wait(&args->cond, &args->lock);
+      pthread_mutex_unlock(&args->lock);
+   
+      if (args->quit)
+         break;
+//         if (!args->hasWork)
+//            continue;
 
-struct WorkerArgs {
-   const GGLInterface * iface;
-   unsigned startY, endY, varyingCount;
-   VertexOutput bV, cV, bDx, cDx;
-   int width, height;
-   volatile bool hasWork;
-   bool quit;
-
-   static void * RasterTrapezoidWorker(void * threadArgs) {
-      WorkerArgs * args = (WorkerArgs *)threadArgs;
-      VertexOutput clip0, clip1, * left, * right;
-      while (!args->quit) {
-         if (!args->hasWork)
-            continue;
-         for (unsigned y = args->startY; y <= args->endY; y += 2) {
-            do {
-               if (args->bV.position.x < 0) {
-                  if (args->cV.position.x < 0)
-                     break;
-                  InterpolateVertex(&args->bV, &args->cV, -args->bV.position.x /
-                                    (args->cV.position.x - args->bV.position.x),
-                                    &clip0, args->varyingCount);
-                  left = &clip0;
-               } else
-                  left = &args->bV;
-               if ((int)args->cV.position.x >= (int)args->width) {
-                  if (args->bV.position.x >= (int)args->width)
-                     break;
-                  InterpolateVertex(&args->bV, &args->cV, (args->width - 1 - args->bV.position.x) /
-                                    (args->cV.position.x - args->bV.position.x),
-                                    &clip1, args->varyingCount);
-                  right = &clip1;
-               } else
-                  right = &args->cV;
-               args->iface->ScanLine(args->iface, left, right);
-            } while (false);
-            for (unsigned i = 0; i < args->varyingCount; i++) {
-               args->bV.varyings[i] += args->bDx.varyings[i];
-               args->cV.varyings[i] += args->cDx.varyings[i];
-            }
-            args->bV.position += args->bDx.position;
-            args->cV.position += args->cDx.position;
-            args->bV.frontFacingPointCoord += args->bDx.frontFacingPointCoord;
-            args->cV.frontFacingPointCoord += args->cDx.frontFacingPointCoord;
+      for (unsigned y = args->startY; y <= args->endY; y += 2) {
+         do {
+            if (args->bV.position.x < 0) {
+               if (args->cV.position.x < 0)
+                  break;
+               InterpolateVertex(&args->bV, &args->cV, -args->bV.position.x /
+                                 (args->cV.position.x - args->bV.position.x),
+                                 &clip0, args->varyingCount);
+               left = &clip0;
+            } else
+               left = &args->bV;
+            if ((int)args->cV.position.x >= (int)args->width) {
+               if (args->bV.position.x >= (int)args->width)
+                  break;
+               InterpolateVertex(&args->bV, &args->cV, (args->width - 1 - args->bV.position.x) /
+                                 (args->cV.position.x - args->bV.position.x),
+                                 &clip1, args->varyingCount);
+               right = &clip1;
+            } else
+               right = &args->cV;
+            args->iface->ScanLine(args->iface, left, right);
+         } while (false);
+         for (unsigned i = 0; i < args->varyingCount; i++) {
+            args->bV.varyings[i] += args->bDx.varyings[i];
+            args->cV.varyings[i] += args->cDx.varyings[i];
          }
-         args->hasWork = false;
+         args->bV.position += args->bDx.position;
+         args->cV.position += args->cDx.position;
+         args->bV.frontFacingPointCoord += args->bDx.frontFacingPointCoord;
+         args->cV.frontFacingPointCoord += args->cDx.frontFacingPointCoord;
       }
-      pthread_exit(NULL);
-      return NULL;
+      args->hasWork = false;
    }
-};
+   pthread_exit(NULL);
+   return NULL;
+}
+#endif
 
 static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
                             const VertexOutput * tr, const VertexOutput * bl,
@@ -236,14 +237,10 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
    cDx.frontFacingPointCoord *= yDistInv;
    cDx.frontFacingPointCoord.y = VectorComp_t_Zero; // gl_FrontFacing not interpolated
 
-   static WorkerArgs args; // TODO: fix this static
-
-#define DUAL_THREAD 1
-
-#if DUAL_THREAD
-   static pthread_t thread;
-   if (!thread) {
-      int rc = pthread_create(&thread, NULL, WorkerArgs::RasterTrapezoidWorker, &args);
+#if USE_DUAL_THREAD
+   GGLContext::Worker & args = ctx->worker;
+   if (!ctx->worker.thread) {
+      int rc = pthread_create(&ctx->worker.thread, NULL, RasterTrapezoidWorker, &args);
       assert(!rc);
    }
    args.bV = bV;
@@ -270,14 +267,18 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
    args.endY = endY;
    args.width = width;
    args.height = height;
-   if (args.startY <= args.endY)
+   if (args.startY <= args.endY) {
+      pthread_mutex_lock(&args.lock);
       args.hasWork = true;
+      pthread_cond_signal(&args.cond);
+      pthread_mutex_unlock(&args.lock);
+   }
 #endif
 
    VertexOutput * left, * right;
    VertexOutput clip0, clip1;
 
-   for (unsigned y = startY; y <= endY; y += 1 + DUAL_THREAD) {
+   for (unsigned y = startY; y <= endY; y += 1 + USE_DUAL_THREAD) {
       do {
          if (bV.position.x < 0) {
             if (cV.position.x < 0)
@@ -307,8 +308,10 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
       cV.frontFacingPointCoord += cDx.frontFacingPointCoord;
    }
 
+#if USE_DUAL_THREAD
    while (args.hasWork)
       ; // wait
+#endif
 }
 
 static void RasterTriangle(const GGLInterface * iface, const VertexOutput * v1,
@@ -365,23 +368,115 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
    GGL_GET_CONST_CONTEXT(ctx, iface);
 
    VertexOutput vouts[3];
+   memset(vouts, 0, sizeof(vouts));
    VertexOutput * v1 = vouts + 0, * v2 = vouts + 1, * v3 = vouts + 2;
 
-#ifdef SHADER_SOA
-   assert(0); // not implemented
-#endif
+//   LOGD("pf2: DrawTriangle");
+
+   const gl_shader_program * program = ctx->CurrentProgram;
+
+//   if (!strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source,
+//               "gl_FragColor = color * texture2D(sampler, outTexCoords).a;"))
+//      return;
+
+//   for (unsigned i = 0; i < program->NumShaders; i++)
+//      if (program->Shaders[i]->Source)
+//         LOGD("%s", program->Shaders[i]->Source);
+
+//   if (!strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source, ").a;"))
+//      return;
+
+//   LOGD("%s", program->Shaders[MESA_SHADER_VERTEX]->Source);
+//   LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
+
+//   for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
+//      const gl_program_parameter & attribute = program->Attributes->Parameters[i];
+//      LOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+//   }
+//   for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
+//      const gl_program_parameter & varying = program->Varying->Parameters[i];
+//      LOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+//   }
+//   for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++) {
+//      const gl_uniform & uniform = program->Uniforms->Uniforms[i];
+//      LOGD("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
+//   }
+
+//   __attribute__ ((aligned (16)))
+//   static const float matrix[16] = {
+//      1,0,0,0,
+//      0,1,0,0,
+//      0,0,1,0,
+//      0,0,0,1
+//   };
+//
+//   iface->ShaderUniformMatrix((gl_shader_program *)program, 4, 4, 0, 1, GL_FALSE, matrix);
 
    iface->ProcessVertex(iface, vin1, v1);
    iface->ProcessVertex(iface, vin2, v2);
    iface->ProcessVertex(iface, vin3, v3);
 
+//   __attribute__ ((aligned (16)))
+//   static const float matrix[16] = {
+//      2,0,0,0,
+//      0,-2,0,0,
+//      0,0,-1,0,
+//      -1,1,0,1
+//   };
+
+
+//   float * matrix = program->ValuesUniform[0];
+//   for (unsigned i = 0; i < 4; i++)
+//      LOGD("pf2: DrawTriangle %.2f \t %.2f \t %.2f \t %.2f \n", matrix[i * 4 + 0],
+//           matrix[i * 4 + 1], matrix[i * 4 + 2], matrix[i * 4 + 3]);
+////   LOGD("color %.02f %.02f %.02f %.02f", program->ValuesUniform[4][0], program->ValuesUniform[4][1],
+////        program->ValuesUniform[4][2], program->ValuesUniform[4][3]);
+//   LOGD("vin1 position %.02f %.02f %.02f %.02f", vin1->attributes[1].x, vin1->attributes[1].y,
+//        vin1->attributes[1].z, vin1->attributes[1].w);
+//   LOGD("vin2 position %.02f %.02f %.02f %.02f", vin2->attributes[1].x, vin2->attributes[1].y,
+//        vin2->attributes[1].z, vin2->attributes[1].w);
+//   LOGD("vin3 position %.02f %.02f %.02f %.02f", vin3->attributes[1].x, vin3->attributes[1].y,
+//        vin3->attributes[1].z, vin3->attributes[1].w);
+
+//   GGLProcessVertex(program, vin1, v1, (const float (*)[4])matrix);
+//   GGLProcessVertex(program, vin2, v2, (const float (*)[4])matrix);
+//   GGLProcessVertex(program, vin3, v3, (const float (*)[4])matrix);
+
+//   LOGD("pf2: DrawTriangle processed %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f",
+//        v1->position.x, v1->position.y, v1->position.z, v1->position.w,
+//        v2->position.x, v2->position.y, v2->position.z, v2->position.w,
+//        v3->position.x, v3->position.y, v3->position.z, v3->position.w);
+
    v1->position /= v1->position.w;
    v2->position /= v2->position.w;
    v3->position /= v3->position.w;
 
+//   LOGD("pf2: DrawTriangle divided %.02f,%.02f \t %.02f,%.02f \t %.02f,%.02f", v1->position.x, v1->position.y,
+//      v2->position.x, v2->position.y, v3->position.x, v3->position.y);
+
    iface->ViewportTransform(iface, &v1->position);
    iface->ViewportTransform(iface, &v2->position);
    iface->ViewportTransform(iface, &v3->position);
+
+//   if (strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source,
+//              "gl_FragColor = color * texture2D(sampler, outTexCoords).a;")) {
+////      LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
+//      v1->position = vin1->attributes[0];
+//      v2->position = vin2->attributes[0];
+//      v3->position = vin3->attributes[0];
+//
+//      v1->varyings[0] = vin1->attributes[1];
+//      v2->varyings[0] = vin2->attributes[1];
+//      v3->varyings[0] = vin3->attributes[1];
+//   }
+
+//   LOGD("pf2: DrawTriangle transformed %.0f,%.0f \t %.0f,%.0f \t %.0f,%.0f", v1->position.x, v1->position.y,
+//        v2->position.x, v2->position.y, v3->position.x, v3->position.y);
+
+//   LOGD("pf2: DrawTriangle varying %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f",
+//        v1->varyings[0].x, v1->varyings[0].y, v1->varyings[0].z, v1->varyings[0].w,
+//        v2->varyings[0].x, v2->varyings[0].y, v2->varyings[0].z, v2->varyings[0].w,
+//        v3->varyings[0].x, v3->varyings[0].y, v3->varyings[0].z, v3->varyings[0].w);
 
    VectorComp_t area;
    area = v1->position.x * v2->position.y - v2->position.x * v1->position.y;
@@ -392,7 +487,7 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
    if (GL_CCW == ctx->cullState.frontFace + GL_CW)
       (unsigned &)area ^= 0x80000000;
 
-   if (ctx->cullState.enable) {
+   if (false && ctx->cullState.enable) { // TODO: turn off for now
       switch (ctx->cullState.cullFace + GL_FRONT) {
       case GL_FRONT:
          if (!((unsigned &)area & 0x80000000)) // +ve, front facing
@@ -442,6 +537,8 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
    // TODO DXL view frustum clipping
    iface->RasterTriangle(iface, v1, v2, v3);
 
+//   LOGD("pf2: DrawTriangle end");
+
 }
 
 static void PickRaster(GGLInterface * iface)
@@ -456,6 +553,7 @@ static void ViewportTransform(const GGLInterface * iface, Vector4 * v)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
    v->x = v->x * ctx->viewport.w + ctx->viewport.x;
+   v->y *= -1;
    v->y = v->y * ctx->viewport.h + ctx->viewport.y;
    v->z = v->z * ctx->viewport.f + ctx->viewport.n;
 }

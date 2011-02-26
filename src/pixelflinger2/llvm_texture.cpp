@@ -1,22 +1,21 @@
-/** 
+/**
  **
  ** Copyright 2011, The Android Open Source Project
  **
- ** Licensed under the Apache License, Version 2.0 (the "License"); 
- ** you may not use this file except in compliance with the License. 
- ** You may obtain a copy of the License at 
+ ** Licensed under the Apache License, Version 2.0 (the "License");
+ ** you may not use this file except in compliance with the License.
+ ** You may obtain a copy of the License at
  **
- **     http://www.apache.org/licenses/LICENSE-2.0 
+ **     http://www.apache.org/licenses/LICENSE-2.0
  **
- ** Unless required by applicable law or agreed to in writing, software 
- ** distributed under the License is distributed on an "AS IS" BASIS, 
- ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. 
- ** See the License for the specific language governing permissions and 
+ ** Unless required by applicable law or agreed to in writing, software
+ ** distributed under the License is distributed on an "AS IS" BASIS,
+ ** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ ** See the License for the specific language governing permissions and
  ** limitations under the License.
  */
- 
+
 #include <stack>
-#include <stdio.h>
 
 #include "src/pixelflinger2/pixelflinger2.h"
 
@@ -43,39 +42,67 @@ static Value * pointSample(IRBuilder<> & builder, Value * textureData, Value * i
       texel = builder.CreateOr(texel, builder.getInt32(0xff000000));
       break;
    case GGL_PIXEL_FORMAT_RGB_565: {
-      textureData = builder.CreateBitCast(textureData, PointerType::get(
-                                             Type::getInt16Ty(builder.getContext()),0));
+      textureData = builder.CreateBitCast(textureData, PointerType::get(builder.getInt16Ty(), 0));
       textureData = builder.CreateGEP(textureData, index);
       texel = builder.CreateLoad(textureData, "texel565");
       texel = builder.CreateZExt(texel, Type::getInt32Ty(builder.getContext()));
 
-      Value * r = builder.CreateAnd(texel, builder.getInt32(0x1f));
-      r = builder.CreateShl(r, builder.getInt32(3));
-      r = builder.CreateOr(r, builder.CreateLShr(r, builder.getInt32(5)));
+      Value * b = builder.CreateAnd(texel, builder.getInt32(0x1f));
+      b = builder.CreateShl(b, builder.getInt32(3));
+      b = builder.CreateOr(b, builder.CreateLShr(b, builder.getInt32(5)));
 
       Value * g = builder.CreateAnd(texel, builder.getInt32(0x7e0));
       g = builder.CreateShl(g, builder.getInt32(5));
       g = builder.CreateOr(g, builder.CreateLShr(g, builder.getInt32(6)));
       g = builder.CreateAnd(g, builder.getInt32(0xff00));
 
-      Value * b = builder.CreateAnd(texel, builder.getInt32(0xF800));
-      b = builder.CreateShl(b, builder.getInt32(8));
-      b = builder.CreateOr(b, builder.CreateLShr(b, builder.getInt32(5)));
-      b = builder.CreateAnd(b, builder.getInt32(0xff0000));
+      Value * r = builder.CreateAnd(texel, builder.getInt32(0xF800));
+      r = builder.CreateShl(r, builder.getInt32(8));
+      r = builder.CreateOr(r, builder.CreateLShr(r, builder.getInt32(5)));
+      r = builder.CreateAnd(r, builder.getInt32(0xff0000));
 
       texel = builder.CreateOr(r, builder.CreateOr(g, b));
       texel = builder.CreateOr(texel, builder.getInt32(0xff000000), name("texel"));
       break;
    }
+   case GGL_PIXEL_FORMAT_A_8: {
+      textureData = builder.CreateBitCast(textureData, PointerType::get(builder.getInt8Ty(),0));
+      textureData = builder.CreateGEP(textureData, index);
+      texel = builder.CreateLoad(textureData, "texel_a8");
+      texel = builder.CreateZExt(texel, builder.getInt32Ty());
+      texel = builder.CreateShl(texel, builder.getInt32(24));
+      break;
+   }
+   case GGL_PIXEL_FORMAT_L_8: {
+      textureData = builder.CreateBitCast(textureData, PointerType::get(builder.getInt8Ty(),0));
+      textureData = builder.CreateGEP(textureData, index);
+      texel = builder.CreateLoad(textureData, "texel_l8");
+      texel = builder.CreateZExt(texel, builder.getInt32Ty());
+      texel = builder.CreateOr(texel, builder.CreateShl(texel, 8));
+      texel = builder.CreateOr(texel, builder.CreateShl(texel, 8));
+      texel = builder.CreateOr(texel, builder.getInt32(0xff000000));
+      break;
+   }
+   case GGL_PIXEL_FORMAT_LA_88: {
+      textureData = builder.CreateBitCast(textureData, PointerType::get(builder.getInt16Ty(),0));
+      textureData = builder.CreateGEP(textureData, index);
+      texel = builder.CreateLoad(textureData, "texel_la8");
+      texel = builder.CreateZExt(texel, builder.getInt32Ty());
+      Value * alpha = builder.CreateAnd(texel, builder.getInt32(0xff00));
+      texel = builder.CreateAnd(texel, builder.getInt32(0xff));
+      texel = builder.CreateOr(texel, builder.CreateShl(texel, 8));
+      texel = builder.CreateOr(texel, builder.CreateShl(texel, 8));
+      texel = builder.CreateOr(texel, builder.CreateShl(alpha, 16));
+      break;
+   }
    case GGL_PIXEL_FORMAT_UNKNOWN: // usually means texture not set yet
-      debug_printf("pointSample: unknown format, default to 0xff0000ff \n");
-      texel = builder.getInt32(0xff0000ff);
+      LOGD("pf2: pointSample: unknown format, default to 0xffff00ff \n");
+      texel = builder.getInt32(0xffff00ff);
       break;
    default:
       assert(0);
       break;
    }
-
    Value * channels = Constant::getNullValue(intVecType(builder));
 
 //   if (dstDesc && dstDesc->IsInt32Color()) {
@@ -83,10 +110,10 @@ static Value * pointSample(IRBuilder<> & builder, Value * textureData, Value * i
 //      channels = builder.CreateBitCast(channels, floatVecType(builder));
 //      return channels;
 //   } else if (!dstDesc || dstDesc->IsVectorType()) {
-      channels = builder.CreateInsertElement(channels, texel, builder.getInt32(0));
-      channels = builder.CreateInsertElement(channels, texel, builder.getInt32(1));
-      channels = builder.CreateInsertElement(channels, texel, builder.getInt32(2));
-      channels = builder.CreateInsertElement(channels, texel, builder.getInt32(3));
+   channels = builder.CreateInsertElement(channels, texel, builder.getInt32(0));
+   channels = builder.CreateInsertElement(channels, texel, builder.getInt32(1));
+   channels = builder.CreateInsertElement(channels, texel, builder.getInt32(2));
+   channels = builder.CreateInsertElement(channels, texel, builder.getInt32(3));
 //      if (dstDesc && dstDesc->IsVectorType(Fixed8)) {
 //         channels = builder.CreateLShr(channels, constIntVec(builder, 0, 8, 16, 24));
 //         channels = builder.CreateAnd(channels, constIntVec(builder, 0xff, 0xff, 0xff, 0xff));
@@ -114,9 +141,9 @@ static const unsigned SHIFT = 16;
 
 // w  = width - 1, h = height - 1; similar to pointSample; returns <4 x i32> rgba
 static Value * linearSample(IRBuilder<> & builder, Value * textureData, Value * indexOffset,
-                     Value * x0, Value * y0, Value * xLerp, Value * yLerp,
-                     Value * w, Value * h,  Value * width, Value * height,
-                     const GGLPixelFormat format/*, const RegDesc * dstDesc*/)
+                            Value * x0, Value * y0, Value * xLerp, Value * yLerp,
+                            Value * w, Value * h,  Value * width, Value * height,
+                            const GGLPixelFormat format/*, const RegDesc * dstDesc*/)
 {
    // TODO: linear filtering needs to be fixed for texcoord outside of [0,1]
    Value * x1 = builder.CreateAdd(x0, builder.getInt32(1));
@@ -489,14 +516,14 @@ Value * texCube(IRBuilder<> & builder, Value * in1, const unsigned sampler,
    if (0 == gglCtx->textureState.textures[sampler].minFilter &&
          0 == gglCtx->textureState.textures[sampler].magFilter) { // GL_NEAREST
       textureData = pointSample(builder, textureData, builder.CreateAdd(indexOffset, index),
-                         gglCtx->textureState.textures[sampler].format/*, dstDesc*/);
+                                gglCtx->textureState.textures[sampler].format/*, dstDesc*/);
       return intColorVecToFloatColorVec(builder, textureData);
-                         
+
    } else if (1 == gglCtx->textureState.textures[sampler].minFilter &&
               1 == gglCtx->textureState.textures[sampler].magFilter) { // GL_LINEAR
       textureData = linearSample(builder, textureData, indexOffset, x, y, xLerp, yLerp,
-                          textureW, textureH,  textureWidth, textureHeight,
-                          gglCtx->textureState.textures[sampler].format/*, dstDesc*/);
+                                 textureW, textureH,  textureWidth, textureHeight,
+                                 gglCtx->textureState.textures[sampler].format/*, dstDesc*/);
       return intColorVecToFloatColorVec(builder, textureData);
    } else
       assert(!"unsupported texture filter");

@@ -134,7 +134,6 @@
       <File Name="src/glsl/opt_constant_folding.cpp"/>
       <File Name="src/glsl/ast_function.cpp"/>
       <File Name="src/glsl/lower_jumps.cpp"/>
-      <File Name="src/glsl/ir_to_llvm_helper.cpp"/>
       <File Name="src/glsl/ast_expr.cpp"/>
       <File Name="src/glsl/ir_print_visitor.cpp"/>
       <File Name="src/glsl/opt_noop_swizzle.cpp"/>
@@ -188,6 +187,7 @@
       <File Name="src/pixelflinger2/buffer.cpp"/>
       <File Name="src/pixelflinger2/llvm_helper.h"/>
       <File Name="src/pixelflinger2/scanline.cpp"/>
+      <File Name="src/pixelflinger2/llvm_texture.cpp"/>
     </VirtualDirectory>
   </VirtualDirectory>
   <Description/>

@@ -1124,6 +1124,7 @@ assign_uniform_locations(struct gl_shader_program *prog)
 
    prog->Uniforms = ul;
    prog->Uniforms->Slots = next_position;
+   prog->Uniforms->SamplerSlots = next_sampler_pos;
       
    hieralloc_free(mem_ctx);
 }
@@ -1741,20 +1742,13 @@ link_shaders(const struct gl_context *ctx, struct gl_shader_program *prog)
    //prog->InputOuputBase = malloc(1024 * 8);
    //memset(prog->InputOuputBase, 0xdd, 1024 * 8);
    prog->InputOuputBase = hieralloc_realloc(prog, prog->InputOuputBase, char, 
-      prog->Uniforms->Slots * 16 + sizeof(VertexInput) + sizeof(VertexOutput) + 16);
-   prog->ValuesVertexInput = (float (*)[4])((((unsigned long)prog->InputOuputBase) + 15) & (~15L));
+      (prog->Uniforms->Slots + prog->Uniforms->SamplerSlots) * sizeof(float) * 4 + sizeof(VertexInput) + sizeof(VertexOutput) + 16);
+   prog->ValuesVertexInput = (float (*)[4])((((unsigned long)prog->InputOuputBase) + 15L) & (~15L));
    prog->ValuesVertexOutput = (float (*)[4])((unsigned long)prog->ValuesVertexInput + sizeof(VertexInput));
    prog->ValuesUniform = (float (*)[4])((unsigned long)prog->ValuesVertexOutput + sizeof(VertexOutput));
 
-   // default mapping of tmu to sampler
-   for (unsigned i = 0; i < prog->Uniforms->NumUniforms; i++)
-   {
-      const gl_uniform & uniform = prog->Uniforms->Uniforms[i];
-      if (uniform.Type->is_sampler())
-         prog->ValuesUniform[uniform.Pos][0] = uniform.Pos; 
-      else if (uniform.Type->is_array() && uniform.Type->fields.array->is_sampler())
-         assert(0);
-   }
+   // initialize uniforms to zero after link
+   memset(prog->ValuesUniform, 0, sizeof(float) * 4 * (prog->Uniforms->Slots + prog->Uniforms->SamplerSlots));
 
 done:
    free(vert_shader_list);

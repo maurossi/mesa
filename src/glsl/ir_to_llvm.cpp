@@ -1255,22 +1255,23 @@ public:
       if (!(ir->write_mask & mask))
          return;
 
-      if(ir->rhs->type->vector_elements < width)
-      {
+      if (ir->rhs->type->vector_elements < width) {
          int expand_mask[4] = {-1, -1, -1, -1};
-         for(unsigned i = 0; i < ir->lhs->type->vector_elements; ++i)
+         for (unsigned i = 0; i < ir->lhs->type->vector_elements; ++i)
             expand_mask[i] = i;
 //         printf("ve: %u w %u issw: %i\n", ir->rhs->type->vector_elements, width, !!ir->rhs->as_swizzle());
          rhs = llvm_shuffle(rhs, expand_mask, width, "assign.expand");
       }
 
-      if(width > 1 && (ir->write_mask & mask) != mask)
-      {
+      if (width > 1 && (ir->write_mask & mask) != mask) {
          llvm::Constant* blend_mask[4];
-         for(unsigned i = 0; i < width; ++i)
-         {
-            if(ir->write_mask & (1 << i))
-               blend_mask[i] = llvm_int(width + i);
+         // refer to ir.h: ir_assignment::write_mask
+         // A partially-set write mask means that each enabled channel gets
+         // the value from a consecutive channel of the rhs.
+         unsigned rhsChannel = 0;
+         for (unsigned i = 0; i < width; ++i) {
+            if (ir->write_mask & (1 << i))
+               blend_mask[i] = llvm_int(width + rhsChannel++);
             else
                blend_mask[i] = llvm_int(i);
          }
