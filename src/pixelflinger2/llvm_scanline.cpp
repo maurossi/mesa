@@ -21,6 +21,9 @@
 
 #include <llvm/Module.h>
 
+//#undef LOGD
+//#define LOGD(...)
+
 using namespace llvm;
 
 static void StencilOp(IRBuilder<> &builder, const unsigned char op,
@@ -126,63 +129,64 @@ static Value * BlendFactor(const unsigned mode, Value * src, Value * dst,
 {
    Value * factor = NULL;
    switch (mode) {
-   case 0: // GL_ZERO
+   case GGLBlendState::GGL_ZERO:
       factor = zero;
       break;
-   case 1: // GL_ONE
+   case GGLBlendState::GGL_ONE:
       factor = one;
       break;
-   case 2: // GL_SRC_COLOR:
+   case GGLBlendState::GGL_SRC_COLOR:
       factor = src;
       break;
-   case 3: // GL_ONE_MINUS_SRC_COLOR:
+   case GGLBlendState::GGL_ONE_MINUS_SRC_COLOR:
       factor = builder.CreateSub(one, src);
       break;
-   case 4: // GL_DST_COLOR:
+   case GGLBlendState::GGL_DST_COLOR:
       factor = dst;
       break;
-   case 5: // GL_ONE_MINUS_DST_COLOR:
+   case GGLBlendState::GGL_ONE_MINUS_DST_COLOR:
       factor = builder.CreateSub(one, dst);
       break;
-   case 6: // GL_SRC_ALPHA:
+   case GGLBlendState::GGL_SRC_ALPHA:
       factor = srcA;
       if (isVector)
          factor = intVec(builder, factor, factor, factor, factor);
       break;
-   case 7: // GL_ONE_MINUS_SRC_ALPHA:
+   case GGLBlendState::GGL_ONE_MINUS_SRC_ALPHA:
       factor = builder.CreateSub(sOne, srcA);
       if (isVector)
          factor = intVec(builder, factor, factor, factor, factor);
       break;
-   case 8: // GL_DST_ALPHA:
+   case GGLBlendState::GGL_DST_ALPHA:
       factor = dstA;
       if (isVector)
          factor = intVec(builder, factor, factor, factor, factor);
       break;
-   case 9: // GL_ONE_MINUS_DST_ALPHA:
+   case GGLBlendState::GGL_ONE_MINUS_DST_ALPHA:
       factor = builder.CreateSub(sOne, dstA);
       if (isVector)
          factor = intVec(builder, factor, factor, factor, factor);
       break;
-   case 10: // GL_SRC_ALPHA_SATURATE: // valid only for source color and alpha
+   case GGLBlendState::GGL_SRC_ALPHA_SATURATE:
+      // valid only for source color and alpha
       factor = minIntScalar(builder, srcA, builder.CreateSub(sOne, dstA));
       if (isVector)
          factor = intVec(builder, factor, factor, factor, sOne);
       else
          factor = sOne; // when it's used for source alpha, it's just 1
       break;
-   case 11: // GL_CONSTANT_COLOR:
+   case GGLBlendState::GGL_CONSTANT_COLOR:
       factor = constant;
       break;
-   case 12: // GL_ONE_MINUS_CONSTANT_COLOR:
+   case GGLBlendState::GGL_ONE_MINUS_CONSTANT_COLOR:
       factor = builder.CreateSub(one, constant);
       break;
-   case 13: // GL_CONSTANT_ALPHA:
+   case GGLBlendState::GGL_CONSTANT_ALPHA:
       factor = constantA;
       if (isVector)
          factor = intVec(builder, factor, factor, factor, factor);
       break;
-   case 14: // GL_ONE_MINUS_CONSTANT_ALPHA:
+   case GGLBlendState::GGL_ONE_MINUS_CONSTANT_ALPHA:
       factor = builder.CreateSub(sOne, constantA);
       if (isVector)
          factor = intVec(builder, factor, factor, factor, factor);
@@ -201,19 +205,60 @@ static Value * Saturate(IRBuilder<> & builder, Value * intVector)
 }
 
 // src is int32x4 [0,255] rgba vector, and combines them into int32
-static Value * IntVectorToColor(IRBuilder<> & builder, Value * src)
+// RGB_565 channel order is weird
+static Value * IntVectorToScreenColor(IRBuilder<> & builder, const GGLPixelFormat format, Value * src)
 {
-   //src = builder.CreateBitCast(src, inst->GetIntVectorType());
-   src = builder.CreateShl(src, constIntVec(builder, 0, 8, 16, 24));
-   std::vector<Value *> comps = extractVector(builder, src);
-   comps[0] = builder.CreateOr(comps[0], comps[1]);
-   comps[0] = builder.CreateOr(comps[0], comps[2]);
-   comps[0] = builder.CreateOr(comps[0], comps[3]);
-   return comps[0];
+   if (GGL_PIXEL_FORMAT_RGBA_8888 == format) {
+      src = builder.CreateShl(src, constIntVec(builder, 0, 8, 16, 24));
+      std::vector<Value *> comps = extractVector(builder, src);
+      comps[0] = builder.CreateOr(comps[0], comps[1]);
+      comps[0] = builder.CreateOr(comps[0], comps[2]);
+      comps[0] = builder.CreateOr(comps[0], comps[3]);
+      return comps[0];
+   } else if (GGL_PIXEL_FORMAT_RGB_565 == format) {
+      src = builder.CreateAnd(src, constIntVec(builder, 0xf8, 0xfc, 0xf8, 0));
+      std::vector<Value *> comps = extractVector(builder, src);
+      // channel order is weird
+      for (unsigned i = 0; i < 4; i++)
+         comps[i] = builder.CreateTrunc(comps[i], builder.getInt16Ty());
+      comps[2] = builder.CreateLShr(comps[2], 3);
+      comps[1] = builder.CreateShl(comps[1], 3);
+      comps[0] = builder.CreateShl(comps[0], 8);
+      
+      comps[0] = builder.CreateOr(comps[0], comps[1]);
+      comps[0] = builder.CreateOr(comps[0], comps[2]);
+      return comps[0];
+   } else if (GGL_PIXEL_FORMAT_UNKNOWN == format)
+      return builder.getInt32(0);
+   else
+      assert(0);
+   return NULL;
+}
+
+// src is int32 or int16, return is int32x4 [0,255] rgba
+// RGB_565 channel order is weird
+static Value * ScreenColorToIntVector(IRBuilder<> & builder, const GGLPixelFormat format, Value * src)
+{
+   src = builder.CreateZExt(src, builder.getInt32Ty());
+   Value * dst = intVec(builder, src, src, src, src);
+   if (GGL_PIXEL_FORMAT_RGBA_8888 == format) {
+      dst = builder.CreateLShr(dst, constIntVec(builder, 0, 8, 16, 24));
+      dst = builder.CreateAnd(dst, constIntVec(builder, 0xff, 0xff, 0xff, 0xff));
+   } else if (GGL_PIXEL_FORMAT_RGB_565 == format) {
+      // channel order is weird
+      dst = builder.CreateAnd(dst, constIntVec(builder, 0xf800, 0x7e0, 0x1f, 0));
+      dst = builder.CreateLShr(dst, constIntVec(builder, 8, 3, 0, 0));
+      dst = builder.CreateShl(dst, constIntVec(builder, 0, 0, 3, 0));
+      dst = builder.CreateOr(dst, constIntVec(builder, 0, 0, 0, 0xff));
+   } else if (GGL_PIXEL_FORMAT_UNKNOWN == format)
+      LOGD("pf2: ScreenColorToIntVector GGL_PIXEL_FORMAT_UNKNOWN"); // not set yet, do nothing
+   else
+      assert(0);
+   return dst;
 }
 
 // src is <4 x float> approx [0,1]; dst is <4 x i32> [0,255] from frame buffer; return is i32
-Value * GenerateFSBlend(const GGLState * gglCtx, /*const RegDesc * regDesc,*/
+Value * GenerateFSBlend(const GGLState * gglCtx, const GGLPixelFormat format, /*const RegDesc * regDesc,*/
                         IRBuilder<> & builder, Value * src, Value * dst)
 {
    const Type * const intType = builder.getInt32Ty();
@@ -229,9 +274,9 @@ Value * GenerateFSBlend(const GGLState * gglCtx, /*const RegDesc * regDesc,*/
 //        else if (regDesc->IsVectorType(Float))
 //        {
       src = builder.CreateFMul(src, constFloatVec(builder,255,255,255,255));
-      src = builder.CreateFPToUI(src, intVecType(builder));
+      src = builder.CreateFPToSI(src, intVecType(builder));
       src = Saturate(builder, src);
-      src = IntVectorToColor(builder, src);
+      src = IntVectorToScreenColor(builder, format, src);
 //        }
 //        else if (regDesc->IsVectorType(Fixed8))
 //        {
@@ -250,7 +295,6 @@ Value * GenerateFSBlend(const GGLState * gglCtx, /*const RegDesc * regDesc,*/
 //            assert(0);
       return src;
    }
-
    // blending, so convert src to <4 x i32>
 //    if (regDesc->IsInt32Color())
 //    {
@@ -349,7 +393,7 @@ Value * GenerateFSBlend(const GGLState * gglCtx, /*const RegDesc * regDesc,*/
       srcA = extractVector(builder,src)[3];
       dstA = extractVector(builder,dst)[3];
       Value * resA = NULL;
-      switch (gglCtx->blendState.ce + GL_FUNC_ADD) {
+      switch (gglCtx->blendState.ae + GL_FUNC_ADD) {
       case GL_FUNC_ADD:
          resA = builder.CreateAdd(srcA, dstA);
          break;
@@ -369,7 +413,7 @@ Value * GenerateFSBlend(const GGLState * gglCtx, /*const RegDesc * regDesc,*/
 
    res = builder.CreateAShr(res, constIntVec(builder,8,8,8,8));
    res = Saturate(builder, res);
-   res = IntVectorToColor(builder, res);
+   res = IntVectorToScreenColor(builder, format, res);
    return res;
 }
 
@@ -398,14 +442,14 @@ static FunctionType * ScanLineFunctionType(IRBuilder<> & builder)
    return functionType;
 }
 
-// generated scanline function parameters are VertexOutput * start, VertexOutput * step, 
+// generated scanline function parameters are VertexOutput * start, VertexOutput * step,
 // unsigned * frame, int * depth, unsigned char * stencil,
 // GGLActiveStencilState * stencilState, unsigned count
 void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program, Module * mod,
                       const char * shaderName, const char * scanlineName)
 {
    IRBuilder<> builder(mod->getContext());
-   debug_printf("GenerateScanLine %s \n", scanlineName);
+//   debug_printf("GenerateScanLine %s \n", scanlineName);
 
    const Type * intType = builder.getInt32Ty();
    const PointerType * intPointerType = PointerType::get(intType, 0);
@@ -422,7 +466,7 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
    BasicBlock *label_entry = BasicBlock::Create(builder.getContext(), "entry", func, 0);
    builder.SetInsertPoint(label_entry);
    CondBranch condBranch(builder);
-   
+
    Function::arg_iterator args = func->arg_begin();
    Value * start = args++;
    start->setName("start");
@@ -462,11 +506,23 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
 
    condBranch.beginLoop(); // while (count > 0)
 
+   assert(framePtr && gglCtx);
    // get values
-   Value * frame = builder.CreateLoad(framePtr);
+   Value * frame = NULL;
+   if (GGL_PIXEL_FORMAT_RGBA_8888 == gglCtx->bufferState.colorFormat)
+      frame = builder.CreateLoad(framePtr);
+   else if (GGL_PIXEL_FORMAT_RGB_565 == gglCtx->bufferState.colorFormat) {
+      frame = builder.CreateLoad(framePtr);
+      frame = builder.CreateBitCast(frame, PointerType::get(builder.getInt16Ty(), 0));
+   } else if (GGL_PIXEL_FORMAT_UNKNOWN == gglCtx->bufferState.colorFormat)
+      frame = builder.CreateLoad(framePtr); // color buffer not set yet
+   else
+      assert(0);
+
    frame->setName("frame");
    Value * depth = NULL, * stencil = NULL;
    if (gglCtx->bufferState.depthTest) {
+      assert(GGL_PIXEL_FORMAT_Z_32 == gglCtx->bufferState.depthFormat);
       depth = builder.CreateLoad(depthPtr);
       depth->setName("depth");
    }
@@ -570,17 +626,14 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
    condBranch.ifCond(sCmp, "if_sCmp", "sCmp_fail");
    condBranch.ifCond(zCmp, "if_zCmp", "zCmp_fail");
 
-//   Value * fsInputs = builder.CreateConstInBoundsGEP1_32(start, 
-//                            offsetof(VertexOutput,position)/sizeof(Vector4));
    Value * inputs = start;
-   Value * outputs = inputs;
-   
-   Value * fsOutputs = builder.CreateConstInBoundsGEP1_32(start, 
-                            offsetof(VertexOutput,fragColor)/sizeof(Vector4));
-    
+   Value * outputs = start;
+
+   Value * fsOutputs = builder.CreateConstInBoundsGEP1_32(start,
+                       offsetof(VertexOutput,fragColor)/sizeof(Vector4));
+
    Function * fsFunction = mod->getFunction(shaderName);
    assert(fsFunction);
-//   CallInst *call = builder.CreateCall(fsFunction);
    CallInst *call = builder.CreateCall3(fsFunction,inputs, outputs, constants);
    call->setCallingConv(CallingConv::C);
    call->setTailCall(false);
@@ -588,20 +641,14 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
    Value * dst = Constant::getNullValue(intVecType(builder));
    if (gglCtx->blendState.enable && (0 != gglCtx->blendState.dcf || 0 != gglCtx->blendState.daf)) {
       Value * frameColor = builder.CreateLoad(frame, "frameColor");
-      dst = builder.CreateInsertElement(dst, frameColor, builder.getInt32(0));
-      dst = builder.CreateInsertElement(dst, frameColor, builder.getInt32(1));
-      dst = builder.CreateInsertElement(dst, frameColor, builder.getInt32(2));
-      dst = builder.CreateInsertElement(dst, frameColor, builder.getInt32(3));
-      dst = builder.CreateLShr(dst, constIntVec(builder, 0, 8, 16, 24));
-      dst = builder.CreateAnd(dst, constIntVec(builder, 0xff, 0xff, 0xff, 0xff));
+      dst = ScreenColorToIntVector(builder, gglCtx->bufferState.colorFormat, frameColor);
    }
 
    Value * src = builder.CreateConstInBoundsGEP1_32(fsOutputs, 0);
    src = builder.CreateLoad(src);
 
-   Value * color = GenerateFSBlend(gglCtx, /*&prog->outputRegDesc,*/ builder, src, dst);
+   Value * color = GenerateFSBlend(gglCtx, gglCtx->bufferState.colorFormat,/*&prog->outputRegDesc,*/ builder, src, dst);
    builder.CreateStore(color, frame);
-
    // TODO DXL depthmask check
    if (gglCtx->bufferState.depthTest) {
       z = builder.CreateBitCast(z, intType);
@@ -617,7 +664,6 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
    if (gglCtx->bufferState.stencilTest)
       builder.CreateStore(StencilOp(builder, sFace, gglCtx->frontStencil.dFail,
                                     gglCtx->backStencil.dFail, sPtr, sRef), stencil);
-
    condBranch.endif();
    condBranch.elseop(); // failed s test
 
@@ -626,10 +672,11 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
                                     gglCtx->backStencil.sFail, sPtr, sRef), stencil);
 
    condBranch.endif();
-
+   assert(frame);
    frame = builder.CreateConstInBoundsGEP1_32(frame, 1); // frame++
+   // frame may have been casted to short* from int*, so cast back
+   frame = builder.CreateBitCast(frame, PointerType::get(builder.getInt32Ty(), 0));
    builder.CreateStore(frame, framePtr);
-
    if (gglCtx->bufferState.depthTest) {
       depth = builder.CreateConstInBoundsGEP1_32(depth, 1); // depth++
       builder.CreateStore(depth, depthPtr);
@@ -638,7 +685,6 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
       stencil = builder.CreateConstInBoundsGEP1_32(stencil, 1); // stencil++
       builder.CreateStore(stencil, stencilPtr);
    }
-
    Value * vPtr = NULL, * v = NULL, * dx = NULL;
    if (program->UsesFragCoord) {
       vPtr = builder.CreateConstInBoundsGEP1_32(start, GGL_FS_INPUT_OFFSET +

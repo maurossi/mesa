@@ -17,17 +17,15 @@
 
 #include "pixelflinger2.h"
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <assert.h>
-
 #include "src/talloc/hieralloc.h"
+#include <string>
 
 void gglError(unsigned error)
 {
+   std::string str;
    if (GL_NO_ERROR == error)
       return;
-   printf("pf2: gglError 0x%.4X \n", error);
+   LOGD("\n*\n*\n pf2: gglError 0x%.4X \n*\n*\n", error);
    assert(0);
 }
 
@@ -89,6 +87,31 @@ static void BlendEquationSeparate(GGLInterface * iface, GLenum modeRGB, GLenum m
    SetShaderVerifyFunctions(iface);
 }
 
+static inline GGLBlendState::GGLBlendFactor GLBlendFactor(const GLenum factor)
+{
+#define SWITCH_LINE(c) case c: return GGLBlendState::G##c;
+   switch (factor)
+   {
+      SWITCH_LINE(GL_ZERO);
+      SWITCH_LINE(GL_ONE);
+      SWITCH_LINE(GL_SRC_COLOR);
+      SWITCH_LINE(GL_ONE_MINUS_SRC_COLOR);
+      SWITCH_LINE(GL_DST_COLOR);
+      SWITCH_LINE(GL_ONE_MINUS_DST_COLOR);
+      SWITCH_LINE(GL_SRC_ALPHA);
+      SWITCH_LINE(GL_ONE_MINUS_SRC_ALPHA);
+      SWITCH_LINE(GL_DST_ALPHA);
+      SWITCH_LINE(GL_ONE_MINUS_DST_ALPHA);
+      SWITCH_LINE(GL_SRC_ALPHA_SATURATE);
+      SWITCH_LINE(GL_CONSTANT_COLOR);
+      SWITCH_LINE(GL_ONE_MINUS_CONSTANT_COLOR);
+      SWITCH_LINE(GL_CONSTANT_ALPHA);
+      SWITCH_LINE(GL_ONE_MINUS_CONSTANT_ALPHA);
+      default: assert(0); return GGLBlendState::GGL_ZERO;
+   }
+#undef SWITCH_LINE
+}
+
 static void BlendFuncSeparate(GGLInterface * iface, GLenum srcRGB, GLenum dstRGB, GLenum srcAlpha, GLenum dstAlpha)
 {
    GGL_GET_CONTEXT(ctx, iface);
@@ -112,22 +135,10 @@ static void BlendFuncSeparate(GGLInterface * iface, GLenum srcRGB, GLenum dstRGB
       srcAlpha = GL_ONE;
    // in c++ it's templated function for color and alpha,
    // so it requires setting srcAlpha to GL_ONE to run template again only for alpha
-   ctx->state.blendState.scf = (GGLBlendState::GGLBlendFactor)(srcRGB <= GL_ONE ? srcRGB :
-                         (srcRGB <= GL_SRC_ALPHA_SATURATE ? srcRGB - GL_SRC_COLOR + 2
-                          : srcRGB - GL_CONSTANT_COLOR + 11));
-
-   ctx->state.blendState.saf = (GGLBlendState::GGLBlendFactor)(srcAlpha <= GL_ONE ? srcAlpha :
-                         (srcAlpha <= GL_SRC_ALPHA_SATURATE ? srcAlpha - GL_SRC_COLOR + 2
-                          : srcAlpha - GL_CONSTANT_COLOR + 11));
-
-   ctx->state.blendState.dcf = (GGLBlendState::GGLBlendFactor)(dstRGB <= GL_ONE ? dstRGB :
-                         (dstRGB <= GL_SRC_ALPHA_SATURATE ? dstRGB - GL_SRC_COLOR + 2
-                          : dstRGB - GL_CONSTANT_COLOR + 11));
-
-   ctx->state.blendState.daf = (GGLBlendState::GGLBlendFactor)(dstAlpha <= GL_ONE ? dstAlpha :
-                         (dstAlpha <= GL_SRC_ALPHA_SATURATE ? dstAlpha - GL_SRC_COLOR + 2
-                          : dstAlpha - GL_CONSTANT_COLOR + 11));
-
+   ctx->state.blendState.scf = GLBlendFactor(srcRGB);
+   ctx->state.blendState.saf = GLBlendFactor(srcAlpha);
+   ctx->state.blendState.dcf = GLBlendFactor(dstRGB);
+   ctx->state.blendState.daf = GLBlendFactor(dstAlpha);
    SetShaderVerifyFunctions(iface);
 
 }
@@ -153,8 +164,19 @@ static void EnableDisable(GGLInterface * iface, GLenum cap, GLboolean enable)
       changed |= ctx->state.bufferState.stencilTest ^ enable;
       ctx->state.bufferState.stencilTest = enable;
       break;
+   case GL_DITHER:
+//      LOGD("pf2: EnableDisable GL_DITHER \n");
+      break;
+   case GL_SCISSOR_TEST:
+//      LOGD("pf2: EnableDisable GL_SCISSOR_TEST \n");
+      break;
+   case GL_TEXTURE_2D:
+//      LOGD("pf2: EnableDisable GL_SCISSOR_TEST %d", enable);
+      break;
    default:
-      gglError(GL_INVALID_ENUM);
+      LOGD("pf2: EnableDisable 0x%.4X causes GL_INVALID_ENUM (maybe not implemented or ES 1.0) \n", cap);
+//      gglError(GL_INVALID_ENUM);
+      assert(0);
       break;
    }
    if (changed)
@@ -198,6 +220,10 @@ void InitializeGGLState(GGLInterface * iface)
 
    for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++)
       iface->SetSampler(iface, i, NULL);
+      
+   iface->SetBuffer(iface, GL_COLOR_BUFFER_BIT, NULL);
+   iface->SetBuffer(iface, GL_DEPTH_BUFFER_BIT, NULL);
+   iface->SetBuffer(iface, GL_STENCIL_BUFFER_BIT, NULL);
 
    SetShaderVerifyFunctions(iface);
 }
@@ -224,6 +250,14 @@ void UninitializeGGLState(GGLInterface * iface)
    GGLContext * ctx = (GGLContext *)iface;
    assert((void *)ctx == (void *)iface);
    
+#if USE_DUAL_THREAD
+   ctx->worker.hasWork = false;
+   ctx->worker.quit = true;
+   pthread_mutex_lock(&ctx->worker.lock);
+   pthread_cond_signal(&ctx->worker.cond);
+   pthread_mutex_unlock(&ctx->worker.lock);
+#endif
+
    DestroyShaderFunctions(iface);
    
 #if USE_LLVM_TEXTURE_SAMPLER
@@ -234,6 +268,9 @@ void UninitializeGGLState(GGLInterface * iface)
 #endif
 #if USE_LLVM_EXECUTIONENGINE
    puts("USE_LLVM_EXECUTIONENGINE");
+#endif
+#if USE_DUAL_THREAD
+   puts("USE_DUAL_THREAD");
 #endif
    hieralloc_report_brief(NULL, stdout);
 }

@@ -178,28 +178,37 @@ unsigned char StencilOp(const unsigned op, unsigned char s, const unsigned char 
 
 #ifdef USE_LLVM_SCANLINE
 typedef void (* ScanLineFunction_t)(VertexOutput * start, VertexOutput * step,
-                                    const float (*constants)[4], unsigned * frame,
+                                    const float (*constants)[4], void * frame,
                                     int * depth, unsigned char * stencil,
                                     GGLActiveStencil *, unsigned count);
 #endif
 
-void GGLScanLine(const gl_shader_program * program, unsigned * frameBuffer,
-                 int * depthBuffer, unsigned char * stencilBuffer, unsigned bufferWidth,
-                 unsigned bufferHeight, GGLActiveStencil * activeStencil, const VertexOutput_t * start,
-                 const VertexOutput_t * end, const float (*constants)[4])
+void GGLScanLine(const gl_shader_program * program, const GGLPixelFormat colorFormat,
+                 void * frameBuffer, int * depthBuffer, unsigned char * stencilBuffer,
+                 unsigned bufferWidth, unsigned bufferHeight, GGLActiveStencil * activeStencil,
+                 const VertexOutput_t * start, const VertexOutput_t * end, const float (*constants)[4])
 {
 #if !USE_LLVM_SCANLINE
    assert(!"only for USE_LLVM_SCANLINE");
 #endif
 
+//   LOGD("pf2: GGLScanLine program=%p format=0x%.2X frameBuffer=%p depthBuffer=%p stencilBuffer=%p ",
+//      program, colorFormat, frameBuffer, depthBuffer, stencilBuffer);
+
    const unsigned int varyingCount = program->VaryingSlots;
    const unsigned y = start->position.y, startX = start->position.x,
                       endX = end->position.x;
 
-   //assert(ctx->frameSurface.width > startX && ctx->frameSurface.width > endX);
-   //assert(ctx->frameSurface.height > y);
+   assert(bufferWidth > startX && bufferWidth > endX);
+   assert(bufferHeight > y);
 
-   unsigned * frame = frameBuffer + y * bufferWidth + startX;
+   char * frame = (char *)frameBuffer;
+   if (GGL_PIXEL_FORMAT_RGBA_8888 == colorFormat)
+      frame += (y * bufferWidth + startX) * 4;
+   else if (GGL_PIXEL_FORMAT_RGB_565 == colorFormat)
+      frame += (y * bufferWidth + startX) * 2;
+   else 
+      assert(0);
    const VectorComp_t div = VectorComp_t_CTR(1 / (float)(endX - startX));
 
    //memcpy(ctx->glCtx->CurrentProgram->ValuesVertexOutput, start, sizeof(*start));
@@ -225,8 +234,11 @@ void GGLScanLine(const gl_shader_program * program, unsigned * frameBuffer,
    // TODO DXL consider inverting gl_FragCoord.y
    ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
                                          program->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
+//   LOGD("pf2 GGLScanLine scanline=%p start=%p constants=%p", scanLineFunction, &vertex, constants);
    if (endX >= startX)
       scanLineFunction(&vertex, &vertexDx, constants, frame, depth, stencil, activeStencil, endX - startX + 1);
+
+//   LOGD("pf2: GGLScanLine end");
 
 }
 
@@ -234,7 +246,7 @@ template <bool StencilTest, bool DepthTest, bool DepthWrite, bool BlendEnable>
 void ScanLine(const GGLInterface * iface, const VertexOutput * start, const VertexOutput * end)
 {
    GGL_GET_CONST_CONTEXT(ctx, iface);
-   GGLScanLine(ctx->CurrentProgram, (unsigned *)ctx->frameSurface.data,
+   GGLScanLine(ctx->CurrentProgram, ctx->frameSurface.format, ctx->frameSurface.data,
                (int *)ctx->depthSurface.data, (unsigned char *)ctx->stencilSurface.data,
                ctx->frameSurface.width, ctx->frameSurface.height, &ctx->activeStencil,
                start, end, ctx->CurrentProgram->ValuesUniform);

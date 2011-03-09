@@ -1,11 +1,9 @@
-ifeq (true,false) # disable everything
-
 # USE_LLVM_EXECUTIONENGINE not fully implemented
 USE_LLVM_EXECUTIONENGINE := false 
 # if using libLLVMExecutionEngine, 
 # need to add files to several Android.mk in external/llvm, and comment out some stuff in llvm DynamicLibrary.cpp and Intercept.cpp
 
-DEBUG_BUILD := true
+DEBUG_BUILD := false
 
 ifneq ($(TARGET_SIMULATOR),true)
 
@@ -102,7 +100,6 @@ libMesa_SRC_FILES :=	\
 	src/glsl/s_expression.cpp \
 	src/glsl/strtod.c \
 	src/glsl/ir_to_llvm.cpp \
-	src/glsl/ir_to_llvm_helper.cpp \
 	src/mesa/main/shaderobj.c \
 	src/mesa/program/hash_table.c \
 	src/mesa/program/prog_parameter.cpp \
@@ -110,12 +107,22 @@ libMesa_SRC_FILES :=	\
 	src/pixelflinger2/buffer.cpp \
 	src/pixelflinger2/format.cpp \
 	src/pixelflinger2/llvm_scanline.cpp \
+	src/pixelflinger2/llvm_texture.cpp \
 	src/pixelflinger2/pixelflinger2.cpp \
 	src/pixelflinger2/raster.cpp \
 	src/pixelflinger2/scanline.cpp \
 	src/pixelflinger2/shader.cpp \
 	src/pixelflinger2/texture.cpp \
 	src/talloc/hieralloc.c
+	
+libMesa_C_INCLUDES := \
+	$(LOCAL_PATH) \
+	$(LOCAL_PATH)/src/glsl	\
+	$(LOCAL_PATH)/src/mesa	\
+	$(LOCAL_PATH)/src/talloc	\
+	$(LOCAL_PATH)/src/mapi	\
+	$(LOCAL_PATH)/include	\
+	frameworks/compile/libbcc/include
 	
 # Static library for host
 # ========================================================
@@ -124,31 +131,23 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
-LOCAL_CPPFLAGS += -DDEBUG -UNDEBUG -O0 -g
 LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g 
+else
+LOCAL_CFLAGS += -O3
 endif
 
 LOCAL_MODULE := libMesa
 LOCAL_SRC_FILES := $(libMesa_SRC_FILES)
 
 ifeq ($(USE_LLVM_EXECUTIONENGINE),true)
-LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
 LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
 LOCAL_STATIC_LIBRARIES := libLLVMX86CodeGen libLLVMX86Info $(libMesa_STATIC_LIBS)
 else
-LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
 LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
 LOCAL_SHARED_LIBRARIES := libbcc
 endif
 
-LOCAL_C_INCLUDES :=	\
-	$(LOCAL_PATH)	\
-	$(LOCAL_PATH)/src/glsl	\
-	$(LOCAL_PATH)/src/mesa	\
-	$(LOCAL_PATH)/src/talloc	\
-	$(LOCAL_PATH)/src/mapi	\
-	$(LOCAL_PATH)/include	\
-	$(LOCAL_PATH)/../libbcc/include
+LOCAL_C_INCLUDES :=	$(libMesa_C_INCLUDES)
 
 include $(LLVM_ROOT_PATH)/llvm-host-build.mk
 include $(BUILD_HOST_STATIC_LIBRARY)
@@ -162,8 +161,9 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
-LOCAL_CPPFLAGS += -DDEBUG -UNDEBUG -O0 -g
-LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g 
+LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g
+else
+LOCAL_CFLAGS += -O3
 endif
 
 LOCAL_MODULE := libMesa
@@ -171,23 +171,14 @@ LOCAL_SRC_FILES := $(libMesa_SRC_FILES)
 LOCAL_SHARED_LIBRARIES := libstlport libcutils libdl libutils
 
 ifeq ($(USE_LLVM_EXECUTIONENGINE),true)
-LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
 LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
 LOCAL_STATIC_LIBRARIES :=  libLLVMARMCodeGen libLLVMARMInfo libLLVMARMDisassembler libLLVMARMAsmPrinter $(libMesa_STATIC_LIBS)
 else
-LOCAL_CPPFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
 LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
 LOCAL_SHARED_LIBRARIES += libbcc 
 endif
 
-LOCAL_C_INCLUDES :=	\
-	$(LOCAL_PATH)	\
-	$(LOCAL_PATH)/src/glsl	\
-	$(LOCAL_PATH)/src/mesa	\
-	$(LOCAL_PATH)/src/talloc	\
-	$(LOCAL_PATH)/src/mapi	\
-	$(LOCAL_PATH)/include	\
-	$(LOCAL_PATH)/../libbcc/include
+LOCAL_C_INCLUDES :=	$(libMesa_C_INCLUDES)
 
 include $(LLVM_ROOT_PATH)/llvm-device-build.mk
 include $(BUILD_STATIC_LIBRARY)
@@ -197,5 +188,3 @@ include $(BUILD_STATIC_LIBRARY)
 include $(call all-makefiles-under,$(LOCAL_PATH))
 
 endif # TARGET_SIMULATOR != true
-
-endif # true != false

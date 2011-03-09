@@ -63,7 +63,8 @@ struct gl_uniform_list
 {
    GLuint Size;                 /**< allocated size of Uniforms array */
    GLuint NumUniforms;          /**< number of uniforms in the array */
-   GLuint Slots;                /**< number of float[4] slots uniforms will occupy */
+   GLuint Slots;                /**< number of float[4] slots non-sampler uniforms occupy */
+   GLuint SamplerSlots;         /**< number of float[4] slots samplers occupy */
    struct gl_uniform *Uniforms; /**< Array [Size] */
 };
 

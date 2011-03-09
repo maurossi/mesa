@@ -103,6 +103,7 @@ typedef struct GGLActiveStencil { // do not change layout, used in GenerateScanL
 } GGLActiveStencil_t;
 
 typedef struct GGLBufferState { // all affect scanline jit
+   enum GGLPixelFormat colorFormat, depthFormat, stencilFormat;
 unsigned stencilTest :
    1;
 unsigned depthTest :
@@ -220,7 +221,7 @@ struct GGLInterface {
 
    // creates empty shader
    gl_shader_t * (* ShaderCreate)(const GGLInterface_t * iface, GLenum type);
-   
+
    void (* ShaderSource)(gl_shader_t * shader, GLsizei count, const char ** string, const int * length);
 
    // compiles a shader given glsl; returns GL_TRUE on success; glsl only used during call
@@ -248,9 +249,13 @@ struct GGLInterface {
    // LLVM JIT and set as active program
    void (* ShaderUse)(GGLInterface_t * iface, gl_shader_program_t * program);
 
-   void (* ShaderGetiv)(gl_shader_t * shader, const GLenum pname, GLint * params);
+   void (* ShaderGetiv)(const gl_shader_t * shader, const GLenum pname, GLint * params);
 
-   void (* ShaderProgramGetiv)(gl_shader_program_t * program, const GLenum pname, GLint * params);
+   void (* ShaderGetInfoLog)(const gl_shader_t * shader, GLsizei bufsize, GLsizei* length, GLchar* infolog);
+
+   void (* ShaderProgramGetiv)(const gl_shader_program_t * program, const GLenum pname, GLint * params);
+
+   void (* ShaderProgramGetInfoLog)(const gl_shader_program_t * program, GLsizei bufsize, GLsizei* length, GLchar* infolog);
 
    // bind attribute location before linking
    void (* ShaderAttributeBind)(const gl_shader_program_t * program,
@@ -267,6 +272,11 @@ struct GGLInterface {
                                GLint location, GLfloat * params);
    void (* ShaderUniformGetiv)(gl_shader_program_t * program,
                                GLint location, GLint * params);
+
+   // retrieves the tmu each sampler is set to, sampler2tmu[sampler] == -1 means not used
+   void (* ShaderUniformGetSamplers)(const gl_shader_program_t * program,
+                                     int sampler2tmu[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]);
+
    // updates linked program uniform value by location; return >= 0 indicates sampler assigned
    GLint (* ShaderUniform)(gl_shader_program_t * program,
                            GLint location, GLsizei count, const GLvoid *values, GLenum type);
@@ -312,9 +322,13 @@ extern "C"
    // LLVM JIT and set as active program, also call after gglState change to re-JIT
    void GGLShaderUse(void * llvmCtx, const GGLState_t * gglState, gl_shader_program_t * program);
 
-   void GGLShaderGetiv(gl_shader_t * shader, const GLenum pname, GLint * params);
+   void GGLShaderGetiv(const gl_shader_t * shader, const GLenum pname, GLint * params);
 
-   void GGLShaderProgramGetiv(gl_shader_program_t * program, const GLenum pname, GLint * params);
+   void GGLShaderGetInfoLog(const gl_shader_t * shader, GLsizei bufsize, GLsizei* length, GLchar* infolog);
+   
+   void GGLShaderProgramGetiv(const gl_shader_program_t * program, const GLenum pname, GLint * params);
+
+   void GGLShaderProgramGetInfoLog(const gl_shader_program_t * program, GLsizei bufsize, GLsizei* length, GLchar* infolog);
 
    // bind attribute location before linking
    void GGLShaderAttributeBind(const gl_shader_program_t * program,
@@ -328,15 +342,22 @@ extern "C"
    GLint GGLShaderUniformLocation(const gl_shader_program_t * program,
                                   const char * name);
 
+   void GGLShaderUniformMatrix(gl_shader_program_t * program, GLint cols, GLint rows,
+                            GLint location, GLsizei count, GLboolean transpose, const GLfloat *values);
+
+   // retrieves the tmu each sampler is set to, sampler2tmu[sampler] == -1 means not used
+   void GGLShaderUniformGetSamplers(const gl_shader_program_t * program,
+                                    int sampler2tmu[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS]);
+
    void GGLProcessVertex(const gl_shader_program_t * program, const VertexInput_t * input,
                          VertexOutput_t * output, const float (*constants)[4]);
 
    // scan line given left and right processed and scizored vertices
    // depth value bitcast float->int, if negative then ^= 0x7fffffff
-   void GGLScanLine(const gl_shader_program_t * program, unsigned * frameBuffer,
-                    int * depthBuffer, unsigned char * stencilBuffer, unsigned bufferWidth,
-                    unsigned bufferHeight, GGLActiveStencil_t * activeStencil, const VertexOutput_t * start,
-                    const VertexOutput_t * end, const float (*constants)[4]);
+   void GGLScanLine(const gl_shader_program_t * program, const enum GGLPixelFormat colorFormat,
+                    void * frameBuffer, int * depthBuffer, unsigned char * stencilBuffer,
+                    unsigned bufferWidth, unsigned bufferHeight, GGLActiveStencil_t * activeStencil,
+                    const VertexOutput_t * start, const VertexOutput_t * end, const float (*constants)[4]);
 
 //   void GGLProcessFragment(const VertexOutput_t * inputs, VertexOutput_t * outputs,
 //                           const float (*constants[4]));

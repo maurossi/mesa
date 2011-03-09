@@ -3,7 +3,8 @@
 
 #include <GLES2/gl2.h>
 
-#include <src/mesa/main/mtypes.h>
+#include "src/mesa/main/mtypes.h"
+#include "src/talloc/hieralloc.h"
 
 void _mesa_reference_shader(const void * ctx, struct gl_shader **ptr,
                                           struct gl_shader *sh)
@@ -20,8 +21,6 @@ struct gl_shader * _mesa_new_shader(const void * ctx, GLuint name, GLenum type)
       shader->Name = name;
       shader->RefCount = 1;
    }
-   if (!ctx)
-      watches[watch++] = shader;
    return shader;
 }
 

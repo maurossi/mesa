@@ -32,6 +32,10 @@
 #include "src/mesa/program/prog_uniform.h"
 #include "src/glsl/glsl_types.h"
 #include "src/glsl/ir_to_llvm.h"
+#include "src/glsl/ir_print_visitor.h"
+
+//#undef LOGD
+//#define LOGD(...)
 
 static void InitializeGLContext(struct gl_context *ctx)
 {
@@ -147,14 +151,13 @@ static gl_shader * ShaderCreate(const GGLInterface * iface, GLenum type)
 void GGLShaderSource(gl_shader_t * shader, GLsizei count, const char ** string, const int * length)
 {
    hieralloc_free(const_cast<GLchar *>(shader->Source));
-   for (unsigned i = 0; i < count; i++)
-   {
+   for (unsigned i = 0; i < count; i++) {
       int len = strlen(string[i]);
       if (length && length[i] >= 0)
          len = length[i];
       shader->Source = hieralloc_strndup_append(const_cast<GLchar *>(shader->Source), string[i], len);
    }
-   printf("pf2: GGLShaderSource: \n '%s' \n", shader->Source);
+//   LOGD("pf2: GGLShaderSource: \n '%s' \n", shader->Source);
 }
 
 GLboolean GGLShaderCompile(gl_shader * shader, const char * glsl, const char ** infoLog)
@@ -163,7 +166,8 @@ GLboolean GGLShaderCompile(gl_shader * shader, const char * glsl, const char ** 
       shader->Source = glsl;
    assert(shader->Source);
    compile_shader(glContext.ctx, shader);
-   shader->Source = NULL;
+   if (glsl)
+      shader->Source = NULL;
    if (infoLog)
       *infoLog = shader->InfoLog;
    return shader->CompileStatus;
@@ -257,17 +261,18 @@ GLboolean GGLShaderProgramLink(gl_shader_program * program, const char ** infoLo
       *infoLog = program->InfoLog;
    if (!program->LinkStatus)
       return program->LinkStatus;
-   for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
-      const gl_program_parameter & attribute = program->Attributes->Parameters[i];
-      printf("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
-   }
-   for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
-      const gl_program_parameter & varying = program->Varying->Parameters[i];
-      printf("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
-   }
+   LOGD("slots: attribute=%d varying=%d uniforms=%d \n", program->AttributeSlots, program->VaryingSlots, program->Uniforms->Slots);
+//   for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
+//      const gl_program_parameter & attribute = program->Attributes->Parameters[i];
+//      LOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+//   }
+//   for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
+//      const gl_program_parameter & varying = program->Varying->Parameters[i];
+//      LOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+//   }
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++) {
       const gl_uniform & uniform = program->Uniforms->Uniforms[i];
-      printf("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
+      LOGD("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
    }
    return program->LinkStatus;
 }
@@ -360,8 +365,6 @@ struct SymbolLookupContext {
 static void* SymbolLookup(void* pContext, const char* name)
 {
    SymbolLookupContext * ctx = (SymbolLookupContext *)pContext;
-//   const gl_shader * shader = ctx->shader;
-//   const gl_shader_program * program = ctx->program;
    const GGLState * gglCtx = ctx->gglCtx;
    const void * symbol = (void*)dlsym(RTLD_DEFAULT, name);
    if (NULL == symbol) {
@@ -370,9 +373,12 @@ static void* SymbolLookup(void* pContext, const char* name)
       else if (!strcmp(_PF2_TEXTURE_DIMENSIONS_NAME_, name))
          symbol = (void *)gglCtx->textureState.textureDimensions;
       else // attributes, varyings and uniforms are mapped to locations in pointers
+      {
+         LOGD("pf2: SymbolLookup unknown symbol: '%s'", name);
          assert(0);
+      }
    }
-   printf("symbolLookup '%s'=%p \n", name, symbol);
+//   printf("symbolLookup '%s'=%p \n", name, symbol);
    assert(symbol);
    return (void *)symbol;
 }
@@ -382,6 +388,8 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
 {
    SymbolLookupContext ctx = {gglCtx, program, shader};
    int result = 0;
+
+//   instance->module->dump();
 
    BCCScriptRef & script = instance->script;
    script = bccCreateScript();
@@ -393,7 +401,7 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
 
    result = bccGetError(script);
    if (result != 0) {
-      puts("failed bcc_compile");
+      LOGD("failed bcc_compile");
       assert(0);
       return;
    }
@@ -402,9 +410,11 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
    assert(instance->function);
    result = bccGetError(script);
    if (result != BCC_NO_ERROR)
-      fprintf(stderr, "Could not find '%s': %d\n", "main", result);
-   else
-      printf("bcc_compile %s=%p \n", mainName, instance->function);
+      LOGD("Could not find '%s': %d\n", mainName, result);
+//   else
+//      printf("bcc_compile %s=%p \n", mainName, instance->function);
+
+//   assert(0);
 }
 
 void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program, llvm::Module * mod,
@@ -412,6 +422,7 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
 
 void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program * program)
 {
+//   LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (!program->_LinkedShaders[i])
          continue;
@@ -426,7 +437,7 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
       GetShaderKey(gglState, shader, &shaderKey);
       Instance * instance = shader->executable->instances[shaderKey];
       if (!instance) {
-         puts("begin jit new shader");
+//         puts("begin jit new shader");
          instance = hieralloc_zero(shader->executable, Instance);
          instance->module = new llvm::Module("glsl", *(llvm::LLVMContext *)llvmCtx);
 
@@ -437,10 +448,72 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
          strcat(mainName, shaderName);
 
          do_mat_op_to_vec(shader->ir); // TODO: move these passes to link?
-
+//#ifdef __arm__
+//         static const char fileName[] = "/data/pf2.txt";
+//         FILE * file = freopen(fileName, "w", stdout);
+//         assert(file);
+//         *stdout = *file;
+//         std::ios_base::sync_with_stdio(true);
+//#endif
+//         _mesa_print_ir(shader->ir, NULL);
+//#ifdef __arm__
+//         fclose(file);
+//         file = fopen(fileName, "r");
+//         assert(file);
+//         static char str[256];
+//         while (!feof(file)) {
+//            fgets(str, sizeof(str) - 1, file);
+//            str[sizeof(str) - 1] = 0;
+//            LOGD("%s", str);
+//         }
+//         fclose(file);
+//#endif
          llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, gglState, shaderName);
          if (!module)
             assert(0);
+//#ifdef __arm__
+//         static const char fileName[] = "/data/pf2.txt";
+//         FILE * file = freopen(fileName, "w", stderr);
+//         assert(file);
+//         *stderr = *file;
+//         std::ios_base::sync_with_stdio(true);
+//#endif
+
+//         if (strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source,
+//                    "gl_FragColor = color * texture2D(sampler, outTexCoords).a;")) {
+//            if (i == MESA_SHADER_VERTEX) {
+//               for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
+//                  const gl_program_parameter & attribute = program->Attributes->Parameters[i];
+//                  LOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+//               }
+//               for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
+//                  const gl_program_parameter & varying = program->Varying->Parameters[i];
+//                  LOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+//               }
+//               LOGD("%s", program->Shaders[MESA_SHADER_VERTEX]->Source);
+//               module->dump();
+//            }
+//         }
+
+//#ifdef __arm__
+//         fputs("end of bcc disassembly", stderr);
+//         fclose(stderr);
+//
+//         file = fopen(fileName, "r");
+//         assert(file);
+//         fseek(file , 0 , SEEK_END);
+//         long lSize = ftell(file);
+//         rewind(file);
+//         assert(0 <= lSize);
+//         static char str[256];
+//         while (!feof(file)) {
+//            fgets(str, sizeof(str) - 1, file);
+//            str[sizeof(str) - 1] = 0;
+//            LOGD("%s", str);
+//         }
+//         fclose(file);
+//#endif
+
 #if USE_LLVM_SCANLINE
          if (GL_FRAGMENT_SHADER == shader->Type) {
             char scanlineName [SCANLINE_KEY_STRING_LEN] = {0};
@@ -450,15 +523,18 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
          } else
 #endif
             CodeGen(instance, mainName, shader, program, gglState);
+
          shader->executable->instances[shaderKey] = instance;
-         debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function);
+//         debug_printf("jit new shader '%s'(%p) \n", mainName, instance->function);
       } else
 //         debug_printf("use cached shader %p \n", instance->function);
          ;
 
       shader->function  = instance->function;
    }
-   puts("pf2: GGLShaderUse end");
+//   puts("pf2: GGLShaderUse end");
+
+//   assert(0);
 }
 
 static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
@@ -470,7 +546,7 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
       ctx->CurrentProgram = NULL;
       return;
    }
-   
+
    GGLShaderUse(ctx->llvmCtx, &ctx->state, program);
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (!program->_LinkedShaders[i])
@@ -534,7 +610,7 @@ static void ShaderProgramDelete(GGLInterface * iface, gl_shader_program * progra
    GGLShaderProgramDelete(program);
 }
 
-void GGLShaderGetiv(gl_shader_t * shader, const GLenum pname, GLint * params)
+void GGLShaderGetiv(const gl_shader_t * shader, const GLenum pname, GLint * params)
 {
    switch (pname) {
    case GL_SHADER_TYPE:
@@ -558,7 +634,21 @@ void GGLShaderGetiv(gl_shader_t * shader, const GLenum pname, GLint * params)
    }
 }
 
-void GGLShaderProgramGetiv(gl_shader_program_t * program, const GLenum pname, GLint * params)
+void GGLShaderGetInfoLog(const gl_shader_t * shader, GLsizei bufsize, GLsizei* length, GLchar* infolog)
+{
+   unsigned len = 0;
+   infolog[0] = 0;
+   if (shader->InfoLog)
+   {
+      len = strlen(shader->InfoLog);
+      strncpy(infolog, shader->InfoLog, bufsize);
+      infolog[bufsize] = 0;
+   }
+   if (length)
+      *length = strlen(infolog);
+}
+
+void GGLShaderProgramGetiv(const gl_shader_program_t * program, const GLenum pname, GLint * params)
 {
    switch (pname) {
    case GL_DELETE_STATUS:
@@ -577,10 +667,10 @@ void GGLShaderProgramGetiv(gl_shader_program_t * program, const GLenum pname, GL
       *params = program->NumShaders;
       break;
    case GL_ACTIVE_ATTRIBUTES:
-      *params = program->Attributes->NumParameters;
+      *params = program->AttributeSlots;
       break;
    case GL_ACTIVE_UNIFORMS:
-      *params = program->Uniforms->NumUniforms;
+      *params = program->Uniforms->Slots;
       break;
    case GL_ACTIVE_ATTRIBUTE_MAX_LENGTH:
    case GL_ACTIVE_UNIFORM_MAX_LENGTH:
@@ -589,6 +679,20 @@ void GGLShaderProgramGetiv(gl_shader_program_t * program, const GLenum pname, GL
       assert(0);
       break;
    }
+}
+
+void GGLShaderProgramGetInfoLog(const gl_shader_program_t * program, GLsizei bufsize, GLsizei* length, GLchar* infolog)
+{
+   unsigned len = 0;
+   infolog[0] = 0;
+   if (program->InfoLog)
+   {
+      len = strlen(program->InfoLog);
+      strncpy(infolog, program->InfoLog, bufsize);
+      infolog[bufsize] = 0;
+   }
+   if (length)
+      *length = strlen(infolog);
 }
 
 void GGLShaderAttributeBind(const gl_shader_program * program, GLuint index, const GLchar * name)
@@ -622,30 +726,74 @@ GLint GGLShaderUniformLocation(const gl_shader_program * program,
 {
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++)
       if (!strcmp(program->Uniforms->Uniforms[i].Name, name))
-         return program->Uniforms->Uniforms[i].Pos;
+         return i;
    return -1;
 }
 
 void GGLShaderUniformGetfv(gl_shader_program * program, GLint location, GLfloat * params)
 {
-   memcpy(params, program->ValuesUniform + location, sizeof(*program->ValuesUniform));
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   int index = program->Uniforms->Uniforms[location].Pos;
+   assert(0 <= index && program->Uniforms->Slots > index);
+   memcpy(params, program->ValuesUniform + index, sizeof(*program->ValuesUniform));
 }
 
 void GGLShaderUniformGetiv(gl_shader_program * program, GLint location, GLint * params)
 {
-   // TODO: sampler uniform
-   memcpy(params, program->ValuesUniform + location, sizeof(*program->ValuesUniform));
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   int index = program->Uniforms->Uniforms[location].Pos;
+   assert(0 <= index && program->Uniforms->Slots > index);
+   const float * uniform = program->ValuesUniform[index];
+   params[0] = uniform[0];
+   params[1] = uniform[1];
+   params[2] = uniform[2];
+   params[3] = uniform[3];
+}
+
+void GGLShaderUniformGetSamplers(const gl_shader_program_t * program,
+                                 int sampler2tmu[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS])
+{
+//   LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
+//   for (unsigned i = 0; i < program->Uniforms->Slots + program->Uniforms->SamplerSlots; i++)
+//      LOGD("%d: %.2f \t %.2f \t %.2f \t %.2f", i, program->ValuesUniform[i][0], program->ValuesUniform[i][1],
+//           program->ValuesUniform[i][2], program->ValuesUniform[i][3]);
+   for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++)
+      sampler2tmu[i] = -1;
+   for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++) {
+      const gl_uniform & uniform = program->Uniforms->Uniforms[i];
+      if (uniform.Type->is_sampler()) {
+//         LOGD("%d uniform.Pos=%d tmu=%d", program->Uniforms->Slots, uniform.Pos, (int)program->ValuesUniform[program->Uniforms->Slots + uniform.Pos][0]);
+         sampler2tmu[uniform.Pos] = program->ValuesUniform[program->Uniforms->Slots + uniform.Pos][0];
+      } else if (uniform.Type->is_array() && uniform.Type->fields.array->is_sampler())
+         assert(0);
+   }
 }
 
 GLint GGLShaderUniform(gl_shader_program * program, GLint location, GLsizei count,
                        const GLvoid *values, GLenum type)
 {
-   // TODO: sampler uniform
+//   LOGD("pf2: GGLShaderUniform location=%d count=%d type=0x%.4X", location, count, type);
+   // TODO: sampler uniform and type checking
    if (!program) {
       //gglError(GL_INVALID_OPERATION);
       return -2;
    }
-   int start = location;
+   if (-1 == location)
+      return -1;
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   const gl_uniform & uniform = program->Uniforms->Uniforms[location];
+   int start = -1;
+   if (uniform.Type->is_sampler())
+   {
+      start = uniform.Pos + program->Uniforms->Slots;
+      assert(GL_INT == type && 1 == count);
+      program->ValuesUniform[start][0] = *(float *)values;
+      return uniform.Pos;
+   }
+   else if (uniform.Type->is_array() && uniform.Type->fields.array->is_sampler()) {
+      assert(0); // not implemented
+   } else
+      start = uniform.Pos;
    int slots = 0, elems = 0;
    switch (type) {
    case GL_INT:
@@ -675,13 +823,15 @@ GLint GGLShaderUniform(gl_shader_program * program, GLint location, GLsizei coun
    default:
       assert(0);
    }
-   if (0 < start)
-      return -1;
+//   LOGD("pf2: GGLShaderUniform start=%d slots=%d elems=%d", start, slots, elems);
+   if (0 > start)
+      assert(0);
    if (start + slots > program->Uniforms->Slots)
-      return -1;
+      assert(0);
    for (int i = 0; i < slots; i++)
       memcpy(program->ValuesUniform + start + i, values, elems * sizeof(float));
-   return start;
+//   LOGD("pf2: GGLShaderUniform copied");
+   return -2;
 }
 
 void GGLShaderUniformMatrix(gl_shader_program * program, GLint cols, GLint rows,
@@ -689,16 +839,29 @@ void GGLShaderUniformMatrix(gl_shader_program * program, GLint cols, GLint rows,
 {
    if (location == -1)
       return;
+   assert(!transpose);
    assert(cols == rows);
-   int start = location;
+   assert(0 <= location && program->Uniforms->NumUniforms > location);
+   int start = program->Uniforms->Uniforms[location].Pos;
    unsigned slots = cols * count;
    if (start < 0 || start + slots > program->Uniforms->Slots)
       return gglError(GL_INVALID_OPERATION);
    for (unsigned i = 0; i < slots; i++) {
       float * column = program->ValuesUniform[start + i];
       for (unsigned j = 0; j < rows; j++)
-         column[j] = *(values++);
+         column[j] = values[i * 4 + j];
    }
+
+//   if (!strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source,
+//               "gl_FragColor = color * texture2D(sampler, outTexCoords).a;"))
+//      return;
+//
+//   LOGD("pf2: GGLShaderUniformMatrix location=%d cols=%d count=%d", location, cols, count);
+//
+//   for (unsigned i = 0; i < 4; i++)
+//      LOGD("pf2: GGLShaderUniformMatrix %.2f \t %.2f \t %.2f \t %.2f \n", values[i * 4 + 0],
+//           values[i * 4 + 1], values[i * 4 + 2], values[i * 4 + 3]);
+
 }
 
 static void ShaderVerifyProcessVertex(const GGLInterface * iface, const VertexInput * input,
@@ -783,13 +946,16 @@ void InitializeShaderFunctions(struct GGLInterface * iface)
    iface->ShaderUse = ShaderUse;
    iface->ShaderProgramDelete = ShaderProgramDelete;
    iface->ShaderGetiv = GGLShaderGetiv;
+   iface->ShaderGetInfoLog = GGLShaderGetInfoLog;
    iface->ShaderProgramGetiv = GGLShaderProgramGetiv;
+   iface->ShaderProgramGetInfoLog = GGLShaderProgramGetInfoLog;
    iface->ShaderAttributeBind = GGLShaderAttributeBind;
    iface->ShaderAttributeLocation = GGLShaderAttributeLocation;
    iface->ShaderVaryingLocation = GGLShaderVaryingLocation;
    iface->ShaderUniformLocation = GGLShaderUniformLocation;
    iface->ShaderUniformGetfv = GGLShaderUniformGetfv;
    iface->ShaderUniformGetiv = GGLShaderUniformGetiv;
+   iface->ShaderUniformGetSamplers = GGLShaderUniformGetSamplers;
    iface->ShaderUniform = GGLShaderUniform;
    iface->ShaderUniformMatrix = GGLShaderUniformMatrix;
 }
