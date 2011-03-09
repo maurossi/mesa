@@ -149,8 +149,9 @@ endif
 
 LOCAL_C_INCLUDES :=	$(libMesa_C_INCLUDES)
 
-include $(LLVM_ROOT_PATH)/llvm-host-build.mk
-include $(BUILD_HOST_STATIC_LIBRARY)
+# libMesa only builds on Linux host for now
+#include $(LLVM_ROOT_PATH)/llvm-host-build.mk
+#include $(BUILD_HOST_STATIC_LIBRARY)
 
 
 # Static library for target

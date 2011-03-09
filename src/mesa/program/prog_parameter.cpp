@@ -1,6 +1,4 @@
 // all allocations need to use hieralloc
-typedef unsigned int size_t;
-
 #include "prog_parameter.h"
 
 #include "src/glsl/ir.h"
