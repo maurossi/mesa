@@ -35,6 +35,7 @@
 #undef NDEBUG
 #endif
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/LLVMContext.h"
 #include "llvm/Module.h"
@@ -62,6 +63,18 @@ using namespace tr1;
 #include "ir_visitor.h"
 #include "glsl_types.h"
 #include "src/mesa/main/mtypes.h"
+
+// Helper function to convert array to llvm::ArrayRef
+template <typename T, size_t N>
+static inline llvm::ArrayRef<T> pack(T const (&array)[N]) {
+   return llvm::ArrayRef<T>(array);
+}
+
+// Helper function to convert pointer + size to llvm::ArrayRef
+template <typename T>
+static inline llvm::ArrayRef<T> pack(T const *ptr, size_t n) {
+   return llvm::ArrayRef<T>(ptr, n);
+}
 
 struct GGLState;
 
@@ -422,12 +435,9 @@ public:
 
    static llvm::Value* create_shuffle3(llvm::IRBuilder<>& bld, llvm::Value* v, unsigned a, unsigned b, unsigned c, const llvm::Twine& name = "")
    {
-      std::vector<llvm::Constant *> vals;
-      vals.push_back(bld.getInt32(a));
-      vals.push_back(bld.getInt32(b));
-      vals.push_back(bld.getInt32(c));
-      llvm::Constant * const shuffle = llvm::ConstantVector::get(llvm::VectorType::get(bld.getInt32Ty(), 3), vals);
-      return bld.CreateShuffleVector(v, llvm::UndefValue::get(v->getType()), shuffle, name);
+      const llvm::Type* int_ty = llvm::Type::getInt32Ty(v->getContext());
+      llvm::Constant* vals[3] = {llvm::ConstantInt::get(int_ty, a), llvm::ConstantInt::get(int_ty, b), llvm::ConstantInt::get(int_ty, c)};
+      return bld.CreateShuffleVector(v, llvm::UndefValue::get(v->getType()), llvm::ConstantVector::get(pack(vals)), name);
    }
 
    llvm::Value* create_select(unsigned width, llvm::Value * cond, llvm::Value * tru, llvm::Value * fal, const char * name = "")
@@ -1209,7 +1219,7 @@ public:
                   return val;
             }
 
-            return bld.CreateShuffleVector(val, llvm::UndefValue::get(val->getType()), llvm::ConstantVector::get(shuffle_mask_values, res_width), name);
+            return bld.CreateShuffleVector(val, llvm::UndefValue::get(val->getType()), llvm::ConstantVector::get(pack(shuffle_mask_values, res_width)), name);
          }
          else
             return bld.CreateExtractElement(val, llvm_int(shuffle_mask[0]), name);
@@ -1278,7 +1288,7 @@ public:
             else
                blend_mask[i] = llvm_int(i);
          }
-         rhs = bld.CreateShuffleVector(bld.CreateLoad(lhs), rhs, llvm::ConstantVector::get(blend_mask, width), "assign.writemask");
+         rhs = bld.CreateShuffleVector(bld.CreateLoad(lhs), rhs, llvm::ConstantVector::get(pack(blend_mask, width)), "assign.writemask");
       }
 
       if(ir->condition)
