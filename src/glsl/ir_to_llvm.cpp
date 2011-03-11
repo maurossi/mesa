@@ -83,14 +83,14 @@ public:
    llvm::BasicBlock* bb;
    llvm::Value* result;
    llvm::IRBuilder<> bld;
-   
+
    const GGLState * gglCtx;
    const char * shaderSuffix;
    llvm::Value * inputsPtr, * outputsPtr, * constantsPtr; // internal globals to store inputs/outputs/constants pointers
    llvm::Value * inputs, * outputs, * constants;
-   
+
    ir_to_llvm_visitor(llvm::Module* p_mod, const GGLState * GGLCtx, const char * suffix)
-   : ctx(p_mod->getContext()), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0, 
+   : ctx(p_mod->getContext()), mod(p_mod), fun(0), loop(std::make_pair((llvm::BasicBlock*)0,
       (llvm::BasicBlock*)0)), bb(0), bld(ctx), gglCtx(GGLCtx), shaderSuffix(suffix),
       inputsPtr(NULL), outputsPtr(NULL), constantsPtr(NULL),
       inputs(NULL), outputs(NULL), constants(NULL)
@@ -99,15 +99,15 @@ public:
       llvm::Constant * const nullFloatVecPtr = llvm::Constant::getNullValue(floatVecPtrType);
       // make input, output and consts global pointers so they can be used in
       // different LLVM functions since the shader shares these "registers" across "functions"
-          
-      inputsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false, 
-         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_inputPtr");  
+
+      inputsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false,
+         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_inputPtr");
 
       outputsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false,
-         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_outputsPtr");    
-         
-      constantsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false, 
-         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_constantsPtr");    
+         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_outputsPtr");
+
+      constantsPtr = new llvm::GlobalVariable(*mod, floatVecPtrType, false,
+         llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_constantsPtr");
    }
 
    const llvm::Type* llvm_base_type(unsigned base_type)
@@ -272,7 +272,7 @@ public:
             ir_variable* arg = (ir_variable*)iter.get();
             params.push_back(llvm_type(arg->type));
          }
-         
+
          if(!strcmp(name, "main") || !sig->is_defined)
          {
             linkage = llvm::Function::ExternalLinkage;
@@ -422,9 +422,12 @@ public:
 
    static llvm::Value* create_shuffle3(llvm::IRBuilder<>& bld, llvm::Value* v, unsigned a, unsigned b, unsigned c, const llvm::Twine& name = "")
    {
-      const llvm::Type* int_ty = llvm::Type::getInt32Ty(v->getContext());
-      llvm::Constant* vals[3] = {llvm::ConstantInt::get(int_ty, a), llvm::ConstantInt::get(int_ty, b), llvm::ConstantInt::get(int_ty, c)};
-      return bld.CreateShuffleVector(v, llvm::UndefValue::get(v->getType()), llvm::ConstantVector::get(vals, 3), name);
+      std::vector<llvm::Constant *> vals;
+      vals.push_back(bld.getInt32(a));
+      vals.push_back(bld.getInt32(b));
+      vals.push_back(bld.getInt32(c));
+      llvm::Constant * const shuffle = llvm::ConstantVector::get(llvm::VectorType::get(bld.getInt32Ty(), 3), vals);
+      return bld.CreateShuffleVector(v, llvm::UndefValue::get(v->getType()), shuffle, name);
    }
 
    llvm::Value* create_select(unsigned width, llvm::Value * cond, llvm::Value * tru, llvm::Value * fal, const char * name = "")
@@ -908,7 +911,7 @@ public:
             div = bld.CreateInsertElement(div, proj, bld.getInt32(i), "texProjDup");
          coordinate = bld.CreateFDiv(coordinate, div, "texProj");
       }
-     
+
       ir_variable * sampler = NULL;
       if(ir_dereference_variable* deref = ir->sampler->as_dereference_variable())
          sampler = deref->variable_referenced();
@@ -930,20 +933,20 @@ public:
          assert(0);
 
       assert(sampler->location >= 0 && sampler->location < 64); // TODO: proper limit
-      
+
       // ESSL texture LOD is only for 2D texture in vert shader, and it's explicit
       // bias used only in frag shader, and added to computed LOD
       assert(ir_tex == ir->op);
-   
+
       assert(GLSL_TYPE_FLOAT == sampler->type->sampler_type);
-      printf("sampler '%s' location=%d dim=%d type=%d proj=%d lod=%d \n", sampler->name, sampler->location, 
-         sampler->type->sampler_dimensionality, sampler->type->sampler_type, 
+      printf("sampler '%s' location=%d dim=%d type=%d proj=%d lod=%d \n", sampler->name, sampler->location,
+         sampler->type->sampler_dimensionality, sampler->type->sampler_type,
          ir->projector ? 1 : 0, ir->lod_info.lod ? 1 : 0);
       if (GLSL_SAMPLER_DIM_CUBE == sampler->type->sampler_dimensionality)
          result = texCube(bld, coordinate, sampler->location, gglCtx);
       else if (GLSL_SAMPLER_DIM_2D == sampler->type->sampler_dimensionality)
          result = tex2D(bld, coordinate, sampler->location, gglCtx);
-      else 
+      else
          assert(0);
    }
 
@@ -1329,8 +1332,8 @@ public:
       inputs->setName("gl_inputs");
       outputs->setName("gl_outputs");
       constants->setName("gl_constants");
-      
-      
+
+
 
       foreach_iter(exec_list_iterator, iter, sig->body) {
          ir_instruction *ir = (ir_instruction *)iter.get();
@@ -1358,7 +1361,7 @@ public:
 };
 
 struct llvm::Module *
-glsl_ir_to_llvm_module(struct exec_list *ir, llvm::Module * mod, 
+glsl_ir_to_llvm_module(struct exec_list *ir, llvm::Module * mod,
                         const struct GGLState * gglCtx, const char * shaderSuffix)
 {
    ir_to_llvm_visitor v(mod, gglCtx, shaderSuffix);
