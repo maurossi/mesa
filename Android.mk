@@ -158,7 +158,6 @@ LOCAL_C_INCLUDES :=	$(libMesa_C_INCLUDES)
 # ========================================================
 include $(CLEAR_VARS)
 
-#LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
