@@ -91,16 +91,21 @@ static void * RasterTrapezoidWorker(void * threadArgs)
 {
    GGLContext::Worker * args = (GGLContext::Worker *)threadArgs;
    VertexOutput clip0, clip1, * left, * right;
-   while (!args->quit) {
-      pthread_mutex_lock(&args->lock);
-      while (!args->hasWork && !args->quit)
-         pthread_cond_wait(&args->cond, &args->lock);
-      pthread_mutex_unlock(&args->lock);
-   
+
+   pthread_mutex_lock(&args->finishLock);
+   pthread_mutex_lock(&args->assignLock);
+   pthread_cond_signal(&args->finishCond);
+   pthread_mutex_unlock(&args->finishLock);
+
+   while (true) {
+      pthread_cond_wait(&args->assignCond, &args->assignLock);
       if (args->quit)
+      {
+         pthread_mutex_unlock(&args->assignLock);
          break;
-//         if (!args->hasWork)
-//            continue;
+      }
+      else
+          assert(args->assignedWork);
 
       for (unsigned y = args->startY; y <= args->endY; y += 2) {
          do {
@@ -133,7 +138,10 @@ static void * RasterTrapezoidWorker(void * threadArgs)
          args->bV.frontFacingPointCoord += args->bDx.frontFacingPointCoord;
          args->cV.frontFacingPointCoord += args->cDx.frontFacingPointCoord;
       }
-      args->hasWork = false;
+
+      pthread_mutex_lock(&args->finishLock);
+      pthread_cond_signal(&args->finishCond);
+      pthread_mutex_unlock(&args->finishLock);
    }
    pthread_exit(NULL);
    return NULL;
@@ -159,6 +167,7 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
    VertexOutput tmp;
 
    // vertically clip
+
    if ((int)tlv.position.y < 0) {
       InterpolateVertex(&tlv, &blv, (0 - tlv.position.y) / (blv.position.y - tlv.position.y),
                         &tmp, varyingCount);
@@ -240,38 +249,45 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
 #if USE_DUAL_THREAD
    GGLContext::Worker & args = ctx->worker;
    if (!ctx->worker.thread) {
-      int rc = pthread_create(&ctx->worker.thread, NULL, RasterTrapezoidWorker, &args);
+      pthread_attr_t attr;
+      pthread_attr_init(&attr);
+      pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+      int rc = pthread_create(&ctx->worker.thread, &attr, RasterTrapezoidWorker, &args);
       assert(!rc);
+      // wait for worker to start
+      pthread_cond_wait(&args.finishCond, &args.finishLock);
    }
-   args.bV = bV;
-   args.cV = cV;
-   for (unsigned i = 0; i < varyingCount; i++) {
-      args.bV.varyings[i] += bDx.varyings[i];
-      bDx.varyings[i] += bDx.varyings[i];
-      args.cV.varyings[i] += cDx.varyings[i];
-      cDx.varyings[i] += cDx.varyings[i];
-   }
-   args.bV.position += bDx.position;
-   bDx.position += bDx.position;
-   args.cV.position += cDx.position;
-   cDx.position += cDx.position;
-   args.bV.frontFacingPointCoord += bDx.frontFacingPointCoord;
-   bDx.frontFacingPointCoord += bDx.frontFacingPointCoord;
-   args.cV.frontFacingPointCoord += cDx.frontFacingPointCoord;
-   cDx.frontFacingPointCoord += cDx.frontFacingPointCoord;
-   args.iface = iface;
-   args.bDx = bDx;
-   args.cDx = cDx;
-   args.varyingCount = varyingCount;
    args.startY = startY + 1;
    args.endY = endY;
-   args.width = width;
-   args.height = height;
    if (args.startY <= args.endY) {
-      pthread_mutex_lock(&args.lock);
-      args.hasWork = true;
-      pthread_cond_signal(&args.cond);
-      pthread_mutex_unlock(&args.lock);
+      pthread_mutex_lock(&args.assignLock);
+
+      args.bV = bV;
+      args.cV = cV;
+      for (unsigned i = 0; i < varyingCount; i++) {
+         args.bV.varyings[i] += bDx.varyings[i];
+         bDx.varyings[i] += bDx.varyings[i];
+         args.cV.varyings[i] += cDx.varyings[i];
+         cDx.varyings[i] += cDx.varyings[i];
+      }
+      args.bV.position += bDx.position;
+      bDx.position += bDx.position;
+      args.cV.position += cDx.position;
+      cDx.position += cDx.position;
+      args.bV.frontFacingPointCoord += bDx.frontFacingPointCoord;
+      bDx.frontFacingPointCoord += bDx.frontFacingPointCoord;
+      args.cV.frontFacingPointCoord += cDx.frontFacingPointCoord;
+      cDx.frontFacingPointCoord += cDx.frontFacingPointCoord;
+      args.iface = iface;
+      args.bDx = bDx;
+      args.cDx = cDx;
+      args.varyingCount = varyingCount;
+      args.width = width;
+      args.height = height;
+      args.assignedWork = true;
+
+      pthread_cond_signal(&args.assignCond);
+      pthread_mutex_unlock(&args.assignLock);
    }
 #endif
 
@@ -309,8 +325,11 @@ static void RasterTrapezoid(const GGLInterface * iface, const VertexOutput * tl,
    }
 
 #if USE_DUAL_THREAD
-   while (args.hasWork)
-      ; // wait
+   if (args.assignedWork)
+   {
+      pthread_cond_wait(&args.finishCond, &args.finishLock);
+      args.assignedWork = false;
+   }
 #endif
 }
 
@@ -372,8 +391,6 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
    VertexOutput * v1 = vouts + 0, * v2 = vouts + 1, * v3 = vouts + 2;
 
 //   LOGD("pf2: DrawTriangle");
-
-   const gl_shader_program * program = ctx->CurrentProgram;
 
 //   if (!strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source,
 //               "gl_FragColor = color * texture2D(sampler, outTexCoords).a;"))

@@ -22,7 +22,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
-LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g 
+LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g
 endif
 
 LOCAL_MODULE := mesa
@@ -31,9 +31,8 @@ LOCAL_STATIC_LIBRARIES := libMesa
 LOCAL_SHARED_LIBRARIES := libbcc
 LOCAL_C_INCLUDES := $(mesa_C_INCLUDES)
 
-# libMesa only builds on Linux host for now
-#include $(LLVM_ROOT_PATH)/llvm-host-build.mk
-#include $(BUILD_HOST_EXECUTABLE)
+include $(LLVM_ROOT_PATH)/llvm-host-build.mk
+include $(BUILD_HOST_EXECUTABLE)
 
 # Executable for target
 # ========================================================
@@ -42,7 +41,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
-LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g 
+LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g
 endif
 
 LOCAL_MODULE := mesa

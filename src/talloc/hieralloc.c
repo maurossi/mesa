@@ -339,8 +339,9 @@ char * hieralloc_strndup(const void * ctx, const char * str, unsigned len)
 	if (!str)
 		return NULL;
 	
-   len = strnlen(str, len);
-   char * ret = (char *)hieralloc_allocate(ctx, len + 1, str);
+    const char *p = (const char *)memchr(str, '\0', len);
+    len = (p ? p - str : len);
+    char * ret = (char *)hieralloc_allocate(ctx, len + 1, str);
 	if (!ret)
 		return NULL;
 	memcpy(ret, str, len);
@@ -389,7 +390,9 @@ char * hieralloc_strndup_append(char * str, const char * append, unsigned len)
 		return hieralloc_strdup(NULL, append);
 	if (!append)
 		return str;
-	return _hieralloc_strlendup_append(str, strlen(str), append, strnlen(append, len));
+    const char *p = (const char *)memchr(append, '\0', len);
+    len = (p ? p - append : len);
+	return _hieralloc_strlendup_append(str, strlen(str), append, len);
 }
 
 // allocate and vsprintf

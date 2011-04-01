@@ -336,7 +336,7 @@ static void GetShaderKeyString(const GLenum type, const ShaderKey * key,
    *str++ = '\0';
 }
 
-static const unsigned SCANLINE_KEY_STRING_LEN = 2 * sizeof(ShaderKey::scanLineKey) + 3 + SHADER_KEY_STRING_LEN;
+static const unsigned SCANLINE_KEY_STRING_LEN = 2 * sizeof(ShaderKey::ScanLineKey) + 3 + SHADER_KEY_STRING_LEN;
 
 static char * GetScanlineKeyString(const ShaderKey * key, char * buffer,
                                    const unsigned bufferSize)
