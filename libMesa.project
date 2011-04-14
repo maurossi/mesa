@@ -170,6 +170,7 @@
       <File Name="src/glsl/lower_if_to_cond_assign.cpp"/>
       <File Name="src/glsl/lower_mat_op_to_vec.cpp"/>
       <File Name="src/glsl/ast.h"/>
+      <File Name="src/glsl/glsl_compiler.cpp"/>
     </VirtualDirectory>
     <VirtualDirectory Name="talloc">
       <File Name="src/talloc/hieralloc.c"/>

@@ -1,6 +1,6 @@
 # USE_LLVM_EXECUTIONENGINE not fully implemented
-USE_LLVM_EXECUTIONENGINE := false 
-# if using libLLVMExecutionEngine, 
+USE_LLVM_EXECUTIONENGINE := false
+# if using libLLVMExecutionEngine,
 # need to add files to several Android.mk in external/llvm, and comment out some stuff in llvm DynamicLibrary.cpp and Intercept.cpp
 
 DEBUG_BUILD := false
@@ -114,7 +114,7 @@ libMesa_SRC_FILES :=	\
 	src/pixelflinger2/shader.cpp \
 	src/pixelflinger2/texture.cpp \
 	src/talloc/hieralloc.c
-	
+
 libMesa_C_INCLUDES := \
 	$(LOCAL_PATH) \
 	$(LOCAL_PATH)/src/glsl	\
@@ -123,7 +123,7 @@ libMesa_C_INCLUDES := \
 	$(LOCAL_PATH)/src/mapi	\
 	$(LOCAL_PATH)/include	\
 	frameworks/compile/libbcc/include
-	
+
 # Static library for host
 # ========================================================
 include $(CLEAR_VARS)
@@ -131,7 +131,7 @@ include $(CLEAR_VARS)
 LOCAL_MODULE_TAGS := optional
 
 ifeq ($(DEBUG_BUILD),true)
-LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g 
+LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g
 else
 LOCAL_CFLAGS += -O3
 endif
@@ -174,13 +174,30 @@ LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=1
 LOCAL_STATIC_LIBRARIES :=  libLLVMARMCodeGen libLLVMARMInfo libLLVMARMDisassembler libLLVMARMAsmPrinter $(libMesa_STATIC_LIBS)
 else
 LOCAL_CFLAGS += -DUSE_LLVM_EXECUTIONENGINE=0
-LOCAL_SHARED_LIBRARIES += libbcc 
+LOCAL_SHARED_LIBRARIES += libbcc
 endif
 
 LOCAL_C_INCLUDES :=	$(libMesa_C_INCLUDES)
 
 include $(LLVM_ROOT_PATH)/llvm-device-build.mk
 include $(BUILD_STATIC_LIBRARY)
+
+# glsl_compiler for host
+# ========================================================
+include $(CLEAR_VARS)
+
+LOCAL_MODULE_TAGS := optional
+
+ifeq ($(DEBUG_BUILD),true)
+LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g
+endif
+
+LOCAL_MODULE := glsl_compiler
+LOCAL_SRC_FILES := src/glsl/glsl_compiler.cpp
+LOCAL_C_INCLUDES := $(libMesa_C_INCLUDES)
+LOCAL_STATIC_LIBRARIES := libMesa
+
+include $(BUILD_HOST_EXECUTABLE)
 
 # Build children
 # ========================================================
