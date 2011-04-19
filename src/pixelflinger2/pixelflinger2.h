@@ -108,14 +108,41 @@ struct GGLContext {
       unsigned startY, endY, varyingCount;
       VertexOutput bV, cV, bDx, cDx;
       int width, height;
-      volatile bool hasWork;
+      bool assignedWork; // only used by main; worker uses assignCond & quit
       bool quit;
 
-      pthread_cond_t cond;
-      pthread_mutex_t lock;
+      pthread_cond_t assignCond;
+      pthread_mutex_t assignLock; // held by worker execpt for during cond_wait assign
+      pthread_cond_t finishCond;
+      pthread_mutex_t finishLock; // held by main except for during cond_wait finish
       pthread_t thread;
 
-      Worker() : cond(PTHREAD_COND_INITIALIZER), lock(PTHREAD_MUTEX_INITIALIZER), thread(NULL) {}
+      Worker() : assignedWork(false), quit(false), thread(0)
+      {
+         pthread_cond_init(&assignCond, NULL);
+         pthread_cond_init(&finishCond, NULL);
+         pthread_mutex_init(&assignLock, NULL);
+         pthread_mutex_init(&finishLock, NULL);
+         pthread_mutex_lock(&finishLock);
+         // actual thread is created later in raster.cpp
+      }
+      ~Worker()
+      {
+         if (0 != thread)
+         {
+            pthread_mutex_lock(&assignLock);
+            quit = true;
+            pthread_cond_signal(&assignCond); // signal thread to quit
+            pthread_mutex_unlock(&assignLock);
+            pthread_join(thread, NULL);
+         }
+         pthread_mutex_unlock(&finishLock);
+
+         pthread_cond_destroy(&assignCond);
+         pthread_cond_destroy(&finishCond);
+         pthread_mutex_destroy(&assignLock);
+         pthread_mutex_destroy(&finishLock);
+      }
    } worker;
 #endif
 

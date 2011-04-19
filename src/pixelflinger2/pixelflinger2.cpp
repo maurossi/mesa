@@ -185,6 +185,9 @@ static void EnableDisable(GGLInterface * iface, GLenum cap, GLboolean enable)
 
 void InitializeGGLState(GGLInterface * iface)
 {
+#if USE_DUAL_THREAD
+   reinterpret_cast<GGLContext *>(iface)->worker = GGLContext::Worker();
+#endif
    iface->DepthRangef = DepthRangef;
    iface->Viewport = Viewport;
    iface->CullFace = CullFace;
@@ -220,7 +223,7 @@ void InitializeGGLState(GGLInterface * iface)
 
    for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++)
       iface->SetSampler(iface, i, NULL);
-      
+
    iface->SetBuffer(iface, GL_COLOR_BUFFER_BIT, NULL);
    iface->SetBuffer(iface, GL_DEPTH_BUFFER_BIT, NULL);
    iface->SetBuffer(iface, GL_STENCIL_BUFFER_BIT, NULL);
@@ -230,12 +233,10 @@ void InitializeGGLState(GGLInterface * iface)
 
 GGLInterface * CreateGGLInterface()
 {
-   //GGLContext * ctx = (GGLContext *)calloc(1, sizeof(GGLContext) + sizeof(__GLcontextRec));
-   GGLContext * ctx = (GGLContext *)calloc(1, sizeof(GGLContext));
+   GGLContext * const ctx = (GGLContext *)calloc(1, sizeof(GGLContext));
    if (!ctx)
       return NULL;
    assert((void *)ctx == (void *)&ctx->interface);
-   //ctx->glCtx = (GLcontext *)((char *)ctx + sizeof(GGLContext));
 
    //_glapi_set_context(ctx->glCtx);
    //_mesa_init_constants(&Const);
@@ -247,19 +248,11 @@ GGLInterface * CreateGGLInterface()
 
 void UninitializeGGLState(GGLInterface * iface)
 {
-   GGLContext * ctx = (GGLContext *)iface;
-   assert((void *)ctx == (void *)iface);
-   
 #if USE_DUAL_THREAD
-   ctx->worker.hasWork = false;
-   ctx->worker.quit = true;
-   pthread_mutex_lock(&ctx->worker.lock);
-   pthread_cond_signal(&ctx->worker.cond);
-   pthread_mutex_unlock(&ctx->worker.lock);
+   reinterpret_cast<GGLContext *>(iface)->worker.~Worker();
 #endif
-
    DestroyShaderFunctions(iface);
-   
+
 #if USE_LLVM_TEXTURE_SAMPLER
    puts("USE_LLVM_TEXTURE_SAMPLER");
 #endif
@@ -277,8 +270,7 @@ void UninitializeGGLState(GGLInterface * iface)
 
 void DestroyGGLInterface(GGLInterface * iface)
 {
-   GGLContext * ctx = (GGLContext *)iface;
-   assert((void *)ctx == (void *)iface);
+   GGLContext * const ctx = reinterpret_cast<GGLContext *>(iface);
    UninitializeGGLState(iface);
    free(ctx);
 }
