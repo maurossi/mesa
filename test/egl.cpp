@@ -275,11 +275,11 @@ struct egl_window_surface_v2_t : public egl_surface_t {
    virtual     EGLBoolean  setSwapRectangle(EGLint l, EGLint t, EGLint w, EGLint h);
 
 private:
-   status_t lock(android_native_buffer_t* buf, int usage, void** vaddr);
-   status_t unlock(android_native_buffer_t* buf);
+   status_t lock(ANativeWindowBuffer* buf, int usage, void** vaddr);
+   status_t unlock(ANativeWindowBuffer* buf);
    ANativeWindow*   nativeWindow;
-   android_native_buffer_t*   buffer;
-   android_native_buffer_t*   previousBuffer;
+   ANativeWindowBuffer*   buffer;
+   ANativeWindowBuffer*   previousBuffer;
    gralloc_module_t const*    module;
    int width;
    int height;
@@ -371,8 +371,8 @@ private:
    };
 
    void copyBlt(
-      android_native_buffer_t* dst, void* dst_vaddr,
-      android_native_buffer_t* src, void const* src_vaddr,
+      ANativeWindowBuffer* dst, void* dst_vaddr,
+      ANativeWindowBuffer* src, void const* src_vaddr,
       const Region& clip);
 
    Rect dirtyRegion;
@@ -469,7 +469,7 @@ void egl_window_surface_v2_t::disconnect()
 }
 
 status_t egl_window_surface_v2_t::lock(
-   android_native_buffer_t* buf, int usage, void** vaddr)
+   ANativeWindowBuffer* buf, int usage, void** vaddr)
 {
    int err;
 
@@ -479,7 +479,7 @@ status_t egl_window_surface_v2_t::lock(
    return err;
 }
 
-status_t egl_window_surface_v2_t::unlock(android_native_buffer_t* buf)
+status_t egl_window_surface_v2_t::unlock(ANativeWindowBuffer* buf)
 {
    if (!buf) return BAD_VALUE;
    int err = NO_ERROR;
@@ -490,8 +490,8 @@ status_t egl_window_surface_v2_t::unlock(android_native_buffer_t* buf)
 }
 
 void egl_window_surface_v2_t::copyBlt(
-   android_native_buffer_t* dst, void* dst_vaddr,
-   android_native_buffer_t* src, void const* src_vaddr,
+   ANativeWindowBuffer* dst, void* dst_vaddr,
+   ANativeWindowBuffer* src, void const* src_vaddr,
    const Region& clip)
 {
    // FIXME: use copybit if possible
