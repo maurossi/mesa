@@ -1873,10 +1873,10 @@ extern "C" int SetupDrawingSurface(unsigned * width, unsigned * height, unsigned
    s->client = new SurfaceComposerClient();
 
    s->surfaceControl = s->client->createSurface(getpid(), 0, 640, 400, PIXEL_FORMAT_RGBA_8888);
-   s->client->openTransaction();
+   SurfaceComposerClient::openGlobalTransaction();
    s->surfaceControl->setLayer(25000);
    s->surfaceControl->show();
-   s->client->closeTransaction();
+   SurfaceComposerClient::closeGlobalTransaction();
 
    s->surface = s->surfaceControl->getSurface();
    window = s->surface.get();
