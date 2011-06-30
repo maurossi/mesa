@@ -1158,10 +1158,12 @@ public:
             }
 
             llvm::Constant* vec;
-            if(ir->type->vector_elements > 1)
-               vec = llvm::ConstantVector::get((llvm::VectorType*)vec_type, elems);
-            else
+            if(ir->type->vector_elements > 1) {
+               llvm::ArrayRef<llvm::Constant*> ConstantArray(elems);
+               vec = llvm::ConstantVector::get(ConstantArray);
+            } else {
                vec = elems[0];
+            }
             vecs.push_back(vec);
          }
 

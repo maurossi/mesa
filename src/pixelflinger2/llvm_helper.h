@@ -63,7 +63,9 @@ static Value * constIntVec(IRBuilder<> & builder, int x, int y, int z, int w)
    vec[1] = builder.getInt32(y);
    vec[2] = builder.getInt32(z);
    vec[3] = builder.getInt32(w);
-   return ConstantVector::get(intVecType(builder), vec);
+
+   llvm::ArrayRef<llvm::Constant*> ConstantArray(vec);
+   return ConstantVector::get(ConstantArray);
 }
 
 static Value * intVec(IRBuilder<> & builder, Value * x, Value * y, Value * z, Value * w)
@@ -84,7 +86,9 @@ static Value * constFloatVec(IRBuilder<> & builder, float x, float y, float z, f
    vec[1] = constFloat(builder, y);
    vec[2] = constFloat(builder, z);
    vec[3] = constFloat(builder, w);
-   return ConstantVector::get(floatVecType(builder), vec);
+
+   llvm::ArrayRef<llvm::Constant*> ConstantArray(vec);
+   return ConstantVector::get(ConstantArray);
 }
 
 static std::vector<Value *> extractVector(IRBuilder<> & builder, Value *vec)
