@@ -5,8 +5,6 @@ USE_LLVM_EXECUTIONENGINE := false
 
 DEBUG_BUILD := false
 
-ifneq ($(TARGET_SIMULATOR),true)
-
 LOCAL_PATH := $(call my-dir)
 LLVM_ROOT_PATH := external/llvm
 
@@ -202,5 +200,3 @@ include $(BUILD_HOST_EXECUTABLE)
 # Build children
 # ========================================================
 include $(call all-makefiles-under,$(LOCAL_PATH))
-
-endif # TARGET_SIMULATOR != true

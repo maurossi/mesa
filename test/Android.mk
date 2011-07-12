@@ -1,7 +1,5 @@
 DEBUG_BUILD := true
 
-ifneq ($(TARGET_SIMULATOR),true)
-
 LOCAL_PATH := $(call my-dir)
 LLVM_ROOT_PATH := external/llvm
 
@@ -53,5 +51,3 @@ LOCAL_C_INCLUDES := $(mesa_C_INCLUDES)
 
 include $(LLVM_ROOT_PATH)/llvm-device-build.mk
 include $(BUILD_EXECUTABLE)
-
-endif # TARGET_SIMULATOR != true
