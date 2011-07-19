@@ -420,11 +420,11 @@ Value * GenerateFSBlend(const GGLState * gglCtx, const GGLPixelFormat format, /*
 static FunctionType * ScanLineFunctionType(IRBuilder<> & builder)
 {
    std::vector<Type*> funcArgs;
-   const VectorType * vectorType = floatVecType(builder);
-   const PointerType * vectorPtr = PointerType::get(vectorType, 0);
-   const Type * intType = builder.getInt32Ty();
-   const PointerType * intPointerType = PointerType::get(intType, 0);
-   const PointerType * bytePointerType = PointerType::get(builder.getInt8Ty(), 0);
+   VectorType * vectorType = floatVecType(builder);
+   PointerType * vectorPtr = PointerType::get(vectorType, 0);
+   Type * intType = builder.getInt32Ty();
+   PointerType * intPointerType = PointerType::get(intType, 0);
+   PointerType * bytePointerType = PointerType::get(builder.getInt8Ty(), 0);
 
    funcArgs.push_back(vectorPtr); // start
    funcArgs.push_back(vectorPtr); // step

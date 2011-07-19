@@ -144,12 +144,12 @@ public:
       }
    }
 
-   const llvm::Type* llvm_vec_type(const glsl_type* type)
+   llvm::Type* llvm_vec_type(const glsl_type* type)
    {
-      if(type->is_array())
+      if (type->is_array())
          return llvm::ArrayType::get(llvm_type(type->fields.array), type->array_size());
 
-      if(type->is_record())
+      if (type->is_record())
       {
          std::vector<llvm::Type*> fields;
          for (unsigned i = 0; i < type->length; i++)
@@ -158,20 +158,22 @@ public:
              fields));
       }
 
-      const llvm::Type* base_type = llvm_base_type(type->base_type);
-      if(type->vector_elements <= 1)
+      llvm::Type* base_type = (llvm::Type*) llvm_base_type(type->base_type);
+      if (type->vector_elements <= 1) {
          return base_type;
-      else
+      } else {
          return llvm::VectorType::get(base_type, type->vector_elements);
+      }
    }
 
-   const llvm::Type* llvm_type(const glsl_type* type)
+   llvm::Type* llvm_type(const glsl_type* type)
    {
-      const llvm::Type* vec_type = llvm_vec_type(type);
-      if(type->matrix_columns <= 1)
+      llvm::Type* vec_type = llvm_vec_type(type);
+      if (type->matrix_columns <= 1) {
          return vec_type;
-      else
+      } else {
          return llvm::ArrayType::get(vec_type, type->matrix_columns);
+      }
    }
 
    typedef std::map<ir_variable*, llvm::Value*> llvm_variables_t;
@@ -181,15 +183,13 @@ public:
    llvm::Value* llvm_variable(class ir_variable* var)
    {
       llvm_variables_t::iterator vari = llvm_variables.find(var);
-      if(vari != llvm_variables.end())
+      if (vari != llvm_variables.end()) {
          return vari->second;
-      else
-      {
+      } else {
          const llvm::Type* type = llvm_type(var->type);
 
          llvm::Value* v = NULL;
-         if(fun)
-         {
+         if(fun) {
             if (ir_var_in == var->mode)
             {
                assert(var->location >= 0);
@@ -215,9 +215,8 @@ public:
                else
                   v = new llvm::AllocaInst(type, 0, var->name, fun->getEntryBlock().getTerminator());
             }
-         }
-         else // TODO: can anything global be non-constant in GLSL?; fix linkage
-         {
+         } else {
+           // TODO: can anything global be non-constant in GLSL?; fix linkage
             //printf("var '%s' mode=%d location=%d \n", var->name, var->mode, var->location);
             switch(var->mode)
             {
@@ -364,7 +363,7 @@ public:
 
    llvm::Value* llvm_intrinsic_unop(ir_expression_operation op, llvm::Value * op0)
    {
-      const llvm::Type * floatType = llvm::Type::getFloatTy(ctx);
+      llvm::Type * floatType = llvm::Type::getFloatTy(ctx);
       const char * name = NULL;
       switch (op) {
       case ir_unop_sin:
@@ -394,7 +393,7 @@ public:
 
    llvm::Value* llvm_intrinsic_binop(ir_expression_operation op, llvm::Value * op0, llvm::Value * op1)
    {
-      const llvm::Type * floatType = llvm::Type::getFloatTy(ctx);
+      llvm::Type * floatType = llvm::Type::getFloatTy(ctx);
       const char * name = NULL;
       switch (op) {
       case ir_binop_pow:
@@ -420,7 +419,7 @@ public:
       return bld.CreateCall2(function, op0, op1);
    }
 
-   llvm::Constant* llvm_imm(const llvm::Type* type, double v)
+   llvm::Constant* llvm_imm(llvm::Type* type, double v)
    {
       if(type->isVectorTy())
       {
@@ -1112,7 +1111,7 @@ public:
          args.push_back(llvm_value(arg));
       }
 
-      result = bld.CreateCall(llvm_function(ir->get_callee()), args.begin(), args.end());
+      result = bld.CreateCall(llvm_function(ir->get_callee()), llvm::ArrayRef<llvm::Value*>(args));
 
       llvm::AttrListPtr attr;
       ((llvm::CallInst*)result)->setAttributes(attr);
