@@ -151,10 +151,11 @@ public:
 
       if(type->is_record())
       {
-         std::vector<const llvm::Type*> fields;
+         std::vector<llvm::Type*> fields;
          for (unsigned i = 0; i < type->length; i++)
             fields.push_back(llvm_type(type->fields.structure[i].type));
-         return llvm::StructType::get(ctx, fields);
+         return llvm::StructType::get(ctx, llvm::ArrayRef<llvm::Type*>(
+             fields));
       }
 
       const llvm::Type* base_type = llvm_base_type(type->base_type);
@@ -280,7 +281,7 @@ public:
       else
       {
          llvm::Function::LinkageTypes linkage;
-         std::vector<const llvm::Type*> params;
+         std::vector<llvm::Type*> params;
          foreach_iter(exec_list_iterator, iter, sig->parameters) {
             ir_variable* arg = (ir_variable*)iter.get();
             params.push_back(llvm_type(arg->type));
@@ -295,9 +296,12 @@ public:
             params.push_back(vecPtrTy); // outputs
             params.push_back(vecPtrTy); // constants
          }
-         else
+         else {
             linkage = llvm::Function::InternalLinkage;
-         llvm::FunctionType* ft = llvm::FunctionType::get(llvm_type(sig->return_type), params, false);
+         }
+         llvm::FunctionType* ft = llvm::FunctionType::get(llvm_type(sig->return_type),
+                                                          llvm::ArrayRef<llvm::Type*>(params),
+                                                          false);
          function = llvm::Function::Create(ft, linkage, functionName, mod);
          free(functionName);
          return function;
@@ -376,9 +380,11 @@ public:
       llvm::Function * function = mod->getFunction(name);
       if (!function) {
          // predeclare the intrinsic
-         std::vector<const llvm::Type*> args;
+         std::vector<llvm::Type*> args;
          args.push_back(floatType);
-         llvm::FunctionType* type = llvm::FunctionType::get(floatType, args, false);
+         llvm::FunctionType* type = llvm::FunctionType::get(floatType,
+                                                            llvm::ArrayRef<llvm::Type*>(args),
+                                                            false);
          function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name, mod);
          function->setCallingConv(llvm::CallingConv::C);
       }
@@ -401,10 +407,12 @@ public:
       llvm::Function * function = mod->getFunction(name);
       if (!function) {
          // predeclare the intrinsic
-         std::vector<const llvm::Type*> args;
+         std::vector<llvm::Type*> args;
          args.push_back(floatType);
          args.push_back(floatType);
-         llvm::FunctionType* type = llvm::FunctionType::get(floatType, args, false);
+         llvm::FunctionType* type = llvm::FunctionType::get(floatType,
+                                                            llvm::ArrayRef<llvm::Type*>(args),
+                                                            false);
          function = llvm::Function::Create(type, llvm::Function::ExternalLinkage, name, mod);
          function->setCallingConv(llvm::CallingConv::C);
       }

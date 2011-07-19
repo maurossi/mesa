@@ -224,7 +224,7 @@ static Value * IntVectorToScreenColor(IRBuilder<> & builder, const GGLPixelForma
       comps[2] = builder.CreateLShr(comps[2], 3);
       comps[1] = builder.CreateShl(comps[1], 3);
       comps[0] = builder.CreateShl(comps[0], 8);
-      
+
       comps[0] = builder.CreateOr(comps[0], comps[1]);
       comps[0] = builder.CreateOr(comps[0], comps[2]);
       return comps[0];
@@ -419,7 +419,7 @@ Value * GenerateFSBlend(const GGLState * gglCtx, const GGLPixelFormat format, /*
 
 static FunctionType * ScanLineFunctionType(IRBuilder<> & builder)
 {
-   std::vector<const Type*> funcArgs;
+   std::vector<Type*> funcArgs;
    const VectorType * vectorType = floatVecType(builder);
    const PointerType * vectorPtr = PointerType::get(vectorType, 0);
    const Type * intType = builder.getInt32Ty();
@@ -436,8 +436,8 @@ static FunctionType * ScanLineFunctionType(IRBuilder<> & builder)
    funcArgs.push_back(intType); // count
 
    FunctionType *functionType = FunctionType::get(/*Result=*/builder.getVoidTy(),
-                                /*Params=*/funcArgs,
-                                /*isVarArg=*/false);
+                                                  llvm::ArrayRef<Type*>(funcArgs),
+                                                  /*isVarArg=*/false);
 
    return functionType;
 }
