@@ -261,7 +261,7 @@ static Value * ScreenColorToIntVector(IRBuilder<> & builder, const GGLPixelForma
 Value * GenerateFSBlend(const GGLState * gglCtx, const GGLPixelFormat format, /*const RegDesc * regDesc,*/
                         IRBuilder<> & builder, Value * src, Value * dst)
 {
-   const Type * const intType = builder.getInt32Ty();
+   Type * const intType = builder.getInt32Ty();
 
    // TODO cast the outputs pointer type to int for writing to minimize bandwidth
    if (!gglCtx->blendState.enable) {
@@ -451,10 +451,10 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
    IRBuilder<> builder(mod->getContext());
 //   debug_printf("GenerateScanLine %s \n", scanlineName);
 
-   const Type * intType = builder.getInt32Ty();
-   const PointerType * intPointerType = PointerType::get(intType, 0);
-   const Type * byteType = builder.getInt8Ty();
-   const PointerType * bytePointerType = PointerType::get(byteType, 0);
+   Type * intType = builder.getInt32Ty();
+   PointerType * intPointerType = PointerType::get(intType, 0);
+   Type * byteType = builder.getInt8Ty();
+   PointerType * bytePointerType = PointerType::get(byteType, 0);
 
    Function * func = mod->getFunction(scanlineName);
    if (func)
@@ -696,8 +696,8 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
       v = builder.CreateFAdd(v, dx);
       builder.CreateStore(v, vPtr);
    } else if (gglCtx->bufferState.depthTest) {
-      const Type * floatType = builder.getFloatTy();
-      const PointerType * floatPointerType = PointerType::get(floatType, 0);
+      Type * floatType = builder.getFloatTy();
+      PointerType * floatPointerType = PointerType::get(floatType, 0);
       vPtr = builder.CreateBitCast(start, floatPointerType);
       vPtr = builder.CreateConstInBoundsGEP1_32(vPtr,
              (GGL_FS_INPUT_OFFSET + GGL_FS_INPUT_FRAGCOORD_INDEX) * 4 + 2);

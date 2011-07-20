@@ -221,7 +221,7 @@ static Value * texcoordWrap(IRBuilder<> & builder, const unsigned wrap,
                             /*const ChannelType type,*/ Value * r, Value * size, Value * dim,
                             Value ** texelLerp)
 {
-   const Type * intType = Type::getInt32Ty(builder.getContext());
+   Type * intType = Type::getInt32Ty(builder.getContext());
    Value * tc = NULL;
    Value * odd = NULL;
 //   if (Float == type) {
@@ -275,8 +275,8 @@ Value * tex2D(IRBuilder<> & builder, Value * in1, const unsigned sampler,
               /*const RegDesc * in1Desc, const RegDesc * dstDesc,*/
               const GGLState * gglCtx)
 {
-   const Type * intType = builder.getInt32Ty();
-   const PointerType * intPointerType = PointerType::get(intType, 0);
+   Type * intType = builder.getInt32Ty();
+   PointerType * intPointerType = PointerType::get(intType, 0);
 
    llvm::Module * module = builder.GetInsertBlock()->getParent()->getParent();
    std::vector<Value * > texcoords = extractVector(builder, in1);
@@ -337,7 +337,7 @@ Value * tex2D(IRBuilder<> & builder, Value * in1, const unsigned sampler,
 // only positive float; used in cube map since major axis is positive
 static Value * FCmpGT(IRBuilder<> & builder, Value * lhs, Value * rhs)
 {
-   const Type * const intType = Type::getInt32Ty(builder.getContext());
+   Type * const intType = Type::getInt32Ty(builder.getContext());
    lhs = builder.CreateBitCast(lhs, intType);
    rhs = builder.CreateBitCast(rhs, intType);
    return builder.CreateICmpUGT(lhs, rhs);
@@ -368,9 +368,9 @@ Value * texCube(IRBuilder<> & builder, Value * in1, const unsigned sampler,
 //   if (in1Desc) // the major axis determination code is only float for now
 //      assert(in1Desc->IsVectorType(Float));
 
-   const Type * const intType = builder.getInt32Ty();
-   const PointerType * const intPointerType = PointerType::get(intType, 0);
-   const Type * const floatType = builder.getFloatTy();
+   Type * const intType = builder.getInt32Ty();
+   PointerType * const intPointerType = PointerType::get(intType, 0);
+   Type * const floatType = builder.getFloatTy();
 
    Constant * const float1 = constFloat(builder, 1.0f);
    Constant * const float0_5 = constFloat(builder, 0.5f);

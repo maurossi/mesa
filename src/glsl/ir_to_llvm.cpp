@@ -108,7 +108,7 @@ public:
       inputsPtr(NULL), outputsPtr(NULL), constantsPtr(NULL),
       inputs(NULL), outputs(NULL), constants(NULL)
    {
-      const llvm::PointerType * const floatVecPtrType = llvm::PointerType::get(llvm::VectorType::get(bld.getFloatTy(),4), 0);
+      llvm::PointerType * const floatVecPtrType = llvm::PointerType::get(llvm::VectorType::get(bld.getFloatTy(),4), 0);
       llvm::Constant * const nullFloatVecPtr = llvm::Constant::getNullValue(floatVecPtrType);
       // make input, output and consts global pointers so they can be used in
       // different LLVM functions since the shader shares these "registers" across "functions"
@@ -123,7 +123,7 @@ public:
          llvm::GlobalValue::InternalLinkage, nullFloatVecPtr, "gl_constantsPtr");
    }
 
-   const llvm::Type* llvm_base_type(unsigned base_type)
+   llvm::Type* llvm_base_type(unsigned base_type)
    {
       switch(base_type)
       {
@@ -158,7 +158,7 @@ public:
              fields));
       }
 
-      llvm::Type* base_type = (llvm::Type*) llvm_base_type(type->base_type);
+      llvm::Type* base_type = llvm_base_type(type->base_type);
       if (type->vector_elements <= 1) {
          return base_type;
       } else {
@@ -186,7 +186,7 @@ public:
       if (vari != llvm_variables.end()) {
          return vari->second;
       } else {
-         const llvm::Type* type = llvm_type(var->type);
+         llvm::Type* type = llvm_type(var->type);
 
          llvm::Value* v = NULL;
          if(fun) {
@@ -350,13 +350,13 @@ public:
 
 //   llvm::Value* llvm_intrinsic(llvm::Intrinsic::ID id, llvm::Value* a)
 //   {
-//      const llvm::Type* types[1] = {a->getType()};
+//      llvm::Type* types[1] = {a->getType()};
 //      return bld.CreateCall(llvm::Intrinsic::getDeclaration(mod, id, types, 1), a);
 //   }
 //
 //   llvm::Value* llvm_intrinsic(llvm::Intrinsic::ID id, llvm::Value* a, llvm::Value* b)
 //   {
-//      const llvm::Type* types[2] = {a->getType(), b->getType()};
+//      llvm::Type* types[2] = {a->getType(), b->getType()};
 //      /* only one type suffix is usually needed, so pass 1 here */
 //      return bld.CreateCall2(llvm::Intrinsic::getDeclaration(mod, id, types, 1), a, b);
 //   }
@@ -442,7 +442,7 @@ public:
 
    static llvm::Value* create_shuffle3(llvm::IRBuilder<>& bld, llvm::Value* v, unsigned a, unsigned b, unsigned c, const llvm::Twine& name = "")
    {
-      const llvm::Type* int_ty = llvm::Type::getInt32Ty(v->getContext());
+      llvm::Type* int_ty = llvm::Type::getInt32Ty(v->getContext());
       llvm::Constant* vals[3] = {llvm::ConstantInt::get(int_ty, a), llvm::ConstantInt::get(int_ty, b), llvm::ConstantInt::get(int_ty, c)};
       return bld.CreateShuffleVector(v, llvm::UndefValue::get(v->getType()), llvm::ConstantVector::get(pack(vals)), name);
    }
@@ -452,7 +452,7 @@ public:
       if (1 == width)
          return bld.CreateSelect(cond, tru, fal, name);
 
-      const llvm::Type * vectorType = tru->getType();
+      llvm::Type * vectorType = tru->getType();
       llvm::Value * vector = llvm::Constant::getNullValue(vectorType);
       for (unsigned int i = 0; i < width; i++) {
          llvm::Value * c = bld.CreateExtractElement(cond, llvm_int(i));
@@ -1135,9 +1135,9 @@ public:
       }
       else
       {
-         const llvm::Type* base_type = llvm_base_type(ir->type->base_type);
-         const llvm::Type* vec_type = llvm_vec_type(ir->type);
-         const llvm::Type* type = llvm_type(ir->type);
+         llvm::Type* base_type = llvm_base_type(ir->type->base_type);
+         llvm::Type* vec_type = llvm_vec_type(ir->type);
+         llvm::Type* type = llvm_type(ir->type);
 
          std::vector<llvm::Constant*> vecs;
          unsigned idx = 0;
@@ -1183,8 +1183,8 @@ public:
 
    llvm::Value* llvm_shuffle(llvm::Value* val, int* shuffle_mask, unsigned res_width, const llvm::Twine &name = "")
    {
-      const llvm::Type* elem_type = val->getType();
-      const llvm::Type* res_type = elem_type;;
+      llvm::Type* elem_type = val->getType();
+      llvm::Type* res_type = elem_type;;
       unsigned val_width = 1;
       if(val->getType()->isVectorTy())
       {
