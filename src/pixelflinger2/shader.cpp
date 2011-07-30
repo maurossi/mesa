@@ -397,7 +397,7 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
    assert(0 == result);
    result = bccRegisterSymbolCallback(script, SymbolLookup, &ctx);
    assert(0 == result);
-   result = bccPrepareExecutableEx(script, NULL, NULL, 0);
+   result = bccPrepareExecutable(script, NULL, NULL, 0);
 
    result = bccGetError(script);
    if (result != 0) {
