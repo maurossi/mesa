@@ -4,7 +4,6 @@ USE_LLVM_EXECUTIONENGINE := false
 # need to add files to several Android.mk in external/llvm, and comment out some stuff in
 # llvm DynamicLibrary.cpp and Intercept.cpp
 
-ifeq (0, 1)
 DEBUG_BUILD := false
 
 LOCAL_PATH := $(call my-dir)
@@ -12,27 +11,27 @@ LLVM_ROOT_PATH := external/llvm
 
 # These are for using llvm::ExecutionEngine, also remove libbcc
 # libLLVMX86CodeGen;libLLVMX86Info;libLLVMBitReader;libLLVMSelectionDAG;libLLVMAsmPrinter;libLLVMJIT;libLLVMCodeGen;libLLVMTarget;libLLVMMC;libLLVMScalarOpts;libLLVMipo;libLLVMTransformUtils;libLLVMCore;libLLVMSupport;libLLVMSystem;libLLVMAnalysis;libLLVMInstCombine;libLLVMipa;libLLVMMCParser;libLLVMExecutionEngine;
-libMesa_STATIC_LIBS :=	\
-    libLLVMBitReader	\
-    libLLVMSelectionDAG	\
-    libLLVMAsmPrinter	\
-    libLLVMJIT	\
-    libLLVMCodeGen	\
-    libLLVMTarget	\
-    libLLVMMC	\
-    libLLVMScalarOpts	\
-    libLLVMipo		\
-    libLLVMTransformUtils	\
-    libLLVMCore	\
-    libLLVMSupport	\
-    libLLVMSystem	\
-    libLLVMAnalysis \
-    libLLVMInstCombine \
-    libLLVMipa	\
-    libLLVMMCParser	\
+libMesa_STATIC_LIBS :=  \
+    libLLVMBitReader    \
+    libLLVMSelectionDAG \
+    libLLVMAsmPrinter   \
+    libLLVMJIT          \
+    libLLVMCodeGen      \
+    libLLVMTarget       \
+    libLLVMMC           \
+    libLLVMScalarOpts   \
+    libLLVMipo          \
+    libLLVMTransformUtils \
+    libLLVMCore         \
+    libLLVMSupport      \
+    libLLVMSystem       \
+    libLLVMAnalysis     \
+    libLLVMInstCombine  \
+    libLLVMipa          \
+    libLLVMMCParser     \
     libLLVMExecutionEngine
 
-libMesa_SRC_FILES :=	\
+libMesa_SRC_FILES := \
     src/glsl/glcpp/pp.c \
     src/glsl/glcpp/glcpp-lex.c \
     src/glsl/glcpp/glcpp-parse.c \
@@ -117,11 +116,11 @@ libMesa_SRC_FILES :=	\
 
 libMesa_C_INCLUDES := \
     $(LOCAL_PATH) \
-    $(LOCAL_PATH)/src/glsl	\
-    $(LOCAL_PATH)/src/mesa	\
-    $(LOCAL_PATH)/src/talloc	\
-    $(LOCAL_PATH)/src/mapi	\
-    $(LOCAL_PATH)/include	\
+    $(LOCAL_PATH)/src/glsl   \
+    $(LOCAL_PATH)/src/mesa   \
+    $(LOCAL_PATH)/src/talloc \
+    $(LOCAL_PATH)/src/mapi   \
+    $(LOCAL_PATH)/include    \
     frameworks/compile/libbcc/include
 
 # Static library for host
@@ -203,4 +202,3 @@ include $(BUILD_HOST_EXECUTABLE)
 # Build children
 # ========================================================
 include $(call all-makefiles-under,$(LOCAL_PATH))
-endif
