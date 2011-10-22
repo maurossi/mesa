@@ -989,7 +989,13 @@ public:
       // method has been removed from the IRBuilder.  Here's the
       // temporary workaround.  But it would be better to remove
       // this in the future.
-      new llvm::UnwindInst(ctx, discard); /// XXX! Deprecated
+      //
+      // A solution after LLVM 3.0: To add a global boolean in the shader to
+      // store whether it was discarded or not and just continue on normally,
+      // and handle the discard outside the shader, in the scanline function.
+      // The discard instruction is not used frequently, so it should be okay
+      // performance wise.
+      new llvm::UnwindInst(ctx, discard); /// Deprecated
 
       bb = after;
       bld.SetInsertPoint(bb);
