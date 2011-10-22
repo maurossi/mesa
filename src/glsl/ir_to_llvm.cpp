@@ -332,7 +332,7 @@ public:
       else if(ir_dereference_array* deref = ir->as_dereference_array())
       {
          llvm::Value* gep[2] = {llvm_int(0), llvm_value(deref->array_index)};
-         return bld.CreateInBoundsGEP(llvm_pointer(deref->array), gep, gep + 2);
+         return bld.CreateInBoundsGEP(llvm_pointer(deref->array), gep);
          }
       else if(ir->as_dereference())
       {
@@ -983,7 +983,13 @@ public:
       }
 
       bld.SetInsertPoint(discard);
-      bld.CreateUnwind();
+
+      // FIXME: According to the LLVM mailing list, UnwindInst should not
+      // be used by the frontend since LLVM 3.0, and 'CreateUnwind'
+      // method has been removed from the IRBuilder.  Here's the
+      // temporary workaround.  But it would be better to remove
+      // this in the future.
+      new llvm::UnwindInst(ctx, discard); /// XXX! Deprecated
 
       bb = after;
       bld.SetInsertPoint(bb);
