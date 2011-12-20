@@ -26,8 +26,8 @@
 #include "src/mesa/program/prog_uniform.h"
 #include "src/glsl/glsl_types.h"
 
-//#undef LOGD
-//#define LOGD(...)
+//#undef ALOGD
+//#define ALOGD(...)
 
 static inline void LerpVector4(const Vector4 * a, const Vector4 * b,
                                const VectorComp_t x, Vector4 * d) __attribute__((always_inline));
@@ -390,7 +390,7 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
    memset(vouts, 0, sizeof(vouts));
    VertexOutput * v1 = vouts + 0, * v2 = vouts + 1, * v3 = vouts + 2;
 
-//   LOGD("pf2: DrawTriangle");
+//   ALOGD("pf2: DrawTriangle");
 
 //   if (!strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source,
 //               "gl_FragColor = color * texture2D(sampler, outTexCoords).a;"))
@@ -398,25 +398,25 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
 
 //   for (unsigned i = 0; i < program->NumShaders; i++)
 //      if (program->Shaders[i]->Source)
-//         LOGD("%s", program->Shaders[i]->Source);
+//         ALOGD("%s", program->Shaders[i]->Source);
 
 //   if (!strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source, ").a;"))
 //      return;
 
-//   LOGD("%s", program->Shaders[MESA_SHADER_VERTEX]->Source);
-//   LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
+//   ALOGD("%s", program->Shaders[MESA_SHADER_VERTEX]->Source);
+//   ALOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
 
 //   for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
 //      const gl_program_parameter & attribute = program->Attributes->Parameters[i];
-//      LOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+//      ALOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
 //   }
 //   for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
 //      const gl_program_parameter & varying = program->Varying->Parameters[i];
-//      LOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+//      ALOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
 //   }
 //   for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++) {
 //      const gl_uniform & uniform = program->Uniforms->Uniforms[i];
-//      LOGD("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
+//      ALOGD("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
 //   }
 
 //   __attribute__ ((aligned (16)))
@@ -444,22 +444,22 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
 
 //   float * matrix = program->ValuesUniform[0];
 //   for (unsigned i = 0; i < 4; i++)
-//      LOGD("pf2: DrawTriangle %.2f \t %.2f \t %.2f \t %.2f \n", matrix[i * 4 + 0],
+//      ALOGD("pf2: DrawTriangle %.2f \t %.2f \t %.2f \t %.2f \n", matrix[i * 4 + 0],
 //           matrix[i * 4 + 1], matrix[i * 4 + 2], matrix[i * 4 + 3]);
-////   LOGD("color %.02f %.02f %.02f %.02f", program->ValuesUniform[4][0], program->ValuesUniform[4][1],
+////   ALOGD("color %.02f %.02f %.02f %.02f", program->ValuesUniform[4][0], program->ValuesUniform[4][1],
 ////        program->ValuesUniform[4][2], program->ValuesUniform[4][3]);
-//   LOGD("vin1 position %.02f %.02f %.02f %.02f", vin1->attributes[1].x, vin1->attributes[1].y,
+//   ALOGD("vin1 position %.02f %.02f %.02f %.02f", vin1->attributes[1].x, vin1->attributes[1].y,
 //        vin1->attributes[1].z, vin1->attributes[1].w);
-//   LOGD("vin2 position %.02f %.02f %.02f %.02f", vin2->attributes[1].x, vin2->attributes[1].y,
+//   ALOGD("vin2 position %.02f %.02f %.02f %.02f", vin2->attributes[1].x, vin2->attributes[1].y,
 //        vin2->attributes[1].z, vin2->attributes[1].w);
-//   LOGD("vin3 position %.02f %.02f %.02f %.02f", vin3->attributes[1].x, vin3->attributes[1].y,
+//   ALOGD("vin3 position %.02f %.02f %.02f %.02f", vin3->attributes[1].x, vin3->attributes[1].y,
 //        vin3->attributes[1].z, vin3->attributes[1].w);
 
 //   GGLProcessVertex(program, vin1, v1, (const float (*)[4])matrix);
 //   GGLProcessVertex(program, vin2, v2, (const float (*)[4])matrix);
 //   GGLProcessVertex(program, vin3, v3, (const float (*)[4])matrix);
 
-//   LOGD("pf2: DrawTriangle processed %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f",
+//   ALOGD("pf2: DrawTriangle processed %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f",
 //        v1->position.x, v1->position.y, v1->position.z, v1->position.w,
 //        v2->position.x, v2->position.y, v2->position.z, v2->position.w,
 //        v3->position.x, v3->position.y, v3->position.z, v3->position.w);
@@ -468,7 +468,7 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
    v2->position /= v2->position.w;
    v3->position /= v3->position.w;
 
-//   LOGD("pf2: DrawTriangle divided %.02f,%.02f \t %.02f,%.02f \t %.02f,%.02f", v1->position.x, v1->position.y,
+//   ALOGD("pf2: DrawTriangle divided %.02f,%.02f \t %.02f,%.02f \t %.02f,%.02f", v1->position.x, v1->position.y,
 //      v2->position.x, v2->position.y, v3->position.x, v3->position.y);
 
    iface->ViewportTransform(iface, &v1->position);
@@ -477,7 +477,7 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
 
 //   if (strstr(program->Shaders[MESA_SHADER_FRAGMENT]->Source,
 //              "gl_FragColor = color * texture2D(sampler, outTexCoords).a;")) {
-////      LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
+////      ALOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
 //      v1->position = vin1->attributes[0];
 //      v2->position = vin2->attributes[0];
 //      v3->position = vin3->attributes[0];
@@ -487,10 +487,10 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
 //      v3->varyings[0] = vin3->attributes[1];
 //   }
 
-//   LOGD("pf2: DrawTriangle transformed %.0f,%.0f \t %.0f,%.0f \t %.0f,%.0f", v1->position.x, v1->position.y,
+//   ALOGD("pf2: DrawTriangle transformed %.0f,%.0f \t %.0f,%.0f \t %.0f,%.0f", v1->position.x, v1->position.y,
 //        v2->position.x, v2->position.y, v3->position.x, v3->position.y);
 
-//   LOGD("pf2: DrawTriangle varying %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f",
+//   ALOGD("pf2: DrawTriangle varying %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f \t %.02f %.02f %.2f %.2f",
 //        v1->varyings[0].x, v1->varyings[0].y, v1->varyings[0].z, v1->varyings[0].w,
 //        v2->varyings[0].x, v2->varyings[0].y, v2->varyings[0].z, v2->varyings[0].w,
 //        v3->varyings[0].x, v3->varyings[0].y, v3->varyings[0].z, v3->varyings[0].w);
@@ -554,7 +554,7 @@ static void DrawTriangle(const GGLInterface * iface, const VertexInput * vin1,
    // TODO DXL view frustum clipping
    iface->RasterTriangle(iface, v1, v2, v3);
 
-//   LOGD("pf2: DrawTriangle end");
+//   ALOGD("pf2: DrawTriangle end");
 
 }
 

@@ -195,7 +195,7 @@ static void SetBuffer(GGLInterface * iface, const GLenum type, GGLSurface * surf
             break;
          case GGL_PIXEL_FORMAT_RGBX_8888:
          default:
-            LOGD("pf2: SetBuffer 0x%.04X format=0x%.02X \n", type, surface ? surface->format : 0);
+            ALOGD("pf2: SetBuffer 0x%.04X format=0x%.02X \n", type, surface ? surface->format : 0);
             assert(0);
          }
       } else {

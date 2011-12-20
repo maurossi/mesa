@@ -192,7 +192,7 @@ void GGLScanLine(const gl_shader_program * program, const GGLPixelFormat colorFo
    assert(!"only for USE_LLVM_SCANLINE");
 #endif
 
-//   LOGD("pf2: GGLScanLine program=%p format=0x%.2X frameBuffer=%p depthBuffer=%p stencilBuffer=%p ",
+//   ALOGD("pf2: GGLScanLine program=%p format=0x%.2X frameBuffer=%p depthBuffer=%p stencilBuffer=%p ",
 //      program, colorFormat, frameBuffer, depthBuffer, stencilBuffer);
 
    const unsigned int varyingCount = program->VaryingSlots;
@@ -234,11 +234,11 @@ void GGLScanLine(const gl_shader_program * program, const GGLPixelFormat colorFo
    // TODO DXL consider inverting gl_FragCoord.y
    ScanLineFunction_t scanLineFunction = (ScanLineFunction_t)
                                          program->_LinkedShaders[MESA_SHADER_FRAGMENT]->function;
-//   LOGD("pf2 GGLScanLine scanline=%p start=%p constants=%p", scanLineFunction, &vertex, constants);
+//   ALOGD("pf2 GGLScanLine scanline=%p start=%p constants=%p", scanLineFunction, &vertex, constants);
    if (endX >= startX)
       scanLineFunction(&vertex, &vertexDx, constants, frame, depth, stencil, activeStencil, endX - startX + 1);
 
-//   LOGD("pf2: GGLScanLine end");
+//   ALOGD("pf2: GGLScanLine end");
 
 }
 

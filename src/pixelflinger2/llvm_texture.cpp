@@ -96,7 +96,7 @@ static Value * pointSample(IRBuilder<> & builder, Value * textureData, Value * i
       break;
    }
    case GGL_PIXEL_FORMAT_UNKNOWN: // usually means texture not set yet
-      LOGD("pf2: pointSample: unknown format, default to 0xffff00ff \n");
+      ALOGD("pf2: pointSample: unknown format, default to 0xffff00ff \n");
       texel = builder.getInt32(0xffff00ff);
       break;
    default:

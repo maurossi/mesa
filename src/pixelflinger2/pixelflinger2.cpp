@@ -25,7 +25,7 @@ void gglError(unsigned error)
    std::string str;
    if (GL_NO_ERROR == error)
       return;
-   LOGD("\n*\n*\n pf2: gglError 0x%.4X \n*\n*\n", error);
+   ALOGD("\n*\n*\n pf2: gglError 0x%.4X \n*\n*\n", error);
    assert(0);
 }
 
@@ -165,16 +165,16 @@ static void EnableDisable(GGLInterface * iface, GLenum cap, GLboolean enable)
       ctx->state.bufferState.stencilTest = enable;
       break;
    case GL_DITHER:
-//      LOGD("pf2: EnableDisable GL_DITHER \n");
+//      ALOGD("pf2: EnableDisable GL_DITHER \n");
       break;
    case GL_SCISSOR_TEST:
-//      LOGD("pf2: EnableDisable GL_SCISSOR_TEST \n");
+//      ALOGD("pf2: EnableDisable GL_SCISSOR_TEST \n");
       break;
    case GL_TEXTURE_2D:
-//      LOGD("pf2: EnableDisable GL_SCISSOR_TEST %d", enable);
+//      ALOGD("pf2: EnableDisable GL_SCISSOR_TEST %d", enable);
       break;
    default:
-      LOGD("pf2: EnableDisable 0x%.4X causes GL_INVALID_ENUM (maybe not implemented or ES 1.0) \n", cap);
+      ALOGD("pf2: EnableDisable 0x%.4X causes GL_INVALID_ENUM (maybe not implemented or ES 1.0) \n", cap);
 //      gglError(GL_INVALID_ENUM);
       assert(0);
       break;

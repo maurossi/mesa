@@ -21,8 +21,8 @@
 
 #include <llvm/Module.h>
 
-//#undef LOGD
-//#define LOGD(...)
+//#undef ALOGD
+//#define ALOGD(...)
 
 using namespace llvm;
 
@@ -251,7 +251,7 @@ static Value * ScreenColorToIntVector(IRBuilder<> & builder, const GGLPixelForma
       dst = builder.CreateShl(dst, constIntVec(builder, 0, 0, 3, 0));
       dst = builder.CreateOr(dst, constIntVec(builder, 0, 0, 0, 0xff));
    } else if (GGL_PIXEL_FORMAT_UNKNOWN == format)
-      LOGD("pf2: ScreenColorToIntVector GGL_PIXEL_FORMAT_UNKNOWN"); // not set yet, do nothing
+      ALOGD("pf2: ScreenColorToIntVector GGL_PIXEL_FORMAT_UNKNOWN"); // not set yet, do nothing
    else
       assert(0);
    return dst;

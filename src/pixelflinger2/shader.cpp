@@ -34,8 +34,8 @@
 #include "src/glsl/ir_to_llvm.h"
 #include "src/glsl/ir_print_visitor.h"
 
-//#undef LOGD
-//#define LOGD(...)
+//#undef ALOGD
+//#define ALOGD(...)
 
 static void InitializeGLContext(struct gl_context *ctx)
 {
@@ -157,7 +157,7 @@ void GGLShaderSource(gl_shader_t * shader, GLsizei count, const char ** string, 
          len = length[i];
       shader->Source = hieralloc_strndup_append(const_cast<GLchar *>(shader->Source), string[i], len);
    }
-//   LOGD("pf2: GGLShaderSource: \n '%s' \n", shader->Source);
+//   ALOGD("pf2: GGLShaderSource: \n '%s' \n", shader->Source);
 }
 
 GLboolean GGLShaderCompile(gl_shader * shader, const char * glsl, const char ** infoLog)
@@ -261,18 +261,18 @@ GLboolean GGLShaderProgramLink(gl_shader_program * program, const char ** infoLo
       *infoLog = program->InfoLog;
    if (!program->LinkStatus)
       return program->LinkStatus;
-   LOGD("slots: attribute=%d varying=%d uniforms=%d \n", program->AttributeSlots, program->VaryingSlots, program->Uniforms->Slots);
+   ALOGD("slots: attribute=%d varying=%d uniforms=%d \n", program->AttributeSlots, program->VaryingSlots, program->Uniforms->Slots);
 //   for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
 //      const gl_program_parameter & attribute = program->Attributes->Parameters[i];
-//      LOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+//      ALOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
 //   }
 //   for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
 //      const gl_program_parameter & varying = program->Varying->Parameters[i];
-//      LOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+//      ALOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
 //   }
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++) {
       const gl_uniform & uniform = program->Uniforms->Uniforms[i];
-      LOGD("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
+      ALOGD("uniform '%s': location=%d type=%s \n", uniform.Name, uniform.Pos, uniform.Type->name);
    }
    return program->LinkStatus;
 }
@@ -374,7 +374,7 @@ static void* SymbolLookup(void* pContext, const char* name)
          symbol = (void *)gglCtx->textureState.textureDimensions;
       else // attributes, varyings and uniforms are mapped to locations in pointers
       {
-         LOGD("pf2: SymbolLookup unknown symbol: '%s'", name);
+         ALOGD("pf2: SymbolLookup unknown symbol: '%s'", name);
          assert(0);
       }
    }
@@ -401,7 +401,7 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
 
    result = bccGetError(script);
    if (result != 0) {
-      LOGD("failed bcc_compile");
+      ALOGD("failed bcc_compile");
       assert(0);
       return;
    }
@@ -410,7 +410,7 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
    assert(instance->function);
    result = bccGetError(script);
    if (result != BCC_NO_ERROR)
-      LOGD("Could not find '%s': %d\n", mainName, result);
+      ALOGD("Could not find '%s': %d\n", mainName, result);
 //   else
 //      printf("bcc_compile %s=%p \n", mainName, instance->function);
 
@@ -422,7 +422,7 @@ void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program
 
 void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program * program)
 {
-//   LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
+//   ALOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (!program->_LinkedShaders[i])
          continue;
@@ -464,7 +464,7 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
 //         while (!feof(file)) {
 //            fgets(str, sizeof(str) - 1, file);
 //            str[sizeof(str) - 1] = 0;
-//            LOGD("%s", str);
+//            ALOGD("%s", str);
 //         }
 //         fclose(file);
 //#endif
@@ -484,13 +484,13 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
 //            if (i == MESA_SHADER_VERTEX) {
 //               for (unsigned i = 0; i < program->Attributes->NumParameters; i++) {
 //                  const gl_program_parameter & attribute = program->Attributes->Parameters[i];
-//                  LOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
+//                  ALOGD("attribute '%s': location=%d slots=%d \n", attribute.Name, attribute.Location, attribute.Slots);
 //               }
 //               for (unsigned i = 0; i < program->Varying->NumParameters; i++) {
 //                  const gl_program_parameter & varying = program->Varying->Parameters[i];
-//                  LOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
+//                  ALOGD("varying '%s': vs_location=%d fs_location=%d \n", varying.Name, varying.BindLocation, varying.Location);
 //               }
-//               LOGD("%s", program->Shaders[MESA_SHADER_VERTEX]->Source);
+//               ALOGD("%s", program->Shaders[MESA_SHADER_VERTEX]->Source);
 //               module->dump();
 //            }
 //         }
@@ -509,7 +509,7 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
 //         while (!feof(file)) {
 //            fgets(str, sizeof(str) - 1, file);
 //            str[sizeof(str) - 1] = 0;
-//            LOGD("%s", str);
+//            ALOGD("%s", str);
 //         }
 //         fclose(file);
 //#endif
@@ -753,16 +753,16 @@ void GGLShaderUniformGetiv(gl_shader_program * program, GLint location, GLint * 
 void GGLShaderUniformGetSamplers(const gl_shader_program_t * program,
                                  int sampler2tmu[GGL_MAXCOMBINEDTEXTUREIMAGEUNITS])
 {
-//   LOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
+//   ALOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
 //   for (unsigned i = 0; i < program->Uniforms->Slots + program->Uniforms->SamplerSlots; i++)
-//      LOGD("%d: %.2f \t %.2f \t %.2f \t %.2f", i, program->ValuesUniform[i][0], program->ValuesUniform[i][1],
+//      ALOGD("%d: %.2f \t %.2f \t %.2f \t %.2f", i, program->ValuesUniform[i][0], program->ValuesUniform[i][1],
 //           program->ValuesUniform[i][2], program->ValuesUniform[i][3]);
    for (unsigned i = 0; i < GGL_MAXCOMBINEDTEXTUREIMAGEUNITS; i++)
       sampler2tmu[i] = -1;
    for (unsigned i = 0; i < program->Uniforms->NumUniforms; i++) {
       const gl_uniform & uniform = program->Uniforms->Uniforms[i];
       if (uniform.Type->is_sampler()) {
-//         LOGD("%d uniform.Pos=%d tmu=%d", program->Uniforms->Slots, uniform.Pos, (int)program->ValuesUniform[program->Uniforms->Slots + uniform.Pos][0]);
+//         ALOGD("%d uniform.Pos=%d tmu=%d", program->Uniforms->Slots, uniform.Pos, (int)program->ValuesUniform[program->Uniforms->Slots + uniform.Pos][0]);
          sampler2tmu[uniform.Pos] = program->ValuesUniform[program->Uniforms->Slots + uniform.Pos][0];
       } else if (uniform.Type->is_array() && uniform.Type->fields.array->is_sampler())
          assert(0);
@@ -772,7 +772,7 @@ void GGLShaderUniformGetSamplers(const gl_shader_program_t * program,
 GLint GGLShaderUniform(gl_shader_program * program, GLint location, GLsizei count,
                        const GLvoid *values, GLenum type)
 {
-//   LOGD("pf2: GGLShaderUniform location=%d count=%d type=0x%.4X", location, count, type);
+//   ALOGD("pf2: GGLShaderUniform location=%d count=%d type=0x%.4X", location, count, type);
    // TODO: sampler uniform and type checking
    if (!program) {
       //gglError(GL_INVALID_OPERATION);
@@ -823,14 +823,14 @@ GLint GGLShaderUniform(gl_shader_program * program, GLint location, GLsizei coun
    default:
       assert(0);
    }
-//   LOGD("pf2: GGLShaderUniform start=%d slots=%d elems=%d", start, slots, elems);
+//   ALOGD("pf2: GGLShaderUniform start=%d slots=%d elems=%d", start, slots, elems);
    if (0 > start)
       assert(0);
    if (start + slots > program->Uniforms->Slots)
       assert(0);
    for (int i = 0; i < slots; i++)
       memcpy(program->ValuesUniform + start + i, values, elems * sizeof(float));
-//   LOGD("pf2: GGLShaderUniform copied");
+//   ALOGD("pf2: GGLShaderUniform copied");
    return -2;
 }
 
@@ -856,10 +856,10 @@ void GGLShaderUniformMatrix(gl_shader_program * program, GLint cols, GLint rows,
 //               "gl_FragColor = color * texture2D(sampler, outTexCoords).a;"))
 //      return;
 //
-//   LOGD("pf2: GGLShaderUniformMatrix location=%d cols=%d count=%d", location, cols, count);
+//   ALOGD("pf2: GGLShaderUniformMatrix location=%d cols=%d count=%d", location, cols, count);
 //
 //   for (unsigned i = 0; i < 4; i++)
-//      LOGD("pf2: GGLShaderUniformMatrix %.2f \t %.2f \t %.2f \t %.2f \n", values[i * 4 + 0],
+//      ALOGD("pf2: GGLShaderUniformMatrix %.2f \t %.2f \t %.2f \t %.2f \n", values[i * 4 + 0],
 //           values[i * 4 + 1], values[i * 4 + 2], values[i * 4 + 3]);
 
 }
