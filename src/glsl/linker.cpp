@@ -63,6 +63,7 @@
  *
  * \author Ian Romanick <ian.d.romanick@intel.com>
  */
+#include <cstddef>
 #include <cstdlib>
 #include <cstdio>
 #include <cstdarg>
@@ -107,6 +108,7 @@ public:
       return visit_continue_with_parent;
    }
 
+   using ir_hierarchical_visitor::visit_enter;
    virtual ir_visitor_status visit_enter(ir_call *ir)
    {
       exec_list_iterator sig_iter = ir->get_callee()->parameters.iterator();
@@ -150,6 +152,7 @@ public:
       /* empty */
    }
 
+   using ir_hierarchical_visitor::visit;
    virtual ir_visitor_status visit(ir_dereference_variable *ir)
    {
       if (strcmp(this->name, ir->var->name) == 0) {
@@ -620,6 +623,7 @@ remap_variables(ir_instruction *inst, struct gl_shader *target,
 	 this->temps = temps;
       }
 
+      using ir_hierarchical_visitor::visit;
       virtual ir_visitor_status visit(ir_dereference_variable *ir)
       {
 	 if (ir->var->mode == ir_var_temporary) {

@@ -69,6 +69,7 @@ public:
  */
 class ir_control_flow_visitor : public ir_visitor {
 public:
+   using ir_visitor::visit;
    virtual void visit(class ir_variable *) {}
    virtual void visit(class ir_expression *) {}
    virtual void visit(class ir_texture *) {}

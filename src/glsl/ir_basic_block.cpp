@@ -39,6 +39,7 @@ public:
       has_call = false;
    }
 
+   using ir_hierarchical_visitor::visit_enter;
    virtual ir_visitor_status visit_enter(ir_call *ir)
    {
       (void) ir;
