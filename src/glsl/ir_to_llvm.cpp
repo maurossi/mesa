@@ -995,7 +995,7 @@ public:
       // and handle the discard outside the shader, in the scanline function.
       // The discard instruction is not used frequently, so it should be okay
       // performance wise.
-      new llvm::UnwindInst(ctx, discard); /// Deprecated
+      //new llvm::UnwindInst(ctx, discard); /// Deprecated
 
       bb = after;
       bld.SetInsertPoint(bb);
