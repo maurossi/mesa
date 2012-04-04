@@ -26,7 +26,7 @@ endif
 LOCAL_MODULE := mesa
 LOCAL_SRC_FILES := $(mesa_SRC_FILES)
 LOCAL_STATIC_LIBRARIES := libMesa
-LOCAL_SHARED_LIBRARIES := libbcc
+LOCAL_SHARED_LIBRARIES := libbcc libbcinfo
 LOCAL_C_INCLUDES := $(mesa_C_INCLUDES)
 LOCAL_LDLIBS := -lpthread -ldl
 
@@ -46,7 +46,7 @@ endif
 LOCAL_MODULE := mesa
 LOCAL_SRC_FILES := $(mesa_SRC_FILES)
 LOCAL_STATIC_LIBRARIES := libMesa
-LOCAL_SHARED_LIBRARIES := libstlport libcutils libutils libhardware libgui libbcc libdl
+LOCAL_SHARED_LIBRARIES := libstlport libcutils libutils libhardware libgui libbcc libbcinfo libdl
 LOCAL_C_INCLUDES := $(mesa_C_INCLUDES)
 
 include $(LLVM_ROOT_PATH)/llvm-device-build.mk
