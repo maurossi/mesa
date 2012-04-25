@@ -22,8 +22,17 @@
 
 #include <llvm/LLVMContext.h>
 #include <llvm/Module.h>
-#include <bcc/bcc.h>
+#include <llvm/Support/raw_ostream.h>
 #include <dlfcn.h>
+
+#include <bcc/BCCContext.h>
+#include <bcc/Compiler.h>
+#include <bcc/ExecutionEngine/ObjectLoader.h>
+#include <bcc/ExecutionEngine/SymbolResolvers.h>
+#include <bcc/Script.h>
+#include <bcc/Source.h>
+#include <bcc/Support/Initialization.h>
+#include <bcc/Support/TargetCompilerConfigs.h>
 
 
 #include "src/talloc/hieralloc.h"
@@ -107,15 +116,13 @@ struct ShaderKey {
 };
 
 struct Instance {
-   llvm::Module * module;
-   struct BCCOpaqueScript * script;
+   bcc::Script * script;
+   llvm::SmallVector<char, 1024> resultObj;
+   bcc::ObjectLoader * exec;
    void (* function)();
    ~Instance() {
-      // TODO: check bccDisposeScript, which seems to dispose llvm::Module
-      if (script)
-         bccDisposeScript(script);
-      else if (module)
-         delete module;
+      delete script;
+      delete exec;
    }
 };
 
@@ -386,31 +393,45 @@ static void* SymbolLookup(void* pContext, const char* name)
 static void CodeGen(Instance * instance, const char * mainName, gl_shader * shader,
                     gl_shader_program * program, const GGLState * gglCtx)
 {
-   SymbolLookupContext ctx = {gglCtx, program, shader};
-   int result = 0;
+   bcc::Compiler compiler;
+   bcc::Compiler::ErrorCode compile_result;
+   llvm::raw_svector_ostream out(instance->resultObj);
 
 //   instance->module->dump();
 
-   BCCScriptRef & script = instance->script;
-   script = bccCreateScript();
-   result = bccReadModule(script, "glsl", (LLVMModuleRef)instance->module, 0);
-   assert(0 == result);
-   result = bccRegisterSymbolCallback(script, SymbolLookup, &ctx);
-   assert(0 == result);
-   result = bccPrepareExecutable(script, NULL, NULL, 0);
-
-   result = bccGetError(script);
-   if (result != 0) {
-      ALOGD("failed bcc_compile");
+   compile_result = compiler.config(bcc::DefaultCompilerConfig());
+   if (compile_result != bcc::Compiler::kSuccess) {
+      ALOGD("failed config compiler (%s)", bcc::Compiler::GetErrorString(compile_result));
       assert(0);
       return;
    }
 
-   instance->function = (void (*)())bccGetFuncAddr(script, mainName);
+   compiler.enableLTO(/* pEnable */false); // Disable LTO passes execution.
+
+   compile_result = compiler.compile(*instance->script, out);
+   if (compile_result != bcc::Compiler::kSuccess) {
+      ALOGD("failed to compile (%s)", bcc::Compiler::GetErrorString(compile_result));
+      assert(0);
+      return;
+   }
+
+   SymbolLookupContext ctx = {gglCtx, program, shader};
+   bcc::LookupFunctionSymbolResolver<void*> resolver(SymbolLookup, &ctx);
+
+   instance->exec = bcc::ObjectLoader::Load(instance->resultObj.begin(), instance->resultObj.size(),
+                                            /* pName */"glsl", resolver, /* pEnableGDBDebug */false);
+
+   if (!instance->exec) {
+      ALOGD("failed to load the result object");
+      assert(0);
+      return;
+   }
+
+   instance->function = reinterpret_cast<void (*)()>(instance->exec->getSymbolAddress(mainName));
    assert(instance->function);
-   result = bccGetError(script);
-   if (result != BCC_NO_ERROR)
-      ALOGD("Could not find '%s': %d\n", mainName, result);
+   if (!instance->function) {
+      ALOGD("Could not find '%s'\n", mainName);
+   }
 //   else
 //      printf("bcc_compile %s=%p \n", mainName, instance->function);
 
@@ -420,7 +441,7 @@ static void CodeGen(Instance * instance, const char * mainName, gl_shader * shad
 void GenerateScanLine(const GGLState * gglCtx, const gl_shader_program * program, llvm::Module * mod,
                       const char * shaderName, const char * scanlineName);
 
-void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program * program)
+void GGLShaderUse(void * bccCtx, const GGLState * gglState, gl_shader_program * program)
 {
 //   ALOGD("%s", program->Shaders[MESA_SHADER_FRAGMENT]->Source);
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
@@ -436,10 +457,12 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
       ShaderKey shaderKey;
       GetShaderKey(gglState, shader, &shaderKey);
       Instance * instance = shader->executable->instances[shaderKey];
+      bcc::BCCContext * compilerCtx = reinterpret_cast<bcc::BCCContext *>(bccCtx);
       if (!instance) {
 //         puts("begin jit new shader");
          instance = hieralloc_zero(shader->executable, Instance);
-         instance->module = new llvm::Module("glsl", *(llvm::LLVMContext *)llvmCtx);
+
+         llvm::Module * module = new llvm::Module("glsl", compilerCtx->getLLVMContext());
 
          char shaderName [SHADER_KEY_STRING_LEN] = {0};
          GetShaderKeyString(shader->Type, &shaderKey, shaderName, sizeof shaderName / sizeof *shaderName);
@@ -468,9 +491,20 @@ void GGLShaderUse(void * llvmCtx, const GGLState * gglState, gl_shader_program *
 //         }
 //         fclose(file);
 //#endif
-         llvm::Module * module = glsl_ir_to_llvm_module(shader->ir, instance->module, gglState, shaderName);
-         if (!module)
+         if (!glsl_ir_to_llvm_module(shader->ir, module, gglState, shaderName)) {
             assert(0);
+            delete module;
+         }
+         bcc::Source * source = bcc::Source::CreateFromModule(*compilerCtx, *module);
+         if (!source) {
+            delete module;
+            assert(0);
+         }
+         instance->script = new bcc::Script(*source);
+         if (!instance->script) {
+            delete source;
+            assert(0);
+         }
 //#ifdef __arm__
 //         static const char fileName[] = "/data/pf2.txt";
 //         FILE * file = freopen(fileName, "w", stderr);
@@ -547,7 +581,7 @@ static void ShaderUse(GGLInterface * iface, gl_shader_program * program)
       return;
    }
 
-   GGLShaderUse(ctx->llvmCtx, &ctx->state, program);
+   GGLShaderUse(ctx->bccCtx, &ctx->state, program);
    for (unsigned i = 0; i < MESA_SHADER_TYPES; i++) {
       if (!program->_LinkedShaders[i])
          continue;
@@ -933,7 +967,9 @@ void SetShaderVerifyFunctions(struct GGLInterface * iface)
 void InitializeShaderFunctions(struct GGLInterface * iface)
 {
    GGL_GET_CONTEXT(ctx, iface);
-   ctx->llvmCtx = new llvm::LLVMContext();
+   bcc::init::Initialize();
+
+   ctx->bccCtx = new bcc::BCCContext();
 
    iface->ShaderCreate = ShaderCreate;
    iface->ShaderSource = GGLShaderSource;
@@ -965,6 +1001,6 @@ void DestroyShaderFunctions(GGLInterface * iface)
    GGL_GET_CONTEXT(ctx, iface);
    _mesa_glsl_release_types();
    _mesa_glsl_release_functions();
-   delete ctx->llvmCtx;
-   ctx->llvmCtx = NULL;
+   delete ctx->bccCtx;
+   ctx->bccCtx = NULL;
 }

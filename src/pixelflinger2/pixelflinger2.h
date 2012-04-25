@@ -62,9 +62,9 @@
 #  define MAX2(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
-namespace llvm
+namespace bcc
 {
-class LLVMContext;
+class BCCContext;
 };
 
 #if !USE_LLVM_SCANLINE
@@ -88,7 +88,7 @@ struct GGLContext {
    GGLSurface depthSurface;
    GGLSurface stencilSurface;
 
-   llvm::LLVMContext * llvmCtx;
+   bcc::BCCContext * bccCtx;
 
    struct {
       int depth; // assuming ieee 754 32 bit float and 32 bit 2's complement int; z_32
