@@ -7,7 +7,8 @@ USE_LLVM_EXECUTIONENGINE := false
 DEBUG_BUILD := false
 
 LOCAL_PATH := $(call my-dir)
-LLVM_ROOT_PATH := external/llvm
+LIBBCC_ROOT_PATH := frameworks/compile/libbcc
+include $(LIBBCC_ROOT_PATH)/libbcc.mk
 
 # These are for using llvm::ExecutionEngine, also remove libbcc
 # libLLVMX86CodeGen;libLLVMX86Info;libLLVMBitReader;libLLVMSelectionDAG;libLLVMAsmPrinter;libLLVMJIT;libLLVMCodeGen;libLLVMTarget;libLLVMMC;libLLVMScalarOpts;libLLVMipo;libLLVMTransformUtils;libLLVMCore;libLLVMSupport;libLLVMSystem;libLLVMAnalysis;libLLVMInstCombine;libLLVMipa;libLLVMMCParser;libLLVMExecutionEngine;
@@ -121,7 +122,7 @@ libMesa_C_INCLUDES := \
     $(LOCAL_PATH)/src/talloc \
     $(LOCAL_PATH)/src/mapi   \
     $(LOCAL_PATH)/include    \
-    frameworks/compile/libbcc/include
+    $(LIBBCC_ROOT_PATH)/include
 
 # Static library for host
 # ========================================================
@@ -136,6 +137,8 @@ LOCAL_CFLAGS += -O3
 endif
 
 LOCAL_MODULE := libMesa
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+LOCAL_IS_HOST_MODULE := true
 LOCAL_SRC_FILES := $(libMesa_SRC_FILES)
 
 ifeq ($(USE_LLVM_EXECUTIONENGINE),true)
@@ -148,7 +151,8 @@ endif
 
 LOCAL_C_INCLUDES := $(libMesa_C_INCLUDES)
 
-include $(LLVM_ROOT_PATH)/llvm-host-build.mk
+include $(LIBBCC_GEN_CONFIG_MK)
+include $(LLVM_HOST_BUILD_MK)
 include $(BUILD_HOST_STATIC_LIBRARY)
 
 
@@ -165,6 +169,7 @@ LOCAL_CFLAGS += -O3
 endif
 
 LOCAL_MODULE := libMesa
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_SRC_FILES := $(libMesa_SRC_FILES)
 LOCAL_SHARED_LIBRARIES := libstlport libcutils libdl libutils
 
@@ -179,7 +184,8 @@ endif
 
 LOCAL_C_INCLUDES := $(libMesa_C_INCLUDES)
 
-include $(LLVM_ROOT_PATH)/llvm-device-build.mk
+include $(LIBBCC_GEN_CONFIG_MK)
+include $(LLVM_DEVICE_BUILD_MK)
 include $(BUILD_STATIC_LIBRARY)
 
 # glsl_compiler for host
@@ -193,6 +199,7 @@ LOCAL_CFLAGS += -DDEBUG -UNDEBUG -O0 -g
 endif
 
 LOCAL_MODULE := glsl_compiler
+LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_SRC_FILES := src/glsl/glsl_compiler.cpp
 LOCAL_C_INCLUDES := $(libMesa_C_INCLUDES)
 LOCAL_STATIC_LIBRARIES := libMesa
