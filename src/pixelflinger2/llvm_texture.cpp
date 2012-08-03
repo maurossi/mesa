@@ -19,7 +19,7 @@
 
 #include "src/pixelflinger2/pixelflinger2.h"
 
-#include <llvm/Support/IRBuilder.h>
+#include <llvm/IRBuilder.h>
 #include <llvm/Module.h>
 
 #include "src/pixelflinger2/llvm_helper.h"
