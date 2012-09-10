@@ -114,6 +114,7 @@ intel_init_texture_formats(struct gl_context *ctx)
    ctx->TextureFormatSupported[MESA_FORMAT_B4G4R4A4_UNORM] = true;
    ctx->TextureFormatSupported[MESA_FORMAT_B5G5R5A1_UNORM] = true;
    ctx->TextureFormatSupported[MESA_FORMAT_B5G6R5_UNORM] = true;
+   ctx->TextureFormatSupported[MESA_FORMAT_R8G8B8X8_UNORM] = true;
    ctx->TextureFormatSupported[MESA_FORMAT_L_UNORM8] = true;
    if (intel->gen == 3)
       ctx->TextureFormatSupported[MESA_FORMAT_A_UNORM8] = true;
