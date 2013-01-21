@@ -19,8 +19,8 @@
 
 #include "src/pixelflinger2/pixelflinger2.h"
 
-#include <llvm/IRBuilder.h>
-#include <llvm/Module.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/Module.h>
 
 #include "src/pixelflinger2/llvm_helper.h"
 

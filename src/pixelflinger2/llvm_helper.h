@@ -20,7 +20,7 @@
 
 #include <stack>
 #include <stdio.h>
-#include <llvm/IRBuilder.h>
+#include <llvm/IR/IRBuilder.h>
 
 using namespace llvm;
 

@@ -19,7 +19,7 @@
 #include "src/pixelflinger2/llvm_helper.h"
 #include "src/mesa/main/mtypes.h"
 
-#include <llvm/Module.h>
+#include <llvm/IR/Module.h>
 
 //#undef ALOGD
 //#define ALOGD(...)
