@@ -372,6 +372,17 @@ intel_draw_quad(struct intel_context *intel,
    GLuint *vb = intel_get_prim_space(intel, 6);
    int j;
 
+   /* hardware handles provoking vertex so undo t_vb_rendertmp.h's handywork */
+   if (intel->ctx.Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION) {
+      intelVertexPtr _v0;
+
+      _v0 = v0;
+      v0 = v3;
+      v3 = v2;
+      v2 = v1;
+      v1 = _v0;
+   }
+
    COPY_DWORDS(j, vb, vertsize, v0);
    COPY_DWORDS(j, vb, vertsize, v1);
 
@@ -379,7 +390,8 @@ intel_draw_quad(struct intel_context *intel,
     * rasterization.  Otherwise draw as two triangles with provoking
     * vertex in third position as required for flat shading.
     */
-   if (intel->ctx.Light.ShadeModel == GL_FLAT) {
+   if (intel->ctx.Light.ShadeModel == GL_FLAT &&
+       intel->ctx.Light.ProvokingVertex == GL_LAST_VERTEX_CONVENTION) {
       COPY_DWORDS(j, vb, vertsize, v3);
       COPY_DWORDS(j, vb, vertsize, v1);
    }
@@ -400,6 +412,16 @@ intel_draw_triangle(struct intel_context *intel,
    GLuint *vb = intel_get_prim_space(intel, 3);
    int j;
 
+  /* hardware handles provoking vertex so undo t_vb_rendertmp.h's handywork */
+   if (intel->ctx.Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION) {
+      intelVertexPtr _v0;
+
+      _v0 = v0;
+      v0 = v2;
+      v2 = v1;
+      v1 = _v0;
+   }
+
    COPY_DWORDS(j, vb, vertsize, v0);
    COPY_DWORDS(j, vb, vertsize, v1);
    COPY_DWORDS(j, vb, vertsize, v2);
@@ -413,6 +435,15 @@ intel_draw_line(struct intel_context *intel,
    GLuint vertsize = intel->vertex_size;
    GLuint *vb = intel_get_prim_space(intel, 2);
    int j;
+
+   /* hardware handles provoking vertex so undo t_vb_rendertmp.h's handywork */
+   if (intel->ctx.Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION) {
+      intelVertexPtr _v0;
+
+      _v0 = v0;
+      v0 = v1;
+      v1 = _v0;
+   }
 
    COPY_DWORDS(j, vb, vertsize, v0);
    COPY_DWORDS(j, vb, vertsize, v1);
