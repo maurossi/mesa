@@ -511,7 +511,9 @@ static void TAG(render_quads_verts)( struct gl_context *ctx,
          currentsz = dmasz;
       }
    }
-   else if (HAVE_TRIANGLES) {
+   else if (HAVE_TRIANGLES &&
+	    (ctx->Light.ShadeModel == GL_SMOOTH ||
+	     ctx->Light.ProvokingVertex == GL_LAST_VERTEX_CONVENTION_EXT)) {
       /* Hardware doesn't have a quad primitive type -- try to
        * simulate it using triangle primitive.  This is a win for
        * gears, but is it useful in the broader world?
@@ -993,7 +995,9 @@ static void TAG(render_quads_elts)( struct gl_context *ctx,
 	 FLUSH();
 	 currentsz = dmasz;
       }
-   } else {
+   } else if (HAVE_TRIANGLES &&
+	      (ctx->Light.ShadeModel == GL_SMOOTH ||
+	       ctx->Light.ProvokingVertex == GL_LAST_VERTEX_CONVENTION_EXT)) {
       LOCAL_VARS;
       GLuint *elts = TNL_CONTEXT(ctx)->vb.Elts;
       int dmasz = GET_SUBSEQUENT_VB_MAX_ELTS();
@@ -1131,7 +1135,9 @@ static GLboolean TAG(validate_render)( struct gl_context *ctx,
 	 if (HAVE_QUADS) {
 	    ok = GL_TRUE;
 	 } else {
-	    ok = HAVE_TRIANGLES; /* flatshading is ok. */
+	    ok = (HAVE_TRIANGLES &&
+		  (ctx->Light.ShadeModel == GL_SMOOTH ||
+		   ctx->Light.ProvokingVertex == GL_LAST_VERTEX_CONVENTION_EXT));
 	 }
 	 break;
       default:
