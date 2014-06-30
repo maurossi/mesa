@@ -36,7 +36,7 @@
  * Produces code for both inline triangles and indexed triangles.
  * Where various primitive types are unaccelerated by hardware, the
  * code attempts to fallback to other primitive types (quadstrips to
- * tristrips, lineloops to linestrips), or to indexed vertices.
+ * tristrips, lineloops to linestrips).
  */
 
 #if !defined(HAVE_TRIANGLES)
@@ -444,65 +444,6 @@ static void TAG(render_quad_strip_verts)( struct gl_context *ctx,
       }
 
       FLUSH();
-
-   } else if (HAVE_TRI_STRIPS && 
-	      ctx->Light.ShadeModel == GL_FLAT &&
-	      TNL_CONTEXT(ctx)->vb.AttribPtr[_TNL_ATTRIB_COLOR0]->stride) {
-      if (HAVE_ELTS) {
-	 LOCAL_VARS;
-	 int dmasz = GET_SUBSEQUENT_VB_MAX_ELTS();
-	 int currentsz;
-	 GLuint j, nr;
-
-         EMIT_INDEXED_VERTS( ctx, start, count );
-
-	 /* Simulate flat-shaded quadstrips using indexed vertices:
-	  */
-	 ELT_INIT( GL_TRIANGLES );
-
-	 currentsz = GET_CURRENT_VB_MAX_ELTS();
-
-	 /* Emit whole number of quads in total, and in each buffer.
-	  */
-	 dmasz -= dmasz & 1;
-	 count -= (count-start) & 1;
-	 currentsz -= currentsz & 1;
-
-	 if (currentsz < 12)
-	    currentsz = dmasz;
-
-	 currentsz = currentsz/6*2;
-	 dmasz = dmasz/6*2;
-
-	 for (j = start; j + 3 < count; j += nr - 2 ) {
-	    nr = MIN2( currentsz, count - j );
-	    if (nr >= 4) {
-	       GLint quads = (nr/2)-1;
-	       GLint i;
-	       ELTS_VARS( ALLOC_ELTS( quads*6 ) );
-
-	       for ( i = j-start ; i < j-start+quads*2 ; i+=2 ) {
-		  EMIT_TWO_ELTS( 0, (i+0), (i+1) );
-		  EMIT_TWO_ELTS( 2, (i+2), (i+1) );
-		  EMIT_TWO_ELTS( 4, (i+3), (i+2) );
-		  INCR_ELTS( 6 );
-	       }
-
-	       FLUSH();
-	    }
-	    currentsz = dmasz;
-	 }
-
-	 RELEASE_ELT_VERTS();
-	 FLUSH();
-      }
-      else {
-	 /* Vertices won't fit in a single buffer or elts not
-	  * available - should never happen.
-	  */
-	 fprintf(stderr, "%s - cannot draw primitive\n", __FUNCTION__);
-	 return;
-      }
    }
    else if (HAVE_TRI_STRIPS) {
       LOCAL_VARS;
@@ -567,57 +508,6 @@ static void TAG(render_quads_verts)( struct gl_context *ctx,
          TAG(emit_verts)( ctx, j, nr, ALLOC_VERTS(nr) );
          currentsz = dmasz;
       }
-   }
-   else if (HAVE_ELTS) {
-      /* Hardware doesn't have a quad primitive type -- try to
-       * simulate it using indexed vertices and the triangle
-       * primitive:
-       */
-      LOCAL_VARS;
-      int dmasz = GET_SUBSEQUENT_VB_MAX_ELTS();
-      int currentsz;
-      GLuint j, nr;
-
-      EMIT_INDEXED_VERTS( ctx, start, count );
-
-      FLUSH();
-      ELT_INIT( GL_TRIANGLES );
-      currentsz = GET_CURRENT_VB_MAX_ELTS();
-
-      /* Emit whole number of quads in total, and in each buffer.
-       */
-      dmasz -= dmasz & 3;
-      count -= (count-start) & 3;
-      currentsz -= currentsz & 3;
-
-      /* Adjust for rendering as triangles:
-       */
-      currentsz = currentsz/6*4;
-      dmasz = dmasz/6*4;
-
-      if (currentsz < 8)
-	 currentsz = dmasz;
-
-      for (j = start; j < count; j += nr ) {
-	 nr = MIN2( currentsz, count - j );
-	 if (nr >= 4) {
-	    GLint quads = nr/4;
-	    GLint i;
-	    ELTS_VARS( ALLOC_ELTS( quads*6 ) );
-
-	    for ( i = j-start ; i < j-start+quads*4 ; i+=4 ) {
-	       EMIT_TWO_ELTS( 0, (i+0), (i+1) );
-	       EMIT_TWO_ELTS( 2, (i+3), (i+1) );
-	       EMIT_TWO_ELTS( 4, (i+2), (i+3) );
-	       INCR_ELTS( 6 );
-	    }
-
-	    FLUSH();
-	 }
-	 currentsz = dmasz;
-      }
-
-      RELEASE_ELT_VERTS();
    }
    else if (HAVE_TRIANGLES) {
       /* Hardware doesn't have a quad primitive type -- try to
@@ -1225,29 +1115,16 @@ static GLboolean TAG(validate_render)( struct gl_context *ctx,
       case GL_QUAD_STRIP:
 	 if (VB->Elts) {
 	    ok = HAVE_TRI_STRIPS;
-	 }
-	 else if (HAVE_QUAD_STRIPS) {
+	 } else if (HAVE_QUAD_STRIPS) {
 	    ok = GL_TRUE;
-	 } else if (HAVE_TRI_STRIPS && 
-		    ctx->Light.ShadeModel == GL_FLAT &&
-		    VB->AttribPtr[_TNL_ATTRIB_COLOR0]->stride != 0) {
-	    if (HAVE_ELTS) {
-	       ok = (GLint) count < GET_SUBSEQUENT_VB_MAX_ELTS();
-	    }
-	    else {
-	       ok = GL_FALSE;
-	    }
-	 }
-	 else 
+	 } else {
 	    ok = HAVE_TRI_STRIPS;
+	 }
 	 break;
       case GL_QUADS:
 	 if (HAVE_QUADS) {
 	    ok = GL_TRUE;
-	 } else if (HAVE_ELTS) {
-	    ok = (GLint) count < GET_SUBSEQUENT_VB_MAX_ELTS();
-	 }
-	 else {
+	 } else {
 	    ok = HAVE_TRIANGLES; /* flatshading is ok. */
 	 }
 	 break;
