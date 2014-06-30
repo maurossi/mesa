@@ -406,7 +406,9 @@ static void TAG(render_poly_verts)( struct gl_context *ctx,
 
       FLUSH();
    }
-   else if (HAVE_TRI_FANS && ctx->Light.ShadeModel == GL_SMOOTH) {
+   else if (HAVE_TRI_FANS &&
+	    (ctx->Light.ShadeModel == GL_SMOOTH ||
+	     ctx->Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION_EXT)) {
       TAG(render_tri_fan_verts)( ctx, start, count, flags );
    } else {
       fprintf(stderr, "%s - cannot draw primitive\n", __FUNCTION__);
@@ -885,7 +887,9 @@ static void TAG(render_poly_elts)( struct gl_context *ctx,
 	 FLUSH();
 	 currentsz = dmasz;
       }
-   } else if (HAVE_TRI_FANS && ctx->Light.ShadeModel == GL_SMOOTH) {
+   } else if (HAVE_TRI_FANS &&
+	      (ctx->Light.ShadeModel == GL_SMOOTH ||
+	       ctx->Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION_EXT)) {
       TAG(render_tri_fan_verts)( ctx, start, count, flags );
    } else {
       fprintf(stderr, "%s - cannot draw primitive\n", __FUNCTION__);
@@ -1109,7 +1113,9 @@ static GLboolean TAG(validate_render)( struct gl_context *ctx,
 	    ok = GL_TRUE;
 	 }
 	 else {
-	    ok = (HAVE_TRI_FANS && ctx->Light.ShadeModel == GL_SMOOTH);
+	    ok = (HAVE_TRI_FANS &&
+		  (ctx->Light.ShadeModel == GL_SMOOTH ||
+		   ctx->Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION_EXT));
          }
 	 break;
       case GL_QUAD_STRIP:
