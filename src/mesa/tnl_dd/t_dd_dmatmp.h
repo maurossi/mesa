@@ -447,7 +447,7 @@ static void TAG(render_quad_strip_verts)( struct gl_context *ctx,
 
       FLUSH();
    }
-   else if (HAVE_TRI_STRIPS) {
+   else if (HAVE_TRI_STRIPS && ctx->Light.ShadeModel == GL_SMOOTH) {
       LOCAL_VARS;
       int dmasz = GET_SUBSEQUENT_VB_MAX_VERTS();
       int currentsz;
@@ -1124,7 +1124,7 @@ static GLboolean TAG(validate_render)( struct gl_context *ctx,
 	 } else if (HAVE_QUAD_STRIPS) {
 	    ok = GL_TRUE;
 	 } else {
-	    ok = HAVE_TRI_STRIPS;
+	    ok = (HAVE_TRI_STRIPS && ctx->Light.ShadeModel == GL_SMOOTH);
 	 }
 	 break;
       case GL_QUADS:
