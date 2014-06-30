@@ -906,7 +906,8 @@ static void TAG(render_quad_strip_elts)( struct gl_context *ctx,
 {
    if (HAVE_QUAD_STRIPS && 0) {
    }
-   else if (HAVE_TRI_STRIPS) {
+   else if ((HAVE_TRIANGLES || HAVE_TRI_STRIPS) &&
+	    ctx->Light.ShadeModel == GL_SMOOTH) {
       LOCAL_VARS;
       GLuint *elts = TNL_CONTEXT(ctx)->vb.Elts;
       int dmasz = GET_SUBSEQUENT_VB_MAX_ELTS();
@@ -925,7 +926,16 @@ static void TAG(render_quad_strip_elts)( struct gl_context *ctx,
       if (currentsz < 12)
 	 currentsz = dmasz;
 
-      if (ctx->Light.ShadeModel == GL_FLAT) {
+      if (HAVE_TRI_STRIPS) {
+	 ELT_INIT( GL_TRIANGLE_STRIP );
+
+	 for (j = start; j + 3 < count; j += nr - 2 ) {
+	    nr = MIN2( currentsz, count - j );
+	    TAG(emit_elts)( ctx, elts+j, nr, ALLOC_ELTS(nr) );
+	    FLUSH();
+	    currentsz = dmasz;
+	 }
+      } else {
 	 ELT_INIT( GL_TRIANGLES );
 
 	 currentsz = currentsz/6*2;
@@ -934,8 +944,7 @@ static void TAG(render_quad_strip_elts)( struct gl_context *ctx,
 	 for (j = start; j + 3 < count; j += nr - 2 ) {
 	    nr = MIN2( currentsz, count - j );
 
-	    if (nr >= 4)
-	    {
+	    if (nr >= 4) {
 	       GLint i;
 	       GLint quads = (nr/2)-1;
 	       ELTS_VARS( ALLOC_ELTS( quads*6 ) );
@@ -948,22 +957,12 @@ static void TAG(render_quad_strip_elts)( struct gl_context *ctx,
 	       }
 
 	       FLUSH();
-	    }
-
-	    currentsz = dmasz;
 	 }
-      }
-      else {
-	 ELT_INIT( GL_TRIANGLE_STRIP );
 
-	 for (j = start; j + 3 < count; j += nr - 2 ) {
-	    nr = MIN2( currentsz, count - j );
-	    TAG(emit_elts)( ctx, elts+j, nr, ALLOC_ELTS(nr) );
-	    FLUSH();
-	    currentsz = dmasz;
-	 }
+	 currentsz = dmasz;
       }
    }
+
 }
 
 
@@ -1124,8 +1123,10 @@ static GLboolean TAG(validate_render)( struct gl_context *ctx,
 	 break;
       case GL_QUAD_STRIP:
 	 if (VB->Elts) {
-	    ok = HAVE_TRI_STRIPS;
-	 } else if (HAVE_QUAD_STRIPS) {
+	    ok = ((HAVE_TRI_STRIPS || HAVE_TRIANGLES) &&
+		  ctx->Light.ShadeModel == GL_SMOOTH);
+	 }
+	 else if (HAVE_QUAD_STRIPS) {
 	    ok = GL_TRUE;
 	 } else {
 	    ok = (HAVE_TRI_STRIPS && ctx->Light.ShadeModel == GL_SMOOTH);
