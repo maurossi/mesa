@@ -892,7 +892,7 @@ static void TAG(render_poly_elts)( struct gl_context *ctx,
    } else if (HAVE_TRI_FANS &&
 	      (ctx->Light.ShadeModel == GL_SMOOTH ||
 	       ctx->Light.ProvokingVertex == GL_FIRST_VERTEX_CONVENTION_EXT)) {
-      TAG(render_tri_fan_verts)( ctx, start, count, flags );
+      TAG(render_tri_fan_elts)( ctx, start, count, flags );
    } else {
       fprintf(stderr, "%s - cannot draw primitive\n", __FUNCTION__);
       return;
