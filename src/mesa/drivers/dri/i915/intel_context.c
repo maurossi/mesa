@@ -243,7 +243,7 @@ intel_prepare_render(struct intel_context *intel)
     * that will happen next will probably dirty the front buffer.  So
     * mark it as dirty here.
     */
-   if (intel->is_front_buffer_rendering)
+   if (intel_is_front_buffer_drawing(intel->ctx.DrawBuffer))
       intel->front_buffer_dirty = true;
 
    /* Wait for the swapbuffers before the one we just emitted, so we
@@ -356,7 +356,7 @@ intel_glFlush(struct gl_context *ctx)
 
    intel_flush(ctx);
    intel_flush_front(ctx);
-   if (intel->is_front_buffer_rendering)
+   if (intel_is_front_buffer_drawing(ctx->DrawBuffer))
       intel->need_throttle = true;
 }
 
@@ -701,8 +701,8 @@ intel_query_dri2_buffers(struct intel_context *intel,
    back_rb = intel_get_renderbuffer(fb, BUFFER_BACK_LEFT);
 
    memset(attachments, 0, sizeof(attachments));
-   if ((intel->is_front_buffer_rendering ||
-	intel->is_front_buffer_reading ||
+   if ((intel_is_front_buffer_drawing(fb) ||
+        intel_is_front_buffer_reading(fb) ||
 	!back_rb) && front_rb) {
       /* If a fake front buffer is in use, then querying for
        * __DRI_BUFFER_FRONT_LEFT will cause the server to copy the image from
@@ -867,8 +867,10 @@ intel_update_image_buffers(struct intel_context *intel, __DRIdrawable *drawable)
    else
       return;
 
-   if ((intel->is_front_buffer_rendering || intel->is_front_buffer_reading || !back_rb) && front_rb)
+   if (front_rb && (intel_is_front_buffer_drawing(fb) ||
+                    intel_is_front_buffer_reading(fb) || !back_rb)) {
       buffer_mask |= __DRI_IMAGE_BUFFER_FRONT;
+   }
 
    if (back_rb)
       buffer_mask |= __DRI_IMAGE_BUFFER_BACK;
