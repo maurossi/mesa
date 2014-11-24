@@ -52,23 +52,36 @@ intel_check_front_buffer_rendering(struct intel_context *intel)
    }
 }
 
+bool
+intel_is_front_buffer_reading(struct gl_framebuffer *fb)
+{
+   if (!fb || _mesa_is_user_fbo(fb))
+      return false;
+
+   return fb->_ColorReadBufferIndex == BUFFER_FRONT_LEFT;
+}
+
+bool
+intel_is_front_buffer_drawing(struct gl_framebuffer *fb)
+{
+   if (!fb || _mesa_is_user_fbo(fb))
+      return false;
+
+   return (fb->_NumColorDrawBuffers >= 1 &&
+           fb->_ColorDrawBufferIndexes[0] == BUFFER_FRONT_LEFT);
+}
+
 static void
 intelDrawBuffer(struct gl_context * ctx, GLenum mode)
 {
-   if (ctx->DrawBuffer && _mesa_is_winsys_fbo(ctx->DrawBuffer)) {
+   if (intel_is_front_buffer_drawing(ctx->DrawBuffer)) {
       struct intel_context *const intel = intel_context(ctx);
-      const bool was_front_buffer_rendering =
-	intel->is_front_buffer_rendering;
 
-      intel->is_front_buffer_rendering = (mode == GL_FRONT_LEFT)
-	|| (mode == GL_FRONT) || (mode == GL_FRONT_AND_BACK);
-
-      /* If we weren't front-buffer rendering before but we are now,
-       * invalidate our DRI drawable so we'll ask for new buffers
+      /* If we might be front-buffer rendering on this buffer for the first
+       * time, invalidate our DRI drawable so we'll ask for new buffers
        * (including the fake front) before we start rendering again.
        */
-      if (!was_front_buffer_rendering && intel->is_front_buffer_rendering)
-	 dri2InvalidateDrawable(intel->driContext->driDrawablePriv);
+      dri2InvalidateDrawable(intel->driContext->driDrawablePriv);
    }
 
    intel_draw_buffer(ctx);
@@ -78,20 +91,14 @@ intelDrawBuffer(struct gl_context * ctx, GLenum mode)
 static void
 intelReadBuffer(struct gl_context * ctx, GLenum mode)
 {
-   if (ctx->ReadBuffer && _mesa_is_winsys_fbo(ctx->ReadBuffer)) {
+   if (intel_is_front_buffer_reading(ctx->ReadBuffer)) {
       struct intel_context *const intel = intel_context(ctx);
-      const bool was_front_buffer_reading =
-	intel->is_front_buffer_reading;
 
-      intel->is_front_buffer_reading = (mode == GL_FRONT_LEFT)
-	|| (mode == GL_FRONT);
-
-      /* If we weren't front-buffer reading before but we are now,
-       * invalidate our DRI drawable so we'll ask for new buffers
+      /* If we might be front-buffer reading on this buffer for the first
+       * time, invalidate our DRI drawable so we'll ask for new buffers
        * (including the fake front) before we start reading again.
        */
-      if (!was_front_buffer_reading && intel->is_front_buffer_reading)
-	 dri2InvalidateDrawable(intel->driContext->driReadablePriv);
+      dri2InvalidateDrawable(intel->driContext->driReadablePriv);
    }
 }
 

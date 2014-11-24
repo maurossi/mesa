@@ -49,4 +49,7 @@ intel_draw_buffer(struct gl_context * ctx)
 extern void intelInitBufferFuncs(struct dd_function_table *functions);
 void intelCalcViewport(struct gl_context * ctx);
 
+bool intel_is_front_buffer_reading(struct gl_framebuffer *fb);
+bool intel_is_front_buffer_drawing(struct gl_framebuffer *fb);
+
 #endif /* INTEL_BUFFERS_H */
