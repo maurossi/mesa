@@ -150,7 +150,7 @@ roundf(float x)
 #endif /* _MSC_VER */
 
 
-#if __STDC_VERSION__ < 199901L && (!defined(__cplusplus) || defined(_MSC_VER))
+#if __STDC_VERSION__ < 199901L && !defined(PIPE_OS_ANDROID) && (!defined(__cplusplus) || defined(_MSC_VER))
 static INLINE long int
 lrint(double d)
 {
