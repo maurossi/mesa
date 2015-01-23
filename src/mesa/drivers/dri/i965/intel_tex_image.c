@@ -333,6 +333,7 @@ intel_image_target_texture_2d(struct gl_context *ctx, GLenum target,
    if (image == NULL)
       return;
 
+#ifndef ANDROID
    /* We support external textures only for EGLImages created with
     * EGL_EXT_image_dma_buf_import. We may lift that restriction in the future.
     */
@@ -342,6 +343,7 @@ intel_image_target_texture_2d(struct gl_context *ctx, GLenum target,
                "for images created with EGL_EXT_image_dma_buf_import");
       return;
    }
+#endif
 
    /* Disallow depth/stencil textures: we don't have a way to pass the
     * separate stencil miptree of a GL_DEPTH_STENCIL texture through.
