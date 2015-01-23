@@ -70,7 +70,7 @@ static INLINE void *os_mmap(void *addr, size_t length, int prot, int flags,
    return __mmap2(addr, length, prot, flags, fd, (size_t) (offset >> 12));
 }
 
-#  define drm_munmap(addr, length) \
+#  define  os_munmap(addr, length) \
               munmap(addr, length)
 
 #else
