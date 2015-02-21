@@ -95,6 +95,7 @@ typedef union { GLfloat f; GLint i; GLuint u; } fi_type;
  */
 /*@{*/
 #if (!defined(_XOPEN_SOURCE) || (_XOPEN_SOURCE < 600)) && !defined(_ISOC99_SOURCE) \
+   && !defined(ANDROID) \
    && (!defined(__STDC_VERSION__) || (__STDC_VERSION__ < 199901L)) \
    && (!defined(_MSC_VER) || (_MSC_VER < 1400))
 #define acosf(f) ((float) acos(f))
@@ -109,11 +110,7 @@ typedef union { GLfloat f; GLint i; GLuint u; } fi_type;
 #define floorf(f) ((float) floor(f))
 #define logf(f) ((float) log(f))
 
-#ifdef ANDROID
-#define log2f(f) (logf(f) * (float) (1.0 / M_LN2))
-#else
 #define log2f(f) ((float) log2(f))
-#endif
 
 #define powf(x,y) ((float) pow(x,y))
 #define sinf(f) ((float) sin(f))
