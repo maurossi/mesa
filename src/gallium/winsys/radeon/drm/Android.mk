@@ -34,6 +34,7 @@ LOCAL_C_INCLUDES := \
 	$(DRM_TOP) \
 	$(DRM_TOP)/include/drm \
 	$(DRM_TOP)/radeon \
+	$(MESA_TOP)/src
 
 LOCAL_MODULE := libmesa_winsys_radeon
 

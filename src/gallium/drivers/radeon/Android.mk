@@ -32,6 +32,7 @@ LOCAL_SRC_FILES := $(C_SOURCES)
 
 LOCAL_C_INCLUDES := \
 	$(DRM_TOP)/radeon \
+	$(MESA_TOP)/src
 
 LOCAL_MODULE := libmesa_pipe_radeon
 

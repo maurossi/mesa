@@ -39,7 +39,9 @@ intermediates := $(call local-intermediates-dir)
 LOCAL_C_INCLUDES := \
     $(DRM_TOP) \
     $(DRM_TOP)/include/drm \
-    $(MESA_DRI_C_INCLUDES)
+    $(MESA_DRI_C_INCLUDES) \
+    $(MESA_TOP)/src/gallium/include \
+    $(MESA_TOP)/src/gallium/auxiliary
 
 LOCAL_SRC_FILES := $(DRI_COMMON_FILES)
 
@@ -99,7 +101,9 @@ LOCAL_MODULE := libmesa_megadriver_stub
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_C_INCLUDES := \
     $(DRM_TOP)/include/drm \
-    $(MESA_DRI_C_INCLUDES)
+    $(MESA_DRI_C_INCLUDES) \
+    $(MESA_TOP)/src/gallium/include \
+    $(MESA_TOP)/src/gallium/auxiliary
 
 LOCAL_SRC_FILES := $(megadriver_stub_FILES)
 
