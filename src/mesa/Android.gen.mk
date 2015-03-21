@@ -33,6 +33,7 @@ intermediates := $(call local-intermediates-dir)
 sources := \
 	main/enums.c \
 	main/api_exec.c \
+	main/format_info.h \
 	main/dispatch.h \
 	main/remap_helper.h \
 	main/get_hash.h
@@ -124,5 +125,3 @@ format_info_deps := \
 
 $(intermediates)/main/format_info.h: $(format_info_deps)
 	@$(MESA_PYTHON2) $(FORMAT_INFO) $< > $@
-
-$(intermediates)/main/formats.o: $(intermediates)/main/format_info.c
