@@ -68,4 +68,6 @@ include $(LOCAL_PATH)/Android.gen.mk
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
+$(LOCAL_BUILT_MODULE): $(filter %.h,$(sources))
+
 endif # MESA_BUILD_GALLIUM

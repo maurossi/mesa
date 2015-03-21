@@ -124,3 +124,5 @@ format_info_deps := \
 
 $(intermediates)/main/format_info.h: $(format_info_deps)
 	@$(MESA_PYTHON2) $(FORMAT_INFO) $< > $@
+
+$(intermediates)/main/formats.o: $(intermediates)/main/format_info.c

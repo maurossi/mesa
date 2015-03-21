@@ -37,7 +37,7 @@ LOCAL_SRC_FILES := \
 ifeq ($(MESA_GPU_DRIVERS),swrast)
 LOCAL_CFLAGS += -D__NOT_HAVE_DRM_H
 else
-LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/libdrm
+LOCAL_C_INCLUDES := $(DRM_TOP) $(DRM_TOP)/include/drm
 endif
 
 LOCAL_MODULE := libmesa_loader
