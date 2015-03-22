@@ -28,8 +28,9 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := $(C_SOURCES)
 
 LOCAL_C_INCLUDES := \
-	$(TARGET_OUT_HEADERS)/libdrm \
-	$(TARGET_OUT_HEADERS)/freedreno
+	$(DRM_TOP) \
+	$(DRM_TOP)/include/drm \
+	$(DRM_TOP)/freedreno \
 
 LOCAL_MODULE := libmesa_winsys_freedreno
 

@@ -30,7 +30,8 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_C_INCLUDES := $(TARGET_OUT_HEADERS)/libdrm
+LOCAL_C_INCLUDES := \
+	$(DRM_TOP)/nouveau \
 
 LOCAL_MODULE := libmesa_winsys_nouveau
 

@@ -100,7 +100,6 @@ endif
 ifneq ($(filter nouveau, $(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS +=  libmesa_winsys_nouveau libmesa_pipe_nouveau
 LOCAL_SHARED_LIBRARIES += libdrm_nouveau
-LOCAL_SHARED_LIBRARIES += libstlport
 endif
 
 # r300g/r600g/radeonsi
@@ -113,7 +112,6 @@ endif # r300g
 ifneq ($(filter r600g radeonsi, $(MESA_GPU_DRIVERS)),)
 ifneq ($(filter r600g, $(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_r600
-LOCAL_SHARED_LIBRARIES += libstlport
 endif # r600g
 ifneq ($(filter radeonsi, $(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_radeonsi
@@ -121,6 +119,9 @@ endif # radeonsi
 gallium_DRIVERS += libmesa_pipe_radeon
 endif # r600g || radeonsi
 endif # r300g || r600g || radeonsi
+ifneq ($(filter nouveau r600g, $(MESA_GPU_DRIVERS)),)
+LOCAL_SHARED_LIBRARIES += libstlport
+endif
 
 # vmwgfx
 ifneq ($(filter vmwgfx, $(MESA_GPU_DRIVERS)),)
