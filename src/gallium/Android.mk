@@ -26,14 +26,14 @@
 GALLIUM_TOP := $(call my-dir)
 GALLIUM_COMMON_MK := $(GALLIUM_TOP)/Android.common.mk
 
-SUBDIRS := auxiliary
+SUBDIRS := auxiliary state_trackers/dri targets/dri
 
 #
 # Gallium drivers and their respective winsys
 #
 
 # swrast
-SUBDIRS += winsys/sw/android drivers/softpipe
+SUBDIRS += winsys/sw/android winsys/sw/dri drivers/softpipe
 
 # freedreno
 ifneq ($(filter freedreno, $(MESA_GPU_DRIVERS)),)

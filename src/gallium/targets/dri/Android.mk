@@ -1,7 +1,7 @@
 # Mesa 3-D graphics library
 #
-# Copyright (C) 2011 Chia-I Wu <olvaffe@gmail.com>
-# Copyright (C) 2011 LunarG Inc.
+# Copyright (C) 2010-2011 Chia-I Wu <olvaffe@gmail.com>
+# Copyright (C) 2010-2011 LunarG Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -23,18 +23,24 @@
 
 LOCAL_PATH := $(call my-dir)
 
-# get C_SOURCES
-include $(LOCAL_PATH)/Makefile.sources
-
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(C_SOURCES)
+LOCAL_SRC_FILES := \
+	target.c
+
+LOCAL_CFLAGS := \
+	-DDRI_TARGET
 
 LOCAL_C_INCLUDES := \
-	$(DRM_TOP)/radeon \
-	$(MESA_TOP)/src
+	$(MESA_TOP)/src \
+	$(MESA_TOP)/src/loader \
+	$(MESA_TOP)/src/mapi \
+	$(MESA_TOP)/src/mesa \
+	$(MESA_TOP)/src/mesa/drivers/dri/common \
+	$(MESA_TOP)/src/gallium/state_trackers/dri \
+	$(DRM_TOP)/include/drm
 
-LOCAL_MODULE := libmesa_pipe_radeon
+LOCAL_MODULE := libmesa_gallium_dri
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

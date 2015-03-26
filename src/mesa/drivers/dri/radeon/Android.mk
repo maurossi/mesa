@@ -1,7 +1,7 @@
-# Mesa 3-D graphics library
 #
-# Copyright (C) 2011 Chia-I Wu <olvaffe@gmail.com>
-# Copyright (C) 2011 LunarG Inc.
+# Copyright (C) 2011 Intel Corporation
+# Copyright (C) 2010-2011 Chia-I Wu <olvaffe@gmail.com>
+# Copyright (C) 2010-2011 LunarG
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -20,21 +20,38 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
+#
 
 LOCAL_PATH := $(call my-dir)
-
-# get C_SOURCES
-include $(LOCAL_PATH)/Makefile.sources
-
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(C_SOURCES)
+LOCAL_MODULE := radeon_dri
+LOCAL_MODULE_PATH := $(MESA_DRI_MODULE_PATH)
+LOCAL_UNSTRIPPED_PATH := $(MESA_DRI_MODULE_UNSTRIPPED_PATH)
+
+# Import variables NOUVEAU_C_FILES.
+include $(LOCAL_PATH)/Makefile.sources
+
+LOCAL_CFLAGS := \
+	$(MESA_DRI_CFLAGS)
 
 LOCAL_C_INCLUDES := \
-	$(DRM_TOP)/radeon \
-	$(MESA_TOP)/src
+	$(MESA_DRI_C_INCLUDES) \
+	$(MESA_TOP)/src/gallium/include \
+	$(MESA_TOP)/src/gallium/auxiliary
 
-LOCAL_MODULE := libmesa_pipe_radeon
+LOCAL_SRC_FILES := \
+	$(RADEON_C_FILES)
 
-include $(GALLIUM_COMMON_MK)
-include $(BUILD_STATIC_LIBRARY)
+LOCAL_WHOLE_STATIC_LIBRARIES := \
+	$(MESA_DRI_WHOLE_STATIC_LIBRARIES)
+
+LOCAL_SHARED_LIBRARIES := \
+	$(MESA_DRI_SHARED_LIBRARIES) \
+	libdrm_radeon
+
+LOCAL_GENERATED_SOURCES := \
+	$(MESA_DRI_OPTIONS_H)
+
+include $(MESA_COMMON_MK)
+include $(BUILD_SHARED_LIBRARY)

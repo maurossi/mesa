@@ -36,6 +36,7 @@ MESA_DRI_CFLAGS := \
 
 MESA_DRI_C_INCLUDES := \
 	$(MESA_TOP)/src \
+	$(call intermediates-dir-for,STATIC_LIBRARIES,libmesa_glsl)/nir \
 	$(call intermediates-dir-for,STATIC_LIBRARIES,libmesa_dri_common) \
 	$(addprefix $(MESA_TOP)/, $(mesa_dri_common_INCLUDES)) \
 	external/expat/lib
@@ -69,6 +70,18 @@ endif
 
 ifneq ($(filter i965, $(MESA_GPU_DRIVERS)),)
 	SUBDIRS += i965
+endif
+
+ifneq ($(filter nouveau, $(MESA_GPU_DRIVERS)),)
+	SUBDIRS += nouveau
+endif
+
+ifneq ($(filter r300g r600g, $(MESA_GPU_DRIVERS)),)
+	SUBDIRS += radeon
+endif
+
+ifneq ($(filter swrast, $(MESA_GPU_DRIVERS)),)
+	SUBDIRS += swrast
 endif
 
 include $(foreach d, $(SUBDIRS), $(LOCAL_PATH)/$(d)/Android.mk)
