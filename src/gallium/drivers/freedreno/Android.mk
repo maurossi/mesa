@@ -35,8 +35,9 @@ LOCAL_CFLAGS := \
 
 LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/ir3 \
-	$(TARGET_OUT_HEADERS)/libdrm \
-	$(TARGET_OUT_HEADERS)/freedreno
+	$(DRM_TOP) \
+	$(DRM_TOP)/include/drm \
+	$(DRM_TOP)/freedreno \
 
 LOCAL_MODULE := libmesa_pipe_freedreno
 

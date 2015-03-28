@@ -47,6 +47,10 @@ Configuration macro:
 #define EMULATED_THREADS_USE_NATIVE_TIMEDLOCK
 #endif
 
+#ifdef ANDROID
+#define __USE_XOPEN2K
+#define __USE_UNIX98
+#endif
 
 #include <pthread.h>
 

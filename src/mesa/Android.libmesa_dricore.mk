@@ -64,6 +64,7 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/glsl \
+	$(MESA_TOP)/src/mesa/main \
 	$(MESA_TOP)/src/gallium/auxiliary
 
 LOCAL_WHOLE_STATIC_LIBRARIES := \
@@ -72,5 +73,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 include $(LOCAL_PATH)/Android.gen.mk
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
+
+$(LOCAL_BUILT_MODULE): $(filter %.h,$(sources))
 
 endif # MESA_BUILD_CLASSIC

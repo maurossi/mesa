@@ -38,6 +38,7 @@ MESA_ANDROID_VERSION := $(MESA_ANDROID_MAJOR_VERSION).$(MESA_ANDROID_MINOR_VERSI
 MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
 MESA_PYTHON2 := python
 
+DRM_TOP := external/drm
 DRM_GRALLOC_TOP := hardware/drm_gralloc
 
 classic_drivers := i915 i965
@@ -94,7 +95,6 @@ ifeq ($(strip $(MESA_BUILD_GALLIUM)),true)
 SUBDIRS += src/gallium
 endif
 
-mkfiles := $(patsubst %,$(MESA_TOP)/%/Android.mk,$(SUBDIRS))
-include $(mkfiles)
+include $(call all-named-subdir-makefiles,$(SUBDIRS))
 
 endif

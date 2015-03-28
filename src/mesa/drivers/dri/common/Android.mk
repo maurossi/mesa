@@ -37,7 +37,8 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 intermediates := $(call local-intermediates-dir)
 
 LOCAL_C_INCLUDES := \
-    $(intermediates) \
+    $(DRM_TOP) \
+    $(DRM_TOP)/include/drm \
     $(MESA_DRI_C_INCLUDES)
 
 LOCAL_SRC_FILES := $(DRI_COMMON_FILES)
@@ -97,6 +98,7 @@ include $(LOCAL_PATH)/Makefile.sources
 LOCAL_MODULE := libmesa_megadriver_stub
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 LOCAL_C_INCLUDES := \
+    $(DRM_TOP)/include/drm \
     $(MESA_DRI_C_INCLUDES)
 
 LOCAL_SRC_FILES := $(megadriver_stub_FILES)
