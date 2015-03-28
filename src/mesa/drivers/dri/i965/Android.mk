@@ -41,7 +41,10 @@ LOCAL_CFLAGS += \
 endif
 
 LOCAL_C_INCLUDES := \
-	$(MESA_DRI_C_INCLUDES)
+	$(MESA_DRI_C_INCLUDES) \
+	$(MESA_TOP)/src/gallium/include \
+	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src
 
 LOCAL_SRC_FILES := \
 	$(i965_FILES)

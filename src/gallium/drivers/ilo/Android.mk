@@ -28,7 +28,8 @@ include $(LOCAL_PATH)/Makefile.sources
 include $(CLEAR_VARS)
 
 LOCAL_C_INCLUDES := \
-	$(LOCAL_PATH)/include
+	$(LOCAL_PATH)/include \
+	$(MESA_TOP)/src
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
