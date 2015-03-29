@@ -44,7 +44,8 @@ LOCAL_CFLAGS += \
 LOCAL_CFLAGS += \
 	-DHAVE_PTHREAD=1 \
 	-fvisibility=hidden \
-	-Wno-sign-compare
+	-Wno-sign-compare \
+	-Wno-error=return-type
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
 ifeq ($(TARGET_ARCH),x86)

@@ -76,6 +76,7 @@ ifeq ($(strip $(MESA_BUILD_GALLIUM)),true)
 gallium_DRIVERS :=
 
 # swrast
+LOCAL_REQUIRED_MODULES += swrast_dri
 gallium_DRIVERS += libmesa_pipe_softpipe libmesa_winsys_sw_android
 
 # freedreno
@@ -98,12 +99,14 @@ endif
 
 # nouveau
 ifneq ($(filter nouveau, $(MESA_GPU_DRIVERS)),)
+LOCAL_REQUIRED_MODULES += nouveau_dri
 gallium_DRIVERS +=  libmesa_winsys_nouveau libmesa_pipe_nouveau
 LOCAL_SHARED_LIBRARIES += libdrm_nouveau
 endif
 
 # r300g/r600g/radeonsi
 ifneq ($(filter r300g r600g radeonsi, $(MESA_GPU_DRIVERS)),)
+LOCAL_REQUIRED_MODULES += radeon_dri
 gallium_DRIVERS += libmesa_winsys_radeon
 LOCAL_SHARED_LIBRARIES += libdrm_radeon
 ifneq ($(filter r300g, $(MESA_GPU_DRIVERS)),)

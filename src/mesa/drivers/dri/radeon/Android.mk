@@ -33,12 +33,14 @@ LOCAL_UNSTRIPPED_PATH := $(MESA_DRI_MODULE_UNSTRIPPED_PATH)
 include $(LOCAL_PATH)/Makefile.sources
 
 LOCAL_CFLAGS := \
-	$(MESA_DRI_CFLAGS)
+	$(MESA_DRI_CFLAGS) \
+	-DRADEON_R100
 
 LOCAL_C_INCLUDES := \
 	$(MESA_DRI_C_INCLUDES) \
 	$(MESA_TOP)/src/gallium/include \
-	$(MESA_TOP)/src/gallium/auxiliary
+	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/mesa/drivers/dri/radeon/server
 
 LOCAL_SRC_FILES := \
 	$(RADEON_C_FILES)
