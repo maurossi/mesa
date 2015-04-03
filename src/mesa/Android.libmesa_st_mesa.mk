@@ -43,6 +43,9 @@ LOCAL_SRC_FILES := \
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
 ifeq ($(TARGET_ARCH),x86)
 	LOCAL_SRC_FILES += $(X86_FILES)
+else ifeq ($(TARGET_2ND_ARCH),x86)
+	LOCAL_SRC_FILES_x86 := $(X86_FILES)
+	LOCAL_SRC_FILES_x86_64 := $(X86_64_FILES)
 endif # x86
 endif # MESA_ENABLE_ASM
 
