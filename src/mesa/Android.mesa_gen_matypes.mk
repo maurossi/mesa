@@ -25,7 +25,6 @@
 # ---------------------------------------------------------------------
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
-ifeq ($(TARGET_ARCH),x86)
 
 LOCAL_PATH := $(call my-dir)
 
@@ -33,6 +32,7 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := mesa_gen_matypes
 LOCAL_IS_HOST_MODULE := true
+LOCAL_MULTILIB := 32
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
@@ -44,5 +44,4 @@ LOCAL_SRC_FILES := \
 include $(MESA_COMMON_MK)
 include $(BUILD_HOST_EXECUTABLE)
 
-endif # x86
 endif # MESA_ENABLE_ASM
