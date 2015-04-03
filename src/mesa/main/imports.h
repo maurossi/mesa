@@ -179,7 +179,7 @@ static inline int IROUND_POS(float f)
  */
 static inline int F_TO_I(float f)
 {
-#if defined(USE_X86_ASM) && defined(__GNUC__) && defined(__i386__)
+#if defined(USE_X86_ASM) && (defined(__GNUC__) || defined(ANDROID)) && defined(__i386__)
    int r;
    __asm__ ("fistpl %0" : "=m" (r) : "t" (f) : "st");
    return r;
@@ -201,7 +201,7 @@ static inline int F_TO_I(float f)
 /** Return (as an integer) floor of float */
 static inline int IFLOOR(float f)
 {
-#if defined(USE_X86_ASM) && defined(__GNUC__) && defined(__i386__)
+#if defined(USE_X86_ASM) && (defined(__GNUC__) || defined(ANDROID)) && defined(__i386__)
    /*
     * IEEE floor for computers that round to nearest or even.
     * 'f' must be between -4194304 and 4194303.
@@ -228,7 +228,6 @@ static inline int IFLOOR(float f)
    return (ai - bi) >> 1;
 #endif
 }
-
 
 /**
  * Is x a power of two?
