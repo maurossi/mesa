@@ -179,7 +179,7 @@ static inline int IROUND_POS(float f)
  */
 static inline int F_TO_I(float f)
 {
-#if defined(USE_X86_ASM) && defined(__GNUC__) && defined(__i386__)
+#if defined(USE_X86_ASM) && (defined(__GNUC__) || defined(ANDROID)) && defined(__i386__)
    int r;
    __asm__ ("fistpl %0" : "=m" (r) : "t" (f) : "st");
    return r;
@@ -201,7 +201,7 @@ static inline int F_TO_I(float f)
 /** Return (as an integer) floor of float */
 static inline int IFLOOR(float f)
 {
-#if defined(USE_X86_ASM) && defined(__GNUC__) && defined(__i386__)
+#if defined(USE_X86_ASM) && (defined(__GNUC__) || defined(ANDROID)) && defined(__i386__)
    /*
     * IEEE floor for computers that round to nearest or even.
     * 'f' must be between -4194304 and 4194303.
@@ -226,6 +226,38 @@ static inline int IFLOOR(float f)
    u.f = (float) af;  ai = u.i;
    u.f = (float) bf;  bi = u.i;
    return (ai - bi) >> 1;
+#endif
+}
+
+
+/** Return (as an integer) ceiling of float */
+static inline int ICEIL(float f)
+{
+#if defined(USE_X86_ASM) && (defined(__GNUC__) || defined(ANDROID)) && defined(__i386__)
+   /*
+    * IEEE ceil for computers that round to nearest or even.
+    * 'f' must be between -4194304 and 4194303.
+    * This ceil operation is done by "(iround(f + .5) + iround(f - .5) + 1) >> 1",
+    * but uses some IEEE specific tricks for better speed.
+    * Contributed by Josh Vanderhoof
+    */
+   int ai, bi;
+   double af, bf;
+   af = (3 << 22) + 0.5 + (double)f;
+   bf = (3 << 22) + 0.5 - (double)f;
+   /* GCC generates an extra fstp/fld without this. */
+   __asm__ ("fstps %0" : "=m" (ai) : "t" (af) : "st");
+   __asm__ ("fstps %0" : "=m" (bi) : "t" (bf) : "st");
+   return (ai - bi + 1) >> 1;
+#else
+   int ai, bi;
+   double af, bf;
+   fi_type u;
+   af = (3 << 22) + 0.5 + (double)f;
+   bf = (3 << 22) + 0.5 - (double)f;
+   u.f = (float) af; ai = u.i;
+   u.f = (float) bf; bi = u.i;
+   return (ai - bi + 1) >> 1;
 #endif
 }
 
