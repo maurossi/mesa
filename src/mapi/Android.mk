@@ -47,6 +47,8 @@ LOCAL_CFLAGS := \
 	-DMAPI_MODE_GLAPI \
 	-DMAPI_ABI_HEADER=\"$(abi_header)\"
 
+LOCAL_LDFLAGS := -Wl,--no-warn-shared-textrel
+
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi
 
