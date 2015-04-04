@@ -138,14 +138,16 @@ endif
 #  * libmesa_glsl depends on libmesa_glsl_utils
 #
 LOCAL_STATIC_LIBRARIES := \
-	libmesa_egl_gallium \
-	libmesa_st_egl \
+	libmesa_gallium_dri \
+	libmesa_st_dri \
 	$(gallium_DRIVERS) \
 	libmesa_st_mesa \
 	libmesa_util \
 	libmesa_glsl \
 	libmesa_glsl_utils \
 	libmesa_gallium \
+	libmesa_megadriver_stub \
+    	libmesa_dri_common \
 	$(LOCAL_STATIC_LIBRARIES)
 
 endif # MESA_BUILD_GALLIUM
