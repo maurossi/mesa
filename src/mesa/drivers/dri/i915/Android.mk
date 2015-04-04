@@ -37,7 +37,9 @@ LOCAL_CFLAGS := \
 	-DI915
 
 LOCAL_C_INCLUDES := \
-	$(MESA_DRI_C_INCLUDES)
+	$(MESA_DRI_C_INCLUDES) \
+	$(MESA_TOP)/src/gallium/include \
+	$(MESA_TOP)/src/gallium/auxiliary
 
 LOCAL_SRC_FILES := \
 	$(i915_FILES)

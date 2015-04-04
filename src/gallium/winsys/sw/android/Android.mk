@@ -28,6 +28,9 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	android_sw_winsys.cpp
 
+LOCAL_C_INCLUDES := \
+	$(MESA_TOP)/src
+
 LOCAL_MODULE := libmesa_winsys_sw_android
 
 include $(GALLIUM_COMMON_MK)

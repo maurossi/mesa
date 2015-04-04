@@ -48,7 +48,8 @@ LOCAL_CFLAGS := \
 	-DMAPI_ABI_HEADER=\"$(abi_header)\"
 
 LOCAL_C_INCLUDES := \
-	$(MESA_TOP)/src/mapi
+	$(MESA_TOP)/src/mapi \
+	$(MESA_TOP)/src
 
 LOCAL_MODULE := libglapi
 
