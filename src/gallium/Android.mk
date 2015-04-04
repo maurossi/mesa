@@ -79,5 +79,10 @@ ifneq ($(filter vmwgfx, $(MESA_GPU_DRIVERS)),)
 SUBDIRS += winsys/svga/drm drivers/svga
 endif
 
+#
+# Gallium state trackers and their users (targets)
+#
+SUBDIRS += state_trackers/dri targets/dri
+
 mkfiles := $(patsubst %,$(GALLIUM_TOP)/%/Android.mk,$(SUBDIRS))
 include $(mkfiles)
