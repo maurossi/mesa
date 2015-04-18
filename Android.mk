@@ -35,6 +35,14 @@ MESA_ANDROID_MAJOR_VERSION := $(word 1, $(subst ., , $(PLATFORM_VERSION)))
 MESA_ANDROID_MINOR_VERSION := $(word 2, $(subst ., , $(PLATFORM_VERSION)))
 MESA_ANDROID_VERSION := $(MESA_ANDROID_MAJOR_VERSION).$(MESA_ANDROID_MINOR_VERSION)
 
+ifeq ($(filter 1 2 3 4,$(MESA_ANDROID_MAJOR_VERSION)),)
+MESA_LOLLIPOP_BUILD := true
+else
+define local-generated-sources-dir
+$(call local-intermediates-dir)
+endef
+endif
+
 MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
 MESA_PYTHON2 := python
 

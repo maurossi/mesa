@@ -34,7 +34,7 @@ include $(LOCAL_PATH)/Makefile.sources
 LOCAL_MODULE := libmesa_dri_common
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
-intermediates := $(call local-intermediates-dir)
+intermediates := $(call local-generated-sources-dir)
 
 LOCAL_C_INCLUDES := \
     $(DRM_TOP) \
