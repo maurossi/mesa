@@ -47,6 +47,8 @@ LOCAL_C_INCLUDES += \
 		$(MESA_TOP)/src/glsl/glcpp \
 		$(MESA_TOP)/src/glsl/nir
 
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)/nir
+
 sources := $(addprefix $(intermediates)/, $(sources))
 LOCAL_GENERATED_SOURCES += $(sources)
 
