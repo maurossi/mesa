@@ -52,7 +52,6 @@ LOCAL_CFLAGS := \
 endif
 
 LOCAL_C_INCLUDES := \
-	$(call intermediates-dir-for STATIC_LIBRARIES,libmesa_program,,) \
 	$(MESA_TOP)/src/gallium/auxiliary \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src \

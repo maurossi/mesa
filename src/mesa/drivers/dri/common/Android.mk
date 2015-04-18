@@ -43,7 +43,10 @@ LOCAL_C_INCLUDES := \
     $(MESA_TOP)/src/gallium/include \
     $(MESA_TOP)/src/gallium/auxiliary
 
-LOCAL_SRC_FILES := $(DRI_COMMON_FILES)
+LOCAL_SRC_FILES := \
+	$(DRI_COMMON_FILES)
+
+LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 
 LOCAL_GENERATED_SOURCES := \
     $(intermediates)/xmlpool/options.h

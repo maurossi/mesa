@@ -60,7 +60,6 @@ LOCAL_CFLAGS += \
 endif
 
 LOCAL_C_INCLUDES := \
-	$(call intermediates-dir-for STATIC_LIBRARIES,libmesa_program,,) \
 	$(MESA_TOP)/src \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/glsl \
