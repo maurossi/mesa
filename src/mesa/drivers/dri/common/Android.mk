@@ -48,8 +48,8 @@ LOCAL_SRC_FILES := \
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 
-LOCAL_GENERATED_SOURCES := \
-    $(intermediates)/xmlpool/options.h
+MESA_DRI_OPTIONS_H := $(intermediates)/xmlpool/options.h
+LOCAL_GENERATED_SOURCES := $(MESA_DRI_OPTIONS_H)
 
 #
 # Generate options.h from gettext translations.
@@ -79,16 +79,14 @@ $(intermediates)/xmlpool/%/LC_MESSAGES/options.mo: $(intermediates)/xmlpool/%.po
 	mkdir -p $(dir $@)
 	msgfmt -o $@ $<
 
-$(intermediates)/xmlpool/options.h: PRIVATE_SCRIPT := $(LOCAL_PATH)/xmlpool/gen_xmlpool.py
-$(intermediates)/xmlpool/options.h: PRIVATE_LOCALEDIR := $(intermediates)/xmlpool
-$(intermediates)/xmlpool/options.h: PRIVATE_TEMPLATE_HEADER := $(LOCAL_PATH)/xmlpool/t_options.h
-$(intermediates)/xmlpool/options.h: PRIVATE_MO_FILES := $(MESA_DRI_OPTIONS_LANGS:%=$(intermediates)/xmlpool/%/LC_MESSAGES/options.mo)
+$(MESA_DRI_OPTIONS_H): PRIVATE_SCRIPT := $(LOCAL_PATH)/xmlpool/gen_xmlpool.py
+$(MESA_DRI_OPTIONS_H): PRIVATE_TEMPLATE_HEADER := $(LOCAL_PATH)/xmlpool/t_options.h
+$(MESA_DRI_OPTIONS_H): PRIVATE_MO_FILES := $(MESA_DRI_OPTIONS_LANGS:%=$(intermediates)/xmlpool/%/LC_MESSAGES/options.mo)
 .SECONDEXPANSION:
-$(intermediates)/xmlpool/options.h: $$(PRIVATE_SCRIPT) $$(PRIVATE_TEMPLATE_HEADER) $$(PRIVATE_MO_FILES)
-	mkdir -p $(dir $@)
-	mkdir -p $(PRIVATE_LOCALEDIR)
+$(MESA_DRI_OPTIONS_H): $$(PRIVATE_SCRIPT) $$(PRIVATE_TEMPLATE_HEADER) $$(PRIVATE_MO_FILES)
+	@mkdir -p $(@D)
 	$(MESA_PYTHON2) $(PRIVATE_SCRIPT) $(PRIVATE_TEMPLATE_HEADER) \
-		$(PRIVATE_LOCALEDIR) $(MESA_DRI_OPTIONS_LANGS) > $@
+		$(@D) $(MESA_DRI_OPTIONS_LANGS) > $@
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
