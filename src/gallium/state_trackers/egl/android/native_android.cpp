@@ -262,7 +262,7 @@ android_surface_add_cache(struct native_surface *nsurf,
       android_surface_clear_cache(&asurf->base);
 
    if (asurf->adpy->use_drm)
-      handle = (void *) get_handle_name(abuf->handle);
+      handle = (void *) (intptr_t) get_handle_name(abuf->handle);
    else
       handle = (void *) abuf->handle;
    /* NULL is invalid */

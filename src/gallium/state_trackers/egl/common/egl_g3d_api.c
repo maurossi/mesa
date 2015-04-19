@@ -131,7 +131,7 @@ egl_g3d_choose_config(_EGLDriver *drv, _EGLDisplay *dpy, const EGLint *attribs,
       struct egl_g3d_display *gdpy = egl_g3d_display(dpy);
 
       if (!gdpy->native->get_pixmap_format(gdpy->native,
-               (EGLNativePixmapType) data.criteria.MatchNativePixmap,
+               (EGLNativePixmapType) (intptr_t) data.criteria.MatchNativePixmap,
                &data.format))
          return _eglError(EGL_BAD_NATIVE_PIXMAP, "eglChooseConfig");
    }
