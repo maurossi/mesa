@@ -43,6 +43,7 @@ LOCAL_CFLAGS += -DDEFAULT_DRIVER_DIR=\"/system/lib/dri\"
 endif
 
 LOCAL_C_INCLUDES := \
+	system/core/libsync/include \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/egl/main \
 	$(MESA_TOP)/src/loader \
