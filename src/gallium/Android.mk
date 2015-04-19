@@ -86,7 +86,6 @@ ifneq ($(filter vmwgfx, $(MESA_GPU_DRIVERS)),)
 SUBDIRS += winsys/svga/drm drivers/svga
 endif
 
-# Gallium state trackers and target for dri
-SUBDIRS += state_trackers/dri targets/dri
+SUBDIRS += state_trackers/dri
 
 include $(call all-named-subdir-makefiles,$(SUBDIRS))
