@@ -62,10 +62,10 @@ ifneq ($(MESA_GPU_DRIVERS),swrast)
 LOCAL_SHARED_LIBRARIES += libdrm
 endif
 
-ifeq ($(strip $(MESA_BUILD_CLASSIC)),true)
 LOCAL_CFLAGS += -D_EGL_BUILT_IN_DRIVER_DRI2
 LOCAL_STATIC_LIBRARIES += libmesa_egl_dri2
 
+ifeq ($(strip $(MESA_BUILD_CLASSIC)),true)
 # require i915_dri and/or i965_dri
 LOCAL_REQUIRED_MODULES += \
 	$(addsuffix _dri, $(filter i915 i965, $(MESA_GPU_DRIVERS)))
@@ -74,9 +74,6 @@ endif # MESA_BUILD_CLASSIC
 ifeq ($(strip $(MESA_BUILD_GALLIUM)),true)
 
 gallium_DRIVERS :=
-
-# swrast
-gallium_DRIVERS += libmesa_pipe_softpipe libmesa_winsys_sw_android
 
 # freedreno
 ifneq ($(filter freedreno, $(MESA_GPU_DRIVERS)),)
@@ -137,8 +134,6 @@ endif
 #  * libmesa_glsl depends on libmesa_glsl_utils
 #
 LOCAL_STATIC_LIBRARIES := \
-	libmesa_egl_gallium \
-	libmesa_st_egl \
 	$(gallium_DRIVERS) \
 	libmesa_st_mesa \
 	libmesa_util \
@@ -147,6 +142,7 @@ LOCAL_STATIC_LIBRARIES := \
 	libmesa_gallium \
 	$(LOCAL_STATIC_LIBRARIES)
 
+LOCAL_REQUIRED_MODULES += gallium_dri
 endif # MESA_BUILD_GALLIUM
 
 LOCAL_STATIC_LIBRARIES := \
