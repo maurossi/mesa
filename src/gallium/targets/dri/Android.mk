@@ -80,7 +80,6 @@ LOCAL_CFLAGS += -DGALLIUM_R600
 endif
 ifneq ($(filter radeonsi,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_radeonsi
-LOCAL_SHARED_LIBRARIES += libLLVM
 LOCAL_CFLAGS += -DGALLIUM_RADEONSI
 endif
 gallium_DRIVERS += libmesa_winsys_radeon libmesa_pipe_radeon
@@ -90,16 +89,12 @@ ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_softpipe libmesa_winsys_sw_dri libmesa_winsys_sw_kms_dri
 LOCAL_CFLAGS += -DGALLIUM_SOFTPIPE
 endif
-ifneq ($(filter vc4,$(MESA_GPU_DRIVERS)),)
-LOCAL_CFLAGS += -DGALLIUM_VC4
-gallium_DRIVERS += libmesa_winsys_vc4 libmesa_pipe_vc4
-endif
 ifneq ($(filter vmwgfx,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_winsys_svga libmesa_pipe_svga
 LOCAL_CFLAGS += -DGALLIUM_VMWGFX
 endif
 ifneq ($(filter nouveau r600g,$(MESA_GPU_DRIVERS)),)
-LOCAL_SHARED_LIBRARIES += $(if $(filter true,$(MESA_LOLLIPOP_BUILD)),libc++,libstlport)
+LOCAL_SHARED_LIBRARIES += libstlport
 endif
 
 LOCAL_STATIC_LIBRARIES := \
@@ -112,16 +107,6 @@ LOCAL_STATIC_LIBRARIES := \
 	libmesa_gallium \
 	libmesa_util \
 	libmesa_loader \
-
-ifeq ($(MESA_ENABLE_LLVM),true)
-LOCAL_STATIC_LIBRARIES += \
-	libLLVMR600CodeGen \
-	libLLVMR600Desc \
-	libLLVMR600Info \
-	libLLVMR600AsmPrinter \
-	libelf
-LOCAL_LDLIBS += $(if $(filter true,$(MESA_LOLLIPOP_BUILD)),-lgcc)
-endif
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)
