@@ -29,7 +29,12 @@
 #include <deque>
 #include <list>
 #include <vector>
+#ifdef ANDROID
+#include <unordered_set> // from stlport
+using std::isfinite;
+#else
 #include <tr1/unordered_set>
+#endif
 
 #include "codegen/nv50_ir_util.h"
 #include "codegen/nv50_ir_graph.h"
