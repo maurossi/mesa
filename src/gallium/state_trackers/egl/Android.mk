@@ -38,6 +38,7 @@ LOCAL_CFLAGS := \
 	-DHAVE_ANDROID_BACKEND
 
 LOCAL_C_INCLUDES := \
+	system/core/libsync/include \
 	$(GALLIUM_TOP)/state_trackers/egl \
 	$(GALLIUM_TOP)/winsys \
 	$(MESA_TOP)/src/egl/main
