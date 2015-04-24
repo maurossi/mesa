@@ -45,8 +45,10 @@ LOCAL_SRC_FILES := $(filter-out $(sources), $(LOCAL_SRC_FILES))
 LOCAL_C_INCLUDES += $(intermediates)/main
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
+ifeq ($(TARGET_ARCH),x86)
 sources += x86/matypes.h
 LOCAL_C_INCLUDES += $(intermediates)/x86
+endif
 endif
 
 sources += main/git_sha1.h
