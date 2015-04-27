@@ -47,11 +47,15 @@ LOCAL_CFLAGS += -DGALLIUM_SOFTPIPE
 
 # !swrast only
 ifneq ($(MESA_GPU_DRIVERS),swrast)
-LOCAL_C_INCLUDES += $(TARGET_OUT_HEADERS)/libdrm
+LOCAL_SHARED_LIBRARIES += libdrm
 endif
 
+ifneq ($(filter r%, $(MESA_GPU_DRIVERS)),)
+LOCAL_SHARED_LIBRARIES += libdrm_radeon
+endif
 ifneq ($(filter freedreno, $(MESA_GPU_DRIVERS)),)
 LOCAL_CFLAGS += -DGALLIUM_FREEDRENO
+LOCAL_SHARED_LIBRARIES += libdrm_freedreno
 endif
 ifneq ($(filter i915g, $(MESA_GPU_DRIVERS)),)
 LOCAL_CFLAGS += -DGALLIUM_I915
