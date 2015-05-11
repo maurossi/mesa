@@ -40,7 +40,11 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#ifdef ANDROID
+#include_next <assert.h>
+#else
 #include <assert.h>
+#endif
 
 
 struct list_head
