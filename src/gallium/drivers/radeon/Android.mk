@@ -28,7 +28,14 @@ include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(C_SOURCES)
+LOCAL_SRC_FILES := \
+	$(C_SOURCES) \
+	$(LLVM_C_FILES)
+
+LOCAL_C_INCLUDES := \
+	$(LLVM_TOP)/include \
+	$(LLVM_TOP)/device/include \
+	external/elfutils/libelf \
 
 LOCAL_SHARED_LIBRARIES := libdrm libdrm_radeon
 LOCAL_MODULE := libmesa_pipe_radeon
