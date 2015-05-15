@@ -30,9 +30,6 @@
 
 #include <stdbool.h>
 #include <sys/time.h>
-
-#include <GL/internal/dri_interface.h>
-
 #include "dri_util.h"
 #include "intel_bufmgr.h"
 #include "brw_device_info.h"
@@ -85,7 +82,6 @@ extern void intelDestroyContext(__DRIcontext * driContextPriv);
 extern GLboolean intelUnbindContext(__DRIcontext * driContextPriv);
 
 PUBLIC const __DRIextension **__driDriverGetExtensions_i965(void);
-extern const __DRI2fenceExtension intelFenceExtension;
 
 extern GLboolean
 intelMakeCurrent(__DRIcontext * driContextPriv,
