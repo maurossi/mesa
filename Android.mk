@@ -80,7 +80,7 @@ else
 MESA_BUILD_GALLIUM := false
 endif
 
-MESA_ENABLE_LLVM := $(if $(filter radeonsi,$(gallium_drivers)),true,false)
+MESA_ENABLE_LLVM := $(if $(filter radeonsi,$(MESA_GPU_DRIVERS)),true,false)
 
 # add subdirectories
 ifneq ($(strip $(MESA_GPU_DRIVERS)),)
