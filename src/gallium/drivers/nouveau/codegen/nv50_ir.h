@@ -31,7 +31,12 @@
 #include <vector>
 #if __cplusplus >= 201103L
 #include <unordered_set>
+#ifdef _USING_LIBCXX
 typedef std::unordered_set<void *> voidptr_unordered_set;
+#else
+typedef std::tr1::unordered_set<void *> voidptr_unordered_set;
+using std::isfinite;
+#endif
 #else
 #include <tr1/unordered_set>
 typedef std::tr1::unordered_set<void *> voidptr_unordered_set;
