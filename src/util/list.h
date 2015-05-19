@@ -40,7 +40,9 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#ifndef assert
 #include <assert.h>
+#endif
 
 
 struct list_head
