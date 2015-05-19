@@ -451,6 +451,28 @@ struct Storage
 #define NV50_IR_INTERP_OFFSET      (2 << 2)
 #define NV50_IR_INTERP_SAMPLEID    (3 << 2)
 
+typedef std::tr1::unordered_set<void *> voidptr_unordered_set;
+
+template <typename V>
+class ptr_unordered_set : public voidptr_unordered_set {
+  public:
+    typedef voidptr_unordered_set _base;
+    typedef _base::iterator _biterator;
+
+    class iterator : public _biterator {
+      public:
+        iterator(const _biterator & i) : _biterator(i) {}
+        V *operator*() { return reinterpret_cast<V *>(*_biterator(*this)); }
+        const V *operator*() const { return reinterpret_cast<const V *>(*_biterator(*this)); }
+    };
+    typedef const iterator const_iterator;
+
+    iterator begin() { return _base::begin(); }
+    iterator end() { return _base::end(); }
+    const_iterator begin() const { return _base::begin(); }
+    const_iterator end() const { return _base::end(); }
+};
+
 // do we really want this to be a class ?
 class Modifier
 {
@@ -583,10 +605,10 @@ public:
 
    static inline Value *get(Iterator&);
 
-   std::tr1::unordered_set<ValueRef *> uses;
+   ptr_unordered_set<ValueRef> uses;
    std::list<ValueDef *> defs;
-   typedef std::tr1::unordered_set<ValueRef *>::iterator UseIterator;
-   typedef std::tr1::unordered_set<ValueRef *>::const_iterator UseCIterator;
+   typedef ptr_unordered_set<ValueRef>::iterator UseIterator;
+   typedef ptr_unordered_set<ValueRef>::const_iterator UseCIterator;
    typedef std::list<ValueDef *>::iterator DefIterator;
    typedef std::list<ValueDef *>::const_iterator DefCIterator;
 
