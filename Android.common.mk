@@ -77,6 +77,7 @@ LOCAL_CFLAGS += \
 endif
 
 LOCAL_CPPFLAGS += \
+	-std=c++11 \
 	-Wno-error=non-virtual-dtor \
 	-Wno-non-virtual-dtor
 
