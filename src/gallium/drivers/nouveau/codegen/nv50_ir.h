@@ -29,7 +29,13 @@
 #include <deque>
 #include <list>
 #include <vector>
+#if __cplusplus >= 201103L
+#include <unordered_set>
+typedef std::unordered_set<void *> voidptr_unordered_set;
+#else
 #include <tr1/unordered_set>
+typedef std::tr1::unordered_set<void *> voidptr_unordered_set;
+#endif
 
 #include "codegen/nv50_ir_util.h"
 #include "codegen/nv50_ir_graph.h"
@@ -450,8 +456,6 @@ struct Storage
 #define NV50_IR_INTERP_CENTROID    (1 << 2)
 #define NV50_IR_INTERP_OFFSET      (2 << 2)
 #define NV50_IR_INTERP_SAMPLEID    (3 << 2)
-
-typedef std::tr1::unordered_set<void *> voidptr_unordered_set;
 
 template <typename V>
 class ptr_unordered_set : public voidptr_unordered_set {
