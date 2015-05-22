@@ -27,6 +27,9 @@ LOCAL_C_INCLUDES += \
 	$(GALLIUM_TOP)/include \
 	$(GALLIUM_TOP)/auxiliary \
 	$(GALLIUM_TOP)/winsys \
-	$(GALLIUM_TOP)/drivers
+	$(GALLIUM_TOP)/drivers \
+	$(LLVM_TOP)/include \
+	$(LLVM_TOP)/device/include \
+	external/elfutils/0.153/libelf
 
 include $(MESA_COMMON_MK)
