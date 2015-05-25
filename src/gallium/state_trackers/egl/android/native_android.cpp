@@ -199,6 +199,8 @@ import_buffer(struct android_display *adpy, const struct pipe_resource *templ,
    }
 
    if (adpy->use_drm) {
+
+	ALOGE("JARVIS DEBUG - Inside native_android/import_buffer - adpy->use_drm is set ");
       struct winsys_handle handle;
 
       memset(&handle, 0, sizeof(handle));
@@ -216,6 +218,7 @@ import_buffer(struct android_display *adpy, const struct pipe_resource *templ,
       res = screen->resource_from_handle(screen, templ, &handle);
    }
    else {
+	ALOGE("JARVIS DEBUG - Inside native_android/import_buffer - adpy->use_drm is NOT set ");
       struct android_winsys_handle handle;
 
       memset(&handle, 0, sizeof(handle));
@@ -814,12 +817,18 @@ android_display_create(const struct native_event_handler *event_handler,
    boolean force_sw;
 
    /* check if SW renderer is forced */
-   if (property_get("debug.mesa.software", value, NULL))
+   if (property_get("debug.mesa.software", value, NULL)) {
       force_sw = (atoi(value) != 0);
-   else
+      ALOGE("JARVIS DEBUG - Inside native_android/android_display_create - debug.mesa.software value: %d; force_sw is %d ",atoi(value), force_sw);
+   }
+   else {
       force_sw = debug_get_bool_option("EGL_SOFTWARE", FALSE);
-   if (force_sw)
+      ALOGE("JARVIS DEBUG - Inside native_android/android_display_create - EGL_SOFTWARE set force_sw to: %d ",force_sw);
+   }
+   if (force_sw) {
       use_sw = TRUE;
+      ALOGE("JARVIS DEBUG - Inside native_android/android_display_create - use_sw was set to TRUE ");
+   }
 
    adpy = CALLOC_STRUCT(android_display);
    if (!adpy)
