@@ -229,6 +229,7 @@ static inline int IFLOOR(float f)
 #endif
 }
 
+
 /**
  * Is x a power of two?
  */
