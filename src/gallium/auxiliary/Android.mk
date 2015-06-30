@@ -28,12 +28,21 @@ include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
 
+LOCAL_CPPFLAGS += \
+	-std=c++11
+
 LOCAL_SRC_FILES := \
 	$(C_SOURCES) \
-	$(VL_STUB_SOURCES)
+	$(GALLIVM_SOURCES) \
+	$(GALLIVM_CPP_SOURCES) \
+	$(VL_STUB_SOURCES) 
+
 
 LOCAL_C_INCLUDES := \
-	$(GALLIUM_TOP)/auxiliary/util
+	$(GALLIUM_TOP)/auxiliary/util \
+	$(LLVM_TOP)/include \
+	$(LLVM_TOP)/device/include \
+	external/libcxx/include
 
 LOCAL_MODULE := libmesa_gallium
 

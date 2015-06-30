@@ -43,7 +43,11 @@ LOCAL_CFLAGS := \
 	-D_EGL_DRIVER_SEARCH_DIR=\"/system/lib/egl\" \
 	-D_EGL_OS_UNIX=1
 
-LOCAL_STATIC_LIBRARIES :=
+LOCAL_STATIC_LIBRARIES := \
+	libLLVMR600CodeGen \
+	libLLVMR600Desc \
+	libLLVMR600Info \
+	libLLVMR600AsmPrinter \
 
 LOCAL_SHARED_LIBRARIES := \
 	libglapi \
@@ -52,6 +56,7 @@ LOCAL_SHARED_LIBRARIES := \
 	liblog \
 	libcutils \
 	libgralloc_drm \
+	libLLVM \
 
 ifeq ($(shell echo "$(MESA_ANDROID_VERSION) >= 4.2" | bc),1)
 LOCAL_SHARED_LIBRARIES += libsync
@@ -149,6 +154,7 @@ LOCAL_STATIC_LIBRARIES := \
 	libmesa_glsl \
 	libmesa_glsl_utils \
 	libmesa_gallium \
+	libelf \
 	$(LOCAL_STATIC_LIBRARIES)
 
 endif # MESA_BUILD_GALLIUM
