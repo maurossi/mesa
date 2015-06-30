@@ -46,7 +46,8 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/egl/main \
 	$(MESA_TOP)/src/loader \
-	$(DRM_GRALLOC_TOP)
+	$(DRM_GRALLOC_TOP) \
+	system/core/libsync/include
 
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_loader

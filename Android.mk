@@ -45,6 +45,8 @@ endif
 MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
 MESA_PYTHON2 := python
 
+LLVM_TOP := external/llvm
+
 DRM_GRALLOC_TOP := hardware/drm_gralloc
 
 classic_drivers := i915 i965
