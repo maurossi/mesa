@@ -40,7 +40,6 @@ MESA_DRI_C_INCLUDES := \
 	$(addprefix $(MESA_TOP)/, $(mesa_dri_common_INCLUDES)) \
 	$(DRM_TOP) \
 	$(DRM_TOP)/include/drm \
-	external/expat/lib
 
 MESA_DRI_WHOLE_STATIC_LIBRARIES := \
 	libmesa_glsl \
