@@ -79,12 +79,11 @@ endif
 LOCAL_CPPFLAGS += \
 	$(if $(filter true,$(MESA_LOLLIPOP_BUILD)),-D_USING_LIBCXX) \
 	-std=c++11 \
-	$(if $(filter true,$(MESA_LOLLIPOP_BUILD)),-D_USING_LIBCXX) \
 	-Wno-error=non-virtual-dtor \
 	-Wno-non-virtual-dtor
 
 # uncomment to keep the debug symbols
-#LOCAL_STRIP_MODULE := false
+LOCAL_STRIP_MODULE := false
 
 ifeq ($(strip $(LOCAL_MODULE_TAGS)),)
 LOCAL_MODULE_TAGS := optional
