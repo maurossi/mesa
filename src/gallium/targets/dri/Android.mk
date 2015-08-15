@@ -81,8 +81,8 @@ gallium_DRIVERS += libmesa_pipe_radeonsi
 LOCAL_SHARED_LIBRARIES += libLLVM
 LOCAL_CFLAGS += -DGALLIUM_RADEONSI
 endif
-gallium_DRIVERS += libmesa_winsys_radeon libmesa_pipe_radeon
-LOCAL_SHARED_LIBRARIES += libdrm_radeon
+gallium_DRIVERS += libmesa_winsys_radeon libmesa_pipe_radeon libmesa_winsys_amdgpu
+LOCAL_SHARED_LIBRARIES += libdrm_radeon libdrm_amdgpu
 endif
 ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_softpipe libmesa_winsys_sw_dri
