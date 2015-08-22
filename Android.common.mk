@@ -89,7 +89,7 @@ LOCAL_SHARED_LIBRARIES += libdrm
 endif
 
 LOCAL_CPPFLAGS += \
-	$(if $(filter true,$(MESA_LOLLIPOP_BUILD)),-D_USING_LIBCXX) \
+	$(if $(filter true,$(MESA_LOLLIPOP_BUILD)),-std=c++11) \
 	-Wno-error=non-virtual-dtor \
 	-Wno-non-virtual-dtor
 
