@@ -83,7 +83,7 @@ LOCAL_CPPFLAGS += \
 	-Wno-non-virtual-dtor
 
 # uncomment to keep the debug symbols
-#LOCAL_STRIP_MODULE := false
+LOCAL_STRIP_MODULE := false
 
 ifeq ($(strip $(LOCAL_MODULE_TAGS)),)
 LOCAL_MODULE_TAGS := optional
