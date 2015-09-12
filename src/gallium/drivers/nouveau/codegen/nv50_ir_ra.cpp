@@ -25,7 +25,7 @@
 
 #include <stack>
 #include <limits>
-#include <tr1/unordered_map>
+#include <unordered_map>
 
 namespace nv50_ir {
 
@@ -349,12 +349,12 @@ RegAlloc::PhiMovesPass::needNewElseBlock(BasicBlock *b, BasicBlock *p)
 
 struct PhiMapHash {
    size_t operator()(const std::pair<Instruction *, BasicBlock *>& val) const {
-      return std::tr1::hash<Instruction*>()(val.first) * 31 +
-         std::tr1::hash<BasicBlock*>()(val.second);
+      return std::hash<Instruction*>()(val.first) * 31 +
+         std::hash<BasicBlock*>()(val.second);
    }
 };
 
-typedef std::tr1::unordered_map<
+typedef std::unordered_map<
    std::pair<Instruction *, BasicBlock *>, Value *, PhiMapHash> PhiMap;
 
 // Critical edges need to be split up so that work can be inserted along
