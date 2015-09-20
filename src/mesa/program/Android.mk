@@ -56,7 +56,7 @@ generated_sources_basenames := \
 	program_parse.tab.h
 
 LOCAL_SRC_FILES := \
-	$(filter-out $(generated_sources_basenames),$(subst program/,,$(PROGRAM_FILES))) \
+	$(filter-out $(generated_sources_basenames),$(subst ../glsl/,../../glsl/,$(subst program/,,$(PROGRAM_FILES)))) \
 	$(subst program/,,$(PROGRAM_NIR_FILES))
 
 LOCAL_GENERATED_SOURCES := \
