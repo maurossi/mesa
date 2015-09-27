@@ -1293,6 +1293,7 @@ dri2_load_opencl_interop(struct dri_screen *screen)
 }
 
 struct dri2_fence {
+   struct dri_screen *driscreen;
    struct pipe_fence_handle *pipe_fence;
    void *cl_event;
 };
@@ -1313,6 +1314,7 @@ dri2_create_fence(__DRIcontext *_ctx)
       return NULL;
    }
 
+   fence->driscreen = dri_screen(_ctx->driScreenPriv);
    return fence;
 }
 
@@ -1360,9 +1362,9 @@ static GLboolean
 dri2_client_wait_sync(__DRIcontext *_ctx, void *_fence, unsigned flags,
                       uint64_t timeout)
 {
-   struct dri_screen *driscreen = dri_screen(_ctx->driScreenPriv);
-   struct pipe_screen *screen = driscreen->base.screen;
    struct dri2_fence *fence = (struct dri2_fence*)_fence;
+   struct dri_screen *driscreen = fence->driscreen;
+   struct pipe_screen *screen = driscreen->base.screen;
 
    /* No need to flush. The context was flushed when the fence was created. */
 
