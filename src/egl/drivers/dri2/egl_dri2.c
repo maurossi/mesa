@@ -2405,7 +2405,7 @@ dri2_client_wait_sync(_EGLDriver *drv, _EGLDisplay *dpy, _EGLSync *sync,
    /* the sync object should take a reference while waiting */
    dri2_egl_ref_sync(dri2_sync);
 
-   if (dri2_dpy->fence->client_wait_sync(dri2_ctx->dri_context,
+   if (dri2_dpy->fence->client_wait_sync(dri2_ctx ? dri2_ctx->dri_context : NULL,
                                          dri2_sync->fence, wait_flags,
                                          timeout))
       dri2_sync->base.SyncStatus = EGL_SIGNALED_KHR;
