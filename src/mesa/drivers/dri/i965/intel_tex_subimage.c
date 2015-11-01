@@ -214,18 +214,26 @@ intelTexSubImage(struct gl_context * ctx,
        _mesa_enum_to_string(format), _mesa_enum_to_string(type),
        texImage->Level, texImage->Width, texImage->Height, texImage->Depth);
 
+/* BEGIN TEST let's try to skip _mesa_meta_pbo_TexSubImage()
    ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage,
                                    xoffset, yoffset, zoffset,
                                    width, height, depth, format, type,
                                    pixels, false, tex_busy, packing);
+
+   DBG("MAUROSSI %s _mesa_meta_pbo_TexSubImage() returns: %d\n", __func__, ok);
+
    if (ok)
       return;
+   END TEST*/
 
    ok = intel_texsubimage_tiled_memcpy(ctx, dims, texImage,
                                        xoffset, yoffset, zoffset,
                                        width, height, depth,
                                        format, type, pixels, packing,
                                        false /*for_glTexImage*/);
+
+   DBG("MAUROSSI %s intel_texsubimage_tiled_memcpy() returns: %d\n", __func__, ok);
+
    if (ok)
      return;
 
@@ -233,6 +241,9 @@ intelTexSubImage(struct gl_context * ctx,
                            xoffset, yoffset, zoffset,
                            width, height, depth,
                            format, type, pixels, packing);
+ 
+   DBG("MAUROSSI %s _mesa_store_texsubimage() executed.", __func__);
+
 }
 
 void
