@@ -108,16 +108,16 @@ intelTexImage(struct gl_context * ctx,
    }
 
    assert(intelImage->mt);
-
+/* BEGIN TEST let's try to skip _mesa_meta_pbo_TexSubImage()
    ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage, 0, 0, 0,
                                    texImage->Width, texImage->Height,
                                    texImage->Depth,
                                    format, type, pixels,
-                                   false /*allocate_storage*/,
+                                   false /*allocate_storage*//*,
                                    tex_busy, unpack);
    if (ok)
       return;
-
+   END TEST*/
    ok = intel_texsubimage_tiled_memcpy(ctx, dims, texImage,
                                        0, 0, 0, /*x,y,z offsets*/
                                        texImage->Width,
@@ -398,28 +398,37 @@ intel_gettexsubimage_tiled_memcpy(struct gl_context *ctx,
        (packing->RowLength != 0 && packing->RowLength != width) ||
        packing->SwapBytes ||
        packing->LsbFirst ||
-       packing->Invert)
+       packing->Invert) {
+      DBG("%s: MAUROSSI 1st check failed, packing?\n", __func__);
       return false;
+      }
 
    /* We can't handle copying from RGBX or BGRX because the tiled_memcpy
     * function doesn't set the last channel to 1.
     */
    if (texImage->TexFormat == MESA_FORMAT_B8G8R8X8_UNORM ||
-       texImage->TexFormat == MESA_FORMAT_R8G8B8X8_UNORM)
+       texImage->TexFormat == MESA_FORMAT_R8G8B8X8_UNORM) {
+      DBG("%s: MAUROSSI 2nd check failed, can't handle copying from RGBX or BGRX.\n", __func__);
       return false;
+      }
 
    if (!intel_get_memcpy(texImage->TexFormat, format, type, &mem_copy, &cpp,
-                         INTEL_DOWNLOAD))
+                         INTEL_DOWNLOAD)) {
+      DBG("%s: MAUROSSI 3rd check failed, !intel_get_memcpy() is true.\n", __func__);
       return false;
+      }
 
    /* If this is a nontrivial texture view, let another path handle it instead. */
-   if (texImage->TexObject->MinLayer)
+   if (texImage->TexObject->MinLayer) {
+      DBG("%s: MAUROSSI 4th check failed, not a trivial texture view.\n", __func__);
       return false;
+      }
 
    if (!image->mt ||
        (image->mt->tiling != I915_TILING_X &&
        image->mt->tiling != I915_TILING_Y)) {
       /* The algorithm is written only for X- or Y-tiled memory. */
+      DBG("%s: MAUROSSI 5th check failed, not X- or Y-tiled memory.\n", __func__);
       return false;
    }
 

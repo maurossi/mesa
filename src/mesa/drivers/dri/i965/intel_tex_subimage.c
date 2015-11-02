@@ -115,20 +115,28 @@ intel_texsubimage_tiled_memcpy(struct gl_context * ctx,
        (packing->RowLength != 0 && packing->RowLength != width) ||
        packing->SwapBytes ||
        packing->LsbFirst ||
-       packing->Invert)
+       packing->Invert) {
+      DBG("%s: MAUROSSI 1st check failed, packing?\n", __func__);
       return false;
+      }
 
    /* Only a simple blit, no scale, bias or other mapping. */
-   if (ctx->_ImageTransferState)
+   if (ctx->_ImageTransferState) {
+      DBG("%s: MAUROSSI 2nd check failed, not a simple blit.\n", __func__);
       return false;
+      }
 
    if (!intel_get_memcpy(texImage->TexFormat, format, type, &mem_copy, &cpp,
-                         INTEL_UPLOAD))
+                         INTEL_UPLOAD)) {
+      DBG("%s: MAUROSSI 3rd check failed, !intel_get_memcpy() is true.\n", __func__);
       return false;
+      }
 
    /* If this is a nontrivial texture view, let another path handle it instead. */
-   if (texImage->TexObject->MinLayer)
+   if (texImage->TexObject->MinLayer) {
+      DBG("%s: MAUROSSI 4th check failed, not a trivial texture view.\n", __func__);
       return false;
+      }
 
    if (for_glTexImage)
       ctx->Driver.AllocTextureImageBuffer(ctx, texImage);
@@ -137,6 +145,7 @@ intel_texsubimage_tiled_memcpy(struct gl_context * ctx,
        (image->mt->tiling != I915_TILING_X &&
        image->mt->tiling != I915_TILING_Y)) {
       /* The algorithm is written only for X- or Y-tiled memory. */
+      DBG("%s: MAUROSSI 5th check failed, not X- or Y-tiled memory.\n", __func__);
       return false;
    }
 
@@ -214,18 +223,26 @@ intelTexSubImage(struct gl_context * ctx,
        _mesa_enum_to_string(format), _mesa_enum_to_string(type),
        texImage->Level, texImage->Width, texImage->Height, texImage->Depth);
 
+/* BEGIN TEST let's try to skip _mesa_meta_pbo_TexSubImage()
    ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage,
                                    xoffset, yoffset, zoffset,
                                    width, height, depth, format, type,
                                    pixels, false, tex_busy, packing);
+
+   DBG("MAUROSSI %s _mesa_meta_pbo_TexSubImage() returns: %d\n", __func__, ok);
+
    if (ok)
       return;
+   END TEST*/
 
    ok = intel_texsubimage_tiled_memcpy(ctx, dims, texImage,
                                        xoffset, yoffset, zoffset,
                                        width, height, depth,
                                        format, type, pixels, packing,
                                        false /*for_glTexImage*/);
+
+   DBG("MAUROSSI %s intel_texsubimage_tiled_memcpy() returns: %d\n", __func__, ok);
+
    if (ok)
      return;
 
@@ -233,6 +250,9 @@ intelTexSubImage(struct gl_context * ctx,
                            xoffset, yoffset, zoffset,
                            width, height, depth,
                            format, type, pixels, packing);
+ 
+   DBG("MAUROSSI %s _mesa_store_texsubimage() executed.", __func__);
+
 }
 
 void
