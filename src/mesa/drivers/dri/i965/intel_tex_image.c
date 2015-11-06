@@ -106,16 +106,16 @@ intelTexImage(struct gl_context * ctx,
    }
 
    assert(intelImage->mt);
-
+/* BEGIN TEST let's try to skip _mesa_meta_pbo_TexSubImage()
    ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage, 0, 0, 0,
                                    texImage->Width, texImage->Height,
                                    texImage->Depth,
                                    format, type, pixels,
-                                   false /*allocate_storage*/,
+                                   false /*allocate_storage*//*,
                                    tex_busy, unpack);
    if (ok)
       return;
-
+   END TEST*/
    ok = intel_texsubimage_tiled_memcpy(ctx, dims, texImage,
                                        0, 0, 0, /*x,y,z offsets*/
                                        texImage->Width,
