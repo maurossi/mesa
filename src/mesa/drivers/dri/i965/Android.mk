@@ -45,7 +45,8 @@ LOCAL_CFLAGS += \
 endif
 
 LOCAL_C_INCLUDES := \
-	$(MESA_DRI_C_INCLUDES)
+	$(MESA_DRI_C_INCLUDES) \
+	$(MESA_TOP)/src/glsl/nir
 
 LOCAL_SRC_FILES := \
 	$(i965_compiler_FILES) \

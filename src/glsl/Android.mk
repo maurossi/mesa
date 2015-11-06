@@ -42,7 +42,8 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/mesa \
 	$(MESA_TOP)/src/gallium/include \
-	$(MESA_TOP)/src/gallium/auxiliary
+	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/glsl/nir
 
 LOCAL_MODULE := libmesa_glsl
 
@@ -63,7 +64,8 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/mesa \
 	$(MESA_TOP)/src/gallium/include \
-	$(MESA_TOP)/src/gallium/auxiliary
+	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/glsl/nir
 
 LOCAL_STATIC_LIBRARIES := libmesa_glsl libmesa_glsl_utils libmesa_util
 
