@@ -214,12 +214,14 @@ intelTexSubImage(struct gl_context * ctx,
        _mesa_enum_to_string(format), _mesa_enum_to_string(type),
        texImage->Level, texImage->Width, texImage->Height, texImage->Depth);
 
+/* BEGIN TEST let's try to skip _mesa_meta_pbo_TexSubImage()
    ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage,
                                    xoffset, yoffset, zoffset,
                                    width, height, depth, format, type,
                                    pixels, false, tex_busy, packing);
    if (ok)
       return;
+   END TEST*/
 
    ok = intel_texsubimage_tiled_memcpy(ctx, dims, texImage,
                                        xoffset, yoffset, zoffset,
