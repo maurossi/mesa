@@ -101,14 +101,14 @@ LOCAL_SHARED_LIBRARIES += $(if $(filter true,$(MESA_LOLLIPOP_BUILD)),libc++,libs
 endif
 
 LOCAL_STATIC_LIBRARIES := \
-	$(gallium_DRIVERS) \
 	libmesa_st_dri \
+	libmesa_pipe_loader \
+	$(gallium_DRIVERS) \
 	libmesa_st_mesa \
 	libmesa_glsl \
 	libmesa_dri_common \
 	libmesa_megadriver_stub \
 	libmesa_gallium \
-	libmesa_pipe_loader \
 	libmesa_util \
 	libmesa_loader \
 
