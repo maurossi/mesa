@@ -966,13 +966,13 @@ AC_ARG_ENABLE([gallium-tests],
 # Option for Gallium drivers
 
 # Keep this in sync with the --with-gallium-drivers help string default value
-GALLIUM_DRIVERS_DEFAULT="r300,r600,svga,swrast"
+GALLIUM_DRIVERS_DEFAULT="r300,r600,svga,swrast,virgl"
 
 AC_ARG_WITH([gallium-drivers],
     [AS_HELP_STRING([--with-gallium-drivers@<:@=DIRS...@:>@],
         [comma delimited Gallium drivers list, e.g.
         "i915,ilo,nouveau,r300,r600,radeonsi,freedreno,svga,swrast,vc4,virgl"
-        @<:@default=r300,r600,svga,swrast@:>@])],
+        @<:@default=r300,r600,svga,swrast,virgl@:>@])],
     [with_gallium_drivers="$withval"],
     [with_gallium_drivers="$GALLIUM_DRIVERS_DEFAULT"])
 
