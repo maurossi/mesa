@@ -100,7 +100,7 @@ ifneq ($(filter nouveau r600g,$(MESA_GPU_DRIVERS)),)
 LOCAL_SHARED_LIBRARIES += $(if $(filter true,$(MESA_LOLLIPOP_BUILD)),libc++,libstlport)
 endif
 
-LOCAL_STATIC_LIBRARIES := \
+LOCAL_WHOLE_STATIC_LIBRARIES := \
 	$(gallium_DRIVERS) \
 	libmesa_st_dri \
 	libmesa_st_mesa \
