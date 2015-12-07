@@ -467,8 +467,7 @@ intel_texsubimage_tiled_memcpy(struct gl_context * ctx,
     */
    if (!brw->has_llc ||
        !(type == GL_UNSIGNED_BYTE || type == GL_UNSIGNED_INT_8_8_8_8_REV) ||
-       !(texImage->TexObject->Target == GL_TEXTURE_2D ||
-         texImage->TexObject->Target == GL_TEXTURE_RECTANGLE) ||
+       texImage->TexObject->Target != GL_TEXTURE_2D ||
        pixels == NULL ||
        _mesa_is_bufferobj(packing->BufferObj) ||
        packing->Alignment > 4 ||
