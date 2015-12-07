@@ -118,8 +118,7 @@ intel_texsubimage_tiled_memcpy(struct gl_context * ctx,
        packing->Invert)
       return false;
 
-   if (!intel_get_memcpy(texImage->TexFormat, format, type, &mem_copy, &cpp,
-                         INTEL_UPLOAD))
+   if (!intel_get_memcpy(texImage->TexFormat, format, type, &mem_copy, &cpp))
       return false;
 
    /* If this is a nontrivial texture view, let another path handle it instead. */

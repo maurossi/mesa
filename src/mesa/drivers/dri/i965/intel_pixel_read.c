@@ -139,8 +139,7 @@ intel_readpixels_tiled_memcpy(struct gl_context * ctx,
        rb->Format == MESA_FORMAT_R8G8B8X8_UNORM)
       return false;
 
-   if (!intel_get_memcpy(rb->Format, format, type, &mem_copy, &cpp,
-                         INTEL_DOWNLOAD))
+   if (!intel_get_memcpy(rb->Format, format, type, &mem_copy, &cpp))
       return false;
 
    if (!irb->mt ||
