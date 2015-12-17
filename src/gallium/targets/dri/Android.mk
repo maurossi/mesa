@@ -27,6 +27,12 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := gallium_dri
 
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+	$(MESA_TOP)/src \
+	$(MESA_TOP)/include \
+	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/gallium/include
+
 ifeq ($(MESA_LOLLIPOP_BUILD),true)
 LOCAL_MODULE_RELATIVE_PATH := $(MESA_DRI_MODULE_REL_PATH)
 else
