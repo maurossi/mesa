@@ -34,7 +34,7 @@ LOCAL_C_INCLUDES += \
 	external/llvm/include \
 	external/llvm/device/include \
 	external/libcxx/include \
-	external/elfutils/$(if $(filter true,$(MESA_LOLLIPOP_BUILD)),0.153/)libelf
+	external/elfutils/$(if $(filter 5,$(MESA_ANDROID_MAJOR_VERSION)),0.153/,src/)libelf
 endif
 
 include $(MESA_COMMON_MK)
