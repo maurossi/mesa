@@ -199,6 +199,7 @@ intelTexSubImage(struct gl_context * ctx,
                  const GLvoid * pixels,
                  const struct gl_pixelstore_attrib *packing)
 {
+   struct brw_context *brw = brw_context(ctx);
    struct intel_texture_image *intelImage = intel_texture_image(texImage);
    bool ok;
 
@@ -210,12 +211,14 @@ intelTexSubImage(struct gl_context * ctx,
        _mesa_lookup_enum_by_nr(format), _mesa_lookup_enum_by_nr(type),
        texImage->Level, texImage->Width, texImage->Height, texImage->Depth);
 
-   ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage,
-                                   xoffset, yoffset, zoffset,
-                                   width, height, depth, format, type,
-                                   pixels, false, tex_busy, packing);
-   if (ok)
-      return;
+   if (brw->gen >= 5) {
+      ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage,
+                                      xoffset, yoffset, zoffset,
+                                      width, height, depth, format, type,
+                                      pixels, false, tex_busy, packing);
+      if (ok)
+         return;
+   }
 
    ok = intel_texsubimage_tiled_memcpy(ctx, dims, texImage,
                                        xoffset, yoffset, zoffset,
