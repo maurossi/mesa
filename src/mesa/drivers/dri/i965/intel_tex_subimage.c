@@ -46,6 +46,96 @@
 
 #define FILE_DEBUG_FLAG DEBUG_TEXTURE
 
+static bool
+intel_blit_texsubimage(struct gl_context * ctx,
+		       struct gl_texture_image *texImage,
+		       GLint xoffset, GLint yoffset,
+		       GLint width, GLint height,
+		       GLenum format, GLenum type, const void *pixels,
+		       const struct gl_pixelstore_attrib *packing)
+{
+   struct brw_context *brw = brw_context(ctx);
+   struct intel_texture_image *intelImage = intel_texture_image(texImage);
+
+   /* Try to do a blit upload of the subimage if the texture is
+    * currently busy.
+    */
+   if (!intelImage->mt)
+      return false;
+
+   /* Prior to Sandybridge, the blitter can't handle Y tiling */
+   if (brw->gen < 6 && intelImage->mt->tiling == I915_TILING_Y)
+      return false;
+
+   if (texImage->TexObject->Target != GL_TEXTURE_2D)
+      return false;
+
+   /* On gen6, it's probably not worth swapping to the blit ring to do
+    * this because of all the overhead involved.
+    */
+   if (brw->gen >= 6)
+      return false;
+
+   if (!drm_intel_bo_busy(intelImage->mt->bo))
+      return false;
+
+   DBG("BLT subimage %s target %s level %d offset %d,%d %dx%d\n",
+       __FUNCTION__,
+       _mesa_lookup_enum_by_nr(texImage->TexObject->Target),
+       texImage->Level, xoffset, yoffset, width, height);
+
+   pixels = _mesa_validate_pbo_teximage(ctx, 2, width, height, 1,
+					format, type, pixels, packing,
+					"glTexSubImage");
+   if (!pixels)
+      return false;
+
+   struct intel_mipmap_tree *temp_mt =
+      intel_miptree_create(brw, GL_TEXTURE_2D, texImage->TexFormat,
+                           0, 0,
+                           width, height, 1,
+                           false, 0, INTEL_MIPTREE_TILING_NONE,
+                           false);
+   if (!temp_mt)
+      goto err;
+
+   GLubyte *dst = intel_miptree_map_raw(brw, temp_mt);
+   if (!dst)
+      goto err;
+
+   if (!_mesa_texstore(ctx, 2, texImage->_BaseFormat,
+		       texImage->TexFormat,
+		       temp_mt->pitch,
+		       &dst,
+		       width, height, 1,
+		       format, type, pixels, packing)) {
+      _mesa_error(ctx, GL_OUT_OF_MEMORY, "intelTexSubImage");
+   }
+
+   intel_miptree_unmap_raw(brw, temp_mt);
+
+   bool ret;
+
+   ret = intel_miptree_blit(brw,
+                            temp_mt, 0, 0,
+                            0, 0, false,
+                            intelImage->mt, texImage->Level, texImage->Face,
+                            xoffset, yoffset, false,
+                            width, height, GL_COPY);
+   assert(ret);
+
+   intel_miptree_release(&temp_mt);
+   _mesa_unmap_teximage_pbo(ctx, packing);
+
+   return ret;
+
+err:
+   _mesa_error(ctx, GL_OUT_OF_MEMORY, "intelTexSubImage");
+   intel_miptree_release(&temp_mt);
+   _mesa_unmap_teximage_pbo(ctx, packing);
+   return false;
+}
+
 /**
  * \brief A fast path for glTexImage and glTexSubImage.
  *
