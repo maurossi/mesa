@@ -318,10 +318,16 @@ intelTexSubImage(struct gl_context * ctx,
    if (ok)
      return;
 
-   _mesa_store_texsubimage(ctx, dims, texImage,
-                           xoffset, yoffset, zoffset,
-                           width, height, depth,
-                           format, type, pixels, packing);
+   /* The intel_blit_texsubimage() function only handles 2D images */
+   if (dims != 2 || !intel_blit_texsubimage(ctx, texImage,
+			       xoffset, yoffset,
+			       width, height,
+			       format, type, pixels, packing)) {
+      _mesa_store_texsubimage(ctx, dims, texImage,
+                              xoffset, yoffset, zoffset,
+                              width, height, depth,
+                              format, type, pixels, packing);
+   }
 }
 
 void
