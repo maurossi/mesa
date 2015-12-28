@@ -204,6 +204,13 @@ intelTexImage(struct gl_context * ctx,
    if (ok)
       return;
 
+   /* Attempt to use the blitter for PBO image uploads.
+    */
+   if (dims <= 2 &&
+       try_pbo_upload(ctx, texImage, unpack, format, type, pixels)) {
+      return;
+   }
+
    DBG("%s: upload image %dx%dx%d pixels %p\n",
        __FUNCTION__, texImage->Width, texImage->Height, texImage->Depth,
        pixels);
@@ -649,18 +656,23 @@ intel_get_tex_image(struct gl_context *ctx,
    DBG("%s\n", __FUNCTION__);
 
    if (_mesa_is_bufferobj(ctx->Pack.BufferObj)) {
-      if (_mesa_meta_pbo_GetTexSubImage(ctx, 3, texImage, 0, 0, 0,
-                                        texImage->Width, texImage->Height,
-                                        texImage->Depth, format, type,
-                                        pixels, &ctx->Pack)) {
-         /* Flush to guarantee coherency between the render cache and other
-          * caches the PBO could potentially be bound to after this point.
-          * See the related comment in intelReadPixels() for a more detailed
-          * explanation.
-          */
-         intel_batchbuffer_emit_mi_flush(brw);
-         return;
-      }
+      if (brw->gen >= 5)
+         if (_mesa_meta_pbo_GetTexSubImage(ctx, 3, texImage, 0, 0, 0,
+                                           texImage->Width, texImage->Height,
+                                           texImage->Depth, format, type,
+                                           pixels, &ctx->Pack)) {
+            /* Flush to guarantee coherency between the render cache and other
+             * caches the PBO could potentially be bound to after this point.
+             * See the related comment in intelReadPixels() for a more detailed
+             * explanation.
+             */
+            intel_batchbuffer_emit_mi_flush(brw);
+            return;
+         }
+      else
+         /* Using PBOs, so try the BLT based path. */
+         if (blit_texture_to_pbo(ctx, format, type, pixels, texImage))
+            return;
 
       perf_debug("%s: fallback to CPU mapping in PBO case\n", __FUNCTION__);
    }
