@@ -162,7 +162,7 @@ EXT(ARB_texture_gather                      , ARB_texture_gather                
 EXT(ARB_texture_mirror_clamp_to_edge        , ARB_texture_mirror_clamp_to_edge       , GLL, GLC,  x ,  x , 2013)
 EXT(ARB_texture_mirrored_repeat             , dummy_true                             , GLL,  x ,  x ,  x , 2001)
 EXT(ARB_texture_multisample                 , ARB_texture_multisample                , GLL, GLC,  x ,  x , 2009)
-EXT(ARB_texture_non_power_of_two            , ARB_texture_non_power_of_two           , GLL, GLC,  x ,  x , 2003)
+EXT(ARB_texture_non_power_of_two            , ARB_texture_non_power_of_two           , GLL, GLC, ES1,  x , 2003)
 EXT(ARB_texture_query_levels                , ARB_texture_query_levels               , GLL, GLC,  x ,  x , 2012)
 EXT(ARB_texture_query_lod                   , ARB_texture_query_lod                  , GLL, GLC,  x ,  x , 2009)
 EXT(ARB_texture_rectangle                   , NV_texture_rectangle                   , GLL, GLC,  x ,  x , 2004)
