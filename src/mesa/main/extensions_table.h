@@ -23,6 +23,7 @@ EXT(ANGLE_texture_compression_dxt5          , ANGLE_texture_compression_dxt     
 
 EXT(APPLE_object_purgeable                  , APPLE_object_purgeable                 , GLL, GLC,  x ,  x , 2006)
 EXT(APPLE_packed_pixels                     , dummy_true                             , GLL,  x ,  x ,  x , 2002)
+EXT(APPLE_texture_2D_limited_npot           , ARB_texture_non_power_of_two           ,  x ,  x , ES1,  x , 2011) 
 EXT(APPLE_texture_max_level                 , dummy_true                             ,  x ,  x , ES1, ES2, 2009)
 EXT(APPLE_vertex_array_object               , dummy_true                             , GLL,  x ,  x ,  x , 2002)
 
