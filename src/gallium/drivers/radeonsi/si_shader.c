@@ -49,6 +49,24 @@
 
 #include <errno.h>
 
+#if defined(__ANDROID__)
+/*
+ * Android Bionic has no strchrnul, which is used in si_shader_dump_disassembly(),
+ * so we must fill in an implementation.
+ */
+char *
+strchrnul(const char *s, int c)
+{
+	char * result = strchr(s, c);
+
+	if (result == NULL) {
+		result = s + strlen(s);
+	}
+
+	return result;
+}
+#endif /* __ANDROID__ */
+
 static const char *scratch_rsrc_dword0_symbol =
 	"SCRATCH_RSRC_DWORD0";
 
