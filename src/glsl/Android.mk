@@ -36,7 +36,8 @@ include $(CLEAR_VARS)
 LOCAL_SRC_FILES := \
 	$(LIBGLCPP_FILES) \
 	$(LIBGLSL_FILES) \
-	$(NIR_FILES)
+	$(NIR_FILES) \
+	$(GLSL_TO_NIR_FILES)
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
