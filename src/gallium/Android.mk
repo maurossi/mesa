@@ -35,7 +35,7 @@ SUBDIRS += auxiliary/pipe-loader
 
 # swrast
 ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
-SUBDIRS += winsys/sw/dri drivers/softpipe
+SUBDIRS += winsys/sw/dri drivers/llvmpipe drivers/softpipe
 endif
 
 # freedreno
