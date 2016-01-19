@@ -743,7 +743,7 @@ dri2_update_tex_buffer(struct dri_drawable *drawable,
    /* no-op */
 }
 
-static __DRIimage *
+__DRIimage *
 dri2_lookup_egl_image(struct dri_screen *screen, void *handle)
 {
    const __DRIimageLookupExtension *loader = screen->sPriv->dri2.image;
@@ -758,7 +758,7 @@ dri2_lookup_egl_image(struct dri_screen *screen, void *handle)
    return img;
 }
 
-static __DRIimage *
+__DRIimage *
 dri2_create_image_from_winsys(__DRIscreen *_screen,
                               int width, int height, int format,
                               struct winsys_handle *whandle,
@@ -1295,7 +1295,7 @@ dri2_unmap_image(__DRIcontext *context, __DRIimage *image, void *data)
    pipe_transfer_unmap(pipe, (struct pipe_transfer *)data);
 }
 
-static void
+void
 dri2_destroy_image(__DRIimage *img)
 {
    pipe_resource_reference(&img->texture, NULL);

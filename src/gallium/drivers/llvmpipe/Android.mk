@@ -1,7 +1,7 @@
 # Mesa 3-D graphics library
 #
-# Copyright (C) 2015 Chih-Wei Huang <cwhuang@linux.org.tw>
-# Copyright (C) 2015 Android-x86 Open Source Project
+# Copyright (C) 2015-2016 Zhen Wu <wuzhen@jidemail.com>
+# Copyright (C) 2015-2016 Jide Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -23,15 +23,15 @@
 
 LOCAL_PATH := $(call my-dir)
 
+# get C_SOURCES
 include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(C_SOURCES)
+LOCAL_SRC_FILES := \
+	$(C_SOURCES)
 
-LOCAL_CFLAGS += -DHAVE_ANDROID_PLATFORM
-
-LOCAL_MODULE := libmesa_winsys_sw_dri
+LOCAL_MODULE := libmesa_pipe_llvmpipe
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
