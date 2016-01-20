@@ -46,6 +46,7 @@ LOCAL_CFLAGS :=
 
 LOCAL_SHARED_LIBRARIES := \
 	libdl \
+	liblog \
 	libglapi \
 	libexpat \
 
