@@ -42,6 +42,10 @@
 #include "util/hash_table.h"
 #include "util/simple_list.h"
 
+#if defined(ANDROID)
+#  define LOG_TAG "mesa"
+#  include <log/log.h>
+#endif
 
 static FILE *LogFile = NULL;
 
@@ -86,6 +90,14 @@ output_if_debug(const char *prefixString, const char *outputString,
       if (newline)
          fprintf(LogFile, "\n");
       fflush(LogFile);
+
+#if defined(ANDROID)
+      {
+         char buf[4096];
+         _mesa_snprintf(buf, sizeof(buf), "%s: %s%s", prefixString, outputString, newline ? "\n" : "");
+         ALOGD(buf);
+      }
+#endif
 
 #if defined(_WIN32)
       /* stderr from windows applications without console is not usually 
