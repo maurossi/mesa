@@ -351,11 +351,8 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
    int format;
-#ifdef DMABUF
    int stride, offset = 0, fd;
-#else
    int name;
-#endif
 
    if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
       /* try to dequeue the next back buffer */
@@ -376,36 +373,34 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
 
    format = get_format(dri2_surf->buffer->format);
 
-#ifdef DMABUF
-   stride = dri2_surf->buffer->stride * get_format_bpp(dri2_surf->buffer->format);
    fd = get_native_buffer_fd(dri2_surf->buffer);
-   if (fd < 0)
-      return fd;
-   dri2_surf->dri_image =
-        dri2_dpy->image->createImageFromFds(dri2_dpy->dri_screen,
-                                            dri2_surf->base.Width,
-                                            dri2_surf->base.Height,
-                                            get_fourcc(format),
-                                            &fd,
-                                            1,
-                                            &stride,
-                                            &offset,
-                                            dri2_surf);
-#else
+   if (fd >= 0) {
+      stride = dri2_surf->buffer->stride * get_format_bpp(dri2_surf->buffer->format);
+      dri2_surf->dri_image =
+         dri2_dpy->image->createImageFromFds(dri2_dpy->dri_screen,
+                                             dri2_surf->base.Width,
+                                             dri2_surf->base.Height,
+                                             get_fourcc(format),
+                                             &fd,
+                                             1,
+                                             &stride,
+                                             &offset,
+                                             dri2_surf);
+      return 0;
+   }
    name = get_native_buffer_name(dri2_surf->buffer);
-   if (name < 0)
-      return name;
-   dri2_surf->dri_image =
-      dri2_dpy->image->createImageFromName(dri2_dpy->dri_screen,
-                                           dri2_surf->base.Width,
-                                           dri2_surf->base.Height,
-                                           format,
-                                           name,
-                                           dri2_surf->buffer->stride,
-                                           dri2_surf);
-#endif
-
-   return 0;
+   if (name) {
+      dri2_surf->dri_image =
+         dri2_dpy->image->createImageFromName(dri2_dpy->dri_screen,
+                                              dri2_surf->base.Width,
+                                              dri2_surf->base.Height,
+                                              format,
+                                              name,
+                                              dri2_surf->buffer->stride,
+                                              dri2_surf);
+      return 0;
+   }
+   return -1;
 }
 
 static int
@@ -483,19 +478,14 @@ dri2_create_image_android_native_buffer(_EGLDisplay *disp, _EGLContext *ctx,
       return NULL;
    }
 
-#ifdef DMABUF  // createImageFromFds()
    fd = get_native_buffer_fd(buf);
    if (fd < 0) {
-      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
-      return NULL;
+      name = get_native_buffer_name(buf);
+      if (!name) {
+         _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
+         return NULL;
+      }
    }
-#else  // createImageFromName()
-   name = get_native_buffer_name(buf);
-   if (!name) {
-      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
-      return NULL;
-   }
-#endif
 
    /* see the table in droid_add_configs_for_visuals */
    format = get_format(buf->format);
@@ -513,29 +503,29 @@ dri2_create_image_android_native_buffer(_EGLDisplay *disp, _EGLContext *ctx,
       return NULL;
    }
 
-#ifdef DMABUF
-   /* createImageFromFds requires stride in bytes instead of pixels */
-   stride = buf->stride * get_format_bpp(buf->format);
-   dri2_img->dri_image =
-       dri2_dpy->image->createImageFromFds(dri2_dpy->dri_screen,
-					   buf->width,
-					   buf->height,
-					   get_fourcc(format),
-					   &fd,
-					   1,
-					   &stride,
-					   &offset,
-					   dri2_img);
-#else
-   dri2_img->dri_image =
-      dri2_dpy->image->createImageFromName(dri2_dpy->dri_screen,
-					   buf->width,
-					   buf->height,
-					   format,
-					   name,
-					   buf->stride,
-					   dri2_img);
-#endif
+   if (fd >= 0) {
+     /* createImageFromFds requires stride in bytes instead of pixels */
+     stride = buf->stride * get_format_bpp(buf->format);
+     dri2_img->dri_image =
+        dri2_dpy->image->createImageFromFds(dri2_dpy->dri_screen,
+                                            buf->width,
+                                            buf->height,
+                                            get_fourcc(format),
+                                            &fd,
+                                            1,
+                                            &stride,
+                                            &offset,
+                                            dri2_img);
+   } else {
+     dri2_img->dri_image =
+        dri2_dpy->image->createImageFromName(dri2_dpy->dri_screen,
+                                             buf->width,
+                                             buf->height,
+                                             format,
+                                             name,
+                                             buf->stride,
+                                             dri2_img);
+   }
    if (!dri2_img->dri_image) {
       free(dri2_img);
       _eglError(EGL_BAD_ALLOC, "droid_create_image_mesa_drm");
