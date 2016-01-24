@@ -184,7 +184,7 @@ intelTexImage(struct gl_context * ctx,
        _mesa_lookup_enum_by_nr(format), _mesa_lookup_enum_by_nr(type),
        texImage->Level, texImage->Width, texImage->Height, texImage->Depth);
 
-   if (brw->gen >= 5) {
+   if (brw->gen >= 6) {
       ok = _mesa_meta_pbo_TexSubImage(ctx, dims, texImage, 0, 0, 0,
                                       texImage->Width, texImage->Height,
                                       texImage->Depth,

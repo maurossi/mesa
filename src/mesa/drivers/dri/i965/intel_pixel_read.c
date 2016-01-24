@@ -339,7 +339,7 @@ intelReadPixels(struct gl_context * ctx,
    DBG("%s\n", __FUNCTION__);
 
    if (_mesa_is_bufferobj(pack->BufferObj)) {
-      if (brw->gen >= 5)
+      if (brw->gen >= 6)
          if (_mesa_meta_pbo_GetTexSubImage(ctx, 2, NULL, x, y, 0, width, height, 1,
                                            format, type, pixels, pack)) {
             /* _mesa_meta_pbo_GetTexSubImage() implements PBO transfers by
