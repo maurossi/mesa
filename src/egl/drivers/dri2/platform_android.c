@@ -38,6 +38,7 @@
 #include "egl_dri2.h"
 #include "egl_dri2_fallbacks.h"
 #include "gralloc_drm.h"
+#include "gralloc_drm_handle.h"
 
 static int
 get_format_bpp(int native)
@@ -116,7 +117,8 @@ get_native_buffer_fd(struct ANativeWindowBuffer *buf)
 static int
 get_native_buffer_name(struct ANativeWindowBuffer *buf)
 {
-   return gralloc_drm_get_gem_handle(buf->handle);
+   struct gralloc_drm_handle_t *handle = gralloc_drm_handle(buf->handle);
+   return (handle) ? handle->name : 0;
 }
 
 static EGLBoolean
