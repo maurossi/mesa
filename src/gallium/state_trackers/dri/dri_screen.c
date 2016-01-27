@@ -104,6 +104,8 @@ static const __DRIconfig **
 dri_fill_in_modes(struct dri_screen *screen)
 {
    static const mesa_format mesa_formats[] = {
+      MESA_FORMAT_R8G8B8A8_UNORM,
+      MESA_FORMAT_R8G8B8X8_UNORM,
       MESA_FORMAT_B8G8R8A8_UNORM,
       MESA_FORMAT_B8G8R8X8_UNORM,
       MESA_FORMAT_B8G8R8A8_SRGB,
@@ -111,6 +113,8 @@ dri_fill_in_modes(struct dri_screen *screen)
       MESA_FORMAT_B5G6R5_UNORM,
    };
    static const enum pipe_format pipe_formats[] = {
+      PIPE_FORMAT_RGBA8888_UNORM,
+      PIPE_FORMAT_RGBX8888_UNORM,
       PIPE_FORMAT_BGRA8888_UNORM,
       PIPE_FORMAT_BGRX8888_UNORM,
       PIPE_FORMAT_BGRA8888_SRGB,
@@ -140,7 +144,7 @@ dri_fill_in_modes(struct dri_screen *screen)
       stencil_bits_array[0] = 0;
       depth_buffer_factor = 1;
    }
- 
+
    msaa_samples_max = (screen->st_api->feature_mask & ST_API_FEATURE_MS_VISUALS_MASK)
       ? MSAA_VISUAL_MAX_SAMPLES : 1;
 
