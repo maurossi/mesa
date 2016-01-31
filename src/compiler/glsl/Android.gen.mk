@@ -33,7 +33,7 @@ LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
 
 LOCAL_C_INCLUDES += \
 	$(intermediates)/glcpp \
-	$(MESA_TOP)/src/glsl/glcpp \
+	$(MESA_TOP)/src/compiler/glsl/glcpp \
 
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
 	$(LIBGLCPP_GENERATED_FILES) \
