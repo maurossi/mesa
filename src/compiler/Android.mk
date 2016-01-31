@@ -65,3 +65,9 @@ LOCAL_MODULE := libmesa_nir
 include $(LOCAL_PATH)/Android.gen.mk
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
+
+# ---------------------------------------
+# Build libmesa_glsl and glsl_compiler
+# ---------------------------------------
+
+include $(LOCAL_PATH)/glsl/Android.mk

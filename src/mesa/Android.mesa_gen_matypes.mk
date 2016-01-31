@@ -36,7 +36,7 @@ LOCAL_IS_HOST_MODULE := true
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
-	$(MESA_TOP)/src/glsl
+	$(MESA_TOP)/src/compiler/glsl
 
 LOCAL_SRC_FILES := \
 	x86/gen_matypes.c

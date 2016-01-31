@@ -44,9 +44,9 @@ LOCAL_SRC_FILES += \
 LOCAL_CPPFLAGS := -std=c++11
 endif
 
-# We need libmesa_glsl to get NIR's generated include directories.
+# We need libmesa_nir to get NIR's generated include directories.
 LOCAL_MODULE := libmesa_gallium
-LOCAL_STATIC_LIBRARIES += libmesa_glsl
+LOCAL_STATIC_LIBRARIES += libmesa_nir
 
 # generate sources
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
