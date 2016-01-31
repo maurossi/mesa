@@ -44,7 +44,7 @@ include $(CLEAR_VARS)
 
 LOCAL_MODULE := libmesa_program
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-LOCAL_STATIC_LIBRARIES := libmesa_glsl
+LOCAL_STATIC_LIBRARIES := libmesa_glsl libmesa_nir
 
 intermediates := $(call local-generated-sources-dir)
 
@@ -74,7 +74,7 @@ $(intermediates)/program/lex.yy.c: $(LOCAL_PATH)/program_lexer.l
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/mesa \
-	$(MESA_TOP)/src/glsl \
+	$(MESA_TOP)/src/compiler/glsl \
 	$(MESA_TOP)/src/compiler/nir \
 	$(MESA_TOP)/src/gallium/auxiliary \
 	$(MESA_TOP)/src/gallium/include

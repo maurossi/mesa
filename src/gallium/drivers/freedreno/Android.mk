@@ -39,7 +39,7 @@ LOCAL_C_INCLUDES := \
 	$(LOCAL_PATH)/ir3
 
 LOCAL_SHARED_LIBRARIES := libdrm libdrm_freedreno
-LOCAL_STATIC_LIBRARIES := libmesa_glsl
+LOCAL_STATIC_LIBRARIES := libmesa_glsl libmesa_nir
 LOCAL_MODULE := libmesa_pipe_freedreno
 
 include $(GALLIUM_COMMON_MK)
