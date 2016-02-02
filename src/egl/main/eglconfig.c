@@ -250,6 +250,9 @@ static const struct {
    { EGL_FRAMEBUFFER_TARGET_ANDROID, ATTRIB_TYPE_BOOLEAN,
                                     ATTRIB_CRITERION_EXACT,
                                     EGL_DONT_CARE },
+   { EGL_RECORDABLE_ANDROID,        ATTRIB_TYPE_BOOLEAN,
+                                    ATTRIB_CRITERION_EXACT,
+                                    EGL_DONT_CARE },
 };
 
 
