@@ -75,6 +75,7 @@ LOCAL_CFLAGS += \
 	-DHAVE_ZLIB \
 	-DMAJOR_IN_SYSMACROS \
 	-DVK_USE_PLATFORM_ANDROID_KHR \
+	-DTEXTURE_FLOAT_ENABLED \
 	-fvisibility=hidden \
 	-fno-math-errno \
 	-fno-trapping-math \
