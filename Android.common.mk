@@ -65,6 +65,7 @@ LOCAL_CFLAGS += \
 	-DHAVE_DLOPEN \
 	-DHAVE_DL_ITERATE_PHDR \
 	-DMAJOR_IN_SYSMACROS \
+	-DTEXTURE_FLOAT_ENABLED \
 	-fvisibility=hidden \
 	-Wno-sign-compare
 
