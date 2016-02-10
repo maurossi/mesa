@@ -72,6 +72,7 @@ LOCAL_CFLAGS += \
 	-DHAVE_LINUX_FUTEX_H \
 	-DHAVE_ZLIB \
 	-DMAJOR_IN_SYSMACROS \
+	-DTEXTURE_FLOAT_ENABLED \
 	-fvisibility=hidden \
 	-Wno-sign-compare
 
