@@ -1770,9 +1770,7 @@ dri2_init_screen(__DRIscreen * sPriv)
    if (screen->fd < 0 || (fd = dup(screen->fd)) < 0)
       goto free_screen;
 
-   if (pipe_loader_drm_probe_fd(&screen->dev, fd))
-      pscreen = pipe_loader_create_screen(screen->dev);
-
+   pscreen = load_pipe_screen(&screen->dev, screen->fd);
    if (!pscreen)
        goto release_pipe;
 
