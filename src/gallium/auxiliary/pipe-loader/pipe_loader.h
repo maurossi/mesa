@@ -180,6 +180,9 @@ pipe_loader_drm_probe(struct pipe_loader_device **devs, int ndev);
 bool
 pipe_loader_drm_probe_fd(struct pipe_loader_device **dev, int fd);
 
+struct pipe_screen *
+load_pipe_screen(struct pipe_loader_device **dev, int fd);
+
 #ifdef __cplusplus
 }
 #endif
