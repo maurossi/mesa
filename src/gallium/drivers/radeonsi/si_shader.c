@@ -48,6 +48,7 @@
 #include "sid.h"
 
 #include <errno.h>
+#include <strchrnul.h>
 
 static const char *scratch_rsrc_dword0_symbol =
 	"SCRATCH_RSRC_DWORD0";
