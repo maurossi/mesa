@@ -68,13 +68,28 @@ LOCAL_CFLAGS += \
 LOCAL_CONLYFLAGS += \
 	-std=c99
 
+x86_flags := \
+	-DUSE_SSE41 \
+
+x86_64_flags := \
+	-DUSE_SSE41 \
+
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
-ifeq ($(TARGET_ARCH),x86)
-LOCAL_CFLAGS += \
+x86_flags += \
 	-DUSE_X86_ASM \
+	-DUSE_MMX_ASM \
+	-DUSE_3DNOW_ASM \
+	-DUSE_SSE_ASM \
+
+x86_64_flags += \
+	-DUSE_X86_64_ASM \
 
 endif
-endif
+
+LOCAL_ASFLAGS_x86 += $(x86_flags)
+LOCAL_ASFLAGS_x86_64 += $(x86_64_flags)
+LOCAL_CFLAGS_x86 += $(x86_flags)
+LOCAL_CFLAGS_x86_64 += $(x86_64_flags)
 
 ifeq ($(MESA_ENABLE_LLVM),true)
 LOCAL_CFLAGS += \
