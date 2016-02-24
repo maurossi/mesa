@@ -45,17 +45,9 @@ LOCAL_GENERATED_SOURCES := \
 	$(MESA_GEN_NIR_H)
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
-ifeq ($(TARGET_ARCH),x86)
-	LOCAL_SRC_FILES += $(X86_FILES)
-endif # x86
+	LOCAL_SRC_FILES_x86 += $(X86_FILES)
+	LOCAL_SRC_FILES_x86_64 += $(X86_64_FILES)
 endif # MESA_ENABLE_ASM
-
-ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
-LOCAL_WHOLE_STATIC_LIBRARIES := \
-	libmesa_sse41
-LOCAL_CFLAGS := \
-       -DUSE_SSE41
-endif
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
@@ -66,6 +58,12 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_WHOLE_STATIC_LIBRARIES += \
 	libmesa_program
+
+LOCAL_WHOLE_STATIC_LIBRARIES_x86 += \
+	libmesa_sse41 \
+
+LOCAL_WHOLE_STATIC_LIBRARIES_x86_64 += \
+	libmesa_sse41 \
 
 LOCAL_STATIC_LIBRARIES += libmesa_nir libmesa_glsl
 
