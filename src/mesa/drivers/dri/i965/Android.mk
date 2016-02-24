@@ -168,11 +168,6 @@ endif
 LOCAL_CFLAGS := \
 	$(MESA_DRI_CFLAGS)
 
-ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
-LOCAL_CFLAGS += \
-	-DUSE_SSE41
-endif
-
 LOCAL_C_INCLUDES := \
 	$(MESA_DRI_C_INCLUDES)
 
