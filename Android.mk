@@ -63,12 +63,7 @@ $(warning invalid GPU drivers: $(invalid_drivers))
 MESA_GPU_DRIVERS := $(filter-out $(invalid_drivers), $(MESA_GPU_DRIVERS))
 endif
 
-# host and target must be the same arch to generate matypes.h
-ifeq ($(TARGET_ARCH),$(HOST_ARCH))
 MESA_ENABLE_ASM := true
-else
-MESA_ENABLE_ASM := false
-endif
 
 ifneq ($(filter $(classic_drivers), $(MESA_GPU_DRIVERS)),)
 MESA_BUILD_CLASSIC := true
