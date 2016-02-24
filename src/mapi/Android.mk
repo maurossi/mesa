@@ -60,6 +60,9 @@ intermediates := $(call local-generated-sources-dir)
 abi_header := $(intermediates)/$(abi_header)
 LOCAL_GENERATED_SOURCES := $(abi_header)
 
+# workaround build warning
+LOCAL_LDFLAGS_x86 += -Wl,--no-warn-shared-textrel
+
 $(abi_header): PRIVATE_PRINTER := shared-glapi
 
 mapi_abi_headers += $(abi_header)
