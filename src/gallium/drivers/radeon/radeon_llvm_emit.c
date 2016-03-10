@@ -25,6 +25,7 @@
  */
 
 #include "radeon_llvm_emit.h"
+#include "radeon_llvm_init.h"
 #include "radeon_elf_util.h"
 #include "c11/threads.h"
 #include "gallivm/lp_bld_misc.h"
@@ -112,18 +113,10 @@ void radeon_llvm_shader_type(LLVMValueRef F, unsigned type)
 static void init_r600_target()
 {
 	gallivm_init_llvm_targets();
-#if HAVE_LLVM < 0x0307
-	LLVMInitializeR600TargetInfo();
-	LLVMInitializeR600Target();
-	LLVMInitializeR600TargetMC();
-	LLVMInitializeR600AsmPrinter();
-#else
 	LLVMInitializeAMDGPUTargetInfo();
 	LLVMInitializeAMDGPUTarget();
 	LLVMInitializeAMDGPUTargetMC();
 	LLVMInitializeAMDGPUAsmPrinter();
-
-#endif
 }
 
 static once_flag init_r600_target_once_flag = ONCE_FLAG_INIT;
