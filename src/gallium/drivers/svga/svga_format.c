@@ -393,8 +393,14 @@ svga_translate_format(const struct svga_screen *ss,
    }
 
    switch(format) {
+#ifdef PIPE_OS_ANDROID
+   case PIPE_FORMAT_R8G8B8A8_UNORM:
+      return SVGA3D_A8R8G8B8;
+   case PIPE_FORMAT_B8G8R8A8_UNORM:
+#else
    case PIPE_FORMAT_B8G8R8A8_UNORM:
       return SVGA3D_A8R8G8B8;
+#endif
    case PIPE_FORMAT_B8G8R8X8_UNORM:
       return SVGA3D_X8R8G8B8;
 
