@@ -3455,7 +3455,7 @@ glsl_to_tgsi_visitor::visit_image_intrinsic(ir_call *ir)
    if (reladdr.file != PROGRAM_UNDEFINED) {
       emit_arl(ir, sampler_reladdr, reladdr);
       image.reladdr = ralloc(mem_ctx, st_src_reg);
-      memcpy(image.reladdr, &sampler_reladdr, sizeof(reladdr));
+      memcpy(image.reladdr, &sampler_reladdr, sizeof(sampler_reladdr));
    }
 
    st_dst_reg dst = undef_dst;
