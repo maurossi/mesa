@@ -2499,7 +2499,9 @@ dri2_create_sync(_EGLDriver *drv, _EGLDisplay *dpy,
    struct dri2_egl_context *dri2_ctx = dri2_egl_context(ctx);
    struct dri2_egl_sync *dri2_sync;
    EGLint ret;
+#if defined(HAVE_PTHREAD_CONDATTR_SETCLOCK) && defined(HAVE_CLOCK_MONOTONIC)
    pthread_condattr_t attr;
+#endif
 
    dri2_sync = calloc(1, sizeof(struct dri2_egl_sync));
    if (!dri2_sync) {
@@ -2544,6 +2546,7 @@ dri2_create_sync(_EGLDriver *drv, _EGLDisplay *dpy,
       break;
 
    case EGL_SYNC_REUSABLE_KHR:
+#if defined(HAVE_PTHREAD_CONDATTR_SETCLOCK) && defined(HAVE_CLOCK_MONOTONIC)
       /* intialize attr */
       ret = pthread_condattr_init(&attr);
 
@@ -2569,6 +2572,15 @@ dri2_create_sync(_EGLDriver *drv, _EGLDisplay *dpy,
          free(dri2_sync);
          return NULL;
       }
+#else
+      ret = pthread_cond_init(&dri2_sync->cond, NULL);
+
+      if (ret) {
+         _eglError(EGL_BAD_ACCESS, "eglCreateSyncKHR");
+         free(dri2_sync);
+         return NULL;
+      }
+#endif
 
       /* initial status of reusable sync must be "unsignaled" */
       dri2_sync->base.SyncStatus = EGL_UNSIGNALED_KHR;
@@ -2672,7 +2684,11 @@ dri2_client_wait_sync(_EGLDriver *drv, _EGLDisplay *dpy, _EGLSync *sync,
       } else {
          /* if reusable sync has not been yet signaled */
          if (dri2_sync->base.SyncStatus != EGL_SIGNALED_KHR) {
+#if defined(HAVE_PTHREAD_CONDATTR_SETCLOCK) && defined(HAVE_CLOCK_MONOTONIC)
             clock_gettime(CLOCK_MONOTONIC, &current);
+#else
+            clock_gettime(CLOCK_REALTIME, &current);
+#endif
 
             /* calculating when to expire */
             expire.nsec = timeout % 1000000000L;
