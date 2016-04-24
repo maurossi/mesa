@@ -254,19 +254,41 @@ dri_fill_st_visual(struct st_visual *stvis, struct dri_screen *screen,
    if (!mode)
       return;
 
-   if (mode->redBits == 8) {
-      if (mode->alphaBits == 8)
-         if (mode->sRGBCapable)
-            stvis->color_format = PIPE_FORMAT_BGRA8888_SRGB;
-         else
-            stvis->color_format = PIPE_FORMAT_BGRA8888_UNORM;
-      else
-         if (mode->sRGBCapable)
-            stvis->color_format = PIPE_FORMAT_BGRX8888_SRGB;
-         else
-            stvis->color_format = PIPE_FORMAT_BGRX8888_UNORM;
-   } else {
+   /* Deduce the color format. */
+   switch (mode->redMask) {
+   case 0x00FF0000:
+      if (mode->alphaMask) {
+         assert(mode->alphaMask == 0xFF000000);
+         stvis->color_format = mode->sRGBCapable ?
+                                  PIPE_FORMAT_BGRA8888_SRGB :
+                                  PIPE_FORMAT_BGRA8888_UNORM;
+      } else {
+         stvis->color_format = mode->sRGBCapable ?
+                                  PIPE_FORMAT_BGRX8888_SRGB :
+                                  PIPE_FORMAT_BGRX8888_UNORM;
+      }
+      break;
+
+   case 0x000000FF:
+      if (mode->alphaMask) {
+         assert(mode->alphaMask == 0xFF000000);
+         stvis->color_format = mode->sRGBCapable ?
+                                  PIPE_FORMAT_RGBA8888_SRGB :
+                                  PIPE_FORMAT_RGBA8888_UNORM;
+      } else {
+         stvis->color_format = mode->sRGBCapable ?
+                                  PIPE_FORMAT_RGBX8888_SRGB :
+                                  PIPE_FORMAT_RGBX8888_UNORM;
+      }
+      break;
+
+   case 0x0000F800:
       stvis->color_format = PIPE_FORMAT_B5G6R5_UNORM;
+      break;
+
+   default:
+      assert(!"unsupported visual: invalid red mask");
+      return;
    }
 
    if (mode->sampleBuffers) {
