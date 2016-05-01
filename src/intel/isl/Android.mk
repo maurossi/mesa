@@ -25,46 +25,20 @@
 LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := i965_dri
-ifeq ($(MESA_LOLLIPOP_BUILD),true)
-LOCAL_MODULE_RELATIVE_PATH := $(MESA_DRI_MODULE_REL_PATH)
-else
-LOCAL_MODULE_PATH := $(MESA_DRI_MODULE_PATH)
-LOCAL_UNSTRIPPED_PATH := $(MESA_DRI_MODULE_UNSTRIPPED_PATH)
-endif
-
-# Import variables i965_FILES.
+# Import variables libisl_FILES.
 include $(LOCAL_PATH)/Makefile.sources
 
-LOCAL_CFLAGS := \
-	$(MESA_DRI_CFLAGS)
-
-ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
-LOCAL_CFLAGS += \
-	-DUSE_SSE41
-endif
-
-LOCAL_C_INCLUDES := \
-	$(MESA_DRI_C_INCLUDES) \
-	$(MESA_TOP)/src/intel
+LOCAL_MODULE := libisl
 
 LOCAL_SRC_FILES := \
-	$(i965_compiler_FILES) \
-	$(i965_FILES)
+	$(libisl_FILES)
 
-LOCAL_WHOLE_STATIC_LIBRARIES := \
-	$(MESA_DRI_WHOLE_STATIC_LIBRARIES) \
-	libisl
-
-LOCAL_SHARED_LIBRARIES := \
-	$(MESA_DRI_SHARED_LIBRARIES) \
-	libdrm_intel
-
-LOCAL_GENERATED_SOURCES := \
-	$(MESA_DRI_OPTIONS_H) \
-	$(MESA_GEN_NIR_H)
+LOCAL_C_INCLUDES := \
+	$(MESA_TOP)/src/mapi \
+	$(MESA_TOP)/src/mesa \
+	$(MESA_TOP)/src/mesa/drivers/dri/i965
 
 include $(LOCAL_PATH)/Android.gen.mk
 
 include $(MESA_COMMON_MK)
-include $(BUILD_SHARED_LIBRARY)
+include $(BUILD_STATIC_LIBRARY)
