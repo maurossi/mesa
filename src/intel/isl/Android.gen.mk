@@ -1,7 +1,5 @@
 #
-# Copyright (C) 2011 Intel Corporation
-# Copyright (C) 2010-2011 Chia-I Wu <olvaffe@gmail.com>
-# Copyright (C) 2010-2011 LunarG
+# Copyright (C) 2016 Android-x86, Mauro Rossi <issor.oruam@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -22,48 +20,28 @@
 # DEALINGS IN THE SOFTWARE.
 #
 
-LOCAL_PATH := $(call my-dir)
-include $(CLEAR_VARS)
-
-LOCAL_MODULE := i965_dri
-ifeq ($(MESA_LOLLIPOP_BUILD),true)
-LOCAL_MODULE_RELATIVE_PATH := $(MESA_DRI_MODULE_REL_PATH)
-else
-LOCAL_MODULE_PATH := $(MESA_DRI_MODULE_PATH)
-LOCAL_UNSTRIPPED_PATH := $(MESA_DRI_MODULE_UNSTRIPPED_PATH)
+ifeq ($(LOCAL_MODULE_CLASS),)
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 endif
 
-# Import variables i965_FILES.
-include $(LOCAL_PATH)/Makefile.sources
+isl_format_layout_deps := \
+	$(LOCAL_PATH)/isl_format_layout_gen.bash \
+	$(LOCAL_PATH)/isl_format_layout.csv
 
-LOCAL_CFLAGS := \
-	$(MESA_DRI_CFLAGS)
+intermediates := $(call local-generated-sources-dir)
 
-ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
-LOCAL_CFLAGS += \
-	-DUSE_SSE41
-endif
+define bash-gen
+	@mkdir -p $(dir $@)
+	@echo "Gen Bash: $(PRIVATE_MODULE) <= $(notdir $(@))"
+	$(hide) $(PRIVATE_SCRIPT) < $(PRIVATE_CSV) > $@
+endef
 
-LOCAL_C_INCLUDES := \
-	$(MESA_DRI_C_INCLUDES)
+$(intermediates)/isl_format_layout.c: PRIVATE_SCRIPT := bash -c $(LOCAL_PATH)/isl_format_layout_gen.bash
+$(intermediates)/isl_format_layout.c: PRIVATE_CSV := $(LOCAL_PATH)/isl_format_layout.csv
+$(intermediates)/isl_format_layout.c: $(isl_format_layout_deps)
+	$(call bash-gen)
 
-LOCAL_SRC_FILES := \
-	$(i965_compiler_FILES) \
-	$(i965_FILES)
+LOCAL_SRC_FILES := $(filter-out $(ISL_GENERATED_FILES), $(LOCAL_SRC_FILES))
 
-LOCAL_WHOLE_STATIC_LIBRARIES := \
-	$(MESA_DRI_WHOLE_STATIC_LIBRARIES) \
-	libisl
-
-LOCAL_SHARED_LIBRARIES := \
-	$(MESA_DRI_SHARED_LIBRARIES) \
-	libdrm_intel
-
-LOCAL_GENERATED_SOURCES := \
-	$(MESA_DRI_OPTIONS_H) \
-	$(MESA_GEN_NIR_H)
-
-include $(LOCAL_PATH)/Android.gen.mk
-
-include $(MESA_COMMON_MK)
-include $(BUILD_SHARED_LIBRARY)
+LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
+	$(ISL_GENERATED_FILES))
