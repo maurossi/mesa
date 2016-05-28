@@ -38,7 +38,7 @@ LOCAL_GENERATED_SOURCES += $(intermediates)/dummy.c
 $(intermediates)/dummy.c:
 	@mkdir -p $(dir $@)
 	@echo "Gen Dummy: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) touch $@
+	$(hide) echo "/* Copyright © 2016 Mauro Rossi <issor.oruam@gmail.com> */" > $@
 
 # This is the list of auto-generated files headers
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/genxml/, $(GENXML_GENERATED_FILES))
