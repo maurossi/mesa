@@ -704,6 +704,7 @@ static void virgl_drm_free_res_list(struct virgl_drm_cmd_buf *cbuf)
 static boolean virgl_drm_lookup_res(struct virgl_drm_cmd_buf *cbuf,
                                     struct virgl_hw_res *res)
 {
+   if (!res) return false;
    unsigned hash = res->res_handle & (sizeof(cbuf->is_handle_added)-1);
    int i;
 
@@ -726,6 +727,7 @@ static void virgl_drm_add_res(struct virgl_drm_winsys *qdws,
                               struct virgl_drm_cmd_buf *cbuf,
                               struct virgl_hw_res *res)
 {
+   if (!res) return;
    unsigned hash = res->res_handle & (sizeof(cbuf->is_handle_added)-1);
 
    if (cbuf->cres >= cbuf->nres) {
