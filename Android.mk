@@ -48,6 +48,7 @@ MESA_DRI_MODULE_UNSTRIPPED_PATH := $(TARGET_OUT_SHARED_LIBRARIES_UNSTRIPPED)/$(M
 
 MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
 MESA_PYTHON2 := python
+MESA_PYTHON3 := python3
 
 classic_drivers := i915 i965
 gallium_drivers := swrast freedreno i915g ilo nouveau r300g r600g radeonsi vmwgfx vc4 virgl
@@ -95,6 +96,8 @@ SUBDIRS := \
 	src/mesa \
 	src/util \
 	src/egl \
+	src/intel/genxml \
+	src/intel/isl \
 	src/mesa/drivers/dri
 
 INC_DIRS := $(call all-named-subdir-makefiles,$(SUBDIRS))
