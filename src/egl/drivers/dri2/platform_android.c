@@ -771,10 +771,14 @@ swrastPutImage2(__DRIdrawable * draw, int op,
    dstPtr += y * dstStride + xOffset;
    srcPtr = data;
 
-   for (; h>0; h--) {
-      memcpy(dstPtr, srcPtr, copyWidth);
-      srcPtr += stride;
-      dstPtr += dstStride;
+   if (xOffset == 0 && copyWidth == stride && copyWidth == dstStride) {
+      memcpy(dstPtr, srcPtr, copyWidth * h);
+   } else {
+      for (; h>0; h--) {
+         memcpy(dstPtr, srcPtr, copyWidth);
+         srcPtr += stride;
+         dstPtr += dstStride;
+      }
    }
 
    if (gr_module->unlock(gr_module, dri2_surf->buffer->handle)) {
@@ -831,10 +835,14 @@ swrastGetImage(__DRIdrawable * read,
    srcPtr += y * srcStride + xOffset;
    dstPtr = data;
 
-   for (; h>0; h--) {
-      memcpy(dstPtr, srcPtr, copyWidth);
-      srcPtr += srcStride;
-      dstPtr += copyWidth;
+   if (xOffset == 0 && copyWidth == srcStride) {
+      memcpy(dstPtr, srcPtr, copyWidth * h);
+   } else {
+      for (; h>0; h--) {
+         memcpy(dstPtr, srcPtr, copyWidth);
+         srcPtr += srcStride;
+         dstPtr += copyWidth;
+      }
    }
 
    if (gr_module->unlock(gr_module, dri2_surf->buffer->handle)) {
