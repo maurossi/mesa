@@ -770,6 +770,8 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    bool tex_dirty = false;
    int s;
 
+   mtx_lock(&nv50->screen->base.push_mutex);
+
    nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_INDEX);
    if (info->index_size && !info->has_user_indices)
       BCTX_REFN(nv50->bufctx_3d, 3D_INDEX, nv04_resource(info->index.resource), RD);
@@ -840,6 +842,7 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
       nv50_push_vbo(nv50, info);
       push->kick_notify = nv50_default_kick_notify;
       nouveau_pushbuf_bufctx(push, NULL);
+      mtx_unlock(&nv50->screen->base.push_mutex);
       return;
    }
 
@@ -899,4 +902,6 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    nv50_release_user_vbufs(nv50);
 
    nouveau_pushbuf_bufctx(push, NULL);
+
+   mtx_unlock(&nv50->screen->base.push_mutex);
 }
