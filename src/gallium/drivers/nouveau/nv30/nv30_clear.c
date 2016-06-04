@@ -58,8 +58,11 @@ nv30_clear(struct pipe_context *pipe, unsigned buffers,
    struct pipe_framebuffer_state *fb = &nv30->framebuffer;
    uint32_t colr = 0, zeta = 0, mode = 0;
 
-   if (!nv30_state_validate(nv30, NV30_NEW_FRAMEBUFFER | NV30_NEW_SCISSOR, true))
+   pipe_mutex_lock(nv30->screen->base.push_mutex);
+   if (!nv30_state_validate(nv30, NV30_NEW_FRAMEBUFFER | NV30_NEW_SCISSOR, true)) {
+      pipe_mutex_unlock(nv30->screen->base.push_mutex);
       return;
+   }
 
    if (buffers & PIPE_CLEAR_COLOR && fb->nr_cbufs) {
       colr  = pack_rgba(fb->cbufs[0]->format, color->f);
@@ -96,6 +99,7 @@ nv30_clear(struct pipe_context *pipe, unsigned buffers,
    PUSH_DATA (push, mode);
 
    nv30_state_release(nv30);
+   pipe_mutex_unlock(nv30->screen->base.push_mutex);
 }
 
 static void
@@ -126,11 +130,15 @@ nv30_clear_render_target(struct pipe_context *pipe, struct pipe_surface *ps,
       rt_format |= NV30_3D_RT_FORMAT_TYPE_LINEAR;
    }
 
+   pipe_mutex_lock(nv30->screen->base.push_mutex);
+
    refn.bo = mt->base.bo;
    refn.flags = NOUVEAU_BO_VRAM | NOUVEAU_BO_WR;
    if (nouveau_pushbuf_space(push, 16, 1, 0) ||
-       nouveau_pushbuf_refn (push, &refn, 1))
+       nouveau_pushbuf_refn (push, &refn, 1)) {
+      pipe_mutex_unlock(nv30->screen->base.push_mutex);
       return;
+   }
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
    PUSH_DATA (push, NV30_3D_RT_ENABLE_COLOR0);
@@ -154,6 +162,8 @@ nv30_clear_render_target(struct pipe_context *pipe, struct pipe_surface *ps,
                     NV30_3D_CLEAR_BUFFERS_COLOR_G |
                     NV30_3D_CLEAR_BUFFERS_COLOR_B |
                     NV30_3D_CLEAR_BUFFERS_COLOR_A);
+
+   pipe_mutex_unlock(nv30->screen->base.push_mutex);
 
    nv30->dirty |= NV30_NEW_FRAMEBUFFER | NV30_NEW_SCISSOR;
 }
@@ -191,11 +201,15 @@ nv30_clear_depth_stencil(struct pipe_context *pipe, struct pipe_surface *ps,
    if (buffers & PIPE_CLEAR_STENCIL)
       mode |= NV30_3D_CLEAR_BUFFERS_STENCIL;
 
+   pipe_mutex_lock(nv30->screen->base.push_mutex);
+
    refn.bo = mt->base.bo;
    refn.flags = NOUVEAU_BO_VRAM | NOUVEAU_BO_WR;
    if (nouveau_pushbuf_space(push, 32, 1, 0) ||
-       nouveau_pushbuf_refn (push, &refn, 1))
+       nouveau_pushbuf_refn (push, &refn, 1)) {
+      pipe_mutex_unlock(nv30->screen->base.push_mutex);
       return;
+   }
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
    PUSH_DATA (push, 0);
@@ -220,6 +234,8 @@ nv30_clear_depth_stencil(struct pipe_context *pipe, struct pipe_surface *ps,
    PUSH_DATA (push, pack_zeta(ps->format, depth, stencil));
    BEGIN_NV04(push, NV30_3D(CLEAR_BUFFERS), 1);
    PUSH_DATA (push, mode);
+
+   pipe_mutex_unlock(nv30->screen->base.push_mutex);
 
    nv30->dirty |= NV30_NEW_FRAMEBUFFER | NV30_NEW_SCISSOR;
 }
