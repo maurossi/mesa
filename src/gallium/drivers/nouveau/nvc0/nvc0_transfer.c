@@ -342,16 +342,18 @@ nvc0_mt_sync(struct nvc0_context *nvc0, struct nv50_miptree *mt, unsigned usage)
    return !mt->base.fence_wr || nouveau_fence_wait(mt->base.fence_wr, &nvc0->base.debug);
 }
 
-void *
-nvc0_miptree_transfer_map(struct pipe_context *pctx,
-                          struct pipe_resource *res,
-                          unsigned level,
-                          unsigned usage,
-                          const struct pipe_box *box,
-                          struct pipe_transfer **ptransfer)
+static void *
+nvc0_miptree_transfer_map_unlocked(
+      struct pipe_context *pctx,
+      struct pipe_resource *res,
+      unsigned level,
+      unsigned usage,
+      const struct pipe_box *box,
+      struct pipe_transfer **ptransfer)
 {
    struct nvc0_context *nvc0 = nvc0_context(pctx);
-   struct nouveau_device *dev = nvc0->screen->base.device;
+   struct nvc0_screen *screen = nvc0->screen;
+   struct nouveau_device *dev = screen->base.device;
    struct nv50_miptree *mt = nv50_miptree(res);
    struct nvc0_transfer *tx;
    uint32_t size;
@@ -465,9 +467,29 @@ nvc0_miptree_transfer_map(struct pipe_context *pctx,
    return tx->rect[1].bo->map;
 }
 
-void
-nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
-                            struct pipe_transfer *transfer)
+void *
+nvc0_miptree_transfer_map(
+      struct pipe_context *pctx,
+      struct pipe_resource *res,
+      unsigned level,
+      unsigned usage,
+      const struct pipe_box *box,
+      struct pipe_transfer **ptransfer)
+{
+   struct nvc0_context *nvc0 = nvc0_context(pctx);
+   struct nvc0_screen *screen = nvc0->screen;
+
+   pipe_mutex_lock(screen->base.push_mutex);
+   void *ret = nvc0_miptree_transfer_map_unlocked(
+         pctx, res, level, usage, box, ptransfer);
+   pipe_mutex_unlock(screen->base.push_mutex);
+
+   return ret;
+}
+
+static void
+nvc0_miptree_transfer_unmap_unlocked(struct pipe_context *pctx,
+                                     struct pipe_transfer *transfer)
 {
    struct nvc0_context *nvc0 = nvc0_context(pctx);
    struct nvc0_transfer *tx = (struct nvc0_transfer *)transfer;
@@ -505,6 +527,18 @@ nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
    pipe_resource_reference(&transfer->resource, NULL);
 
    FREE(tx);
+}
+
+void
+nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
+                            struct pipe_transfer *transfer)
+{
+   struct nvc0_context *nvc0 = nvc0_context(pctx);
+   struct nvc0_screen *screen = nvc0->screen;
+
+   pipe_mutex_lock(screen->base.push_mutex);
+   nvc0_miptree_transfer_unmap_unlocked(pctx, transfer);
+   pipe_mutex_unlock(screen->base.push_mutex);
 }
 
 /* This happens rather often with DTD9/st. */

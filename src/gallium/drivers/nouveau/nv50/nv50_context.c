@@ -37,7 +37,9 @@ nv50_flush(struct pipe_context *pipe,
    if (fence)
       nouveau_fence_ref(screen->fence.current, (struct nouveau_fence **)fence);
 
+   pipe_mutex_lock(screen->push_mutex);
    PUSH_KICK(screen->pushbuf);
+   pipe_mutex_unlock(screen->push_mutex);
 
    nouveau_context_update_frame_stats(nouveau_context(pipe));
 }
@@ -47,10 +49,12 @@ nv50_texture_barrier(struct pipe_context *pipe)
 {
    struct nouveau_pushbuf *push = nv50_context(pipe)->base.pushbuf;
 
+   pipe_mutex_lock(nouveau_context(pipe)->screen->push_mutex);
    BEGIN_NV04(push, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
    PUSH_DATA (push, 0);
    BEGIN_NV04(push, NV50_3D(TEX_CACHE_CTL), 1);
    PUSH_DATA (push, 0x20);
+   pipe_mutex_unlock(nouveau_context(pipe)->screen->push_mutex);
 }
 
 static void
@@ -107,6 +111,7 @@ nv50_emit_string_marker(struct pipe_context *pipe, const char *str, int len)
       data_words = string_words;
    else
       data_words = string_words + !!(len & 3);
+   pipe_mutex_lock(nouveau_context(pipe)->screen->push_mutex);
    BEGIN_NI04(push, SUBC_3D(NV04_GRAPH_NOP), data_words);
    if (string_words)
       PUSH_DATAp(push, str, string_words);
@@ -115,6 +120,7 @@ nv50_emit_string_marker(struct pipe_context *pipe, const char *str, int len)
       memcpy(&data, &str[string_words * 4], len & 3);
       PUSH_DATA (push, data);
    }
+   pipe_mutex_unlock(nouveau_context(pipe)->screen->push_mutex);
 }
 
 void
@@ -291,6 +297,8 @@ nv50_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
       return NULL;
    pipe = &nv50->base.pipe;
 
+   pipe_mutex_lock(screen->base.push_mutex);
+
    if (!nv50_blitctx_create(nv50))
       goto out_err;
 
@@ -384,9 +392,12 @@ nv50_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
 
    util_dynarray_init(&nv50->global_residents);
 
+   pipe_mutex_unlock(screen->base.push_mutex);
+
    return pipe;
 
 out_err:
+   pipe_mutex_unlock(screen->base.push_mutex);
    if (nv50->bufctx_3d)
       nouveau_bufctx_del(&nv50->bufctx_3d);
    if (nv50->bufctx_cp)

@@ -940,6 +940,8 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    struct nvc0_screen *screen = nvc0->screen;
    int s;
 
+   pipe_mutex_lock(screen->base.push_mutex);
+
    /* NOTE: caller must ensure that (min_index + index_bias) is >= 0 */
    nvc0->vb_elt_first = info->min_index + info->index_bias;
    nvc0->vb_elt_limit = info->max_index - info->min_index;
@@ -1031,6 +1033,7 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
       nvc0_push_vbo(nvc0, info);
       push->kick_notify = nvc0_default_kick_notify;
       nouveau_pushbuf_bufctx(push, NULL);
+      pipe_mutex_unlock(screen->base.push_mutex);
       return;
    }
 
@@ -1083,4 +1086,5 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    nvc0_release_user_vbufs(nvc0);
 
    nouveau_pushbuf_bufctx(push, NULL);
+   pipe_mutex_unlock(screen->base.push_mutex);
 }
