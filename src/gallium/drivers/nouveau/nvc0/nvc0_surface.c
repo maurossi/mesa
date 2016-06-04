@@ -206,11 +206,14 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
    bool m2mf;
    unsigned dst_layer = dstz, src_layer = src_box->z;
 
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
+
    if (dst->target == PIPE_BUFFER && src->target == PIPE_BUFFER) {
       nouveau_copy_buffer(&nvc0->base,
                           nv04_resource(dst), dstx,
                           nv04_resource(src), src_box->x, src_box->width);
       NOUVEAU_DRV_STAT(&nvc0->screen->base, buf_copy_bytes, src_box->width);
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
    }
    NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_copy_count, 1);
@@ -251,6 +254,7 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
          else
             srect.base += src_mt->layer_stride;
       }
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
    }
 
@@ -273,6 +277,7 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
          break;
    }
    nouveau_bufctx_reset(nvc0->bufctx, 0);
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
 }
 
 static void
@@ -290,8 +295,12 @@ nvc0_clear_render_target(struct pipe_context *pipe,
 
    assert(dst->texture->target != PIPE_BUFFER);
 
-   if (!PUSH_SPACE(push, 32 + sf->depth))
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
+
+   if (!PUSH_SPACE(push, 32 + sf->depth)) {
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
+   }
 
    PUSH_REFN (push, res->bo, res->domain | NOUVEAU_BO_WR);
 
@@ -354,6 +363,8 @@ nvc0_clear_render_target(struct pipe_context *pipe,
    IMMED_NVC0(push, NVC0_3D(COND_MODE), nvc0->cond_condmode);
 
    nvc0->dirty_3d |= NVC0_NEW_3D_FRAMEBUFFER;
+
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
 }
 
 static void
@@ -539,8 +550,11 @@ nvc0_clear_buffer(struct pipe_context *pipe,
 
    assert(size % data_size == 0);
 
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
+
    if (data_size == 12) {
       nvc0_clear_buffer_push(pipe, res, offset, size, data, data_size);
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
    }
 
@@ -550,8 +564,10 @@ nvc0_clear_buffer(struct pipe_context *pipe,
       nvc0_clear_buffer_push(pipe, res, offset, fixup_size, data, data_size);
       offset += fixup_size;
       size -= fixup_size;
-      if (!size)
+      if (!size) {
+         pipe_mutex_unlock(nvc0->screen->base.push_mutex);
          return;
+      }
    }
 
    elements = size / data_size;
@@ -561,8 +577,10 @@ nvc0_clear_buffer(struct pipe_context *pipe,
       width &= ~0xff;
    assert(width > 0);
 
-   if (!PUSH_SPACE(push, 40))
+   if (!PUSH_SPACE(push, 40)) {
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
+   }
 
    PUSH_REFN (push, buf->bo, buf->domain | NOUVEAU_BO_WR);
 
@@ -610,6 +628,8 @@ nvc0_clear_buffer(struct pipe_context *pipe,
    }
 
    nvc0->dirty_3d |= NVC0_NEW_3D_FRAMEBUFFER;
+
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
 }
 
 static void
@@ -631,8 +651,11 @@ nvc0_clear_depth_stencil(struct pipe_context *pipe,
 
    assert(dst->texture->target != PIPE_BUFFER);
 
-   if (!PUSH_SPACE(push, 32 + sf->depth))
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
+   if (!PUSH_SPACE(push, 32 + sf->depth)) {
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
+   }
 
    PUSH_REFN (push, mt->base.bo, mt->base.domain | NOUVEAU_BO_WR);
 
@@ -679,6 +702,8 @@ nvc0_clear_depth_stencil(struct pipe_context *pipe,
    IMMED_NVC0(push, NVC0_3D(COND_MODE), nvc0->cond_condmode);
 
    nvc0->dirty_3d |= NVC0_NEW_3D_FRAMEBUFFER;
+
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
 }
 
 void
@@ -692,9 +717,13 @@ nvc0_clear(struct pipe_context *pipe, unsigned buffers,
    unsigned i, j, k;
    uint32_t mode = 0;
 
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
+
    /* don't need NEW_BLEND, COLOR_MASK doesn't affect CLEAR_BUFFERS */
-   if (!nvc0_state_validate_3d(nvc0, NVC0_NEW_3D_FRAMEBUFFER))
+   if (!nvc0_state_validate_3d(nvc0, NVC0_NEW_3D_FRAMEBUFFER)) {
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
+   }
 
    if (buffers & PIPE_CLEAR_COLOR && fb->nr_cbufs) {
       BEGIN_NVC0(push, NVC0_3D(CLEAR_COLOR(0)), 4);
@@ -753,6 +782,8 @@ nvc0_clear(struct pipe_context *pipe, unsigned buffers,
                     (j << NVC0_3D_CLEAR_BUFFERS_LAYER__SHIFT));
       }
    }
+
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
 }
 
 
@@ -1146,8 +1177,8 @@ nvc0_blitctx_post_blit(struct nvc0_blitctx *blit)
    nvc0->samplers_dirty[4] |= 3;
 
    if (nvc0->cond_query && !blit->render_condition_enable)
-      nvc0->base.pipe.render_condition(&nvc0->base.pipe, nvc0->cond_query,
-                                       nvc0->cond_cond, nvc0->cond_mode);
+      nvc0_render_condition(&nvc0->base.pipe, nvc0->cond_query,
+                            nvc0->cond_cond, nvc0->cond_mode);
 
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX_TMP);
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_FB);
@@ -1606,6 +1637,8 @@ nvc0_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
         info->src.box.height != -info->dst.box.height))
       eng3d = true;
 
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
+
    if (nvc0->screen->num_occlusion_queries_active)
       IMMED_NVC0(push, NVC0_3D(SAMPLECNT_ENABLE), 0);
 
@@ -1616,6 +1649,8 @@ nvc0_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 
    if (nvc0->screen->num_occlusion_queries_active)
       IMMED_NVC0(push, NVC0_3D(SAMPLECNT_ENABLE), 1);
+
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
 
    NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_blit_count, 1);
 }
