@@ -71,12 +71,14 @@ nouveau_fence_emit(struct nouveau_fence *fence)
 
    ++fence->ref;
 
+   pipe_mutex_lock(screen->fence.list_mutex);
    if (screen->fence.tail)
       screen->fence.tail->next = fence;
    else
       screen->fence.head = fence;
 
    screen->fence.tail = fence;
+   pipe_mutex_unlock(screen->fence.list_mutex);
 
    screen->fence.emit(&screen->base, &fence->sequence);
 
@@ -90,6 +92,9 @@ nouveau_fence_del(struct nouveau_fence *fence)
    struct nouveau_fence *it;
    struct nouveau_screen *screen = fence->screen;
 
+   /* XXX This can race against fence_update. But fence_update can also call
+    * into this, so ... be have to be careful.
+    */
    if (fence->state == NOUVEAU_FENCE_STATE_EMITTED ||
        fence->state == NOUVEAU_FENCE_STATE_FLUSHED) {
       if (fence == screen->fence.head) {
@@ -123,6 +128,7 @@ nouveau_fence_update(struct nouveau_screen *screen, bool flushed)
       return;
    screen->fence.sequence_ack = sequence;
 
+   pipe_mutex_lock(screen->fence.list_mutex);
    for (fence = screen->fence.head; fence; fence = next) {
       next = fence->next;
       sequence = fence->sequence;
@@ -144,6 +150,7 @@ nouveau_fence_update(struct nouveau_screen *screen, bool flushed)
          if (fence->state == NOUVEAU_FENCE_STATE_EMITTED)
             fence->state = NOUVEAU_FENCE_STATE_FLUSHED;
    }
+   pipe_mutex_unlock(screen->fence.list_mutex);
 }
 
 #define NOUVEAU_FENCE_MAX_SPINS (1 << 31)
@@ -198,11 +205,19 @@ nouveau_fence_wait(struct nouveau_fence *fence, struct pipe_debug_callback *debu
    uint32_t spins = 0;
    int64_t start = 0;
 
+   /* Fast-path for the case where the fence is already signaled to avoid
+    * messing around with mutexes and timing.
+    */
+   if (fence->state == NOUVEAU_FENCE_STATE_SIGNALLED)
+      return true;
+
    if (debug && debug->debug_message)
       start = os_time_get_nano();
 
    if (!nouveau_fence_kick(fence))
       return false;
+
+   pipe_mutex_unlock(screen->push_mutex);
 
    do {
       if (fence->state == NOUVEAU_FENCE_STATE_SIGNALLED) {
@@ -210,6 +225,7 @@ nouveau_fence_wait(struct nouveau_fence *fence, struct pipe_debug_callback *debu
             pipe_debug_message(debug, PERF_INFO,
                                "stalled %.3f ms waiting for fence",
                                (os_time_get_nano() - start) / 1000000.f);
+         pipe_mutex_lock(screen->push_mutex);
          return true;
       }
       if (!spins)
@@ -226,6 +242,8 @@ nouveau_fence_wait(struct nouveau_fence *fence, struct pipe_debug_callback *debu
    debug_printf("Wait on fence %u (ack = %u, next = %u) timed out !\n",
                 fence->sequence,
                 screen->fence.sequence_ack, screen->fence.sequence);
+
+   pipe_mutex_lock(screen->push_mutex);
 
    return false;
 }
