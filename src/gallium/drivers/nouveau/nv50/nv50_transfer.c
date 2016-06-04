@@ -304,6 +304,7 @@ nv50_miptree_transfer_map(struct pipe_context *pctx,
       unsigned base = tx->rect[0].base;
       unsigned z = tx->rect[0].z;
       unsigned i;
+      pipe_mutex_lock(nv50->screen->base.push_mutex);
       for (i = 0; i < box->depth; ++i) {
          nv50_m2mf_transfer_rect(nv50, &tx->rect[1], &tx->rect[0],
                                  tx->nblocksx, tx->nblocksy);
@@ -313,6 +314,9 @@ nv50_miptree_transfer_map(struct pipe_context *pctx,
             tx->rect[0].base += mt->layer_stride;
          tx->rect[1].base += size;
       }
+      /* Kick these reads out so we don't have to reacquire a lock below */
+      PUSH_KICK(nv50->base.pushbuf);
+      pipe_mutex_unlock(nv50->screen->base.push_mutex);
       tx->rect[0].z = z;
       tx->rect[0].base = base;
       tx->rect[1].base = 0;
@@ -349,6 +353,7 @@ nv50_miptree_transfer_unmap(struct pipe_context *pctx,
    unsigned i;
 
    if (tx->base.usage & PIPE_TRANSFER_WRITE) {
+      pipe_mutex_lock(nv50->screen->base.push_mutex);
       for (i = 0; i < tx->base.box.depth; ++i) {
          nv50_m2mf_transfer_rect(nv50, &tx->rect[0], &tx->rect[1],
                                  tx->nblocksx, tx->nblocksy);
@@ -362,6 +367,7 @@ nv50_miptree_transfer_unmap(struct pipe_context *pctx,
       /* Allow the copies above to finish executing before freeing the source */
       nouveau_fence_work(nv50->screen->base.fence.current,
                          nouveau_fence_unref_bo, tx->rect[1].bo);
+      pipe_mutex_unlock(nv50->screen->base.push_mutex);
    } else {
       nouveau_bo_ref(NULL, &tx->rect[1].bo);
    }
