@@ -2,6 +2,7 @@
 #ifndef __NOUVEAU_FENCE_H__
 #define __NOUVEAU_FENCE_H__
 
+#include "util/u_atomic.h"
 #include "util/u_inlines.h"
 #include "util/list.h"
 
@@ -47,10 +48,10 @@ static inline void
 nouveau_fence_ref(struct nouveau_fence *fence, struct nouveau_fence **ref)
 {
    if (fence)
-      ++fence->ref;
+      p_atomic_inc(&fence->ref);
 
    if (*ref) {
-      if (--(*ref)->ref == 0)
+      if (p_atomic_dec_zero(&(*ref)->ref))
          nouveau_fence_del(*ref);
    }
 
