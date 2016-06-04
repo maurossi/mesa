@@ -563,6 +563,8 @@ nv30_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    if (nv30->vbo_push_hint != !!nv30->vbo_fifo)
       nv30->dirty |= NV30_NEW_ARRAYS;
 
+   pipe_mutex_lock(nv30->screen->base.push_mutex);
+
    push->user_priv = &nv30->bufctx;
    if (nv30->vbo_user && !(nv30->dirty & (NV30_NEW_VERTEX | NV30_NEW_ARRAYS)))
       nv30_update_user_vbufs(nv30);
@@ -570,10 +572,12 @@ nv30_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    nv30_state_validate(nv30, ~0, true);
    if (nv30->draw_flags) {
       nv30_render_vbo(pipe, info);
+      pipe_mutex_unlock(nv30->screen->base.push_mutex);
       return;
    } else
    if (nv30->vbo_fifo) {
       nv30_push_vbo(nv30, info);
+      pipe_mutex_unlock(nv30->screen->base.push_mutex);
       return;
    }
 
@@ -630,6 +634,7 @@ nv30_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 
    nv30_state_release(nv30);
    nv30_release_user_vbufs(nv30);
+   pipe_mutex_unlock(nv30->screen->base.push_mutex);
 }
 
 void
