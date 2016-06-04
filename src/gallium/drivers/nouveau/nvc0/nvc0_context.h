@@ -299,6 +299,11 @@ uint32_t nvc0_program_symbol_offset(const struct nvc0_program *,
                                     uint32_t label);
 void nvc0_program_init_tcp_empty(struct nvc0_context *);
 
+/* nvc0_query.c */
+void nvc0_render_condition(struct pipe_context *pipe,
+                           struct pipe_query *pq,
+                           boolean condition, uint mode);
+
 /* nvc0_shader_state.c */
 void nvc0_vertprog_validate(struct nvc0_context *);
 void nvc0_tctlprog_validate(struct nvc0_context *);
