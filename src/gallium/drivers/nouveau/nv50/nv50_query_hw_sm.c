@@ -176,6 +176,7 @@ nv50_hw_sm_begin_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
       return false;
    }
 
+   pipe_mutex_lock(screen->base.push_mutex);
    assert(cfg->num_counters <= 4);
    PUSH_SPACE(push, 4 * 4);
 
@@ -208,6 +209,7 @@ nv50_hw_sm_begin_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
       BEGIN_NV04(push, NV50_CP(MP_PM_SET(c)), 1);
       PUSH_DATA (push, 0);
    }
+   pipe_mutex_unlock(screen->base.push_mutex);
    return true;
 }
 
@@ -237,6 +239,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
       screen->pm.prog = prog;
    }
 
+   pipe_mutex_lock(screen->base.push_mutex);
    /* disable all counting */
    PUSH_SPACE(push, 8);
    for (c = 0; c < 4; c++) {
@@ -260,6 +263,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
    PUSH_SPACE(push, 2);
    BEGIN_NV04(push, SUBC_CP(NV50_GRAPH_SERIALIZE), 1);
    PUSH_DATA (push, 0);
+   pipe_mutex_unlock(screen->base.push_mutex);
 
    pipe->bind_compute_state(pipe, screen->pm.prog);
    input[0] = hq->bo->offset + hq->base_offset;
@@ -276,6 +280,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
 
    nouveau_bufctx_reset(nv50->bufctx_cp, NV50_BIND_CP_QUERY);
 
+   pipe_mutex_lock(screen->base.push_mutex);
    /* re-active other counters */
    PUSH_SPACE(push, 8);
    mask = 0;
@@ -302,6 +307,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
                     | cfg->ctr[i].unit | cfg->ctr[i].mode);
       }
    }
+   pipe_mutex_unlock(screen->base.push_mutex);
 }
 
 static inline bool
@@ -343,7 +349,9 @@ nv50_hw_sm_get_query_result(struct nv50_context *nv50, struct nv50_hw_query *hq,
 
    cfg = nv50_hw_sm_query_get_cfg(nv50, hq);
 
+   pipe_mutex_lock(nv50->screen->base.push_mutex);
    ret = nv50_hw_sm_query_read_data(count, nv50, wait, hq, cfg, mp_count);
+   pipe_mutex_lock(nv50->screen->base.push_mutex);
    if (!ret)
       return false;
 
