@@ -545,7 +545,9 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
        * _current_ one, and remove both.
        */
       nouveau_fence_ref(screen->base.fence.current, &current);
+      mtx_lock(&screen->base.push_mutex);
       nouveau_fence_wait(current, NULL);
+      mtx_unlock(&screen->base.push_mutex);
       nouveau_fence_ref(NULL, &current);
       nouveau_fence_ref(NULL, &screen->base.fence.current);
    }
