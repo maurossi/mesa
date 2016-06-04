@@ -604,11 +604,14 @@ void
 nve4_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nve4_cp_launch_desc *desc;
    uint64_t desc_gpuaddr;
    struct nouveau_bo *desc_bo;
    int ret;
+
+   pipe_mutex_lock(screen->base.push_mutex);
 
    desc = nve4_compute_alloc_launch_desc(&nvc0->base, &desc_bo, &desc_gpuaddr);
    if (!desc) {
@@ -690,6 +693,7 @@ out:
       NOUVEAU_ERR("Failed to launch grid !\n");
    nouveau_scratch_done(&nvc0->base);
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_DESC);
+   pipe_mutex_unlock(screen->base.push_mutex);
 }
 
 
