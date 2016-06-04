@@ -70,7 +70,7 @@ nv50_get_query_result(struct pipe_context *pipe, struct pipe_query *pq,
    return q->funcs->get_query_result(nv50_context(pipe), q, wait, result);
 }
 
-static void
+void
 nv50_render_condition(struct pipe_context *pipe,
                       struct pipe_query *pq,
                       boolean condition, uint mode)
@@ -145,6 +145,16 @@ nv50_render_condition(struct pipe_context *pipe,
 }
 
 static void
+nv50_render_condition_locked(struct pipe_context *pipe,
+                             struct pipe_query *pq,
+                             boolean condition, uint mode)
+{
+   pipe_mutex_lock(nouveau_context(pipe)->screen->push_mutex);
+   nv50_render_condition(pipe, pq, condition, mode);
+   pipe_mutex_unlock(nouveau_context(pipe)->screen->push_mutex);
+}
+
+static void
 nv50_set_active_query_state(struct pipe_context *pipe, boolean enable)
 {
 }
@@ -160,7 +170,7 @@ nv50_init_query_functions(struct nv50_context *nv50)
    pipe->end_query = nv50_end_query;
    pipe->get_query_result = nv50_get_query_result;
    pipe->set_active_query_state = nv50_set_active_query_state;
-   pipe->render_condition = nv50_render_condition;
+   pipe->render_condition = nv50_render_condition_locked;
    nv50->cond_condmode = NV50_3D_COND_MODE_ALWAYS;
 }
 
