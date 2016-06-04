@@ -249,9 +249,11 @@ nv50_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    struct nv50_program *cp = nv50->compprog;
    bool ret;
 
+   pipe_mutex_lock(nv50->screen->base.push_mutex);
    ret = !nv50_state_validate_cp(nv50, ~0);
    if (ret) {
       NOUVEAU_ERR("Failed to launch grid !\n");
+      pipe_mutex_unlock(nv50->screen->base.push_mutex);
       return;
    }
 
@@ -283,6 +285,8 @@ nv50_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    PUSH_DATA (push, 0);
    BEGIN_NV04(push, SUBC_CP(NV50_GRAPH_SERIALIZE), 1);
    PUSH_DATA (push, 0);
+
+   pipe_mutex_unlock(nv50->screen->base.push_mutex);
 
    /* bind a compute shader clobbers fragment shader state */
    nv50->dirty_3d |= NV50_NEW_3D_FRAGPROG;
