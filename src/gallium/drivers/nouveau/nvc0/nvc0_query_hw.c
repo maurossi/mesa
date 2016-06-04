@@ -154,6 +154,7 @@ nvc0_hw_begin_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    }
    hq->sequence++;
 
+   mtx_lock(&nvc0->screen->base.push_mutex);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -199,6 +200,7 @@ nvc0_hw_begin_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    default:
       break;
    }
+   mtx_unlock(&nvc0->screen->base.push_mutex);
    hq->state = NVC0_HW_QUERY_STATE_ACTIVE;
    return ret;
 }
@@ -222,6 +224,7 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    }
    hq->state = NVC0_HW_QUERY_STATE_ENDED;
 
+   mtx_lock(&nvc0->screen->base.push_mutex);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -278,6 +281,7 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    default:
       break;
    }
+   mtx_unlock(&nvc0->screen->base.push_mutex);
    if (hq->is64bit)
       nouveau_fence_ref(nvc0->screen->base.fence.current, &hq->fence);
 }
@@ -300,17 +304,22 @@ nvc0_hw_get_query_result(struct nvc0_context *nvc0, struct nvc0_query *q,
       nvc0_hw_query_update(nvc0->screen->base.client, q);
 
    if (hq->state != NVC0_HW_QUERY_STATE_READY) {
+      mtx_lock(&nvc0->screen->base.push_mutex);
       if (!wait) {
          if (hq->state != NVC0_HW_QUERY_STATE_FLUSHED) {
             hq->state = NVC0_HW_QUERY_STATE_FLUSHED;
             /* flush for silly apps that spin on GL_QUERY_RESULT_AVAILABLE */
             PUSH_KICK(nvc0->base.pushbuf);
          }
+         mtx_unlock(&nvc0->screen->base.push_mutex);
          return false;
       }
-      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->screen->base.client))
+      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->screen->base.client)) {
+         mtx_unlock(&nvc0->screen->base.push_mutex);
          return false;
+      }
       NOUVEAU_DRV_STAT(&nvc0->screen->base, query_sync_count, 1);
+      mtx_unlock(&nvc0->screen->base.push_mutex);
    }
    hq->state = NVC0_HW_QUERY_STATE_READY;
 
@@ -378,6 +387,8 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
 
    assert(!hq->funcs || !hq->funcs->get_query_result);
 
+   mtx_lock(&nvc0->screen->base.push_mutex);
+
    if (index == -1) {
       /* TODO: Use a macro to write the availability of the query */
       if (hq->state != NVC0_HW_QUERY_STATE_READY)
@@ -386,6 +397,7 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
       nvc0->base.push_cb(&nvc0->base, buf, offset,
                          result_type >= PIPE_QUERY_TYPE_I64 ? 2 : 1,
                          ready);
+      mtx_unlock(&nvc0->screen->base.push_mutex);
       return;
    }
 
@@ -472,6 +484,8 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
    }
    PUSH_DATAh(push, buf->address + offset);
    PUSH_DATA (push, buf->address + offset);
+
+   mtx_unlock(&nvc0->screen->base.push_mutex);
 
    if (buf->mm) {
       nouveau_fence_ref(nvc0->screen->base.fence.current, &buf->fence);
