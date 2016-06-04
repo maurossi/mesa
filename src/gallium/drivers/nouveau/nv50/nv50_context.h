@@ -222,6 +222,11 @@ void nv50_default_kick_notify(struct nouveau_pushbuf *);
 /* nv50_draw.c */
 extern struct draw_stage *nv50_draw_render_stage(struct nv50_context *);
 
+/* nv50_query.c */
+void nv50_render_condition(struct pipe_context *pipe,
+                           struct pipe_query *pq,
+                           boolean condition, uint mode);
+
 /* nv50_shader_state.c */
 void nv50_vertprog_validate(struct nv50_context *);
 void nv50_gmtyprog_validate(struct nv50_context *);
