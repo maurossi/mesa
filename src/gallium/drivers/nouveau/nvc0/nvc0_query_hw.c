@@ -154,6 +154,7 @@ nvc0_hw_begin_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    }
    hq->sequence++;
 
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -198,6 +199,7 @@ nvc0_hw_begin_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    default:
       break;
    }
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
    hq->state = NVC0_HW_QUERY_STATE_ACTIVE;
    return ret;
 }
@@ -221,6 +223,7 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    }
    hq->state = NVC0_HW_QUERY_STATE_ENDED;
 
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -276,6 +279,7 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    default:
       break;
    }
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
    if (hq->is64bit)
       nouveau_fence_ref(nvc0->screen->base.fence.current, &hq->fence);
 }
@@ -298,16 +302,21 @@ nvc0_hw_get_query_result(struct nvc0_context *nvc0, struct nvc0_query *q,
       nvc0_hw_query_update(nvc0->screen->base.client, q);
 
    if (hq->state != NVC0_HW_QUERY_STATE_READY) {
+      pipe_mutex_lock(nvc0->screen->base.push_mutex);
       if (!wait) {
          if (hq->state != NVC0_HW_QUERY_STATE_FLUSHED) {
             hq->state = NVC0_HW_QUERY_STATE_FLUSHED;
             /* flush for silly apps that spin on GL_QUERY_RESULT_AVAILABLE */
             PUSH_KICK(nvc0->base.pushbuf);
          }
+         pipe_mutex_unlock(nvc0->screen->base.push_mutex);
          return false;
       }
-      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->screen->base.client))
+      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->screen->base.client)) {
+         pipe_mutex_unlock(nvc0->screen->base.push_mutex);
          return false;
+      }
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       NOUVEAU_DRV_STAT(&nvc0->screen->base, query_sync_count, 1);
    }
    hq->state = NVC0_HW_QUERY_STATE_READY;
@@ -374,6 +383,8 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
 
    assert(!hq->funcs || !hq->funcs->get_query_result);
 
+   pipe_mutex_lock(nvc0->screen->base.push_mutex);
+
    if (index == -1) {
       /* TODO: Use a macro to write the availability of the query */
       if (hq->state != NVC0_HW_QUERY_STATE_READY)
@@ -382,6 +393,7 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
       nvc0->base.push_cb(&nvc0->base, buf, offset,
                          result_type >= PIPE_QUERY_TYPE_I64 ? 2 : 1,
                          ready);
+      pipe_mutex_unlock(nvc0->screen->base.push_mutex);
       return;
    }
 
@@ -468,6 +480,8 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
       nouveau_pushbuf_data(push, hq->bo, hq->offset,
                            4 | NVC0_IB_ENTRY_1_NO_PREFETCH);
    }
+
+   pipe_mutex_unlock(nvc0->screen->base.push_mutex);
 
    if (buf->mm) {
       nouveau_fence_ref(nvc0->screen->base.fence.current, &buf->fence);
