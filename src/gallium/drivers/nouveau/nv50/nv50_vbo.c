@@ -767,6 +767,8 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    bool tex_dirty = false;
    int s;
 
+   pipe_mutex_lock(nv50->screen->base.push_mutex);
+
    /* NOTE: caller must ensure that (min_index + index_bias) is >= 0 */
    nv50->vb_elt_first = info->min_index + info->index_bias;
    nv50->vb_elt_limit = info->max_index - info->min_index;
@@ -827,6 +829,7 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
       nv50_push_vbo(nv50, info);
       push->kick_notify = nv50_default_kick_notify;
       nouveau_pushbuf_bufctx(push, NULL);
+      pipe_mutex_unlock(nv50->screen->base.push_mutex);
       return;
    }
 
@@ -886,4 +889,6 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    nv50_release_user_vbufs(nv50);
 
    nouveau_pushbuf_bufctx(push, NULL);
+
+   pipe_mutex_unlock(nv50->screen->base.push_mutex);
 }
