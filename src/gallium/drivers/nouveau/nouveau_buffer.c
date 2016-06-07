@@ -80,6 +80,8 @@ release_allocation(struct nouveau_mm_allocation **mm,
 inline void
 nouveau_buffer_release_gpu_storage(struct nv04_resource *buf)
 {
+   if (buf->fence)
+      pipe_mutex_lock(buf->fence->screen->push_mutex);
    if (buf->fence && buf->fence->state < NOUVEAU_FENCE_STATE_FLUSHED) {
       nouveau_fence_work(buf->fence, nouveau_fence_unref_bo, buf->bo);
       buf->bo = NULL;
@@ -89,6 +91,8 @@ nouveau_buffer_release_gpu_storage(struct nv04_resource *buf)
 
    if (buf->mm)
       release_allocation(&buf->mm, buf->fence);
+   if (buf->fence)
+      pipe_mutex_unlock(buf->fence->screen->push_mutex);
 
    if (buf->domain == NOUVEAU_BO_VRAM)
       NOUVEAU_DRV_STAT_RES(buf, buf_obj_current_bytes_vid, -(uint64_t)buf->base.width0);
