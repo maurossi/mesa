@@ -48,9 +48,12 @@ nvc0_hw_query_allocate(struct nvc0_context *nvc0, struct nvc0_query *q,
       if (hq->mm) {
          if (hq->state == NVC0_HW_QUERY_STATE_READY)
             nouveau_mm_free(hq->mm);
-         else
+         else {
+            pipe_mutex_lock(screen->base.push_mutex);
             nouveau_fence_work(screen->base.fence.current,
                                nouveau_mm_free_work, hq->mm);
+            pipe_mutex_unlock(screen->base.push_mutex);
+         }
       }
    }
    if (size) {
