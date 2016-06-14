@@ -32,6 +32,14 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
 
+# This is the list of auto-generated files headers
+LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/genxml/, $(GENXML_GENERATED_FILES))
+
+$(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON2)
+$(LOCAL_GENERATED_SOURCES): PRIVATE_CUSTOM_TOOL = $(PRIVATE_PYTHON) $^ > $@
+$(LOCAL_GENERATED_SOURCES): $(intermediates)/genxml/%_pack.h: $(LOCAL_PATH)/gen_pack_header.py $(LOCAL_PATH)/%.xml
+	$(transform-generated-source)
+
 # dummy.c source file is generated to meet the build system's rules.
 LOCAL_GENERATED_SOURCES += $(intermediates)/dummy.c
 
@@ -39,40 +47,6 @@ $(intermediates)/dummy.c:
 	@mkdir -p $(dir $@)
 	@echo "Gen Dummy: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	$(hide) touch $@
-
-# This is the list of auto-generated files headers
-LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/genxml/, $(GENXML_GENERATED_FILES))
-
-define header-gen
-	@mkdir -p $(dir $@)
-	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(PRIVATE_SCRIPT) $(PRIVATE_XML) > $@
-endef
-
-$(intermediates)/genxml/gen6_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/gen_pack_header.py
-$(intermediates)/genxml/gen6_pack.h: PRIVATE_XML := $(LOCAL_PATH)/gen6.xml
-$(intermediates)/genxml/gen6_pack.h: $(LOCAL_PATH)/gen6.xml $(LOCAL_PATH)/gen_pack_header.py
-	$(call header-gen)
-
-$(intermediates)/genxml/gen7_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/gen_pack_header.py
-$(intermediates)/genxml/gen7_pack.h: PRIVATE_XML := $(LOCAL_PATH)/gen7.xml
-$(intermediates)/genxml/gen7_pack.h: $(LOCAL_PATH)/gen7.xml $(LOCAL_PATH)/gen_pack_header.py
-	$(call header-gen)
-
-$(intermediates)/genxml/gen75_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/gen_pack_header.py
-$(intermediates)/genxml/gen75_pack.h: PRIVATE_XML := $(LOCAL_PATH)/gen75.xml
-$(intermediates)/genxml/gen75_pack.h: $(LOCAL_PATH)/gen75.xml $(LOCAL_PATH)/gen_pack_header.py
-	$(call header-gen)
-
-$(intermediates)/genxml/gen8_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/gen_pack_header.py
-$(intermediates)/genxml/gen8_pack.h: PRIVATE_XML := $(LOCAL_PATH)/gen8.xml
-$(intermediates)/genxml/gen8_pack.h: $(LOCAL_PATH)/gen8.xml $(LOCAL_PATH)/gen_pack_header.py
-	$(call header-gen)
-
-$(intermediates)/genxml/gen9_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/gen_pack_header.py
-$(intermediates)/genxml/gen9_pack.h: PRIVATE_XML := $(LOCAL_PATH)/gen9.xml
-$(intermediates)/genxml/gen9_pack.h: $(LOCAL_PATH)/gen9.xml $(LOCAL_PATH)/gen_pack_header.py
-	$(call header-gen)
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(MESA_TOP)/src/intel \
