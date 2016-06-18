@@ -402,6 +402,7 @@ static const struct dri2_extension_match swrast_driver_extensions[] = {
 
 static const struct dri2_extension_match swrast_core_extensions[] = {
    { __DRI_TEX_BUFFER, 2, offsetof(struct dri2_egl_display, tex_buffer) },
+   { __DRI_IMAGE, 1, offsetof(struct dri2_egl_display, image) },
    { NULL, 0, 0 }
 };
 
