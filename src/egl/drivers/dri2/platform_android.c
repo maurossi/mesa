@@ -1026,7 +1026,7 @@ swrast_create_image_android_native_buffer(_EGLDisplay *disp, _EGLContext *ctx,
    memset(&whandle, 0, sizeof(whandle));
    whandle.type = DRM_API_HANDLE_TYPE_BUFFER;
    whandle.externalBuffer = buf;
-   whandle.stride = buf->stride;
+   whandle.stride = buf->stride * get_format_bpp(buf->format);
 
    dri2_img->dri_image =
          dri2_dpy->swrast->createImageFromWinsys(dri2_dpy->dri_screen,
@@ -1034,7 +1034,6 @@ swrast_create_image_android_native_buffer(_EGLDisplay *disp, _EGLContext *ctx,
                                                  buf->height,
                                                  format,
                                                  &whandle,
-                                                 buf->stride,
                                                  dri2_img);
 
    if (!dri2_img->dri_image) {

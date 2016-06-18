@@ -365,7 +365,7 @@ extern __DRIimage *dri2_lookup_egl_image(struct dri_screen *screen, void *handle
 
 extern __DRIimage *dri2_create_image_from_winsys(__DRIscreen *_screen,
                                                  int width, int height, int format,
-                                                 struct winsys_handle *whandle, int pitch,
+                                                 struct winsys_handle *whandle,
                                                  void *loaderPrivate);
 
 extern void dri2_destroy_image(__DRIimage *img);
