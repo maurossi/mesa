@@ -872,7 +872,7 @@ struct __DRIswrastExtensionRec {
 
    __DRIimage *(*createImageFromWinsys)(__DRIscreen *_screen,
                                         int width, int height, int format,
-                                        struct winsys_handle *whandle, int pitch,
+                                        struct winsys_handle *whandle,
                                         void *loaderPrivate);
 };
 
