@@ -3395,7 +3395,8 @@ exec_endswitch(struct tgsi_exec_machine *mach)
 
 typedef void (* micro_dop)(union tgsi_double_channel *dst,
                            const union tgsi_double_channel *src);
-
+typedef void (* micro_dop_s)(union tgsi_double_channel *dst,
+                             const union tgsi_exec_channel *src);
 static void
 fetch_double_channel(struct tgsi_exec_machine *mach,
                      union tgsi_double_channel *chan,
@@ -3548,25 +3549,6 @@ exec_double_trinary(struct tgsi_exec_machine *mach,
 }
 
 static void
-exec_f2d(struct tgsi_exec_machine *mach,
-         const struct tgsi_full_instruction *inst)
-{
-   union tgsi_exec_channel src;
-   union tgsi_double_channel dst;
-
-   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_XY) == TGSI_WRITEMASK_XY) {
-      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_X, TGSI_EXEC_DATA_FLOAT);
-      micro_f2d(&dst, &src);
-      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_X, TGSI_CHAN_Y);
-   }
-   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_ZW) == TGSI_WRITEMASK_ZW) {
-      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_Y, TGSI_EXEC_DATA_FLOAT);
-      micro_f2d(&dst, &src);
-      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_Z, TGSI_CHAN_W);
-   }
-}
-
-static void
 exec_d2f(struct tgsi_exec_machine *mach,
          const struct tgsi_full_instruction *inst)
 {
@@ -3586,25 +3568,6 @@ exec_d2f(struct tgsi_exec_machine *mach,
          micro_d2f(&dst, &src);
          store_dest(mach, &dst, &inst->Dst[0], inst, bit - 1, TGSI_EXEC_DATA_FLOAT);
       }
-   }
-}
-
-static void
-exec_i2d(struct tgsi_exec_machine *mach,
-         const struct tgsi_full_instruction *inst)
-{
-   union tgsi_exec_channel src;
-   union tgsi_double_channel dst;
-
-   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_XY) == TGSI_WRITEMASK_XY) {
-      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_X, TGSI_EXEC_DATA_INT);
-      micro_i2d(&dst, &src);
-      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_X, TGSI_CHAN_Y);
-   }
-   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_ZW) == TGSI_WRITEMASK_ZW) {
-      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_Y, TGSI_EXEC_DATA_INT);
-      micro_i2d(&dst, &src);
-      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_Z, TGSI_CHAN_W);
    }
 }
 
@@ -3630,24 +3593,6 @@ exec_d2i(struct tgsi_exec_machine *mach,
       }
    }
 }
-static void
-exec_u2d(struct tgsi_exec_machine *mach,
-         const struct tgsi_full_instruction *inst)
-{
-   union tgsi_exec_channel src;
-   union tgsi_double_channel dst;
-
-   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_XY) == TGSI_WRITEMASK_XY) {
-      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_X, TGSI_EXEC_DATA_UINT);
-      micro_u2d(&dst, &src);
-      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_X, TGSI_CHAN_Y);
-   }
-   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_ZW) == TGSI_WRITEMASK_ZW) {
-      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_Y, TGSI_EXEC_DATA_UINT);
-      micro_u2d(&dst, &src);
-      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_Z, TGSI_CHAN_W);
-   }
-}
 
 static void
 exec_d2u(struct tgsi_exec_machine *mach,
@@ -3669,6 +3614,28 @@ exec_d2u(struct tgsi_exec_machine *mach,
          micro_d2u(&dst, &src);
          store_dest(mach, &dst, &inst->Dst[0], inst, bit - 1, TGSI_EXEC_DATA_UINT);
       }
+   }
+}
+
+/* convert from 32-bit to 64-bit type generic */
+static void
+exec_t_2_64(struct tgsi_exec_machine *mach,
+          const struct tgsi_full_instruction *inst,
+          micro_dop_s op,
+          enum tgsi_exec_datatype src_datatype)
+{
+   union tgsi_exec_channel src;
+   union tgsi_double_channel dst;
+
+   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_XY) == TGSI_WRITEMASK_XY) {
+      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_X, src_datatype);
+      op(&dst, &src);
+      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_X, TGSI_CHAN_Y);
+   }
+   if ((inst->Dst[0].Register.WriteMask & TGSI_WRITEMASK_ZW) == TGSI_WRITEMASK_ZW) {
+      fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_Y, src_datatype);
+      op(&dst, &src);
+      store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_Z, TGSI_CHAN_W);
    }
 }
 
@@ -5681,7 +5648,7 @@ exec_instruction(
       break;
 
    case TGSI_OPCODE_F2D:
-      exec_f2d(mach, inst);
+      exec_t_2_64(mach, inst, micro_f2d, TGSI_EXEC_DATA_FLOAT);
       break;
 
    case TGSI_OPCODE_D2F:
@@ -5757,7 +5724,7 @@ exec_instruction(
       break;
 
    case TGSI_OPCODE_I2D:
-      exec_i2d(mach, inst);
+      exec_t_2_64(mach, inst, micro_i2d, TGSI_EXEC_DATA_INT);
       break;
 
    case TGSI_OPCODE_D2I:
@@ -5765,7 +5732,7 @@ exec_instruction(
       break;
 
    case TGSI_OPCODE_U2D:
-      exec_u2d(mach, inst);
+      exec_t_2_64(mach, inst, micro_u2d, TGSI_EXEC_DATA_UINT);
       break;
 
    case TGSI_OPCODE_D2U:
