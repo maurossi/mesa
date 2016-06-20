@@ -1094,7 +1094,7 @@ dri2_from_planar(__DRIimage *image, int plane, void *loaderPrivate)
    return img;
 }
 
-static __DRIimage *
+__DRIimage *
 dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
                          int depth, int level, unsigned *error,
                          void *loaderPrivate)
@@ -1472,7 +1472,7 @@ dri2_server_wait_sync(__DRIcontext *_ctx, void *_fence, unsigned flags)
    /* AFAIK, no driver currently supports parallel context execution. */
 }
 
-static __DRI2fenceExtension dri2FenceExtension = {
+__DRI2fenceExtension dri2FenceExtension = {
    .base = { __DRI2_FENCE, 1 },
 
    .create_fence = dri2_create_fence,
