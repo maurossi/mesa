@@ -3397,6 +3397,8 @@ typedef void (* micro_dop)(union tgsi_double_channel *dst,
                            const union tgsi_double_channel *src);
 typedef void (* micro_dop_s)(union tgsi_double_channel *dst,
                              const union tgsi_exec_channel *src);
+typedef void (* micro_sop_d)(union tgsi_exec_channel *dst,
+                             const union tgsi_double_channel *src);
 static void
 fetch_double_channel(struct tgsi_exec_machine *mach,
                      union tgsi_double_channel *chan,
@@ -3548,75 +3550,6 @@ exec_double_trinary(struct tgsi_exec_machine *mach,
    }
 }
 
-static void
-exec_d2f(struct tgsi_exec_machine *mach,
-         const struct tgsi_full_instruction *inst)
-{
-   union tgsi_double_channel src;
-   union tgsi_exec_channel dst;
-   int wm = inst->Dst[0].Register.WriteMask;
-   int i;
-   int bit;
-   for (i = 0; i < 2; i++) {
-      bit = ffs(wm);
-      if (bit) {
-         wm &= ~(1 << (bit - 1));
-         if (i == 0)
-            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_X, TGSI_CHAN_Y);
-         else
-            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_Z, TGSI_CHAN_W);
-         micro_d2f(&dst, &src);
-         store_dest(mach, &dst, &inst->Dst[0], inst, bit - 1, TGSI_EXEC_DATA_FLOAT);
-      }
-   }
-}
-
-static void
-exec_d2i(struct tgsi_exec_machine *mach,
-         const struct tgsi_full_instruction *inst)
-{
-   union tgsi_double_channel src;
-   union tgsi_exec_channel dst;
-   int wm = inst->Dst[0].Register.WriteMask;
-   int i;
-   int bit;
-   for (i = 0; i < 2; i++) {
-      bit = ffs(wm);
-      if (bit) {
-         wm &= ~(1 << (bit - 1));
-         if (i == 0)
-            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_X, TGSI_CHAN_Y);
-         else
-            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_Z, TGSI_CHAN_W);
-         micro_d2i(&dst, &src);
-         store_dest(mach, &dst, &inst->Dst[0], inst, bit - 1, TGSI_EXEC_DATA_INT);
-      }
-   }
-}
-
-static void
-exec_d2u(struct tgsi_exec_machine *mach,
-         const struct tgsi_full_instruction *inst)
-{
-   union tgsi_double_channel src;
-   union tgsi_exec_channel dst;
-   int wm = inst->Dst[0].Register.WriteMask;
-   int i;
-   int bit;
-   for (i = 0; i < 2; i++) {
-      bit = ffs(wm);
-      if (bit) {
-         wm &= ~(1 << (bit - 1));
-         if (i == 0)
-            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_X, TGSI_CHAN_Y);
-         else
-            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_Z, TGSI_CHAN_W);
-         micro_d2u(&dst, &src);
-         store_dest(mach, &dst, &inst->Dst[0], inst, bit - 1, TGSI_EXEC_DATA_UINT);
-      }
-   }
-}
-
 /* convert from 32-bit to 64-bit type generic */
 static void
 exec_t_2_64(struct tgsi_exec_machine *mach,
@@ -3636,6 +3569,32 @@ exec_t_2_64(struct tgsi_exec_machine *mach,
       fetch_source(mach, &src, &inst->Src[0], TGSI_CHAN_Y, src_datatype);
       op(&dst, &src);
       store_double_channel(mach, &dst, &inst->Dst[0], inst, TGSI_CHAN_Z, TGSI_CHAN_W);
+   }
+}
+
+/* convert from 64-bit type to 32-bit type generic */
+static void
+exec_64_2_t(struct tgsi_exec_machine *mach,
+            const struct tgsi_full_instruction *inst,
+            micro_sop_d op,
+            enum tgsi_exec_datatype dst_datatype)
+{
+   union tgsi_double_channel src;
+   union tgsi_exec_channel dst;
+   int wm = inst->Dst[0].Register.WriteMask;
+   int i;
+   int bit;
+   for (i = 0; i < 2; i++) {
+      bit = ffs(wm);
+      if (bit) {
+         wm &= ~(1 << (bit - 1));
+         if (i == 0)
+            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_X, TGSI_CHAN_Y);
+         else
+            fetch_double_channel(mach, &src, &inst->Src[0], TGSI_CHAN_Z, TGSI_CHAN_W);
+         op(&dst, &src);
+         store_dest(mach, &dst, &inst->Dst[0], inst, bit - 1, dst_datatype);
+      }
    }
 }
 
@@ -5652,7 +5611,7 @@ exec_instruction(
       break;
 
    case TGSI_OPCODE_D2F:
-      exec_d2f(mach, inst);
+      exec_64_2_t(mach, inst, micro_d2f, TGSI_EXEC_DATA_FLOAT);
       break;
 
    case TGSI_OPCODE_DABS:
@@ -5728,7 +5687,7 @@ exec_instruction(
       break;
 
    case TGSI_OPCODE_D2I:
-      exec_d2i(mach, inst);
+      exec_64_2_t(mach, inst, micro_d2i, TGSI_EXEC_DATA_INT);
       break;
 
    case TGSI_OPCODE_U2D:
@@ -5736,7 +5695,7 @@ exec_instruction(
       break;
 
    case TGSI_OPCODE_D2U:
-      exec_d2u(mach, inst);
+      exec_64_2_t(mach, inst, micro_d2u, TGSI_EXEC_DATA_INT);
       break;
 
    case TGSI_OPCODE_LOAD:
