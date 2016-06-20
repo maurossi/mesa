@@ -406,20 +406,13 @@ drisw_query_image(__DRIimage *image, int attrib, int *value)
 /*
  * Backend function for init_screen.
  */
-
-static const __DRIimageExtension driswImageExtension = {
-    .base = { __DRI_IMAGE, 11 },
-
-    .createImageFromTexture       = dri2_create_from_texture,
-    .destroyImage                 = dri2_destroy_image,
-    .queryImage                   = drisw_query_image,
-};
+extern __DRIimageExtension dri2ImageExtension;
 
 static const __DRIextension *drisw_screen_extensions[] = {
    &driTexBufferExtension.base,
    &dri2RendererQueryExtension.base,
    &dri2ConfigQueryExtension.base,
-   &driswImageExtension.base,
+   &dri2ImageExtension.base,
    &dri2FenceExtension.base,
    NULL
 };
