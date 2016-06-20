@@ -361,6 +361,11 @@ drisw_update_tex_buffer(struct dri_drawable *drawable,
    pipe_transfer_unmap(pipe, transfer);
 }
 
+extern __DRIimage *
+dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
+                         int depth, int level, unsigned *error,
+                         void *loaderPrivate);
+
 extern __DRIimage *dri2_lookup_egl_image(struct dri_screen *screen, void *handle);
 
 extern __DRIimage *dri2_create_image_from_winsys(__DRIscreen *_screen,
@@ -369,6 +374,8 @@ extern __DRIimage *dri2_create_image_from_winsys(__DRIscreen *_screen,
                                                  void *loaderPrivate);
 
 extern void dri2_destroy_image(__DRIimage *img);
+
+extern __DRI2fenceExtension dri2FenceExtension;
 
 static GLboolean
 drisw_query_image(__DRIimage *image, int attrib, int *value)
@@ -403,6 +410,7 @@ drisw_query_image(__DRIimage *image, int attrib, int *value)
 static const __DRIimageExtension driswImageExtension = {
     .base = { __DRI_IMAGE, 11 },
 
+    .createImageFromTexture       = dri2_create_from_texture,
     .destroyImage                 = dri2_destroy_image,
     .queryImage                   = drisw_query_image,
 };
@@ -412,6 +420,7 @@ static const __DRIextension *drisw_screen_extensions[] = {
    &dri2RendererQueryExtension.base,
    &dri2ConfigQueryExtension.base,
    &driswImageExtension.base,
+   &dri2FenceExtension.base,
    NULL
 };
 
