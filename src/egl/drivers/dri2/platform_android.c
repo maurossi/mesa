@@ -1055,7 +1055,7 @@ swrast_create_image_khr(_EGLDriver *drv, _EGLDisplay *disp,
       return swrast_create_image_android_native_buffer(disp, ctx,
             (struct ANativeWindowBuffer *) buffer);
    default:
-      return dri2_fallback_create_image_khr(drv, disp, ctx, target, buffer, attr_list);
+      return dri2_create_image_khr(drv, disp, ctx, target, buffer, attr_list);
    }
 }
 
