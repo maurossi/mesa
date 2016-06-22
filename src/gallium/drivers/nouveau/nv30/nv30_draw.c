@@ -127,6 +127,8 @@ nv30_render_draw_elements(struct vbuf_render *render,
    struct nouveau_pushbuf *push = nv30->screen->base.pushbuf;
    unsigned i;
 
+   pipe_mutex_lock(nv30->screen->base.push_mutex);
+
    BEGIN_NV04(push, NV30_3D(VTXBUF(0)), r->vertex_info.num_attribs);
    for (i = 0; i < r->vertex_info.num_attribs; i++) {
       PUSH_RESRC(push, NV30_3D(VTXBUF(i)), BUFCTX_VTXTMP,
@@ -134,8 +136,10 @@ nv30_render_draw_elements(struct vbuf_render *render,
                        NOUVEAU_BO_LOW | NOUVEAU_BO_RD, 0, NV30_3D_VTXBUF_DMA1);
    }
 
-   if (!nv30_state_validate(nv30, ~0, false))
+   if (!nv30_state_validate(nv30, ~0, false)) {
+      pipe_mutex_unlock(nv30->screen->base.push_mutex);
       return;
+   }
 
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
    PUSH_DATA (push, r->prim);
@@ -160,6 +164,8 @@ nv30_render_draw_elements(struct vbuf_render *render,
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
    PUSH_DATA (push, NV30_3D_VERTEX_BEGIN_END_STOP);
    PUSH_RESET(push, BUFCTX_VTXTMP);
+
+   pipe_mutex_unlock(nv30->screen->base.push_mutex);
 }
 
 static void
@@ -172,6 +178,8 @@ nv30_render_draw_arrays(struct vbuf_render *render, unsigned start, uint nr)
    unsigned ps = fn + (pn ? 1 : 0);
    unsigned i;
 
+   pipe_mutex_lock(nv30->screen->base.push_mutex);
+
    BEGIN_NV04(push, NV30_3D(VTXBUF(0)), r->vertex_info.num_attribs);
    for (i = 0; i < r->vertex_info.num_attribs; i++) {
       PUSH_RESRC(push, NV30_3D(VTXBUF(i)), BUFCTX_VTXTMP,
@@ -179,8 +187,10 @@ nv30_render_draw_arrays(struct vbuf_render *render, unsigned start, uint nr)
                        NOUVEAU_BO_LOW | NOUVEAU_BO_RD, 0, NV30_3D_VTXBUF_DMA1);
    }
 
-   if (!nv30_state_validate(nv30, ~0, false))
+   if (!nv30_state_validate(nv30, ~0, false)) {
+      pipe_mutex_unlock(nv30->screen->base.push_mutex);
       return;
+   }
 
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
    PUSH_DATA (push, r->prim);
@@ -197,6 +207,8 @@ nv30_render_draw_arrays(struct vbuf_render *render, unsigned start, uint nr)
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
    PUSH_DATA (push, NV30_3D_VERTEX_BEGIN_END_STOP);
    PUSH_RESET(push, BUFCTX_VTXTMP);
+
+   pipe_mutex_unlock(nv30->screen->base.push_mutex);
 }
 
 static void
@@ -386,6 +398,8 @@ nv30_render_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 
    nv30_render_validate(nv30);
 
+   pipe_mutex_unlock(nv30->screen->base.push_mutex);
+
    if (nv30->draw_dirty & NV30_NEW_VIEWPORT)
       draw_set_viewport_states(draw, 0, 1, &nv30->viewport);
    if (nv30->draw_dirty & NV30_NEW_RASTERIZER)
@@ -450,6 +464,8 @@ nv30_render_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    for (i = 0; i < nv30->num_vtxbufs; i++)
       if (transfer[i])
          pipe_buffer_unmap(pipe, transfer[i]);
+
+   pipe_mutex_lock(nv30->screen->base.push_mutex);
 
    nv30->draw_dirty = 0;
    nv30_state_release(nv30);
