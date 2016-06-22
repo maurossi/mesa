@@ -38,6 +38,8 @@ nv30_fragprog_upload(struct nv30_context *nv30)
    struct nv30_fragprog *fp = nv30->fragprog.program;
    struct pipe_context *pipe = &nv30->base.pipe;
 
+   pipe_mutex_unlock(nv->screen->push_mutex);
+
    if (unlikely(!fp->buffer))
       fp->buffer = pipe_buffer_create(pipe->screen, 0, 0, fp->insn_len * 4);
 
@@ -60,6 +62,8 @@ nv30_fragprog_upload(struct nv30_context *nv30)
 
    if (nv04_resource(fp->buffer)->domain != NOUVEAU_BO_VRAM)
       nouveau_buffer_migrate(nv, nv04_resource(fp->buffer), NOUVEAU_BO_VRAM);
+
+   pipe_mutex_lock(nv->screen->push_mutex);
 }
 
 void
