@@ -748,6 +748,7 @@ swrastPutImage2(__DRIdrawable * draw, int op,
                 char *data, void *loaderPrivate)
 {
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
+   struct _EGLDisplay *egl_dpy = dri2_surf->base.Resource.Display;
    char *dstPtr, *srcPtr;
    size_t BPerPixel, dstStride, copyWidth, xOffset;
 
@@ -792,7 +793,7 @@ swrastPutImage2(__DRIdrawable * draw, int op,
       _eglLog(_EGL_WARNING, "unlock buffer failed");
    }
 
-   droid_window_enqueue_buffer(dri2_surf);
+   droid_window_enqueue_buffer(egl_dpy, dri2_surf);
 }
 
 static void
