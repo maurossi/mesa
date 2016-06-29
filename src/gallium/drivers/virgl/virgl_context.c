@@ -86,14 +86,14 @@ static void virgl_attach_res_framebuffer(struct virgl_context *vctx)
    if (surf) {
       res = virgl_resource(surf->texture);
       if (res)
-         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE, VIRGL_USAGE_WRITE);
    }
    for (i = 0; i < vctx->framebuffer.nr_cbufs; i++) {
       surf = vctx->framebuffer.cbufs[i];
       if (surf) {
          res = virgl_resource(surf->texture);
          if (res)
-            vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+            vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE, VIRGL_USAGE_WRITE);
       }
    }
 }
@@ -112,7 +112,7 @@ static void virgl_attach_res_sampler_views(struct virgl_context *vctx,
 
       res = virgl_resource(tinfo->views[i]->base.texture);
       if (res)
-         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE, VIRGL_USAGE_READ);
    }
 }
 
@@ -125,7 +125,7 @@ static void virgl_attach_res_vertex_buffers(struct virgl_context *vctx)
    for (i = 0; i < vctx->num_vertex_buffers; i++) {
       res = virgl_resource(vctx->vertex_buffer[i].buffer);
       if (res)
-         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE, VIRGL_USAGE_READ);
    }
 }
 
@@ -136,7 +136,7 @@ static void virgl_attach_res_index_buffer(struct virgl_context *vctx)
 
    res = virgl_resource(vctx->index_buffer.buffer);
    if (res)
-      vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+      vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE, VIRGL_USAGE_READ);
 }
 
 static void virgl_attach_res_so_targets(struct virgl_context *vctx)
@@ -148,7 +148,7 @@ static void virgl_attach_res_so_targets(struct virgl_context *vctx)
    for (i = 0; i < vctx->num_so_targets; i++) {
       res = virgl_resource(vctx->so_targets[i].base.buffer);
       if (res)
-         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE, VIRGL_USAGE_WRITE);
    }
 }
 
@@ -161,7 +161,7 @@ static void virgl_attach_res_uniform_buffers(struct virgl_context *vctx,
    for (i = 0; i < PIPE_MAX_CONSTANT_BUFFERS; i++) {
       res = virgl_resource(vctx->ubos[shader_type][i]);
       if (res) {
-         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE);
+         vws->emit_res(vws, vctx->cbuf, res->hw_res, FALSE, VIRGL_USAGE_READ);
       }
    }
 }

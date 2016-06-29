@@ -42,6 +42,12 @@ struct virgl_cmd_buf {
    uint32_t *buf;
 };
 
+enum virgl_bo_usage {
+   VIRGL_USAGE_READ = 2,
+   VIRGL_USAGE_WRITE = 4,
+   VIRGL_USAGE_READWRITE = VIRGL_USAGE_READ | VIRGL_USAGE_WRITE,
+};
+
 struct virgl_winsys {
    unsigned pci_id;
 
@@ -82,12 +88,13 @@ struct virgl_winsys {
    struct virgl_cmd_buf *(*cmd_buf_create)(struct virgl_winsys *ws);
    void (*cmd_buf_destroy)(struct virgl_cmd_buf *buf);
 
-   void (*emit_res)(struct virgl_winsys *vws, struct virgl_cmd_buf *buf, struct virgl_hw_res *res, boolean write_buffer);
+   void (*emit_res)(struct virgl_winsys *vws, struct virgl_cmd_buf *buf, struct virgl_hw_res *res, boolean write_buffer, enum virgl_bo_usage usage);
    int (*submit_cmd)(struct virgl_winsys *vws, struct virgl_cmd_buf *buf);
 
    boolean (*res_is_referenced)(struct virgl_winsys *vws,
                                 struct virgl_cmd_buf *buf,
-                                struct virgl_hw_res *res);
+                                struct virgl_hw_res *res,
+                                enum virgl_bo_usage usage);
 
    int (*get_caps)(struct virgl_winsys *vws, struct virgl_drm_caps *caps);
 
