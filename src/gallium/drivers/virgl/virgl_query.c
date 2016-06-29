@@ -78,7 +78,6 @@ static struct pipe_query *virgl_create_query(struct pipe_context *ctx,
    query->type = query_type;
    query->index = index;
    query->handle = handle;
-   query->buf->clean = FALSE;
    virgl_encoder_create_query(vctx, handle, query_type, index, query->buf, 0);
 
    return (struct pipe_query *)query;
@@ -102,7 +101,6 @@ static boolean virgl_begin_query(struct pipe_context *ctx,
    struct virgl_context *vctx = virgl_context(ctx);
    struct virgl_query *query = virgl_query(q);
 
-   query->buf->clean = FALSE;
    virgl_encoder_begin_query(vctx, query->handle);
    return true;
 }

@@ -41,8 +41,9 @@ bool virgl_res_needs_readback(struct virgl_context *vctx,
                               struct virgl_resource *res,
                               unsigned usage)
 {
+   struct virgl_screen *vs = virgl_screen(vctx->base.screen);
    bool readback = true;
-   if (res->clean)
+   if (vs->vws->res_is_synced(vs->vws, res->hw_res))
       readback = false;
    else if (usage & PIPE_TRANSFER_DISCARD_RANGE)
       readback = false;

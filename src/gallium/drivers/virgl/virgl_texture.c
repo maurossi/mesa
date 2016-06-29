@@ -224,7 +224,6 @@ static void virgl_texture_transfer_unmap(struct pipe_context *ctx,
    if (trans->base.usage & PIPE_TRANSFER_WRITE) {
       if (!(transfer->usage & PIPE_TRANSFER_FLUSH_EXPLICIT)) {
          struct virgl_screen *vs = virgl_screen(ctx->screen);
-         vtex->base.clean = FALSE;
          vctx->num_transfers++;
          vs->vws->transfer_put(vs->vws, vtex->base.hw_res,
                                &transfer->box, trans->base.stride, l_stride, trans->offset, transfer->level);
@@ -334,7 +333,6 @@ struct pipe_resource *virgl_texture_create(struct virgl_screen *vs,
    unsigned vbind;
 
    tex = CALLOC_STRUCT(virgl_texture);
-   tex->base.clean = TRUE;
    tex->base.u.b = *template;
    tex->base.u.b.screen = &vs->base;
    pipe_reference_init(&tex->base.u.b.reference, 1);
