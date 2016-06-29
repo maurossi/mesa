@@ -179,16 +179,33 @@ static void *virgl_texture_transfer_map(struct pipe_context *ctx,
       offset = 0;
    } else {
       offset = vrend_get_tex_image_offset(vtex, level, box->z);
-
       offset += box->y / util_format_get_blockheight(format) * trans->base.stride +
-      box->x / util_format_get_blockwidth(format) * util_format_get_blocksize(format);
+         box->x / util_format_get_blockwidth(format) * util_format_get_blocksize(format);
+
       hw_res = vtex->base.hw_res;
       trans->resolve_tmp = NULL;
    }
 
    readback = virgl_res_needs_readback(vctx, &vtex->base, usage);
-   if (readback)
-      vs->vws->transfer_get(vs->vws, hw_res, box, trans->base.stride, l_stride, offset, level);
+
+   if (readback) {
+      if (resource->target == PIPE_TEXTURE_2D &&
+          !vs->vws->res_is_synced(vs->vws, hw_res)) {
+         struct pipe_box sync_box = {
+            .width = u_minify(vtex->base.u.b.width0, level),
+            .height = u_minify(vtex->base.u.b.height0, level),
+            .depth = 1,
+         };
+
+         vs->vws->transfer_get(vs->vws, hw_res, &sync_box, trans->base.stride, l_stride,
+                               vrend_get_tex_image_offset(vtex, level, box->z), level);
+         vs->vws->resource_wait(vs->vws, vtex->base.hw_res);
+         vs->vws->res_set_synced(vtex->base.hw_res);
+         doflushwait = false;
+         readback = false;
+      } else
+         vs->vws->transfer_get(vs->vws, hw_res, box, trans->base.stride, l_stride, offset, level);
+   }
 
    if (doflushwait || readback)
       vs->vws->resource_wait(vs->vws, vtex->base.hw_res);
