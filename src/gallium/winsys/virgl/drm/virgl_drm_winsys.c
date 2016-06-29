@@ -579,7 +579,7 @@ static void virgl_drm_cmd_buf_destroy(struct virgl_cmd_buf *_cbuf)
 
 }
 
-static boolean virgl_drm_lookup_res(struct virgl_drm_cmd_buf *cbuf,
+static int virgl_drm_lookup_res(struct virgl_drm_cmd_buf *cbuf,
                                     struct virgl_hw_res *res)
 {
    if (!res) return false;
@@ -589,21 +589,22 @@ static boolean virgl_drm_lookup_res(struct virgl_drm_cmd_buf *cbuf,
    if (cbuf->is_handle_added[hash]) {
       i = cbuf->reloc_indices_hashlist[hash];
       if (cbuf->res_bo[i] == res)
-         return true;
+         return i;
 
       for (i = 0; i < cbuf->cres; i++) {
          if (cbuf->res_bo[i] == res) {
             cbuf->reloc_indices_hashlist[hash] = i;
-            return true;
+            return i;
          }
       }
    }
-   return false;
+   return -1;
 }
 
 static void virgl_drm_add_res(struct virgl_drm_winsys *qdws,
                               struct virgl_drm_cmd_buf *cbuf,
-                              struct virgl_hw_res *res)
+                              struct virgl_hw_res *res,
+                              enum virgl_bo_usage usage)
 {
    if (!res) return;
    unsigned hash = res->res_handle & (sizeof(cbuf->is_handle_added)-1);
@@ -615,6 +616,7 @@ static void virgl_drm_add_res(struct virgl_drm_winsys *qdws,
 
    cbuf->res_bo[cbuf->cres] = NULL;
    virgl_drm_resource_reference(qdws, &cbuf->res_bo[cbuf->cres], res);
+   cbuf->bo_usage[cbuf->cres] = usage;
    cbuf->res_hlist[cbuf->cres] = res->bo_handle;
    cbuf->is_handle_added[hash] = TRUE;
 
@@ -637,27 +639,44 @@ static void virgl_drm_release_all_res(struct virgl_drm_winsys *qdws,
 
 static void virgl_drm_emit_res(struct virgl_winsys *qws,
                                struct virgl_cmd_buf *_cbuf,
-                               struct virgl_hw_res *res, boolean write_buf)
+                               struct virgl_hw_res *res,
+                               boolean write_buf,
+                               enum virgl_bo_usage usage)
 {
    struct virgl_drm_winsys *qdws = virgl_drm_winsys(qws);
    struct virgl_drm_cmd_buf *cbuf = virgl_drm_cmd_buf(_cbuf);
-   boolean already_in_list = virgl_drm_lookup_res(cbuf, res);
+   int index_in_list = virgl_drm_lookup_res(cbuf, res);
 
    if (write_buf)
       cbuf->base.buf[cbuf->base.cdw++] = res->res_handle;
 
-   if (!already_in_list)
-      virgl_drm_add_res(qdws, cbuf, res);
+   if (index_in_list == -1)
+      virgl_drm_add_res(qdws, cbuf, res, usage);
+   else
+      cbuf->bo_usage[index_in_list] |= usage;
 }
 
 static boolean virgl_drm_res_is_ref(struct virgl_winsys *qws,
                                     struct virgl_cmd_buf *_cbuf,
-                                    struct virgl_hw_res *res)
+                                    struct virgl_hw_res *res,
+                                    enum virgl_bo_usage usage)
 {
+   struct virgl_drm_cmd_buf *cbuf = virgl_drm_cmd_buf(_cbuf);
+   int index;
+
+   /* no commands in cbuf yet */
+   if (cbuf->base.cdw <= 2)
+      return FALSE;
    if (!res->num_cs_references)
       return FALSE;
 
-   return TRUE;
+   index = virgl_drm_lookup_res(cbuf, res);
+   if (index == -1)
+      return FALSE;
+
+   if (cbuf->bo_usage[index] & usage)
+      return true;
+   return false;
 }
 
 static int virgl_drm_winsys_submit_cmd(struct virgl_winsys *qws,
@@ -685,6 +704,7 @@ static int virgl_drm_winsys_submit_cmd(struct virgl_winsys *qws,
    virgl_drm_release_all_res(qdws, cbuf);
 
    memset(cbuf->is_handle_added, 0, sizeof(cbuf->is_handle_added));
+   memset(cbuf->bo_usage, 0, sizeof(cbuf->bo_usage));
    return ret;
 }
 
