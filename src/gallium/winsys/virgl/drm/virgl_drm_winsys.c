@@ -667,6 +667,11 @@ static bool virgl_drm_res_is_synced(struct virgl_winsys *qws,
    return res->synced;
 }
 
+static void virgl_drm_res_set_synced(struct virgl_hw_res *res)
+{
+   res->synced = true;
+}
+
 static boolean virgl_drm_res_is_ref(struct virgl_winsys *qws,
                                     struct virgl_cmd_buf *_cbuf,
                                     struct virgl_hw_res *res,
@@ -826,6 +831,7 @@ virgl_drm_winsys_create(int drmFD)
    qdws->base.emit_res = virgl_drm_emit_res;
    qdws->base.res_is_referenced = virgl_drm_res_is_ref;
    qdws->base.res_is_synced = virgl_drm_res_is_synced;
+   qdws->base.res_set_synced = virgl_drm_res_set_synced;
    qdws->base.cs_create_fence = virgl_cs_create_fence;
    qdws->base.fence_wait = virgl_fence_wait;
    qdws->base.fence_reference = virgl_fence_reference;

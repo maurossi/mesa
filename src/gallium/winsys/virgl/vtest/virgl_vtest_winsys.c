@@ -526,6 +526,11 @@ static bool virgl_vtest_res_is_synced(struct virgl_winsys *vws,
    return res->synced;
 }
 
+static void virgl_vtest_res_set_synced(struct virgl_hw_res *res)
+{
+   res->synced = true;
+}
+
 static int virgl_vtest_get_caps(struct virgl_winsys *vws,
                                 struct virgl_drm_caps *caps)
 {
@@ -666,6 +671,7 @@ virgl_vtest_winsys_wrap(struct sw_winsys *sws)
    vtws->base.emit_res = virgl_vtest_emit_res;
    vtws->base.res_is_referenced = virgl_vtest_res_is_ref;
    vtws->base.res_is_synced = virgl_vtest_res_is_synced;
+   vtws->base.res_set_synced = virgl_vtest_res_set_synced;
    vtws->base.get_caps = virgl_vtest_get_caps;
 
    vtws->base.cs_create_fence = virgl_cs_create_fence;

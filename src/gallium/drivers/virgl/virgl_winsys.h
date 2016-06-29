@@ -99,6 +99,8 @@ struct virgl_winsys {
    bool (*res_is_synced)(struct virgl_winsys *vws,
                          struct virgl_hw_res *res);
 
+   void (*res_set_synced)(struct virgl_hw_res *res);
+
    int (*get_caps)(struct virgl_winsys *vws, struct virgl_drm_caps *caps);
 
    /* fence */
