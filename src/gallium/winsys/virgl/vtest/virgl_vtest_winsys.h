@@ -71,7 +71,7 @@ struct virgl_hw_res {
    uint32_t bind;
    boolean cacheable;
    int64_t start, end;
-
+   bool synced; /* remote copy is synced with host copy */
 };
 
 struct virgl_vtest_cmd_buf {

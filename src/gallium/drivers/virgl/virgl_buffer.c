@@ -106,7 +106,6 @@ static void virgl_buffer_transfer_unmap(struct pipe_context *ctx,
    if (trans->base.usage & PIPE_TRANSFER_WRITE) {
       if (!(transfer->usage & PIPE_TRANSFER_FLUSH_EXPLICIT)) {
          struct virgl_screen *vs = virgl_screen(ctx->screen);
-         vbuf->base.clean = FALSE;
          vctx->num_transfers++;
          vs->vws->transfer_put(vs->vws, vbuf->base.hw_res,
                                &transfer->box, trans->base.stride, trans->base.layer_stride, trans->offset, transfer->level);
@@ -134,8 +133,6 @@ static void virgl_buffer_transfer_flush_region(struct pipe_context *ctx,
 
    util_range_add(&vbuf->valid_buffer_range, transfer->box.x + box->x,
                   transfer->box.x + box->x + box->width);
-
-   vbuf->base.clean = FALSE;
 }
 
 static const struct u_resource_vtbl virgl_buffer_vtbl =
@@ -155,7 +152,6 @@ struct pipe_resource *virgl_buffer_create(struct virgl_screen *vs,
    uint32_t size;
    uint32_t vbind;
    buf = CALLOC_STRUCT(virgl_buffer);
-   buf->base.clean = TRUE;
    buf->base.u.b = *template;
    buf->base.u.b.screen = &vs->base;
    buf->base.u.vtbl = &virgl_buffer_vtbl;

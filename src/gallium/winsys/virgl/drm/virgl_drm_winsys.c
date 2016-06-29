@@ -222,6 +222,7 @@ virgl_drm_winsys_resource_create(struct virgl_winsys *qws,
    res->stride = stride;
    pipe_reference_init(&res->reference, 1);
    res->num_cs_references = 0;
+   res->synced = true;
    return res;
 }
 
@@ -352,6 +353,7 @@ virgl_drm_winsys_resource_cache_create(struct virgl_winsys *qws,
 
    if (res) {
       LIST_DEL(&res->head);
+      res->synced = true;
       --qdws->num_delayed;
       pipe_mutex_unlock(qdws->mutex);
       pipe_reference_init(&res->reference, 1);
@@ -650,10 +652,19 @@ static void virgl_drm_emit_res(struct virgl_winsys *qws,
    if (write_buf)
       cbuf->base.buf[cbuf->base.cdw++] = res->res_handle;
 
+   if (usage & VIRGL_USAGE_WRITE)
+      res->synced = false;
+
    if (index_in_list == -1)
       virgl_drm_add_res(qdws, cbuf, res, usage);
    else
       cbuf->bo_usage[index_in_list] |= usage;
+}
+
+static bool virgl_drm_res_is_synced(struct virgl_winsys *qws,
+                                    struct virgl_hw_res *res)
+{
+   return res->synced;
 }
 
 static boolean virgl_drm_res_is_ref(struct virgl_winsys *qws,
@@ -814,7 +825,7 @@ virgl_drm_winsys_create(int drmFD)
    qdws->base.submit_cmd = virgl_drm_winsys_submit_cmd;
    qdws->base.emit_res = virgl_drm_emit_res;
    qdws->base.res_is_referenced = virgl_drm_res_is_ref;
-
+   qdws->base.res_is_synced = virgl_drm_res_is_synced;
    qdws->base.cs_create_fence = virgl_cs_create_fence;
    qdws->base.fence_wait = virgl_fence_wait;
    qdws->base.fence_reference = virgl_fence_reference;

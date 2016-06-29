@@ -50,6 +50,8 @@ struct virgl_hw_res {
    int64_t start, end;
    boolean flinked;
    uint32_t flink;
+
+   bool synced; /* guest copy is synced with host copy */
 };
 
 struct virgl_drm_winsys
