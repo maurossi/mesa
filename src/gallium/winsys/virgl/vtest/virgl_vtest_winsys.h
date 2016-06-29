@@ -82,6 +82,7 @@ struct virgl_vtest_cmd_buf {
    struct virgl_winsys *ws;
    struct virgl_hw_res **res_bo;
 
+   enum virgl_bo_usage bo_usage[512];
    char                        is_handle_added[512];
    unsigned                    reloc_indices_hashlist[512];
 };

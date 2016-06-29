@@ -31,7 +31,7 @@ bool virgl_res_needs_flush_wait(struct virgl_context *vctx,
 {
    struct virgl_screen *vs = virgl_screen(vctx->base.screen);
 
-   if ((!(usage & PIPE_TRANSFER_UNSYNCHRONIZED)) && vs->vws->res_is_referenced(vs->vws, vctx->cbuf, res->hw_res)) {
+   if ((!(usage & PIPE_TRANSFER_UNSYNCHRONIZED)) && vs->vws->res_is_referenced(vs->vws, vctx->cbuf, res->hw_res, VIRGL_USAGE_READWRITE)) {
       return true;
    }
    return false;
