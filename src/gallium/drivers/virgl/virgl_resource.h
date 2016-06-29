@@ -39,7 +39,6 @@ struct virgl_context;
 struct virgl_resource {
    struct u_resource u;
    struct virgl_hw_res *hw_res;
-   boolean clean;
 };
 
 struct virgl_buffer {

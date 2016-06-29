@@ -96,6 +96,9 @@ struct virgl_winsys {
                                 struct virgl_hw_res *res,
                                 enum virgl_bo_usage usage);
 
+   bool (*res_is_synced)(struct virgl_winsys *vws,
+                         struct virgl_hw_res *res);
+
    int (*get_caps)(struct virgl_winsys *vws, struct virgl_drm_caps *caps);
 
    /* fence */
