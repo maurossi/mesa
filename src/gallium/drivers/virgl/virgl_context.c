@@ -624,6 +624,9 @@ static void virgl_flush_eq(struct virgl_context *ctx, void *closure)
 {
    struct virgl_screen *rs = virgl_screen(ctx->base.screen);
 
+   if (ctx->cbuf->cdw <= 2)
+      return;
+
    /* send the buffer to the remote side for decoding */
    ctx->num_transfers = ctx->num_draws = 0;
    rs->vws->submit_cmd(rs->vws, ctx->cbuf);
