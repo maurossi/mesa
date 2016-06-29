@@ -47,12 +47,13 @@ static int virgl_encoder_write_cmd_dword(struct virgl_context *ctx,
 }
 
 static void virgl_encoder_write_res(struct virgl_context *ctx,
-                                    struct virgl_resource *res)
+                                    struct virgl_resource *res,
+                                    enum virgl_bo_usage usage)
 {
    struct virgl_winsys *vws = virgl_screen(ctx->base.screen)->vws;
 
    if (res && res->hw_res)
-      vws->emit_res(vws, ctx->cbuf, res->hw_res, TRUE);
+      vws->emit_res(vws, ctx->cbuf, res->hw_res, TRUE, usage);
    else {
       virgl_encoder_write_dword(ctx->cbuf, 0);
    }
@@ -385,7 +386,7 @@ int virgl_encoder_set_vertex_buffers(struct virgl_context *ctx,
       struct virgl_resource *res = virgl_resource(buffers[i].buffer);
       virgl_encoder_write_dword(ctx->cbuf, buffers[i].stride);
       virgl_encoder_write_dword(ctx->cbuf, buffers[i].buffer_offset);
-      virgl_encoder_write_res(ctx, res);
+      virgl_encoder_write_res(ctx, res, VIRGL_USAGE_READ);
    }
    return 0;
 }
@@ -399,7 +400,7 @@ int virgl_encoder_set_index_buffer(struct virgl_context *ctx,
       res = virgl_resource(ib->buffer);
 
    virgl_encoder_write_cmd_dword(ctx, VIRGL_CMD0(VIRGL_CCMD_SET_INDEX_BUFFER, 0, length));
-   virgl_encoder_write_res(ctx, res);
+   virgl_encoder_write_res(ctx, res, VIRGL_USAGE_READ);
    if (ib) {
       virgl_encoder_write_dword(ctx->cbuf, ib->index_size);
       virgl_encoder_write_dword(ctx->cbuf, ib->offset);
@@ -436,7 +437,7 @@ int virgl_encoder_create_surface(struct virgl_context *ctx,
 {
    virgl_encoder_write_cmd_dword(ctx, VIRGL_CMD0(VIRGL_CCMD_CREATE_OBJECT, VIRGL_OBJECT_SURFACE, VIRGL_OBJ_SURFACE_SIZE));
    virgl_encoder_write_dword(ctx->cbuf, handle);
-   virgl_encoder_write_res(ctx, res);
+   virgl_encoder_write_res(ctx, res, VIRGL_USAGE_WRITE);
    virgl_encoder_write_dword(ctx->cbuf, templat->format);
    if (templat->texture->target == PIPE_BUFFER) {
       virgl_encoder_write_dword(ctx->cbuf, templat->u.buf.first_element);
@@ -457,7 +458,7 @@ int virgl_encoder_create_so_target(struct virgl_context *ctx,
 {
    virgl_encoder_write_cmd_dword(ctx, VIRGL_CMD0(VIRGL_CCMD_CREATE_OBJECT, VIRGL_OBJECT_STREAMOUT_TARGET, VIRGL_OBJ_STREAMOUT_SIZE));
    virgl_encoder_write_dword(ctx->cbuf, handle);
-   virgl_encoder_write_res(ctx, res);
+   virgl_encoder_write_res(ctx, res, VIRGL_USAGE_WRITE);
    virgl_encoder_write_dword(ctx->cbuf, buffer_offset);
    virgl_encoder_write_dword(ctx->cbuf, buffer_size);
    return 0;
@@ -469,7 +470,7 @@ static void virgl_encoder_iw_emit_header_1d(struct virgl_context *ctx,
                                            const struct pipe_box *box,
                                            unsigned stride, unsigned layer_stride)
 {
-   virgl_encoder_write_res(ctx, res);
+   virgl_encoder_write_res(ctx, res, VIRGL_USAGE_WRITE);
    virgl_encoder_write_dword(ctx->cbuf, level);
    virgl_encoder_write_dword(ctx->cbuf, usage);
    virgl_encoder_write_dword(ctx->cbuf, stride);
@@ -565,7 +566,7 @@ int virgl_encode_sampler_view(struct virgl_context *ctx,
    uint32_t tmp;
    virgl_encoder_write_cmd_dword(ctx, VIRGL_CMD0(VIRGL_CCMD_CREATE_OBJECT, VIRGL_OBJECT_SAMPLER_VIEW, VIRGL_OBJ_SAMPLER_VIEW_SIZE));
    virgl_encoder_write_dword(ctx->cbuf, handle);
-   virgl_encoder_write_res(ctx, res);
+   virgl_encoder_write_res(ctx, res, VIRGL_USAGE_READ);
    virgl_encoder_write_dword(ctx->cbuf, state->format);
    if (res->u.b.target == PIPE_BUFFER) {
       virgl_encoder_write_dword(ctx->cbuf, state->u.buf.first_element);
@@ -640,7 +641,7 @@ int virgl_encoder_set_uniform_buffer(struct virgl_context *ctx,
    virgl_encoder_write_dword(ctx->cbuf, index);
    virgl_encoder_write_dword(ctx->cbuf, offset);
    virgl_encoder_write_dword(ctx->cbuf, length);
-   virgl_encoder_write_res(ctx, res);
+   virgl_encoder_write_res(ctx, res, VIRGL_USAGE_READ);
    return 0;
 }
 
@@ -716,12 +717,12 @@ int virgl_encode_resource_copy_region(struct virgl_context *ctx,
                                      const struct pipe_box *src_box)
 {
    virgl_encoder_write_cmd_dword(ctx, VIRGL_CMD0(VIRGL_CCMD_RESOURCE_COPY_REGION, 0, VIRGL_CMD_RESOURCE_COPY_REGION_SIZE));
-   virgl_encoder_write_res(ctx, dst_res);
+   virgl_encoder_write_res(ctx, dst_res, VIRGL_USAGE_WRITE);
    virgl_encoder_write_dword(ctx->cbuf, dst_level);
    virgl_encoder_write_dword(ctx->cbuf, dstx);
    virgl_encoder_write_dword(ctx->cbuf, dsty);
    virgl_encoder_write_dword(ctx->cbuf, dstz);
-   virgl_encoder_write_res(ctx, src_res);
+   virgl_encoder_write_res(ctx, src_res, VIRGL_USAGE_READ);
    virgl_encoder_write_dword(ctx->cbuf, src_level);
    virgl_encoder_write_dword(ctx->cbuf, src_box->x);
    virgl_encoder_write_dword(ctx->cbuf, src_box->y);
@@ -748,7 +749,7 @@ int virgl_encode_blit(struct virgl_context *ctx,
    virgl_encoder_write_dword(ctx->cbuf, (blit->scissor.minx | blit->scissor.miny << 16));
    virgl_encoder_write_dword(ctx->cbuf, (blit->scissor.maxx | blit->scissor.maxy << 16));
 
-   virgl_encoder_write_res(ctx, dst_res);
+   virgl_encoder_write_res(ctx, dst_res, VIRGL_USAGE_WRITE);
    virgl_encoder_write_dword(ctx->cbuf, blit->dst.level);
    virgl_encoder_write_dword(ctx->cbuf, blit->dst.format);
    virgl_encoder_write_dword(ctx->cbuf, blit->dst.box.x);
@@ -758,7 +759,7 @@ int virgl_encode_blit(struct virgl_context *ctx,
    virgl_encoder_write_dword(ctx->cbuf, blit->dst.box.height);
    virgl_encoder_write_dword(ctx->cbuf, blit->dst.box.depth);
 
-   virgl_encoder_write_res(ctx, src_res);
+   virgl_encoder_write_res(ctx, src_res, VIRGL_USAGE_READ);
    virgl_encoder_write_dword(ctx->cbuf, blit->src.level);
    virgl_encoder_write_dword(ctx->cbuf, blit->src.format);
    virgl_encoder_write_dword(ctx->cbuf, blit->src.box.x);
@@ -781,7 +782,7 @@ int virgl_encoder_create_query(struct virgl_context *ctx,
    virgl_encoder_write_dword(ctx->cbuf, handle);
    virgl_encoder_write_dword(ctx->cbuf, ((query_type & 0xffff) | (query_index << 16)));
    virgl_encoder_write_dword(ctx->cbuf, offset);
-   virgl_encoder_write_res(ctx, res);
+   virgl_encoder_write_res(ctx, res, VIRGL_USAGE_WRITE);
    return 0;
 }
 

@@ -420,8 +420,8 @@ static void virgl_vtest_cmd_buf_destroy(struct virgl_cmd_buf *_cbuf)
    FREE(cbuf);
 }
 
-static boolean virgl_vtest_lookup_res(struct virgl_vtest_cmd_buf *cbuf,
-                                      struct virgl_hw_res *res)
+static int virgl_vtest_lookup_res(struct virgl_vtest_cmd_buf *cbuf,
+                                  struct virgl_hw_res *res)
 {
    unsigned hash = res->res_handle & (sizeof(cbuf->is_handle_added)-1);
    int i;
@@ -429,16 +429,16 @@ static boolean virgl_vtest_lookup_res(struct virgl_vtest_cmd_buf *cbuf,
    if (cbuf->is_handle_added[hash]) {
       i = cbuf->reloc_indices_hashlist[hash];
       if (cbuf->res_bo[i] == res)
-         return true;
+         return i;
 
       for (i = 0; i < cbuf->cres; i++) {
          if (cbuf->res_bo[i] == res) {
             cbuf->reloc_indices_hashlist[hash] = i;
-            return true;
+            return i;
          }
       }
    }
-   return false;
+   return -1;
 }
 
 static void virgl_vtest_release_all_res(struct virgl_vtest_winsys *vtws,
@@ -455,7 +455,8 @@ static void virgl_vtest_release_all_res(struct virgl_vtest_winsys *vtws,
 
 static void virgl_vtest_add_res(struct virgl_vtest_winsys *vtws,
                                 struct virgl_vtest_cmd_buf *cbuf,
-                                struct virgl_hw_res *res)
+                                struct virgl_hw_res *res,
+                                enum virgl_bo_usage usage)
 {
    unsigned hash = res->res_handle & (sizeof(cbuf->is_handle_added)-1);
 
@@ -465,6 +466,7 @@ static void virgl_vtest_add_res(struct virgl_vtest_winsys *vtws,
    }
 
    cbuf->res_bo[cbuf->cres] = NULL;
+   cbuf->bo_usage[cbuf->cres] = usage;
    virgl_vtest_resource_reference(vtws, &cbuf->res_bo[cbuf->cres], res);
    cbuf->is_handle_added[hash] = TRUE;
 
@@ -493,21 +495,24 @@ static int virgl_vtest_winsys_submit_cmd(struct virgl_winsys *vws,
 
 static void virgl_vtest_emit_res(struct virgl_winsys *vws,
                                  struct virgl_cmd_buf *_cbuf,
-                                 struct virgl_hw_res *res, boolean write_buf)
+                                 struct virgl_hw_res *res,
+                                 boolean write_buf,
+                                 enum virgl_bo_usage usage)
 {
    struct virgl_vtest_winsys *vtws = virgl_vtest_winsys(vws);
    struct virgl_vtest_cmd_buf *cbuf = virgl_vtest_cmd_buf(_cbuf);
-   boolean already_in_list = virgl_vtest_lookup_res(cbuf, res);
+   int index_in_list = virgl_vtest_lookup_res(cbuf, res);
 
    if (write_buf)
       cbuf->base.buf[cbuf->base.cdw++] = res->res_handle;
-   if (!already_in_list)
-      virgl_vtest_add_res(vtws, cbuf, res);
+   if (index_in_list == -1)
+      virgl_vtest_add_res(vtws, cbuf, res, usage);
 }
 
 static boolean virgl_vtest_res_is_ref(struct virgl_winsys *vws,
                                       struct virgl_cmd_buf *_cbuf,
-                                      struct virgl_hw_res *res)
+                                      struct virgl_hw_res *res,
+                                      enum virgl_bo_usage usage)
 {
    if (!res->num_cs_references)
       return FALSE;

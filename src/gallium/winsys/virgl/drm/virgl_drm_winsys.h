@@ -74,6 +74,7 @@ struct virgl_drm_cmd_buf {
    unsigned nres;
    unsigned cres;
    struct virgl_hw_res **res_bo;
+   enum virgl_bo_usage bo_usage[512];
    struct virgl_winsys *ws;
    uint32_t *res_hlist;
 
