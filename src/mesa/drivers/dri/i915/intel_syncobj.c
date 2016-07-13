@@ -46,6 +46,7 @@
 #include "intel_reg.h"
 
 struct intel_fence {
+   struct intel_context *intel;
    /** The fence waits for completion of this batch. */
    drm_intel_bo *batch_bo;
 
@@ -215,6 +216,7 @@ intel_dri_create_fence(__DRIcontext *ctx)
    if (!fence)
       return NULL;
 
+   fence->intel = intel;
    intel_fence_insert(intel, fence);
 
    return fence;
@@ -233,19 +235,17 @@ static GLboolean
 intel_dri_client_wait_sync(__DRIcontext *ctx, void *driver_fence, unsigned flags,
                            uint64_t timeout)
 {
-   struct intel_context *intel = ctx->driverPrivate;
    struct intel_fence *fence = driver_fence;
 
-   return intel_fence_client_wait(intel, fence, timeout);
+   return intel_fence_client_wait(fence->intel, fence, timeout);
 }
 
 static void
 intel_dri_server_wait_sync(__DRIcontext *ctx, void *driver_fence, unsigned flags)
 {
-   struct intel_context *intel = ctx->driverPrivate;
    struct intel_fence *fence = driver_fence;
 
-   intel_fence_server_wait(intel, fence);
+   intel_fence_server_wait(fence->intel, fence);
 }
 
 const __DRI2fenceExtension intelFenceExtension = {
