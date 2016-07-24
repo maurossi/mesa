@@ -235,6 +235,12 @@ dri_set_tex_buffer2(__DRIcontext *pDRICtx, GLint target,
          case PIPE_FORMAT_ARGB8888_UNORM:
             internal_format = PIPE_FORMAT_XRGB8888_UNORM;
             break;
+         case PIPE_FORMAT_RGBA8888_UNORM:
+            internal_format = PIPE_FORMAT_RGBX8888_UNORM;
+            break;
+         case PIPE_FORMAT_ABGR8888_UNORM:
+            internal_format = PIPE_FORMAT_XBGR8888_UNORM;
+            break;
          default:
             break;
          }
