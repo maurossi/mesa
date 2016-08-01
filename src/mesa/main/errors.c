@@ -95,7 +95,7 @@ output_if_debug(const char *prefixString, const char *outputString,
       {
          char buf[4096];
          _mesa_snprintf(buf, sizeof(buf), "%s: %s%s", prefixString, outputString, newline ? "\n" : "");
-         ALOGD(buf);
+         ALOGD("%s", buf);
       }
 #endif
 
