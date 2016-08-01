@@ -104,7 +104,7 @@ os_log_message(const char *message)
 #else /* !PIPE_SUBSYSTEM_WINDOWS */
 #if defined(PIPE_OS_ANDROID)
    if (fout == stderr) {
-      ALOGD(message);
+      ALOGD("%s", message);
       return;
    }
 #endif
