@@ -64,8 +64,8 @@
 #  include <ui/android_native_buffer.h>
 #endif
 
+#include "platform_android_gralloc_drm.h"
 #include <hardware/gralloc.h>
-#include <gralloc_drm_handle.h>
 #include <cutils/log.h>
 
 #endif /* HAVE_ANDROID_PLATFORM */
