@@ -1714,6 +1714,8 @@ intel_screen_make_configs(__DRIscreen *dri_screen)
 {
    static const mesa_format formats[] = {
       MESA_FORMAT_B5G6R5_UNORM,
+      MESA_FORMAT_R8G8B8A8_UNORM,
+      MESA_FORMAT_R8G8B8X8_UNORM,
       MESA_FORMAT_B8G8R8A8_UNORM,
       MESA_FORMAT_B8G8R8X8_UNORM
    };
