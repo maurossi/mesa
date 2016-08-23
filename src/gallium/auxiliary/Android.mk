@@ -46,7 +46,7 @@ endif
 
 # We need libmesa_nir to get NIR's generated include directories.
 LOCAL_MODULE := libmesa_gallium
-LOCAL_STATIC_LIBRARIES += libmesa_nir
+LOCAL_STATIC_LIBRARIES := libmesa_nir libLLVMCore
 
 # generate sources
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
