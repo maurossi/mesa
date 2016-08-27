@@ -196,7 +196,9 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
 
-LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, $(ISL_GENERATED_FILES))
+LOCAL_GENERATED_SOURCES += \
+	$(addprefix $(intermediates)/, $(ISL_GENERATED_FILES)) \
+	$(MESA_GENXML_H)
 
 define bash-gen
 	@mkdir -p $(dir $@)

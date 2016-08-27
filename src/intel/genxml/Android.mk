@@ -43,6 +43,9 @@ $(intermediates)/dummy.c:
 # This is the list of auto-generated files headers
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/genxml/, $(GENXML_GENERATED_FILES))
 
+# Modules using libmesa_genxml must set LOCAL_GENERATED_SOURCES += $(MESA_GENXML_H) to get the headers
+MESA_GENXML_H := $(addprefix $(intermediates)/genxml/, $(GENXML_GENERATED_FILES))
+
 define header-gen
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
