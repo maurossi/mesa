@@ -40,6 +40,8 @@ LOCAL_MODULE := libmesa_st_mesa
 LOCAL_SRC_FILES := \
 	$(MESA_GALLIUM_FILES)
 
+LOCAL_GENERATED_SOURCES := $(MESA_GEN_GLSL_H)
+
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
 	LOCAL_SRC_FILES_x86 += $(X86_FILES)
 	LOCAL_SRC_FILES_x86_64 += $(X86_64_FILES)
@@ -61,7 +63,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES_x86 += \
 LOCAL_WHOLE_STATIC_LIBRARIES_x86_64 += \
 	libmesa_sse41 \
 
-LOCAL_STATIC_LIBRARIES += libmesa_nir
+LOCAL_STATIC_LIBRARIES += libmesa_nir libmesa_glsl
 
 include $(LOCAL_PATH)/Android.gen.mk
 include $(MESA_COMMON_MK)
