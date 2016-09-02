@@ -63,7 +63,7 @@ $(warning invalid GPU drivers: $(invalid_drivers))
 MESA_GPU_DRIVERS := $(filter-out $(invalid_drivers), $(MESA_GPU_DRIVERS))
 endif
 
-MESA_ENABLE_ASM := true
+MESA_ENABLE_ASM := false
 
 ifneq ($(filter $(classic_drivers), $(MESA_GPU_DRIVERS)),)
 MESA_BUILD_CLASSIC := true
