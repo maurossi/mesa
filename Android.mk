@@ -76,12 +76,7 @@ MESA_BUILD_GALLIUM := $(strip $(foreach d, $(BOARD_GPU_DRIVERS), $(patsubst $(d)
 endif
 $(foreach d, $(MESA_BUILD_CLASSIC) $(MESA_BUILD_GALLIUM), $(eval $(d) := true))
 
-# host and target must be the same arch to generate matypes.h
-ifeq ($(TARGET_ARCH),$(HOST_ARCH))
-MESA_ENABLE_ASM := true
-else
 MESA_ENABLE_ASM := false
-endif
 
 ifneq ($(filter true, $(HAVE_GALLIUM_RADEONSI) $(HAVE_GALLIUM_LLVMPIPE)),)
 MESA_ENABLE_LLVM := true
