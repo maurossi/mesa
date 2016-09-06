@@ -167,6 +167,8 @@ droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
 static EGLBoolean
 droid_window_enqueue_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_surf)
 {
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+
    /* To avoid blocking other EGL calls, release the display mutex before
     * we enter droid_window_enqueue_buffer() and re-acquire the mutex upon
     * return.
@@ -197,6 +199,12 @@ droid_window_enqueue_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_sur
    dri2_surf->buffer = NULL;
 
    mtx_lock(&disp->Mutex);
+
+   if (dri2_surf->dri_image) {
+      dri2_dpy->image->destroyImage(dri2_surf->dri_image);
+      dri2_surf->dri_image = NULL;
+   }
+
    return EGL_TRUE;
 }
 
@@ -288,6 +296,8 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
 
    config = dri2_get_dri_config(dri2_conf, EGL_WINDOW_BIT,
                                 dri2_surf->base.GLColorspace);
+   if (!config)
+      goto cleanup_surface;
 
    if (dri2_dpy->dri2) {
       dri2_surf->dri_drawable =
@@ -381,6 +391,9 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
    int fourcc, pitch;
    int offset = 0, fd;
 
+   if (dri2_surf->dri_image)
+	   return 0;
+
    if (!dri2_surf->buffer)
       return -1;
 
@@ -439,10 +452,8 @@ droid_image_get_buffers(__DRIdrawable *driDrawable,
 static EGLBoolean
 droid_swap_buffers(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *draw)
 {
-   struct dri2_egl_driver *dri2_drv = dri2_egl_driver(drv);
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(draw);
-   _EGLContext *ctx;
 
    if (dri2_surf->base.Type != EGL_WINDOW_BIT)
       return EGL_TRUE;
@@ -1127,6 +1138,7 @@ cleanup_device:
    close(dri2_dpy->fd);
 cleanup_display:
    free(dri2_dpy);
+   dpy->DriverData = NULL;
 
    return _eglError(EGL_NOT_INITIALIZED, err);
 }
