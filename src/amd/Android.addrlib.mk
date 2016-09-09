@@ -38,7 +38,8 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/amd/addrlib \
 	$(MESA_TOP)/src/amd/addrlib/core \
 	$(MESA_TOP)/src/amd/addrlib/inc/chip/r800 \
-	$(MESA_TOP)/src/amd/addrlib/r800/chip
+	$(MESA_TOP)/src/amd/addrlib/r800/chip \
+	$(MESA_TOP)/src/gallium/include
 
 LOCAL_STATIC_LIBRARIES := libmesa_util
 
