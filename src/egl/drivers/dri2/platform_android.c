@@ -1315,6 +1315,15 @@ static const __DRIimageLoaderExtension droid_image_loader_extension = {
    .flushFrontBuffer    = droid_flush_front_buffer,
 };
 
+static const __DRIswrastLoaderExtension droid_swrast_loader_extension = {
+   .base = { __DRI_SWRAST_LOADER, 2 },
+
+   .getDrawableInfo     = swrastGetDrawableInfo,
+   .putImage            = swrastPutImage,
+   .getImage            = swrastGetImage,
+   .putImage2           = swrastPutImage2,
+};
+
 static const __DRIextension *droid_dri2_loader_extensions[] = {
    &droid_dri2_loader_extension.base,
    &image_lookup_extension.base,
@@ -1326,6 +1335,12 @@ static const __DRIextension *droid_image_loader_extensions[] = {
    &droid_image_loader_extension.base,
    &image_lookup_extension.base,
    &use_invalidate.base,
+   NULL,
+};
+
+static const __DRIextension *droid_swrast_loader_extensions[] = {
+   &droid_swrast_loader_extension.base,
+   &image_lookup_extension.base,
    NULL,
 };
 
@@ -1458,16 +1473,7 @@ dri2_initialize_android_swrast(_EGLDriver *drv, _EGLDisplay *dpy)
       goto cleanup_driver_name;
    }
 
-   dri2_dpy->swrast_loader_extension.base.name = __DRI_SWRAST_LOADER;
-   dri2_dpy->swrast_loader_extension.base.version = 2;
-   dri2_dpy->swrast_loader_extension.getDrawableInfo = swrastGetDrawableInfo;
-   dri2_dpy->swrast_loader_extension.putImage = swrastPutImage;
-   dri2_dpy->swrast_loader_extension.putImage2 = swrastPutImage2;
-   dri2_dpy->swrast_loader_extension.getImage = swrastGetImage;
-
-   dri2_dpy->extensions[0] = &dri2_dpy->swrast_loader_extension.base;
-   dri2_dpy->extensions[1] = &image_lookup_extension.base;
-   dri2_dpy->extensions[2] = NULL;
+   dri2_dpy->loader_extensions = droid_swrast_loader_extensions;
 
    if (!dri2_create_screen(dpy)) {
       err = "DRISW: failed to create screen";
