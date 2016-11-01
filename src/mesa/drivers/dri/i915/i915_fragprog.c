@@ -263,6 +263,7 @@ translate_tex_src_target(struct i915_fragment_program *p, GLubyte bit)
    case TEXTURE_1D_INDEX:
       return D0_SAMPLE_TYPE_2D;
    case TEXTURE_2D_INDEX:
+   case TEXTURE_EXTERNAL_INDEX:
       return D0_SAMPLE_TYPE_2D;
    case TEXTURE_RECT_INDEX:
       return D0_SAMPLE_TYPE_2D;
