@@ -425,6 +425,7 @@ i915UpdateTextureState(struct intel_context *intel)
          case GL_TEXTURE_2D:
          case GL_TEXTURE_CUBE_MAP:
          case GL_TEXTURE_3D:
+         case GL_TEXTURE_EXTERNAL_OES:
             ok = i915_update_tex_unit(intel, i, SS3_NORMALIZED_COORDS);
             break;
          case GL_TEXTURE_RECTANGLE:
