@@ -336,6 +336,7 @@ i830UpdateTextureState(struct intel_context *intel)
          case GL_TEXTURE_1D:
          case GL_TEXTURE_2D:
          case GL_TEXTURE_CUBE_MAP:
+         case TEXTURE_EXTERNAL_BIT:
             ok = i830_update_tex_unit(intel, i, TEXCOORDS_ARE_NORMAL);
             break;
          case GL_TEXTURE_RECTANGLE:
