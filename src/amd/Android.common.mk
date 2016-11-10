@@ -30,6 +30,8 @@ LOCAL_MODULE := libmesa_amd_common
 
 LOCAL_SRC_FILES := $(AMD_COMPILER_SOURCES)
 
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # to enable TARGET_LLVM(AMDGPU) LLVMInitialize* prototypes
+
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/include \
 	$(MESA_TOP)/src \
