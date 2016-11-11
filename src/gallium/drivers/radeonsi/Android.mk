@@ -30,6 +30,8 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # to enable TARGET_LLVM(AMDGPU) LLVMInitialize* prototypes
+
 LOCAL_SHARED_LIBRARIES := libdrm libdrm_radeon
 LOCAL_MODULE := libmesa_pipe_radeonsi
 
