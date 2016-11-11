@@ -22,7 +22,6 @@
  */
 
 #include "si_shader_internal.h"
-#include "radeon_llvm_init.h"
 #include "radeon/radeon_elf_util.h"
 
 #include "gallivm/lp_bld_const.h"
@@ -121,10 +120,18 @@ void si_llvm_shader_type(LLVMValueRef F, unsigned type)
 static void init_amdgpu_target()
 {
 	gallivm_init_llvm_targets();
+#if HAVE_LLVM < 0x0307
+	LLVMInitializeR600TargetInfo();
+	LLVMInitializeR600Target();
+	LLVMInitializeR600TargetMC();
+	LLVMInitializeR600AsmPrinter();
+#else
 	LLVMInitializeAMDGPUTargetInfo();
 	LLVMInitializeAMDGPUTarget();
 	LLVMInitializeAMDGPUTargetMC();
 	LLVMInitializeAMDGPUAsmPrinter();
+
+#endif
 }
 
 static once_flag init_amdgpu_target_once_flag = ONCE_FLAG_INIT;
