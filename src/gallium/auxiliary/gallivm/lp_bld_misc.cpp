@@ -743,7 +743,7 @@ lp_create_builder(LLVMContextRef ctx, bool unsafe_fpmath)
    if (unsafe_fpmath) {
       llvm::FastMathFlags flags;
       flags.setUnsafeAlgebra();
-      llvm::unwrap(builder)->setFastMathFlags(flags);
+      llvm::unwrap(builder)->SetFastMathFlags(flags);
    }
 #endif
 
