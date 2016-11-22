@@ -513,6 +513,16 @@ void radeon_llvm_emit_store(
 	}
 }
 
+/* Emit a branch to the given default target for the current block if
+ * applicable -- that is, if the current block does not already contain a
+ * branch from a break or continue.
+ */
+static void emit_default_branch(LLVMBuilderRef builder, LLVMBasicBlockRef target)
+{
+	if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(builder)))
+		 LLVMBuildBr(builder, target);
+}
+
 static void bgnloop_emit(
 	const struct lp_build_tgsi_action * action,
 	struct lp_build_tgsi_context * bld_base,
@@ -577,28 +587,8 @@ static void else_emit(
 	struct radeon_llvm_context * ctx = radeon_llvm_context(bld_base);
 	struct gallivm_state * gallivm = bld_base->base.gallivm;
 	struct radeon_llvm_branch * current_branch = get_current_branch(ctx);
-	LLVMBasicBlockRef current_block = LLVMGetInsertBlock(gallivm->builder);
 
-	/* We need to add a terminator to the current block if the previous
-	 * instruction was an ENDIF.Example:
-	 * IF
-	 *   [code]
-	 *   IF
-	 *     [code]
-	 *   ELSE
-	 *    [code]
-	 *   ENDIF <--
-	 * ELSE<--
-	 *   [code]
-	 * ENDIF
-	 */
-
-	if (current_block != current_branch->if_block) {
-		LLVMBuildBr(gallivm->builder, current_branch->endif_block);
-	}
-	if (!LLVMGetBasicBlockTerminator(current_branch->if_block)) {
-		LLVMBuildBr(gallivm->builder, current_branch->endif_block);
-	}
+	emit_default_branch(gallivm->builder, current_branch->endif_block);
 	current_branch->has_else = 1;
 	LLVMPositionBuilderAtEnd(gallivm->builder, current_branch->else_block);
 }
@@ -611,23 +601,12 @@ static void endif_emit(
 	struct radeon_llvm_context * ctx = radeon_llvm_context(bld_base);
 	struct gallivm_state * gallivm = bld_base->base.gallivm;
 	struct radeon_llvm_branch * current_branch = get_current_branch(ctx);
-	LLVMBasicBlockRef current_block = LLVMGetInsertBlock(gallivm->builder);
 
-	/* If we have consecutive ENDIF instructions, then the first ENDIF
-	 * will not have a terminator, so we need to add one. */
-	if (current_block != current_branch->if_block
-			&& current_block != current_branch->else_block
-			&& !LLVMGetBasicBlockTerminator(current_block)) {
+	emit_default_branch(gallivm->builder, current_branch->endif_block);
 
-		 LLVMBuildBr(gallivm->builder, current_branch->endif_block);
-	}
+	/* Need to fixup an empty else block if there was no ELSE opcode. */
 	if (!LLVMGetBasicBlockTerminator(current_branch->else_block)) {
 		LLVMPositionBuilderAtEnd(gallivm->builder, current_branch->else_block);
-		LLVMBuildBr(gallivm->builder, current_branch->endif_block);
-	}
-
-	if (!LLVMGetBasicBlockTerminator(current_branch->if_block)) {
-		LLVMPositionBuilderAtEnd(gallivm->builder, current_branch->if_block);
 		LLVMBuildBr(gallivm->builder, current_branch->endif_block);
 	}
 
@@ -644,9 +623,7 @@ static void endloop_emit(
 	struct gallivm_state * gallivm = bld_base->base.gallivm;
 	struct radeon_llvm_loop * current_loop = get_current_loop(ctx);
 
-	if (!LLVMGetBasicBlockTerminator(LLVMGetInsertBlock(gallivm->builder))) {
-		 LLVMBuildBr(gallivm->builder, current_loop->loop_block);
-	}
+	emit_default_branch(gallivm->builder, current_loop->loop_block);
 
 	LLVMPositionBuilderAtEnd(gallivm->builder, current_loop->endloop_block);
 	ctx->loop_depth--;
@@ -1326,23 +1303,32 @@ static void emit_lsb(const struct lp_build_tgsi_action * action,
 		     struct lp_build_emit_data * emit_data)
 {
 	struct gallivm_state *gallivm = bld_base->base.gallivm;
+	LLVMBuilderRef builder = gallivm->builder;
 	LLVMValueRef args[2] = {
 		emit_data->args[0],
 
 		/* The value of 1 means that ffs(x=0) = undef, so LLVM won't
 		 * add special code to check for x=0. The reason is that
 		 * the LLVM behavior for x=0 is different from what we
-		 * need here.
-		 *
-		 * The hardware already implements the correct behavior.
+		 * need here. However, LLVM also assumes that ffs(x) is
+		 * in [0, 31], but GLSL expects that ffs(0) = -1, so
+		 * a conditional assignment to handle 0 is still required.
 		 */
-		lp_build_const_int32(gallivm, 1)
+		LLVMConstInt(LLVMInt1TypeInContext(gallivm->context), 1, 0)
 	};
 
-	emit_data->output[emit_data->chan] =
+	LLVMValueRef lsb =
 		lp_build_intrinsic(gallivm->builder, "llvm.cttz.i32",
 				emit_data->dst_type, args, ARRAY_SIZE(args),
 				LLVMReadNoneAttribute);
+
+	/* TODO: We need an intrinsic to skip this conditional. */
+	/* Check for zero: */
+	emit_data->output[emit_data->chan] =
+		LLVMBuildSelect(builder,
+				LLVMBuildICmp(builder, LLVMIntEQ, args[0],
+					      bld_base->uint_bld.zero, ""),
+				lp_build_const_int32(gallivm, -1), lsb, "");
 }
 
 /* Find the last bit set. */
