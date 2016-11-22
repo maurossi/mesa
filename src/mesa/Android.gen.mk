@@ -71,7 +71,7 @@ define es-gen
 	$(hide) $(PRIVATE_SCRIPT) $(1) $(PRIVATE_XML) > $@
 endef
 
-$(intermediates)/main/git_sha1.h: $(MESA_TOP)/.git/HEAD
+$(intermediates)/main/git_sha1.h: $(wildcard $(MESA_TOP)/.git/logs/HEAD)
 	@mkdir -p $(dir $@)
 	@echo "GIT-SHA1: $(PRIVATE_MODULE) <= git"
 	$(hide) touch $@
