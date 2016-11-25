@@ -371,8 +371,16 @@ x11_surface_get_capabilities(VkIcdSurfaceBase *icd_surface,
                                       VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
    }
 
+   /* For true mailbox mode, we need at least 4 images:
+    *  1) One to scan out from
+    *  2) One to have queued for scan-out
+    *  3) One to be currently held by the X server
+    *  4) One to render to
+    */
    caps->minImageCount = 2;
-   caps->maxImageCount = 4;
+   /* There is no real maximum */
+   caps->maxImageCount = 0;
+
    caps->supportedTransforms = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
    caps->currentTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
    caps->maxImageArrayLayers = 1;
@@ -396,11 +404,11 @@ x11_surface_get_formats(VkIcdSurfaceBase *surface,
       return VK_SUCCESS;
    }
 
-   assert(*pSurfaceFormatCount >= ARRAY_SIZE(formats));
+   *pSurfaceFormatCount = MIN2(*pSurfaceFormatCount, ARRAY_SIZE(formats));
    typed_memcpy(pSurfaceFormats, formats, *pSurfaceFormatCount);
-   *pSurfaceFormatCount = ARRAY_SIZE(formats);
 
-   return VK_SUCCESS;
+   return *pSurfaceFormatCount < ARRAY_SIZE(formats) ?
+      VK_INCOMPLETE : VK_SUCCESS;
 }
 
 static VkResult
@@ -413,11 +421,11 @@ x11_surface_get_present_modes(VkIcdSurfaceBase *surface,
       return VK_SUCCESS;
    }
 
-   assert(*pPresentModeCount >= ARRAY_SIZE(present_modes));
+   *pPresentModeCount = MIN2(*pPresentModeCount, ARRAY_SIZE(present_modes));
    typed_memcpy(pPresentModes, present_modes, *pPresentModeCount);
-   *pPresentModeCount = ARRAY_SIZE(present_modes);
 
-   return VK_SUCCESS;
+   return *pPresentModeCount < ARRAY_SIZE(present_modes) ?
+      VK_INCOMPLETE : VK_SUCCESS;
 }
 
 VkResult wsi_create_xcb_surface(const VkAllocationCallbacks *pAllocator,
@@ -490,19 +498,25 @@ x11_get_images(struct wsi_swapchain *anv_chain,
                uint32_t* pCount, VkImage *pSwapchainImages)
 {
    struct x11_swapchain *chain = (struct x11_swapchain *)anv_chain;
+   uint32_t ret_count;
+   VkResult result;
 
    if (pSwapchainImages == NULL) {
       *pCount = chain->image_count;
       return VK_SUCCESS;
    }
 
-   assert(chain->image_count <= *pCount);
-   for (uint32_t i = 0; i < chain->image_count; i++)
+   result = VK_SUCCESS;
+   ret_count = chain->image_count;
+   if (chain->image_count > *pCount) {
+     ret_count = *pCount;
+     result = VK_INCOMPLETE;
+   }
+
+   for (uint32_t i = 0; i < ret_count; i++)
       pSwapchainImages[i] = chain->images[i].image;
 
-   *pCount = chain->image_count;
-
-   return VK_SUCCESS;
+   return result;
 }
 
 static VkResult
@@ -737,16 +751,7 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR);
 
-   int num_images = pCreateInfo->minImageCount;
-
-   /* For true mailbox mode, we need at least 4 images:
-    *  1) One to scan out from
-    *  2) One to have queued for scan-out
-    *  3) One to be currently held by the Wayland compositor
-    *  4) One to render to
-    */
-   if (pCreateInfo->presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
-      num_images = MAX2(num_images, 4);
+   const unsigned num_images = pCreateInfo->minImageCount;
 
    size_t size = sizeof(*chain) + num_images * sizeof(chain->images[0]);
    chain = vk_alloc(pAllocator, size, 8,
