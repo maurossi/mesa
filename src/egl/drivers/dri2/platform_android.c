@@ -990,11 +990,51 @@ droid_open_device(struct dri2_egl_display *dri2_dpy)
                                           GRALLOC_MODULE_PERFORM_GET_DRM_FD,
                                           &fd);
    if (err || fd < 0) {
-      _eglLog(_EGL_WARNING, "fail to get drm fd");
+      _eglLog(_EGL_DEBUG, "fail to get drm fd");
       fd = -1;
    }
 
    return (fd >= 0) ? fcntl(fd, F_DUPFD_CLOEXEC, 3) : -1;
+}
+
+#define DRM_RENDER_DEV_NAME  "%s/renderD%d"
+
+static int
+droid_probe_device(_EGLDisplay *dpy)
+{
+   struct dri2_egl_display *dri2_dpy = dpy->DriverData;
+   const int limit = 64;
+   const int base = 128;
+   int fd;
+   int i;
+
+   for (i = 0; i < limit; ++i) {
+      char *card_path;
+      if (asprintf(&card_path, DRM_RENDER_DEV_NAME, DRM_DIR_NAME, base + i) < 0)
+         continue;
+
+      fd = loader_open_device(card_path);
+      free(card_path);
+      if (fd < 0)
+         continue;
+
+      dri2_dpy->driver_name = loader_get_driver_for_fd(fd);
+      if (!dri2_dpy->driver_name) {
+         close(fd);
+         continue;
+      }
+
+      dri2_dpy->fd = fd;
+      if (dri2_load_driver(dpy))
+         return 0;
+
+      close(fd);
+      dri2_dpy->fd = -1;
+      free(dri2_dpy->driver_name);
+      dri2_dpy->driver_name = NULL;
+   }
+
+   return -1;
 }
 
 /* support versions < JellyBean */
@@ -1103,20 +1143,20 @@ dri2_initialize_android(_EGLDriver *drv, _EGLDisplay *dpy)
    dpy->DriverData = (void *) dri2_dpy;
 
    dri2_dpy->fd = droid_open_device(dri2_dpy);
-   if (dri2_dpy->fd < 0) {
+   if (dri2_dpy->fd >= 0) {
+      dri2_dpy->driver_name = loader_get_driver_for_fd(dri2_dpy->fd);
+      if (dri2_dpy->driver_name == NULL) {
+         err = "DRI2: failed to get driver name";
+         goto cleanup_device;
+      }
+
+      if (!dri2_load_driver(dpy)) {
+         err = "DRI2: failed to load driver";
+         goto cleanup_driver_name;
+      }
+   } else if (droid_probe_device(dpy) < 0) {
       err = "DRI2: failed to open device";
       goto cleanup_display;
-   }
-
-   dri2_dpy->driver_name = loader_get_driver_for_fd(dri2_dpy->fd);
-   if (dri2_dpy->driver_name == NULL) {
-      err = "DRI2: failed to get driver name";
-      goto cleanup_device;
-   }
-
-   if (!dri2_load_driver(dpy)) {
-      err = "DRI2: failed to load driver";
-      goto cleanup_driver_name;
    }
 
    dri2_dpy->is_render_node = drmGetNodeTypeFromFd(dri2_dpy->fd) == DRM_NODE_RENDER;
