@@ -3517,12 +3517,13 @@ static void visit_tex(struct nir_to_llvm_context *ctx, nir_tex_instr *instr)
 	if (offsets && instr->op == nir_texop_txf) {
 		nir_const_value *const_offset =
 			nir_src_as_const_value(instr->src[const_src].src);
-
+		int num_offsets = instr->src[const_src].src.ssa->num_components;
 		assert(const_offset);
-		if (instr->coord_components > 2)
+		num_offsets = MIN2(num_offsets, instr->coord_components);
+		if (num_offsets > 2)
 			address[2] = LLVMBuildAdd(ctx->builder,
 						  address[2], LLVMConstInt(ctx->i32, const_offset->i32[2], false), "");
-		if (instr->coord_components > 1)
+		if (num_offsets > 1)
 			address[1] = LLVMBuildAdd(ctx->builder,
 						  address[1], LLVMConstInt(ctx->i32, const_offset->i32[1], false), "");
 		address[0] = LLVMBuildAdd(ctx->builder,
@@ -3544,6 +3545,8 @@ static void visit_tex(struct nir_to_llvm_context *ctx, nir_tex_instr *instr)
 
 	if (instr->op == nir_texop_query_levels)
 		result = LLVMBuildExtractElement(ctx->builder, result, LLVMConstInt(ctx->i32, 3, false), "");
+	else if (instr->is_shadow && instr->op != nir_texop_txs && instr->op != nir_texop_lod)
+		result = LLVMBuildExtractElement(ctx->builder, result, ctx->i32zero, "");
 	else if (instr->op == nir_texop_txs &&
 		 instr->sampler_dim == GLSL_SAMPLER_DIM_CUBE &&
 		 instr->is_array) {
