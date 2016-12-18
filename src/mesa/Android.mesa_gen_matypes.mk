@@ -25,16 +25,13 @@
 # ---------------------------------------------------------------------
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
-ifneq ($(filter x86 x86_64,$(TARGET_ARCH)),)
+ifeq ($(TARGET_ARCH),x86)
 
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := mesa_gen_matypes
-LOCAL_MULTILIB := both
-LOCAL_MODULE_STEM_32 := $(LOCAL_MODULE)32
-LOCAL_MODULE_STEM_64 := $(LOCAL_MODULE)64
 LOCAL_IS_HOST_MODULE := true
 
 LOCAL_C_INCLUDES := \
@@ -46,5 +43,5 @@ LOCAL_SRC_FILES := \
 include $(MESA_COMMON_MK)
 include $(BUILD_HOST_EXECUTABLE)
 
-endif # x86 x86_64
+endif # x86
 endif # MESA_ENABLE_ASM
