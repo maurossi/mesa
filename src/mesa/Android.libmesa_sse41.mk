@@ -20,7 +20,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-ifneq ($(filter x86 x86_64,$(TARGET_ARCH)),)
+ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
 
 LOCAL_PATH := $(call my-dir)
 
@@ -32,9 +32,6 @@ LOCAL_MODULE := libmesa_sse41
 
 LOCAL_SRC_FILES += \
 	$(X86_SSE41_FILES)
-
-LOCAL_CFLAGS += \
-	-msse4.1 \
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
