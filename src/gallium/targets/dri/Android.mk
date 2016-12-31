@@ -82,8 +82,9 @@ gallium_DRIVERS += libmesa_winsys_radeon libmesa_pipe_radeon libmesa_amdgpu_addr
 LOCAL_SHARED_LIBRARIES += libdrm_radeon
 endif
 ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
-gallium_DRIVERS += libmesa_pipe_softpipe libmesa_winsys_sw_dri
-LOCAL_CFLAGS += -DGALLIUM_SOFTPIPE
+gallium_DRIVERS += libmesa_pipe_llvmpipe libmesa_pipe_softpipe libmesa_winsys_sw_dri
+LOCAL_CFLAGS += -DGALLIUM_LLVMPIPE -DGALLIUM_SOFTPIPE
+LOCAL_SHARED_LIBRARIES += libLLVM
 endif
 ifneq ($(filter vc4,$(MESA_GPU_DRIVERS)),)
 LOCAL_CFLAGS += -DGALLIUM_VC4
@@ -121,6 +122,8 @@ ifeq ($(MESA_ENABLE_LLVM),true)
 LOCAL_STATIC_LIBRARIES += libelf
 LOCAL_LDLIBS += $(if $(filter true,$(MESA_LOLLIPOP_BUILD)),-lgcc)
 endif
+
+LOCAL_ADDITION_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)
