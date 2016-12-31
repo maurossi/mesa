@@ -1,7 +1,7 @@
 # Mesa 3-D graphics library
 #
-# Copyright (C) 2010-2011 Chia-I Wu <olvaffe@gmail.com>
-# Copyright (C) 2010-2011 LunarG Inc.
+# Copyright (C) 2015-2016 Zhen Wu <wuzhen@jidemail.com>
+# Copyright (C) 2015-2016 Jide Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -21,33 +21,25 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-# src/gallium/Android.mk
+LOCAL_PATH := $(call my-dir)
 
-GALLIUM_TOP := $(call my-dir)
-GALLIUM_COMMON_MK := $(GALLIUM_TOP)/Android.common.mk
+# get C_SOURCES
+include $(LOCAL_PATH)/Makefile.sources
 
-SUBDIRS := auxiliary
-SUBDIRS += auxiliary/pipe-loader
+include $(CLEAR_VARS)
 
-#
-# Gallium drivers and their respective winsys
-#
+LOCAL_SRC_FILES := \
+	$(C_SOURCES)
 
-SUBDIRS += winsys/sw/dri drivers/llvmpipe drivers/softpipe
-SUBDIRS += winsys/freedreno/drm drivers/freedreno
-SUBDIRS += winsys/i915/drm drivers/i915
-SUBDIRS += winsys/nouveau/drm drivers/nouveau
-SUBDIRS += winsys/radeon/drm drivers/r300
-SUBDIRS += winsys/radeon/drm drivers/r600 drivers/radeon
-SUBDIRS += winsys/radeon/drm winsys/amdgpu/drm drivers/radeonsi drivers/radeon
-SUBDIRS += winsys/vc4/drm drivers/vc4
-SUBDIRS += winsys/virgl/drm winsys/virgl/vtest drivers/virgl
-SUBDIRS += winsys/svga/drm drivers/svga
-SUBDIRS += state_trackers/dri
+LOCAL_MODULE := libmesa_pipe_llvmpipe
 
-# sort to eliminate any duplicates
-INC_DIRS := $(call all-named-subdir-makefiles,$(sort $(SUBDIRS)))
-# targets/dri must be included last
-INC_DIRS += $(call all-named-subdir-makefiles,targets/dri)
+LOCAL_SHARED_LIBRARIES += libLLVM
 
-include $(INC_DIRS)
+$(call mesa-build-with-llvm)
+
+include $(GALLIUM_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+ifneq ($(HAVE_GALLIUM_LLVMPIPE),)
+$(eval GALLIUM_LIBS += $(LOCAL_MODULE) libmesa_winsys_sw_dri)
+endif
