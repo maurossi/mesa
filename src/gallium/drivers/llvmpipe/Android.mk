@@ -1,6 +1,7 @@
 # Mesa 3-D graphics library
 #
-# Copyright (C) 2015 Emil Velikov <emil.l.velikov@gmail.com>
+# Copyright (C) 2015-2016 Zhen Wu <wuzhen@jidemail.com>
+# Copyright (C) 2015-2016 Jide Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -20,27 +21,19 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-# NOTE: Currently we build only a 'static' pipe-loader
 LOCAL_PATH := $(call my-dir)
 
-# get COMMON_SOURCES and DRM_SOURCES
+# get C_SOURCES
 include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
 
-LOCAL_CFLAGS := \
-	-DHAVE_PIPE_LOADER_DRI \
-	-DDROP_PIPE_LOADER_MISC \
-	-DGALLIUM_STATIC_TARGETS
+LOCAL_SRC_FILES := \
+	$(C_SOURCES)
 
-LOCAL_SRC_FILES := $(COMMON_SOURCES)
+LOCAL_MODULE := libmesa_pipe_llvmpipe
 
-LOCAL_MODULE := libmesa_pipe_loader
-
-ifneq ($(filter-out llvmpipe softpipe,$(MESA_GPU_DRIVERS)),)
-LOCAL_SRC_FILES += $(DRM_SOURCES)
-LOCAL_STATIC_LIBRARIES := libmesa_loader
-endif
+LOCAL_SHARED_LIBRARIES += libLLVM
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

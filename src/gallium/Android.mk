@@ -34,7 +34,9 @@ SUBDIRS += auxiliary/pipe-loader
 #
 
 # swrast
-ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
+ifneq ($(filter llvmpipe,$(MESA_GPU_DRIVERS)),)
+SUBDIRS += winsys/sw/dri drivers/llvmpipe drivers/softpipe
+else ifneq ($(filter softpipe,$(MESA_GPU_DRIVERS)),)
 SUBDIRS += winsys/sw/dri drivers/softpipe
 endif
 
