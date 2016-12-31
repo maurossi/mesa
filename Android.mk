@@ -48,6 +48,7 @@ MESA_PYTHON2 := python
 # in form of <driver name>.<boolean make variable>
 classic_drivers := i915.HAVE_I915_DRI i965.HAVE_I965_DRI
 gallium_drivers := \
+	swrast.HAVE_GALLIUM_LLVMPIPE \
 	swrast.HAVE_GALLIUM_SOFTPIPE \
 	freedreno.HAVE_GALLIUM_FREEDRENO \
 	i915g.HAVE_GALLIUM_I915 \
@@ -89,7 +90,7 @@ else
 MESA_ENABLE_ASM := false
 endif
 
-ifneq ($(filter true, $(HAVE_GALLIUM_RADEONSI)),)
+ifneq ($(filter true, $(HAVE_GALLIUM_RADEONSI) $(HAVE_GALLIUM_LLVMPIPE)),)
 MESA_ENABLE_LLVM := true
 endif
 
