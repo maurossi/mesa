@@ -43,6 +43,7 @@ MESA_PYTHON2 := python
 
 classic_drivers := i915.HAVE_I915_DRI i965.HAVE_I965_DRI
 gallium_drivers := \
+	swrast.HAVE_GALLIUM_LLVMPIPE \
 	swrast.HAVE_GALLIUM_SOFTPIPE \
 	freedreno.HAVE_GALLIUM_FREEDRENO \
 	i915g.HAVE_GALLIUM_I915 \
@@ -72,7 +73,7 @@ else
 MESA_ENABLE_ASM := false
 endif
 
-MESA_ENABLE_LLVM := $(if $(HAVE_GALLIUM_RADEONSI),true,false)
+MESA_ENABLE_LLVM := $(if $(filter radeonsi swrast,$(BOARD_GPU_DRIVERS)),true,false)
 
 # add subdirectories
 SUBDIRS := \

@@ -1,7 +1,7 @@
 # Mesa 3-D graphics library
 #
-# Copyright (C) 2015 Chih-Wei Huang <cwhuang@linux.org.tw>
-# Copyright (C) 2015 Android-x86 Open Source Project
+# Copyright (C) 2015-2016 Zhen Wu <wuzhen@jidemail.com>
+# Copyright (C) 2015-2016 Jide Inc.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -23,41 +23,21 @@
 
 LOCAL_PATH := $(call my-dir)
 
+# get C_SOURCES
+include $(LOCAL_PATH)/Makefile.sources
+
 include $(CLEAR_VARS)
 
-LOCAL_MODULE := gallium_dri
+LOCAL_SRC_FILES := \
+	$(C_SOURCES)
 
-LOCAL_MODULE_RELATIVE_PATH := $(MESA_DRI_MODULE_REL_PATH)
-LOCAL_SRC_FILES := target.c
+LOCAL_MODULE := libmesa_pipe_llvmpipe
 
-LOCAL_CFLAGS :=
-
-LOCAL_SHARED_LIBRARIES := \
-	libdl \
-	libglapi \
-	libexpat
-
-$(foreach d, $(MESA_BUILD_GALLIUM), $(eval LOCAL_CFLAGS += $(patsubst HAVE_%,-D%,$(d))))
-
-LOCAL_WHOLE_STATIC_LIBRARIES := \
-	$(sort $(GALLIUM_LIBS)) \
-	libmesa_st_dri \
-	libmesa_st_mesa \
-	libmesa_glsl \
-	libmesa_compiler \
-	libmesa_nir \
-	libmesa_dri_common \
-	libmesa_megadriver_stub \
-	libmesa_gallium \
-	libmesa_pipe_loader \
-	libmesa_util \
-	libmesa_loader
-
-LOCAL_SHARED_LIBRARIES += $(sort $(GALLIUM_SHARED_LIBS))
-
-LOCAL_STATIC_LIBRARIES := libelf
-
-LOCAL_ADDITION_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
+LOCAL_SHARED_LIBRARIES += libLLVM
 
 include $(GALLIUM_COMMON_MK)
-include $(BUILD_SHARED_LIBRARY)
+include $(BUILD_STATIC_LIBRARY)
+
+ifneq ($(HAVE_GALLIUM_LLVMPIPE),)
+$(eval GALLIUM_LIBS += $(LOCAL_MODULE) libmesa_winsys_sw_dri)
+endif
