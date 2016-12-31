@@ -48,6 +48,7 @@ LOCAL_SHARED_LIBRARIES := \
 	libdl \
 	libglapi \
 	libexpat \
+	libhardware \
 
 ifneq ($(filter freedreno,$(MESA_GPU_DRIVERS)),)
 LOCAL_CFLAGS += -DGALLIUM_FREEDRENO
