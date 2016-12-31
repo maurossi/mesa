@@ -142,7 +142,7 @@ static int convert_fourcc(int format, int *dri_components_p)
  * only needed for exporting dmabuf's, so I think I won't loose much
  * sleep over it.
  */
-static int convert_to_fourcc(int format)
+int convert_to_fourcc(int format)
 {
    switch(format) {
    case __DRI_IMAGE_FORMAT_RGB565:
@@ -868,7 +868,7 @@ dri2_update_tex_buffer(struct dri_drawable *drawable,
    /* no-op */
 }
 
-static __DRIimage *
+__DRIimage *
 dri2_lookup_egl_image(struct dri_screen *screen, void *handle)
 {
    const __DRIimageLookupExtension *loader = screen->sPriv->dri2.image;
@@ -883,7 +883,7 @@ dri2_lookup_egl_image(struct dri_screen *screen, void *handle)
    return img;
 }
 
-static __DRIimage *
+__DRIimage *
 dri2_create_image_from_winsys(__DRIscreen *_screen,
                               int width, int height, int format,
                               int num_handles, struct winsys_handle *whandle,
@@ -1341,7 +1341,7 @@ dri2_from_planar(__DRIimage *image, int plane, void *loaderPrivate)
    return img;
 }
 
-static __DRIimage *
+__DRIimage *
 dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
                          int depth, int level, unsigned *error,
                          void *loaderPrivate)
@@ -1619,7 +1619,7 @@ dri2_unmap_image(__DRIcontext *context, __DRIimage *image, void *data)
    pipe_transfer_unmap(pipe, (struct pipe_transfer *)data);
 }
 
-static void
+void
 dri2_destroy_image(__DRIimage *img)
 {
    pipe_resource_reference(&img->texture, NULL);
