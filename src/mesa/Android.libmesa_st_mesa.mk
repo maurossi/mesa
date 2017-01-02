@@ -69,6 +69,13 @@ LOCAL_WHOLE_STATIC_LIBRARIES += \
 
 LOCAL_STATIC_LIBRARIES += libmesa_nir libmesa_glsl
 
+ifeq ($(MESA_LOLLIPOP_BUILD),true)
+LOCAL_C_INCLUDES += external/libcxx/include
+LOCAL_CXX_STL := libc++
+else
+include external/stlport/libstlport.mk
+endif # MESA_LOLLIPOP_BUILD
+
 include $(LOCAL_PATH)/Android.gen.mk
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
