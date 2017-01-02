@@ -69,12 +69,12 @@ define es-gen
 	$(hide) $(PRIVATE_SCRIPT) $(1) $(PRIVATE_XML) > $@
 endef
 
-$(intermediates)/main/git_sha1.h:
+$(intermediates)/main/git_sha1.h: $(MESA_TOP)/.git/HEAD
 	@mkdir -p $(dir $@)
 	@echo "GIT-SHA1: $(PRIVATE_MODULE) <= git"
 	$(hide) touch $@
 	$(hide) if which git > /dev/null; then \
-			git --git-dir $(PRIVATE_PATH)/../../.git log -n 1 --oneline | \
+			git --git-dir $(MESA_TOP)/.git log -n 1 --oneline | \
 			sed 's/^\([^ ]*\) .*/#define MESA_GIT_SHA1 "git-\1"/' \
 			> $@; \
 		fi
