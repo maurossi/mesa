@@ -29,6 +29,8 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
+LOCAL_CFLAGS += -DHAVE_ANDROID_PLATFORM
+
 LOCAL_MODULE := libmesa_winsys_sw_dri
 
 include $(GALLIUM_COMMON_MK)
