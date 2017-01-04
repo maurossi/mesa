@@ -118,12 +118,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 LOCAL_STATIC_LIBRARIES :=
 
 ifeq ($(MESA_ENABLE_LLVM),true)
-LOCAL_STATIC_LIBRARIES += \
-	libLLVMR600CodeGen \
-	libLLVMR600Desc \
-	libLLVMR600Info \
-	libLLVMR600AsmPrinter \
-	libelf
+LOCAL_STATIC_LIBRARIES += libelf
 LOCAL_LDLIBS += $(if $(filter true,$(MESA_LOLLIPOP_BUILD)),-lgcc)
 endif
 
