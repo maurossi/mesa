@@ -1028,9 +1028,6 @@ swrastPutImage2(__DRIdrawable * draw, int op,
    char *dstPtr, *srcPtr;
    size_t BPerPixel, dstStride, copyWidth, xOffset;
 
-//   _eglLog(_EGL_INFO, "calling swrastPutImage with draw=%p, private=%p, x=%d, y=%d, w=%d, h=%d",
-//                   draw, loaderPrivate, x, y, w, h);
-
    if (swrastUpdateBuffer(dri2_surf)) {
       return;
    }
