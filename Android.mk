@@ -50,7 +50,7 @@ MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
 MESA_PYTHON2 := python
 
 classic_drivers := i915 i965
-gallium_drivers := swrast freedreno i915g ilo nouveau r300g r600g radeonsi vmwgfx vc4 virgl
+gallium_drivers := swrast softpipe freedreno i915g ilo nouveau r300g r600g radeonsi vmwgfx vc4 virgl
 
 MESA_GPU_DRIVERS := $(strip $(BOARD_GPU_DRIVERS))
 

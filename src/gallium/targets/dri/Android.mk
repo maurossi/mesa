@@ -92,6 +92,10 @@ gallium_DRIVERS += libmesa_pipe_llvmpipe libmesa_pipe_softpipe libmesa_winsys_sw
 LOCAL_CFLAGS += -DGALLIUM_LLVMPIPE -DGALLIUM_SOFTPIPE
 LOCAL_SHARED_LIBRARIES += libLLVM
 endif
+ifneq ($(filter softpipe,$(MESA_GPU_DRIVERS)),)
+gallium_DRIVERS += libmesa_pipe_softpipe libmesa_winsys_sw_dri
+LOCAL_CFLAGS += -DGALLIUM_SOFTPIPE
+endif
 ifneq ($(filter vc4,$(MESA_GPU_DRIVERS)),)
 LOCAL_CFLAGS += -DGALLIUM_VC4
 gallium_DRIVERS += libmesa_winsys_vc4 libmesa_pipe_vc4
