@@ -36,6 +36,10 @@
 #include "context.h"
 #include "debug_output.h"
 
+#if defined(ANDROID)
+#  define LOG_TAG "mesa"
+#  include <log/log.h>
+#endif
 
 static FILE *LogFile = NULL;
 
@@ -88,6 +92,10 @@ output_if_debug(const char *prefixString, const char *outputString,
          char buf[4096];
          _mesa_snprintf(buf, sizeof(buf), "%s: %s%s", prefixString, outputString, newline ? "\n" : "");
          OutputDebugStringA(buf);
+      }
+#elif defined(ANDROID)
+      {
+         ALOGD("%s: %s", prefixString, outputString);
       }
 #endif
    }
