@@ -46,8 +46,10 @@
 
 #endif
 
-
-#if defined(PIPE_OS_LINUX) || defined(PIPE_OS_CYGWIN) || defined(PIPE_OS_SOLARIS) || defined(PIPE_OS_HURD)
+#if defined(PIPE_OS_ANDROID)
+#  define LOG_TAG "gallium"
+#  include <log/log.h>
+#elif defined(PIPE_OS_LINUX) || defined(PIPE_OS_CYGWIN) || defined(PIPE_OS_SOLARIS) || defined(PIPE_OS_HURD)
 #  include <unistd.h>
 #elif defined(PIPE_OS_APPLE) || defined(PIPE_OS_BSD)
 #  include <sys/sysctl.h>
@@ -100,6 +102,12 @@ os_log_message(const char *message)
       fflush(fout);
    }
 #else /* !PIPE_SUBSYSTEM_WINDOWS */
+#if defined(PIPE_OS_ANDROID)
+   if (fout == stderr) {
+      ALOGD("%s", message);
+      return;
+   }
+#endif
    fflush(stdout);
    fputs(message, fout);
    fflush(fout);
