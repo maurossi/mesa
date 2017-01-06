@@ -366,6 +366,10 @@ struct r600_common_screen {
 	void (*query_opaque_metadata)(struct r600_common_screen *rscreen,
 				      struct r600_texture *rtex,
 				      struct radeon_bo_metadata *md);
+
+	void (*apply_opaque_metadata)(struct r600_common_screen *rscreen,
+				    struct r600_texture *rtex,
+				    struct radeon_bo_metadata *md);
 };
 
 /* This encapsulates a state or an operation which can emitted into the GPU
@@ -430,6 +434,7 @@ struct r600_scissors {
 struct r600_viewports {
 	struct r600_atom		atom;
 	unsigned			dirty_mask;
+	unsigned			depth_range_dirty_mask;
 	struct pipe_viewport_state	states[R600_MAX_VIEWPORTS];
 	struct r600_signed_scissor	as_scissor[R600_MAX_VIEWPORTS];
 };
@@ -469,6 +474,7 @@ struct r600_common_context {
 	struct r600_scissors		scissors;
 	struct r600_viewports		viewports;
 	bool				scissor_enabled;
+	bool				clip_halfz;
 	bool				vs_writes_viewport_index;
 	bool				vs_disables_clipping_viewport;
 
@@ -669,7 +675,8 @@ void r600_init_context_texture_functions(struct r600_common_context *rctx);
 /* r600_viewport.c */
 void evergreen_apply_scissor_bug_workaround(struct r600_common_context *rctx,
 					    struct pipe_scissor_state *scissor);
-void r600_set_scissor_enable(struct r600_common_context *rctx, bool enable);
+void r600_viewport_set_rast_deps(struct r600_common_context *rctx,
+				 bool scissor_enable, bool clip_halfz);
 void r600_update_vs_writes_viewport_index(struct r600_common_context *rctx,
 					  struct tgsi_shader_info *info);
 void r600_init_viewport_functions(struct r600_common_context *rctx);

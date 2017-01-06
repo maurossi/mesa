@@ -91,8 +91,6 @@ intrinsics = [
         ["VRCPPS", "x86_avx_rcp_ps_256", ["a"]],
         ["VMINPS", "x86_avx_min_ps_256", ["a", "b"]],
         ["VMAXPS", "x86_avx_max_ps_256", ["a", "b"]],
-        ["VPMINSD", "x86_avx2_pmins_d", ["a", "b"]],
-        ["VPMAXSD", "x86_avx2_pmaxs_d", ["a", "b"]],
         ["VROUND", "x86_avx_round_ps_256", ["a", "rounding"]],
         ["VCMPPS", "x86_avx_cmp_ps_256", ["a", "b", "cmpop"]],
         ["VBLENDVPS", "x86_avx_blendv_ps_256", ["a", "b", "mask"]],
@@ -100,9 +98,7 @@ intrinsics = [
         ["VMASKLOADD", "x86_avx2_maskload_d_256", ["src", "mask"]],
         ["VMASKMOVPS", "x86_avx_maskload_ps_256", ["src", "mask"]],
         ["VPSHUFB", "x86_avx2_pshuf_b", ["a", "b"]],
-        ["VPMOVSXBD", "x86_avx2_pmovsxbd", ["a"]],  # sign extend packed 8bit components
-        ["VPMOVSXWD", "x86_avx2_pmovsxwd", ["a"]],  # sign extend packed 16bit components
-        ["VPERMD", "x86_avx2_permd", ["idx", "a"]],
+        ["VPERMD", "x86_avx2_permd", ["a", "idx"]],
         ["VPERMPS", "x86_avx2_permps", ["idx", "a"]],
         ["VCVTPH2PS", "x86_vcvtph2ps_256", ["a"]],
         ["VCVTPS2PH", "x86_vcvtps2ph_256", ["a", "round"]],
@@ -110,7 +106,6 @@ intrinsics = [
         ["VPTESTC", "x86_avx_ptestc_256", ["a", "b"]],
         ["VPTESTZ", "x86_avx_ptestz_256", ["a", "b"]],
         ["VFMADDPS", "x86_fma_vfmadd_ps_256", ["a", "b", "c"]],
-        ["VCVTTPS2DQ", "x86_avx_cvtt_ps2dq_256", ["a"]],
         ["VMOVMSKPS", "x86_avx_movmsk_ps_256", ["a"]],
         ["INTERRUPT", "x86_int", ["a"]],
     ]
@@ -352,7 +347,29 @@ def generate_x86_cpp(output_file):
             'Value *Builder::%s(%s)' % (inst[0], args),
             '{',
             '    Function *func = Intrinsic::getDeclaration(JM()->mpCurrentModule, Intrinsic::%s);' % inst[1],
+        ]
+        if inst[0] == "VPERMD":
+            rev_args = ''
+            first = True
+            for arg in reversed(inst[2]):
+                if not first:
+                    rev_args += ', '
+                rev_args += arg
+                first = False
+
+            output_lines += [
+                '#if (HAVE_LLVM == 0x306) && (LLVM_VERSION_PATCH == 0)',
+                '    return CALL(func, std::initializer_list<Value*>{%s});' % rev_args,
+                '#else',
+            ]
+        output_lines += [
             '    return CALL(func, std::initializer_list<Value*>{%s});' % pass_args,
+        ]
+        if inst[0] == "VPERMD":
+            output_lines += [
+                '#endif',
+            ]
+        output_lines += [
             '}',
             '',
         ]

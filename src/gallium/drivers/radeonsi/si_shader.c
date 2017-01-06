@@ -1667,7 +1667,12 @@ static void declare_system_value(
 	}
 
 	case TGSI_SEMANTIC_VERTICESIN:
-		value = unpack_param(ctx, SI_PARAM_TCS_OUT_LAYOUT, 26, 6);
+		if (ctx->type == PIPE_SHADER_TESS_CTRL)
+			value = unpack_param(ctx, SI_PARAM_TCS_OUT_LAYOUT, 26, 6);
+		else if (ctx->type == PIPE_SHADER_TESS_EVAL)
+			value = unpack_param(ctx, SI_PARAM_TCS_OFFCHIP_LAYOUT, 9, 7);
+		else
+			assert(!"invalid shader stage for TGSI_SEMANTIC_VERTICESIN");
 		break;
 
 	case TGSI_SEMANTIC_TESSINNER:
@@ -4028,7 +4033,7 @@ static void resq_fetch_args(
 	const struct tgsi_full_instruction *inst = emit_data->inst;
 	const struct tgsi_full_src_register *reg = &inst->Src[0];
 
-	emit_data->dst_type = LLVMVectorType(bld_base->base.elem_type, 4);
+	emit_data->dst_type = ctx->v4i32;
 
 	if (reg->Register.File == TGSI_FILE_BUFFER) {
 		emit_data->args[0] = shader_buffer_fetch_rsrc(ctx, reg);
@@ -4079,9 +4084,7 @@ static void resq_emit(
 			LLVMValueRef imm6 = lp_build_const_int32(gallivm, 6);
 
 			LLVMValueRef z = LLVMBuildExtractElement(builder, out, imm2, "");
-			z = LLVMBuildBitCast(builder, z, bld_base->uint_bld.elem_type, "");
 			z = LLVMBuildSDiv(builder, z, imm6, "");
-			z = LLVMBuildBitCast(builder, z, bld_base->base.elem_type, "");
 			out = LLVMBuildInsertElement(builder, out, z, imm2, "");
 		}
 	}
@@ -5862,6 +5865,9 @@ void si_shader_binary_read_config(struct radeon_shader_binary *binary,
 			conf->scratch_bytes_per_wave =
 				G_00B860_WAVESIZE(value) * 256 * 4 * 1;
 			break;
+		case 0x4:
+		case 0x8:
+			break; /* just spilling stats, not important */
 		default:
 			{
 				static bool printed;
