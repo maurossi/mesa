@@ -42,6 +42,7 @@ LOCAL_LDFLAGS := \
 LOCAL_SHARED_LIBRARIES := \
 	libbacktrace \
 	libdl \
+	liblog \
 	libglapi \
 	libexpat \
 	libz \
