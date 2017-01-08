@@ -30,8 +30,6 @@
 #include "builder.h"
 #include "common/rdtsc_buckets.h"
 
-#include "llvm/Support/DynamicLibrary.h"
-
 void __cdecl CallPrint(const char* fmt, ...);
 
 //////////////////////////////////////////////////////////////////////////
@@ -321,6 +319,32 @@ CallInst *Builder::CALL(Value *Callee, const std::initializer_list<Value*> &args
         args.push_back(arg);
     return CALLA(Callee, args);
 }
+
+#if HAVE_LLVM > 0x306
+CallInst *Builder::CALL(Value *Callee, Value* arg)
+{
+    std::vector<Value*> args;
+    args.push_back(arg);
+    return CALLA(Callee, args);
+}
+
+CallInst *Builder::CALL2(Value *Callee, Value* arg1, Value* arg2)
+{
+    std::vector<Value*> args;
+    args.push_back(arg1);
+    args.push_back(arg2);
+    return CALLA(Callee, args);
+}
+
+CallInst *Builder::CALL3(Value *Callee, Value* arg1, Value* arg2, Value* arg3)
+{
+    std::vector<Value*> args;
+    args.push_back(arg1);
+    args.push_back(arg2);
+    args.push_back(arg3);
+    return CALLA(Callee, args);
+}
+#endif
 
 Value *Builder::VRCP(Value *va)
 {
@@ -676,20 +700,22 @@ Value *Builder::PSHUFB(Value* a, Value* b)
 /// lower 8 values are used.
 Value *Builder::PMOVSXBD(Value* a)
 {
-    Value* res;
+    // llvm-3.9 removed the pmovsxbd intrinsic
+#if HAVE_LLVM < 0x309
     // use avx2 byte sign extend instruction if available
     if(JM()->mArch.AVX2())
     {
-        res = VPMOVSXBD(a);
+        Function *pmovsxbd = Intrinsic::getDeclaration(JM()->mpCurrentModule, Intrinsic::x86_avx2_pmovsxbd);
+        return CALL(pmovsxbd, std::initializer_list<Value*>{a});
     }
     else
+#endif
     {
         // VPMOVSXBD output type
         Type* v8x32Ty = VectorType::get(mInt32Ty, 8);
         // Extract 8 values from 128bit lane and sign extend
-        res = S_EXT(VSHUFFLE(a, a, C<int>({0, 1, 2, 3, 4, 5, 6, 7})), v8x32Ty);
+        return S_EXT(VSHUFFLE(a, a, C<int>({0, 1, 2, 3, 4, 5, 6, 7})), v8x32Ty);
     }
-    return res;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -698,20 +724,22 @@ Value *Builder::PMOVSXBD(Value* a)
 /// @param a - 128bit SIMD lane(8x16bit) of 16bit integer values.
 Value *Builder::PMOVSXWD(Value* a)
 {
-    Value* res;
+    // llvm-3.9 removed the pmovsxwd intrinsic
+#if HAVE_LLVM < 0x309
     // use avx2 word sign extend if available
     if(JM()->mArch.AVX2())
     {
-        res = VPMOVSXWD(a);
+        Function *pmovsxwd = Intrinsic::getDeclaration(JM()->mpCurrentModule, Intrinsic::x86_avx2_pmovsxwd);
+        return CALL(pmovsxwd, std::initializer_list<Value*>{a});
     }
     else
+#endif
     {
         // VPMOVSXWD output type
         Type* v8x32Ty = VectorType::get(mInt32Ty, 8);
         // Extract 8 values from 128bit lane and sign extend
-        res = S_EXT(VSHUFFLE(a, a, C<int>({0, 1, 2, 3, 4, 5, 6, 7})), v8x32Ty);
+        return S_EXT(VSHUFFLE(a, a, C<int>({0, 1, 2, 3, 4, 5, 6, 7})), v8x32Ty);
     }
-    return res;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -726,8 +754,7 @@ Value *Builder::PERMD(Value* a, Value* idx)
     // use avx2 permute instruction if available
     if(JM()->mArch.AVX2())
     {
-        // llvm 3.6.0 swapped the order of the args to vpermd
-        res = VPERMD(idx, a);
+        res = VPERMD(a, idx);
     }
     else
     {
@@ -852,9 +879,15 @@ Value *Builder::CVTPS2PH(Value* a, Value* rounding)
 
 Value *Builder::PMAXSD(Value* a, Value* b)
 {
+    // llvm-3.9 removed the pmax intrinsics
+#if HAVE_LLVM >= 0x309
+    Value* cmp = ICMP_SGT(a, b);
+    return SELECT(cmp, a, b);
+#else
     if (JM()->mArch.AVX2())
     {
-        return VPMAXSD(a, b);
+        Function* pmaxsd = Intrinsic::getDeclaration(JM()->mpCurrentModule, Intrinsic::x86_avx2_pmaxs_d);
+        return CALL(pmaxsd, {a, b});
     }
     else
     {
@@ -877,13 +910,20 @@ Value *Builder::PMAXSD(Value* a, Value* b)
 
         return result;
     }
+#endif
 }
 
 Value *Builder::PMINSD(Value* a, Value* b)
 {
+    // llvm-3.9 removed the pmin intrinsics
+#if HAVE_LLVM >= 0x309
+    Value* cmp = ICMP_SLT(a, b);
+    return SELECT(cmp, a, b);
+#else
     if (JM()->mArch.AVX2())
     {
-        return VPMINSD(a, b);
+        Function* pminsd = Intrinsic::getDeclaration(JM()->mpCurrentModule, Intrinsic::x86_avx2_pmins_d);
+        return CALL(pminsd, {a, b});
     }
     else
     {
@@ -906,6 +946,7 @@ Value *Builder::PMINSD(Value* a, Value* b)
 
         return result;
     }
+#endif
 }
 
 void Builder::Gather4(const SWR_FORMAT format, Value* pSrcBase, Value* byteOffsets, 

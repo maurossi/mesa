@@ -23,3 +23,6 @@ f2b9b0c730e345bcffa9eadabb25af3ab02642f2 i965: Add missing BRW_NEW_FS_PROG_DATA 
 # Patches depend on the fence_finish() gallium API change and corresponding driver work
 f240ad98bc05281ea7013d91973cb5f932ae9434 st/mesa: unduplicate st_check_sync code
 b687f766fddb7b39479cd9ee0427984029ea3559 st/mesa: allow multiple concurrent waiters in ClientWaitSync
+
+# Commit was reverted shortly after it landed in master
+a39ad185932eab4f25a0cb2b112c10d8700ef242 configure.ac: honour LLVM_LIBDIR when linking against LLVM

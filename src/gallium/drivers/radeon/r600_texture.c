@@ -723,10 +723,11 @@ static void r600_texture_alloc_cmask_separate(struct r600_common_screen *rscreen
 }
 
 static unsigned r600_texture_get_htile_size(struct r600_common_screen *rscreen,
-					    struct r600_texture *rtex)
+					    struct r600_texture *rtex,
+					    unsigned *base_align)
 {
 	unsigned cl_width, cl_height, width, height;
-	unsigned slice_elements, slice_bytes, pipe_interleave_bytes, base_align;
+	unsigned slice_elements, slice_bytes, pipe_interleave_bytes;
 	unsigned num_pipes = rscreen->info.num_tile_pipes;
 
 	if (rscreen->chip_class <= EVERGREEN &&
@@ -788,7 +789,7 @@ static unsigned r600_texture_get_htile_size(struct r600_common_screen *rscreen,
 	slice_bytes = slice_elements * 4;
 
 	pipe_interleave_bytes = rscreen->info.pipe_interleave_bytes;
-	base_align = num_pipes * pipe_interleave_bytes;
+	*base_align = num_pipes * pipe_interleave_bytes;
 
 	rtex->htile.pitch = width;
 	rtex->htile.height = height;
@@ -796,20 +797,22 @@ static unsigned r600_texture_get_htile_size(struct r600_common_screen *rscreen,
 	rtex->htile.yalign = cl_height * 8;
 
 	return (util_max_layer(&rtex->resource.b.b, 0) + 1) *
-		align(slice_bytes, base_align);
+		align(slice_bytes, *base_align);
 }
 
 static void r600_texture_allocate_htile(struct r600_common_screen *rscreen,
 					struct r600_texture *rtex)
 {
-	unsigned htile_size = r600_texture_get_htile_size(rscreen, rtex);
+	unsigned alignment = 0;
+	unsigned htile_size = r600_texture_get_htile_size(rscreen, rtex,
+							  &alignment);
 
 	if (!htile_size)
 		return;
 
 	rtex->htile_buffer = (struct r600_resource*)
-			     pipe_buffer_create(&rscreen->b, PIPE_BIND_CUSTOM,
-						PIPE_USAGE_DEFAULT, htile_size);
+		r600_aligned_buffer_create(&rscreen->b, 0, PIPE_USAGE_DEFAULT,
+					   htile_size, alignment);
 	if (rtex->htile_buffer == NULL) {
 		/* this is not a fatal error as we can still keep rendering
 		 * without htile buffer */
@@ -965,8 +968,12 @@ r600_texture_create_object(struct pipe_screen *screen,
 			}
 		}
 
-		if (!buf && rtex->surface.dcc_size &&
-		    !(rscreen->debug_flags & DBG_NO_DCC)) {
+		/* Shared textures must always set up DCC here.
+		 * If it's not present, it will be disabled by
+		 * apply_opaque_metadata later.
+		 */
+		if (rtex->surface.dcc_size &&
+		    (buf || !(rscreen->debug_flags & DBG_NO_DCC))) {
 			/* Reserve space for the DCC buffer. */
 			rtex->dcc_offset = align64(rtex->size, rtex->surface.dcc_alignment);
 			rtex->size = rtex->dcc_offset + rtex->surface.dcc_size;
@@ -993,7 +1000,9 @@ r600_texture_create_object(struct pipe_screen *screen,
 					 rtex->cmask.offset, rtex->cmask.size,
 					 0xCCCCCCCC, R600_COHERENCY_NONE);
 	}
-	if (rtex->dcc_offset) {
+
+	/* Initialize DCC only if the texture is not being imported. */
+	if (!buf && rtex->dcc_offset) {
 		r600_screen_clear_buffer(rscreen, &rtex->resource.b.b,
 					 rtex->dcc_offset,
 					 rtex->surface.dcc_size,
@@ -1159,6 +1168,10 @@ static struct pipe_resource *r600_texture_from_handle(struct pipe_screen *screen
 
 	rtex->resource.is_shared = true;
 	rtex->resource.external_usage = usage;
+
+	if (rscreen->apply_opaque_metadata)
+		rscreen->apply_opaque_metadata(rscreen, rtex, &metadata);
+
 	return &rtex->resource.b.b;
 }
 

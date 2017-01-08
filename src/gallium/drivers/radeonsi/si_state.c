@@ -461,16 +461,19 @@ static void *si_create_blend_state_mode(struct pipe_context *ctx,
 			S_028760_ALPHA_COMB_FCN(V_028760_OPT_COMB_BLEND_DISABLED);
 
 		/* Only set dual source blending for MRT0 to avoid a hang. */
-		if (i >= 1 && blend->dual_src_blend)
-			continue;
+		if (i >= 1 && blend->dual_src_blend) {
+			/* Vulkan does this for dual source blending. */
+			if (i == 1)
+				blend_cntl |= S_028780_ENABLE(1);
 
-		if (!state->rt[j].colormask)
+			si_pm4_set_reg(pm4, R_028780_CB_BLEND0_CONTROL + i * 4, blend_cntl);
 			continue;
+		}
 
 		/* cb_render_state will disable unused ones */
 		blend->cb_target_mask |= (unsigned)state->rt[j].colormask << (4 * i);
 
-		if (!state->rt[j].blend_enable) {
+		if (!state->rt[j].colormask || !state->rt[j].blend_enable) {
 			si_pm4_set_reg(pm4, R_028780_CB_BLEND0_CONTROL + i * 4, blend_cntl);
 			continue;
 		}
@@ -551,6 +554,17 @@ static void *si_create_blend_state_mode(struct pipe_context *ctx,
 	}
 
 	if (sctx->b.family == CHIP_STONEY) {
+		/* Disable RB+ blend optimizations for dual source blending.
+		 * Vulkan does this.
+		 */
+		if (blend->dual_src_blend) {
+			for (int i = 0; i < 8; i++) {
+				sx_mrt_blend_opt[i] =
+					S_028760_COLOR_COMB_FCN(V_028760_OPT_COMB_NONE) |
+					S_028760_ALPHA_COMB_FCN(V_028760_OPT_COMB_NONE);
+			}
+		}
+
 		for (int i = 0; i < 8; i++)
 			si_pm4_set_reg(pm4, R_028760_SX_MRT0_BLEND_OPT + i * 4,
 				       sx_mrt_blend_opt[i]);
@@ -728,6 +742,7 @@ static void *si_create_rs_state(struct pipe_context *ctx,
 	}
 
 	rs->scissor_enable = state->scissor;
+	rs->clip_halfz = state->clip_halfz;
 	rs->two_side = state->light_twoside;
 	rs->multisample_enable = state->multisample;
 	rs->force_persample_interp = state->force_persample_interp;
@@ -857,7 +872,7 @@ static void si_bind_rs_state(struct pipe_context *ctx, void *state)
 			si_mark_atom_dirty(sctx, &sctx->msaa_sample_locs.atom);
 	}
 
-	r600_set_scissor_enable(&sctx->b, rs->scissor_enable);
+	r600_viewport_set_rast_deps(&sctx->b, rs->scissor_enable, rs->clip_halfz);
 
 	si_pm4_bind_state(sctx, rasterizer, rs);
 	si_update_poly_offset_state(sctx);
@@ -3427,6 +3442,11 @@ void si_init_state_functions(struct si_context *sctx)
 	si_init_config(sctx);
 }
 
+static uint32_t si_get_bo_metadata_word1(struct r600_common_screen *rscreen)
+{
+	return (ATI_VENDOR_ID << 16) | rscreen->info.pci_id;
+}
+
 static void si_query_opaque_metadata(struct r600_common_screen *rscreen,
 				     struct r600_texture *rtex,
 			             struct radeon_bo_metadata *md)
@@ -3461,7 +3481,7 @@ static void si_query_opaque_metadata(struct r600_common_screen *rscreen,
 	md->metadata[0] = 1; /* metadata image format version 1 */
 
 	/* TILE_MODE_INDEX is ambiguous without a PCI ID. */
-	md->metadata[1] = (ATI_VENDOR_ID << 16) | rscreen->info.pci_id;
+	md->metadata[1] = si_get_bo_metadata_word1(rscreen);
 
 	si_make_texture_descriptor(sscreen, rtex, true,
 				   res->target, res->format,
@@ -3485,9 +3505,37 @@ static void si_query_opaque_metadata(struct r600_common_screen *rscreen,
 	md->size_metadata = (11 + res->last_level) * 4;
 }
 
+static void si_apply_opaque_metadata(struct r600_common_screen *rscreen,
+				     struct r600_texture *rtex,
+			             struct radeon_bo_metadata *md)
+{
+	uint32_t *desc = &md->metadata[2];
+
+	if (rscreen->chip_class < VI)
+		return;
+
+	/* Return if DCC is enabled. The texture should be set up with it
+	 * already.
+	 */
+	if (md->size_metadata >= 11 * 4 &&
+	    md->metadata[0] != 0 &&
+	    md->metadata[1] == si_get_bo_metadata_word1(rscreen) &&
+	    G_008F28_COMPRESSION_EN(desc[6])) {
+		assert(rtex->dcc_offset == ((uint64_t)desc[7] << 8));
+		return;
+	}
+
+	/* Disable DCC. These are always set by texture_from_handle and must
+	 * be cleared here.
+	 */
+	rtex->dcc_offset = 0;
+	rtex->cb_color_info &= ~VI_S_028C70_DCC_ENABLE(1);
+}
+
 void si_init_screen_state_functions(struct si_screen *sscreen)
 {
 	sscreen->b.query_opaque_metadata = si_query_opaque_metadata;
+	sscreen->b.apply_opaque_metadata = si_apply_opaque_metadata;
 }
 
 static void

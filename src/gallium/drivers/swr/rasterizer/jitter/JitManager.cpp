@@ -35,11 +35,13 @@
 #include "JitManager.h"
 #include "fetch_jit.h"
 
+#pragma push_macro("DEBUG")
+#undef DEBUG
+
 #if defined(_WIN32)
 #include "llvm/ADT/Triple.h"
 #endif
 #include "llvm/IR/Function.h"
-#include "llvm/Support/DynamicLibrary.h"
 
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
@@ -52,6 +54,8 @@
 #if LLVM_USE_INTEL_JITEVENTS
 #include "llvm/ExecutionEngine/JITEventListener.h"
 #endif
+
+#pragma pop_macro("DEBUG")
 
 #include "core/state.h"
 
@@ -237,6 +241,13 @@ bool JitManager::SetupModuleFromIR(const uint8_t *pIR)
         return false;
     }
 
+#if HAVE_LLVM == 0x307
+    // llvm-3.7 has mismatched setDataLyout/getDataLayout APIs
+    newModule->setDataLayout(*mpExec->getDataLayout());
+#else
+    newModule->setDataLayout(mpExec->getDataLayout());
+#endif
+
     mpCurrentModule = newModule.get();
 #if defined(_WIN32)
     // Needed for MCJIT on windows
@@ -250,7 +261,6 @@ bool JitManager::SetupModuleFromIR(const uint8_t *pIR)
 
     return true;
 }
-
 
 //////////////////////////////////////////////////////////////////////////
 /// @brief Dump function x86 assembly to file.
