@@ -91,7 +91,7 @@ ifneq ($(filter llvmpipe,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_llvmpipe libmesa_pipe_softpipe libmesa_winsys_sw_dri
 LOCAL_CFLAGS += -DGALLIUM_LLVMPIPE -DGALLIUM_SOFTPIPE
 LOCAL_SHARED_LIBRARIES += libLLVM
-else ifeq ($(filter softpipe,$(MESA_GPU_DRIVERS)),)
+else ifneq ($(filter softpipe,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_softpipe libmesa_winsys_sw_dri
 LOCAL_CFLAGS += -DGALLIUM_SOFTPIPE
 endif
