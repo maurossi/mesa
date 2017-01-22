@@ -33,9 +33,12 @@ SUBDIRS += auxiliary/pipe-loader
 # Gallium drivers and their respective winsys
 #
 
-# swrast
-ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
+# llvmpipe, softpipe
+ifneq ($(filter %pipe,$(MESA_GPU_DRIVERS)),)
 SUBDIRS += winsys/sw/dri drivers/softpipe
+ifneq ($(filter llvmpipe,$(MESA_GPU_DRIVERS)),)
+SUBDIRS += drivers/llvmpipe
+endif
 endif
 
 # freedreno
