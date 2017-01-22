@@ -40,11 +40,11 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := \
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_dri_common \
 
-ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
+ifneq ($(filter llvmpipe softpipe,$(MESA_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += $(drisw_SOURCES)
 endif
 
-ifneq ($(filter-out swrast,$(MESA_GPU_DRIVERS)),)
+ifneq ($(filter-out llvmpipe softpipe,$(MESA_GPU_DRIVERS)),)
 LOCAL_SRC_FILES += $(dri2_SOURCES)
 endif
 
