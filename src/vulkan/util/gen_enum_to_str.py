@@ -22,6 +22,7 @@
 """Create enum to string functions for vulking using vk.xml."""
 
 from __future__ import print_function
+import argparse
 import os
 import textwrap
 import xml.etree.cElementTree as et
@@ -29,6 +30,10 @@ import xml.etree.cElementTree as et
 from mako.template import Template
 
 VK_XML = os.path.join(os.path.dirname(__file__), '..', 'registry', 'vk.xml')
+
+parser = argparse.ArgumentParser()
+parser.add_argument('-o', '--output-path', required=True)
+args = parser.parse_args()
 
 COPYRIGHT = textwrap.dedent(u"""\
     * Copyright © 2017 Intel Corporation
@@ -159,8 +164,8 @@ def xml_parser(filename):
 
 def main():
     enums = xml_parser(VK_XML)
-    for template, file_ in [(C_TEMPLATE, 'util/vk_enum_to_str.c'),
-                            (H_TEMPLATE, 'util/vk_enum_to_str.h')]:
+    for template, file_ in [(C_TEMPLATE, os.path.join(args.output_path, 'vk_enum_to_str.c')),
+                            (H_TEMPLATE, os.path.join(args.output_path, 'vk_enum_to_str.h'))]:
         with open(file_, 'wb') as f:
             f.write(template.render(
                 file=os.path.basename(__file__),
