@@ -39,7 +39,8 @@ LOCAL_CFLAGS += \
 	-Wno-initializer-overrides \
 	-Wno-mismatched-tags \
 	-DPACKAGE_VERSION=\"$(MESA_VERSION)\" \
-	-DPACKAGE_BUGREPORT=\"https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa\"
+	-DPACKAGE_BUGREPORT=\"https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa\" \
+	-DHAVE_ANDROID_PLATFORM
 
 # XXX: The following __STDC_*_MACROS defines should not be needed.
 # It's likely due to a bug elsewhere, but let's temporarily add them
