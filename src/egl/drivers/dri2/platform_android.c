@@ -1027,6 +1027,9 @@ droid_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *dpy)
 
 static int swrastUpdateBuffer(struct dri2_egl_surface *dri2_surf)
 {
+   if (dri2_surf->base.Type == EGL_PBUFFER_BIT)
+      return 1;
+
    if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
        if (!dri2_surf->buffer && !droid_window_dequeue_buffer(dri2_surf)) {
           _eglLog(_EGL_WARNING, "failed to dequeue buffer for window");
