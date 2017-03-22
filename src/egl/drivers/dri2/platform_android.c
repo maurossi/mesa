@@ -1133,8 +1133,9 @@ static int swrastUpdateBuffer(struct dri2_egl_surface *dri2_surf)
        }
        dri2_surf->base.Width = dri2_surf->buffer->width;
        dri2_surf->base.Height = dri2_surf->buffer->height;
+       return 0;
    }
-   return 0;
+   return !dri2_surf->buffer;
 }
 
 static void
