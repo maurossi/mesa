@@ -64,7 +64,8 @@ VkResult anv_CreateDmaBufImageINTEL(
          .samples = 1,
          /* FIXME: Need a way to use X tiling to allow scanout */
          .tiling = VK_IMAGE_TILING_OPTIMAL,
-         .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+         .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                  VK_IMAGE_USAGE_SAMPLED_BIT,
          .flags = 0,
       }},
       pAllocator, &image_h);
