@@ -1169,6 +1169,8 @@ swrastPutImage2(__DRIdrawable * draw, int op,
    dstStride = BPerPixel * dri2_surf->buffer->stride;
    copyWidth = BPerPixel * w;
    xOffset = BPerPixel * x;
+   if (stride == 0)
+      stride = copyWidth;
 
    /* drivers expect we do these checks (and some rely on it) */
    if (copyWidth > dstStride - xOffset)
@@ -1207,15 +1209,7 @@ swrastPutImage(__DRIdrawable * draw, int op,
               int x, int y, int w, int h,
               char *data, void *loaderPrivate)
 {
-   struct dri2_egl_surface *dri2_surf = loaderPrivate;
-   int stride;
-
-   if (swrastUpdateBuffer(dri2_surf)) {
-      return;
-   }
-
-   stride = get_format_bpp(dri2_surf->buffer->format) * w;
-   swrastPutImage2(draw, op, x, y, w, h, stride, data, loaderPrivate);
+   swrastPutImage2(draw, op, x, y, w, h, 0, data, loaderPrivate);
 }
 
 static void
