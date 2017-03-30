@@ -154,15 +154,44 @@ get_native_buffer_name(struct ANativeWindowBuffer *buf)
    return gralloc_drm_get_gem_handle(buf->handle);
 }
 
-static EGLBoolean
-droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
+static __DRIbuffer *
+droid_alloc_local_buffer(struct dri2_egl_surface *dri2_surf,
+                         unsigned int att, unsigned int format)
 {
-   int fence_fd;
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
 
-   if (dri2_surf->window->dequeueBuffer(dri2_surf->window, &dri2_surf->buffer,
-                                        &fence_fd))
-      return EGL_FALSE;
+   if (att >= ARRAY_SIZE(dri2_surf->local_buffers))
+      return NULL;
 
+   if (!dri2_surf->local_buffers[att]) {
+      dri2_surf->local_buffers[att] =
+         dri2_dpy->dri2->allocateBuffer(dri2_dpy->dri_screen, att, format,
+               dri2_surf->base.Width, dri2_surf->base.Height);
+   }
+
+   return dri2_surf->local_buffers[att];
+}
+
+static void
+droid_free_local_buffers(struct dri2_egl_surface *dri2_surf)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   int i;
+
+   for (i = 0; i < ARRAY_SIZE(dri2_surf->local_buffers); i++) {
+      if (dri2_surf->local_buffers[i]) {
+         dri2_dpy->dri2->releaseBuffer(dri2_dpy->dri_screen,
+               dri2_surf->local_buffers[i]);
+         dri2_surf->local_buffers[i] = NULL;
+      }
+   }
+}
+
+static void
+wait_and_close_acquire_fence(struct dri2_egl_surface *dri2_surf)
+{
    /* If access to the buffer is controlled by a sync fence, then block on the
     * fence.
     *
@@ -180,15 +209,36 @@ droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
     *    any value except -1) then the caller is responsible for closing the
     *    file descriptor.
     */
-    if (fence_fd >= 0) {
+    if (dri2_surf->acquire_fence_fd >= 0) {
        /* From the SYNC_IOC_WAIT documentation in <linux/sync.h>:
         *
         *    Waits indefinitely if timeout < 0.
         */
         int timeout = -1;
-        sync_wait(fence_fd, timeout);
-        close(fence_fd);
+        sync_wait(dri2_surf->acquire_fence_fd, timeout);
+        close(dri2_surf->acquire_fence_fd);
+        dri2_surf->acquire_fence_fd = -1;
    }
+}
+
+static EGLBoolean
+droid_window_dequeue_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_surf)
+{
+   int err;
+
+   /* To avoid blocking other EGL calls, release the display mutex before
+    * we enter droid_window_enqueue_buffer() and re-acquire the mutex upon
+    * return.
+    */
+   mtx_unlock(&disp->Mutex);
+
+   err = dri2_surf->window->dequeueBuffer(dri2_surf->window, &dri2_surf->buffer,
+                                          &dri2_surf->acquire_fence_fd);
+
+   mtx_lock(&disp->Mutex);
+
+   if (err)
+      return EGL_FALSE;
 
    dri2_surf->buffer->common.incRef(&dri2_surf->buffer->common);
 
@@ -219,6 +269,14 @@ droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
       dri2_surf->back = &dri2_surf->color_buffers[0];
    }
 
+   /* free outdated buffers and update the surface size */
+   if (dri2_surf->base.Width != dri2_surf->buffer->width ||
+       dri2_surf->base.Height != dri2_surf->buffer->height) {
+      droid_free_local_buffers(dri2_surf);
+      dri2_surf->base.Width = dri2_surf->buffer->width;
+      dri2_surf->base.Height = dri2_surf->buffer->height;
+   }
+
    return EGL_TRUE;
 }
 
@@ -226,6 +284,9 @@ static EGLBoolean
 droid_window_enqueue_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_surf)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+
+   /* In case we haven't done any rendering. */
+   wait_and_close_acquire_fence(dri2_surf);
 
    /* To avoid blocking other EGL calls, release the display mutex before
     * we enter droid_window_enqueue_buffer() and re-acquire the mutex upon
@@ -270,41 +331,6 @@ droid_window_cancel_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_surf
    droid_window_enqueue_buffer(disp, dri2_surf);
 }
 
-static __DRIbuffer *
-droid_alloc_local_buffer(struct dri2_egl_surface *dri2_surf,
-                         unsigned int att, unsigned int format)
-{
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
-
-   if (att >= ARRAY_SIZE(dri2_surf->local_buffers))
-      return NULL;
-
-   if (!dri2_surf->local_buffers[att]) {
-      dri2_surf->local_buffers[att] =
-         dri2_dpy->dri2->allocateBuffer(dri2_dpy->dri_screen, att, format,
-               dri2_surf->base.Width, dri2_surf->base.Height);
-   }
-
-   return dri2_surf->local_buffers[att];
-}
-
-static void
-droid_free_local_buffers(struct dri2_egl_surface *dri2_surf)
-{
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
-   int i;
-
-   for (i = 0; i < ARRAY_SIZE(dri2_surf->local_buffers); i++) {
-      if (dri2_surf->local_buffers[i]) {
-         dri2_dpy->dri2->releaseBuffer(dri2_dpy->dri_screen,
-               dri2_surf->local_buffers[i]);
-         dri2_surf->local_buffers[i] = NULL;
-      }
-   }
-}
-
 static _EGLSurface *
 droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
 		    _EGLConfig *conf, void *native_window,
@@ -321,6 +347,7 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
       _eglError(EGL_BAD_ALLOC, "droid_create_surface");
       return NULL;
    }
+   dri2_surf->acquire_fence_fd = -1;
 
    if (!_eglInitSurface(&dri2_surf->base, disp, type, conf, attrib_list))
       goto cleanup_surface;
@@ -362,9 +389,17 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
    if (window) {
       window->common.incRef(&window->common);
       dri2_surf->window = window;
+      if (!droid_window_dequeue_buffer(disp, dri2_surf)) {
+         _eglError(EGL_BAD_SURFACE, "Could not dequeue buffer from native window");
+         goto cleanup_window;
+      }
    }
 
    return &dri2_surf->base;
+
+cleanup_window:
+   window->common.decRef(&window->common);
+   (*dri2_dpy->core->destroyDrawable)(dri2_surf->dri_drawable);
 
 cleanup_surface:
    free(dri2_surf);
@@ -424,29 +459,6 @@ droid_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
 }
 
 static int
-update_buffers(struct dri2_egl_surface *dri2_surf)
-{
-   if (dri2_surf->base.Type != EGL_WINDOW_BIT)
-      return 0;
-
-   /* try to dequeue the next back buffer */
-   if (!dri2_surf->buffer && !droid_window_dequeue_buffer(dri2_surf)) {
-      _eglLog(_EGL_WARNING, "Could not dequeue buffer from native window");
-      return -1;
-   }
-
-   /* free outdated buffers and update the surface size */
-   if (dri2_surf->base.Width != dri2_surf->buffer->width ||
-       dri2_surf->base.Height != dri2_surf->buffer->height) {
-      droid_free_local_buffers(dri2_surf);
-      dri2_surf->base.Width = dri2_surf->buffer->width;
-      dri2_surf->base.Height = dri2_surf->buffer->height;
-   }
-
-   return 0;
-}
-
-static int
 get_front_bo(struct dri2_egl_surface *dri2_surf, unsigned int format)
 {
    struct dri2_egl_display *dri2_dpy =
@@ -495,6 +507,10 @@ get_back_bo(struct dri2_egl_surface *dri2_surf, unsigned int format)
          _eglLog(_EGL_WARNING, "Could not get native buffer");
          return -1;
       }
+
+      /* Android might have given us an acquire fence to wait for. If so,
+       * we need to wait for it and close the descriptor after that. */
+      wait_and_close_acquire_fence(dri2_surf);
 
       fd = get_native_buffer_fd(dri2_surf->buffer);
       if (fd < 0) {
@@ -566,9 +582,6 @@ droid_image_get_buffers(__DRIdrawable *driDrawable,
    images->front = NULL;
    images->back = NULL;
 
-   if (update_buffers(dri2_surf) < 0)
-      return 0;
-
    if (buffer_mask & __DRI_IMAGE_BUFFER_FRONT) {
       if (get_front_bo(dri2_surf, format) < 0)
          return 0;
@@ -598,7 +611,7 @@ droid_query_buffer_age(_EGLDriver *drv,
 {
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surface);
 
-   if (update_buffers(dri2_surf) < 0) {
+   if (!dri2_surf->buffer) {
       _eglError(EGL_BAD_ALLOC, "droid_query_buffer_age");
       return 0;
    }
@@ -635,6 +648,12 @@ droid_swap_buffers(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *draw)
       droid_window_enqueue_buffer(disp, dri2_surf);
 
    dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
+
+   /* try to dequeue the next back buffer */
+   if (!droid_window_dequeue_buffer(disp, dri2_surf)) {
+      _eglError(EGL_BAD_SURFACE, "Could not dequeue buffer from native window");
+      return EGL_FALSE;
+   }
 
    return EGL_TRUE;
 }
@@ -907,6 +926,9 @@ droid_get_buffers_parse_attachments(struct dri2_egl_surface *dri2_surf,
       switch (attachments[i]) {
       case __DRI_BUFFER_BACK_LEFT:
          if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
+            if (!dri2_surf->buffer)
+               continue;
+
             buf->attachment = attachments[i];
             buf->name = get_native_buffer_name(dri2_surf->buffer);
             buf->cpp = get_format_bpp(dri2_surf->buffer->format);
@@ -953,9 +975,6 @@ droid_get_buffers_with_format(__DRIdrawable * driDrawable,
 			     int *out_count, void *loaderPrivate)
 {
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
-
-   if (update_buffers(dri2_surf) < 0)
-      return NULL;
 
    dri2_surf->buffer_count =
       droid_get_buffers_parse_attachments(dri2_surf, attachments, count);
