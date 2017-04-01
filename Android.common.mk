@@ -38,8 +38,7 @@ LOCAL_CFLAGS += \
 	-Wno-initializer-overrides \
 	-Wno-mismatched-tags \
 	-DPACKAGE_VERSION=\"$(MESA_VERSION)\" \
-	-DPACKAGE_BUGREPORT=\"https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa\" \
-	-DHAVE_ANDROID_PLATFORM
+	-DPACKAGE_BUGREPORT=\"https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa\"
 
 LOCAL_CFLAGS += \
 	-DENABLE_SHADER_CACHE \
