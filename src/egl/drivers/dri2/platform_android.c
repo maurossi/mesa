@@ -38,7 +38,6 @@
 #include "egl_dri2.h"
 #include "egl_dri2_fallbacks.h"
 #include "gralloc_drm.h"
-#include "gralloc_drm_handle.h"
 
 #define ALIGN(val, align)	(((val) + (align) - 1) & ~((align) - 1))
 
@@ -152,8 +151,7 @@ get_native_buffer_fd(struct ANativeWindowBuffer *buf)
 static int
 get_native_buffer_name(struct ANativeWindowBuffer *buf)
 {
-   struct gralloc_drm_handle_t *handle = gralloc_drm_handle(buf->handle);
-   return (handle) ? handle->name : 0;
+   return gralloc_drm_get_gem_handle(buf->handle);
 }
 
 static EGLBoolean
