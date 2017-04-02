@@ -11,7 +11,6 @@ struct pipe_resource;
 #define DRM_API_HANDLE_TYPE_SHARED 0
 #define DRM_API_HANDLE_TYPE_KMS    1
 #define DRM_API_HANDLE_TYPE_FD     2
-#define DRM_API_HANDLE_TYPE_BUFFER 3
 
 
 /**
@@ -21,7 +20,7 @@ struct winsys_handle
 {
    /**
     * Input for texture_from_handle, valid values are
-    * DRM_API_HANDLE_TYPE_SHARED or DRM_API_HANDLE_TYPE_FD or DRM_API_HANDLE_TYPE_BUFFER.
+    * DRM_API_HANDLE_TYPE_SHARED or DRM_API_HANDLE_TYPE_FD.
     * Input to texture_get_handle,
     * to select handle for kms, flink, or prime.
     */
@@ -31,13 +30,6 @@ struct winsys_handle
     * of a specific layer of an array texture.
     */
    unsigned layer;
-
-   /**
-    * Input to texture_from_handle.
-    * Output for texture_get_handle.
-    */
-   void* external_buffer;
-
    /**
     * Input to texture_from_handle.
     * Output for texture_get_handle.

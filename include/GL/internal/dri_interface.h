@@ -62,7 +62,6 @@ typedef struct __DRIdrawableRec		__DRIdrawable;
 typedef struct __DRIconfigRec		__DRIconfig;
 typedef struct __DRIframebufferRec	__DRIframebuffer;
 typedef struct __DRIversionRec		__DRIversion;
-typedef struct __DRIimageRec        __DRIimage;
 
 typedef struct __DRIcoreExtensionRec		__DRIcoreExtension;
 typedef struct __DRIextensionRec		__DRIextension;
@@ -862,9 +861,8 @@ struct __DRIlegacyExtensionRec {
  * conjunction with the core extension.
  */
 #define __DRI_SWRAST "DRI_SWRast"
-#define __DRI_SWRAST_VERSION 5
+#define __DRI_SWRAST_VERSION 4
 
-struct winsys_handle;
 struct __DRIswrastExtensionRec {
     __DRIextension base;
 
@@ -911,15 +909,6 @@ struct __DRIswrastExtensionRec {
                                     const __DRIconfig ***driver_configs,
                                     void *loaderPrivate);
 
-   /**
-    * create a dri image from native window system handle
-    *
-    * \since version 5
-    */
-   __DRIimage *(*createImageFromWinsys)(__DRIscreen *_screen,
-                                        int width, int height, int format,
-                                        int num_handles, struct winsys_handle *whandle,
-                                        void *loaderPrivate);
 };
 
 /** Common DRI function definitions, shared among DRI2 and Image extensions
@@ -1325,6 +1314,7 @@ enum __DRIChromaSiting {
 #define __BLIT_FLAG_FLUSH		0x0001
 #define __BLIT_FLAG_FINISH		0x0002
 
+typedef struct __DRIimageRec          __DRIimage;
 typedef struct __DRIimageExtensionRec __DRIimageExtension;
 struct __DRIimageExtensionRec {
     __DRIextension base;
