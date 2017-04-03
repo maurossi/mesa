@@ -921,6 +921,10 @@ droid_get_buffers_parse_attachments(struct dri2_egl_surface *dri2_surf,
             if (!dri2_surf->buffer)
                continue;
 
+            /* Android might have given us an acquire fence to wait for. If so,
+             * we need to wait for it and close the descriptor after that. */
+            wait_and_close_acquire_fence(dri2_surf);
+
             buf->attachment = attachments[i];
             buf->name = get_native_buffer_name(dri2_surf->buffer);
             buf->cpp = get_format_bpp(dri2_surf->buffer->format);
