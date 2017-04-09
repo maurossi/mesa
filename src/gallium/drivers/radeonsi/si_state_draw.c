@@ -847,11 +847,12 @@ void si_emit_cache_flush(struct si_context *sctx)
 	if (rctx->flags & SI_CONTEXT_INV_GLOBAL_L2 ||
 	    (rctx->chip_class <= CIK &&
 	     (rctx->flags & SI_CONTEXT_WRITEBACK_GLOBAL_L2))) {
-		/* Invalidate L1 & L2. (L1 is always invalidated)
+		/* Invalidate L1 & L2. (L1 is always invalidated on SI)
 		 * WB must be set on VI+ when TC_ACTION is set.
 		 */
 		si_emit_surface_sync(rctx, cp_coher_cntl |
 				     S_0085F0_TC_ACTION_ENA(1) |
+				     S_0085F0_TCL1_ACTION_ENA(1) |
 				     S_0301F0_TC_WB_ACTION_ENA(rctx->chip_class >= VI));
 		cp_coher_cntl = 0;
 	} else {
@@ -900,13 +901,59 @@ static void si_get_draw_start_count(struct si_context *sctx,
 				    unsigned *start, unsigned *count)
 {
 	if (info->indirect) {
-		struct r600_resource *indirect =
-			(struct r600_resource*)info->indirect;
-		int *data = r600_buffer_map_sync_with_rings(&sctx->b,
-					indirect, PIPE_TRANSFER_READ);
-                data += info->indirect_offset/sizeof(int);
-		*start = data[2];
-		*count = data[0];
+		unsigned indirect_count;
+		struct pipe_transfer *transfer;
+		unsigned begin, end;
+		unsigned map_size;
+		unsigned *data;
+
+		if (info->indirect_params) {
+			data = pipe_buffer_map_range(&sctx->b.b,
+					info->indirect_params,
+					info->indirect_params_offset,
+					sizeof(unsigned),
+					PIPE_TRANSFER_READ, &transfer);
+
+			indirect_count = *data;
+
+			pipe_buffer_unmap(&sctx->b.b, transfer);
+		} else {
+			indirect_count = info->indirect_count;
+		}
+
+		if (!indirect_count) {
+			*start = *count = 0;
+			return;
+		}
+
+		map_size = (indirect_count - 1) * info->indirect_stride + 3 * sizeof(unsigned);
+		data = pipe_buffer_map_range(&sctx->b.b, info->indirect,
+					     info->indirect_offset, map_size,
+					     PIPE_TRANSFER_READ, &transfer);
+
+		begin = UINT_MAX;
+		end = 0;
+
+		for (unsigned i = 0; i < indirect_count; ++i) {
+			unsigned count = data[0];
+			unsigned start = data[2];
+
+			if (count > 0) {
+				begin = MIN2(begin, start);
+				end = MAX2(end, start + count);
+			}
+
+			data += info->indirect_stride / sizeof(unsigned);
+		}
+
+		pipe_buffer_unmap(&sctx->b.b, transfer);
+
+		if (begin < end) {
+			*start = begin;
+			*count = end - begin;
+		} else {
+			*start = *count = 0;
+		}
 	} else {
 		*start = info->start;
 		*count = info->count;
@@ -1025,7 +1072,7 @@ void si_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info *info)
 			void *ptr;
 
 			si_get_draw_start_count(sctx, info, &start, &count);
-			start_offset = start * ib.index_size;
+			start_offset = start * 2;
 
 			u_upload_alloc(sctx->b.uploader, start_offset, count * 2, 256,
 				       &out_offset, &out_buffer, &ptr);
@@ -1034,8 +1081,8 @@ void si_draw_vbo(struct pipe_context *ctx, const struct pipe_draw_info *info)
 				return;
 			}
 
-			util_shorten_ubyte_elts_to_userptr(&sctx->b.b, &ib, 0,
-							   ib.offset + start_offset,
+			util_shorten_ubyte_elts_to_userptr(&sctx->b.b, &ib, 0, 0,
+							   ib.offset + start,
 							   count, ptr);
 
 			pipe_resource_reference(&ib.buffer, NULL);

@@ -54,8 +54,6 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 {
    struct anv_device *device = cmd_buffer->device;
 
-/* XXX: Do we need this on more than just BDW? */
-#if (GEN_GEN >= 8)
    /* Emit a render target cache flush.
     *
     * This isn't documented anywhere in the PRM.  However, it seems to be
@@ -64,9 +62,10 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
     * clear depth, reset state base address, and then go render stuff.
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.DCFlushEnable = true;
       pc.RenderTargetCacheFlushEnable = true;
+      pc.CommandStreamerStallEnable = true;
    }
-#endif
 
    anv_batch_emit(&cmd_buffer->batch, GENX(STATE_BASE_ADDRESS), sba) {
       sba.GeneralStateBaseAddress = (struct anv_address) { NULL, 0 };
@@ -147,6 +146,8 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.TextureCacheInvalidationEnable = true;
+      pc.ConstantCacheInvalidationEnable = true;
+      pc.StateCacheInvalidationEnable = true;
    }
 }
 
@@ -1759,14 +1760,17 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
          db.Height               = image->extent.height - 1;
          db.Width                = image->extent.width - 1;
          db.LOD                  = iview->isl.base_level;
-         db.Depth                = image->array_size - 1; /* FIXME: 3-D */
          db.MinimumArrayElement  = iview->isl.base_array_layer;
+
+         assert(image->depth_surface.isl.dim != ISL_SURF_DIM_3D);
+         db.Depth =
+         db.RenderTargetViewExtent =
+            iview->isl.array_len - iview->isl.base_array_layer - 1;
 
 #if GEN_GEN >= 8
          db.SurfaceQPitch =
             isl_surf_get_array_pitch_el_rows(&image->depth_surface.isl) >> 2;
 #endif
-         db.RenderTargetViewExtent = 1 - 1;
       }
    } else {
       /* Even when no depth buffer is present, the hardware requires that
@@ -1819,7 +1823,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
           * 2-D images.  Prior to Sky Lake, this field is always in rows.
           */
          hdb.SurfaceQPitch =
-            isl_surf_get_array_pitch_el_rows(&image->aux_surface.isl) >> 2;
+            isl_surf_get_array_pitch_sa_rows(&image->aux_surface.isl) >> 2;
 #endif
       }
    } else {
@@ -1954,6 +1958,36 @@ emit_query_availability(struct anv_cmd_buffer *cmd_buffer,
       pc.PostSyncOperation       = WriteImmediateData;
       pc.Address                 = (struct anv_address) { bo, offset };
       pc.ImmediateData           = 1;
+   }
+}
+
+void genX(CmdResetQueryPool)(
+    VkCommandBuffer                             commandBuffer,
+    VkQueryPool                                 queryPool,
+    uint32_t                                    firstQuery,
+    uint32_t                                    queryCount)
+{
+   ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
+   ANV_FROM_HANDLE(anv_query_pool, pool, queryPool);
+
+   for (uint32_t i = 0; i < queryCount; i++) {
+      switch (pool->type) {
+      case VK_QUERY_TYPE_OCCLUSION:
+      case VK_QUERY_TYPE_TIMESTAMP: {
+         anv_batch_emit(&cmd_buffer->batch, GENX(MI_STORE_DATA_IMM), sdm) {
+            sdm.Address = (struct anv_address) {
+               .bo = &pool->bo,
+               .offset = (firstQuery + i) * sizeof(struct anv_query_pool_slot) +
+                         offsetof(struct anv_query_pool_slot, available),
+            };
+            sdm.DataDWord0 = 0;
+            sdm.DataDWord1 = 0;
+         }
+         break;
+      }
+      default:
+         assert(!"Invalid query type");
+      }
    }
 }
 

@@ -645,6 +645,8 @@ driCreateNewDrawable(__DRIscreen *screen,
 {
     __DRIdrawable *pdraw;
 
+    assert(data != NULL);
+
     pdraw = malloc(sizeof *pdraw);
     if (!pdraw)
 	return NULL;
@@ -674,6 +676,16 @@ driCreateNewDrawable(__DRIscreen *screen,
 static void
 driDestroyDrawable(__DRIdrawable *pdp)
 {
+    /*
+     * The loader's data structures are going away, even if pdp itself stays
+     * around for the time being because it is currently bound. This happens
+     * when a currently bound GLX pixmap is destroyed.
+     *
+     * Clear out the pointer back into the loader's data structures to avoid
+     * accessing an outdated pointer.
+     */
+    pdp->loaderPrivate = NULL;
+
     dri_put_drawable(pdp);
 }
 
@@ -830,6 +842,8 @@ driGLFormatToImageFormat(mesa_format format)
    switch (format) {
    case MESA_FORMAT_B5G6R5_UNORM:
       return __DRI_IMAGE_FORMAT_RGB565;
+   case MESA_FORMAT_B5G5R5A1_UNORM:
+      return __DRI_IMAGE_FORMAT_ARGB1555;
    case MESA_FORMAT_B8G8R8X8_UNORM:
       return __DRI_IMAGE_FORMAT_XRGB8888;
    case MESA_FORMAT_B10G10R10A2_UNORM:
@@ -861,6 +875,8 @@ driImageFormatToGLFormat(uint32_t image_format)
    switch (image_format) {
    case __DRI_IMAGE_FORMAT_RGB565:
       return MESA_FORMAT_B5G6R5_UNORM;
+   case __DRI_IMAGE_FORMAT_ARGB1555:
+      return MESA_FORMAT_B5G5R5A1_UNORM;
    case __DRI_IMAGE_FORMAT_XRGB8888:
       return MESA_FORMAT_B8G8R8X8_UNORM;
    case __DRI_IMAGE_FORMAT_ARGB2101010:

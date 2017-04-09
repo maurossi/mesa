@@ -428,7 +428,7 @@ fs_generator::generate_mov_indirect(fs_inst *inst,
       brw_ADD(p, addr, indirect_byte_offset, brw_imm_uw(imm_byte_offset));
       struct brw_reg ind_src = brw_VxH_indirect(0, 0);
 
-      brw_inst *mov = brw_MOV(p, dst, retype(ind_src, dst.type));
+      brw_inst *mov = brw_MOV(p, dst, retype(ind_src, reg.type));
 
       if (devinfo->gen == 6 && dst.file == BRW_MESSAGE_REGISTER_FILE &&
           !inst->get_next()->is_tail_sentinel() &&
@@ -508,7 +508,7 @@ fs_generator::generate_cs_terminate(fs_inst *inst, struct brw_reg payload)
    insn = brw_next_insn(p, BRW_OPCODE_SEND);
 
    brw_set_dest(p, insn, retype(brw_null_reg(), BRW_REGISTER_TYPE_UW));
-   brw_set_src0(p, insn, payload);
+   brw_set_src0(p, insn, retype(payload, BRW_REGISTER_TYPE_UW));
    brw_set_src1(p, insn, brw_imm_d(0));
 
    /* Terminate a compute shader by sending a message to the thread spawner.
@@ -916,8 +916,12 @@ fs_generator::generate_tex(fs_inst *inst, struct brw_reg dst, struct brw_reg src
       if (brw_regs_equal(&surface_reg, &sampler_reg)) {
          brw_MUL(p, addr, sampler_reg, brw_imm_uw(0x101));
       } else {
-         brw_SHL(p, addr, sampler_reg, brw_imm_ud(8));
-         brw_OR(p, addr, addr, surface_reg);
+         if (sampler_reg.file == BRW_IMMEDIATE_VALUE) {
+            brw_OR(p, addr, surface_reg, brw_imm_ud(sampler_reg.ud << 8));
+         } else {
+            brw_SHL(p, addr, sampler_reg, brw_imm_ud(8));
+            brw_OR(p, addr, addr, surface_reg);
+         }
       }
       if (base_binding_table_index)
          brw_ADD(p, addr, addr, brw_imm_ud(base_binding_table_index));

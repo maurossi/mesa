@@ -325,6 +325,9 @@ void anv_DestroyInstance(
 {
    ANV_FROM_HANDLE(anv_instance, instance, _instance);
 
+   if (!instance)
+      return;
+
    if (instance->physicalDeviceCount > 0) {
       /* We support at most one physical device. */
       assert(instance->physicalDeviceCount == 1);
@@ -503,9 +506,9 @@ void anv_GetPhysicalDeviceProperties(
       .maxPerStageResources                     = 128,
       .maxDescriptorSetSamplers                 = 256,
       .maxDescriptorSetUniformBuffers           = 256,
-      .maxDescriptorSetUniformBuffersDynamic    = 256,
+      .maxDescriptorSetUniformBuffersDynamic    = MAX_DYNAMIC_BUFFERS / 2,
       .maxDescriptorSetStorageBuffers           = 256,
-      .maxDescriptorSetStorageBuffersDynamic    = 256,
+      .maxDescriptorSetStorageBuffersDynamic    = MAX_DYNAMIC_BUFFERS / 2,
       .maxDescriptorSetSampledImages            = 256,
       .maxDescriptorSetStorageImages            = 256,
       .maxDescriptorSetInputAttachments         = 256,
@@ -552,8 +555,8 @@ void anv_GetPhysicalDeviceProperties(
       .viewportSubPixelBits                     = 13, /* We take a float? */
       .minMemoryMapAlignment                    = 4096, /* A page */
       .minTexelBufferOffsetAlignment            = 1,
-      .minUniformBufferOffsetAlignment          = 1,
-      .minStorageBufferOffsetAlignment          = 1,
+      .minUniformBufferOffsetAlignment          = 16,
+      .minStorageBufferOffsetAlignment          = 4,
       .minTexelOffset                           = -8,
       .maxTexelOffset                           = 7,
       .minTexelGatherOffset                     = -8,
@@ -616,7 +619,14 @@ void anv_GetPhysicalDeviceQueueFamilyProperties(
       return;
    }
 
-   assert(*pCount >= 1);
+   /* The spec implicitly allows the incoming count to be 0. From the Vulkan
+    * 1.0.38 spec, Section 4.1 Physical Devices:
+    *
+    *     If the value referenced by pQueueFamilyPropertyCount is not 0 [then
+    *     do stuff].
+    */
+   if (*pCount == 0)
+      return;
 
    *pQueueFamilyProperties = (VkQueueFamilyProperties) {
       .queueFlags = VK_QUEUE_GRAPHICS_BIT |
@@ -626,6 +636,8 @@ void anv_GetPhysicalDeviceQueueFamilyProperties(
       .timestampValidBits = 36, /* XXX: Real value here */
       .minImageTransferGranularity = (VkExtent3D) { 1, 1, 1 },
    };
+
+   *pCount = 1;
 }
 
 void anv_GetPhysicalDeviceMemoryProperties(
@@ -968,6 +980,9 @@ void anv_DestroyDevice(
     const VkAllocationCallbacks*                pAllocator)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
+
+   if (!device)
+      return;
 
    anv_device_finish_blorp(device);
 
@@ -1403,11 +1418,12 @@ VkResult anv_InvalidateMappedMemoryRanges(
 }
 
 void anv_GetBufferMemoryRequirements(
-    VkDevice                                    device,
+    VkDevice                                    _device,
     VkBuffer                                    _buffer,
     VkMemoryRequirements*                       pMemoryRequirements)
 {
    ANV_FROM_HANDLE(anv_buffer, buffer, _buffer);
+   ANV_FROM_HANDLE(anv_device, device, _device);
 
    /* The Vulkan spec (git aaed022) says:
     *
@@ -1416,20 +1432,21 @@ void anv_GetBufferMemoryRequirements(
     *    only if the memory type `i` in the VkPhysicalDeviceMemoryProperties
     *    structure for the physical device is supported.
     *
-    * We support exactly one memory type.
+    * We support exactly one memory type on LLC, two on non-LLC.
     */
-   pMemoryRequirements->memoryTypeBits = 1;
+   pMemoryRequirements->memoryTypeBits = device->info.has_llc ? 1 : 3;
 
    pMemoryRequirements->size = buffer->size;
    pMemoryRequirements->alignment = 16;
 }
 
 void anv_GetImageMemoryRequirements(
-    VkDevice                                    device,
+    VkDevice                                    _device,
     VkImage                                     _image,
     VkMemoryRequirements*                       pMemoryRequirements)
 {
    ANV_FROM_HANDLE(anv_image, image, _image);
+   ANV_FROM_HANDLE(anv_device, device, _device);
 
    /* The Vulkan spec (git aaed022) says:
     *
@@ -1438,9 +1455,9 @@ void anv_GetImageMemoryRequirements(
     *    only if the memory type `i` in the VkPhysicalDeviceMemoryProperties
     *    structure for the physical device is supported.
     *
-    * We support exactly one memory type.
+    * We support exactly one memory type on LLC, two on non-LLC.
     */
-   pMemoryRequirements->memoryTypeBits = 1;
+   pMemoryRequirements->memoryTypeBits = device->info.has_llc ? 1 : 3;
 
    pMemoryRequirements->size = image->size;
    pMemoryRequirements->alignment = image->alignment;
@@ -1988,4 +2005,48 @@ void anv_DestroyFramebuffer(
       return;
 
    vk_free2(&device->alloc, pAllocator, fb);
+}
+
+/* vk_icd.h does not declare this function, so we declare it here to
+ * suppress Wmissing-prototypes.
+ */
+PUBLIC VKAPI_ATTR VkResult VKAPI_CALL
+vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t* pSupportedVersion);
+
+PUBLIC VKAPI_ATTR VkResult VKAPI_CALL
+vk_icdNegotiateLoaderICDInterfaceVersion(uint32_t* pSupportedVersion)
+{
+   /* For the full details on loader interface versioning, see
+    * <https://github.com/KhronosGroup/Vulkan-LoaderAndValidationLayers/blob/master/loader/LoaderAndLayerInterface.md>.
+    * What follows is a condensed summary, to help you navigate the large and
+    * confusing official doc.
+    *
+    *   - Loader interface v0 is incompatible with later versions. We don't
+    *     support it.
+    *
+    *   - In loader interface v1:
+    *       - The first ICD entrypoint called by the loader is
+    *         vk_icdGetInstanceProcAddr(). The ICD must statically expose this
+    *         entrypoint.
+    *       - The ICD must statically expose no other Vulkan symbol unless it is
+    *         linked with -Bsymbolic.
+    *       - Each dispatchable Vulkan handle created by the ICD must be
+    *         a pointer to a struct whose first member is VK_LOADER_DATA. The
+    *         ICD must initialize VK_LOADER_DATA.loadMagic to ICD_LOADER_MAGIC.
+    *       - The loader implements vkCreate{PLATFORM}SurfaceKHR() and
+    *         vkDestroySurfaceKHR(). The ICD must be capable of working with
+    *         such loader-managed surfaces.
+    *
+    *    - Loader interface v2 differs from v1 in:
+    *       - The first ICD entrypoint called by the loader is
+    *         vk_icdNegotiateLoaderICDInterfaceVersion(). The ICD must
+    *         statically expose this entrypoint.
+    *
+    *    - Loader interface v3 differs from v2 in:
+    *        - The ICD must implement vkCreate{PLATFORM}SurfaceKHR(),
+    *          vkDestroySurfaceKHR(), and other API which uses VKSurfaceKHR,
+    *          because the loader no longer does so.
+    */
+   *pSupportedVersion = MIN2(*pSupportedVersion, 3u);
+   return VK_SUCCESS;
 }

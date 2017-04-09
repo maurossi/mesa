@@ -475,6 +475,18 @@ gen8_hiz_exec(struct brw_context *brw, struct intel_mipmap_tree *mt,
       break;
    case BLORP_HIZ_OP_DEPTH_CLEAR:
       dw1 |= GEN8_WM_HZ_DEPTH_CLEAR;
+
+      /* The "Clear Rectangle X Max" (and Y Max) fields are exclusive,
+       * rather than inclusive, and limited to 16383.  This means that
+       * for a 16384x16384 render target, we would miss the last row
+       * or column of pixels along the edge.
+       *
+       * To work around this, we have to set the "Full Surface Depth
+       * and Stencil Clear" bit.  We can do this in all cases because
+       * we always clear the full rectangle anyway.  We'll need to
+       * change this if we ever add scissored clear support.
+       */
+      dw1 |= GEN8_WM_HZ_FULL_SURFACE_DEPTH_CLEAR;
       break;
    case BLORP_HIZ_OP_NONE:
       unreachable("Should not get here.");
@@ -508,6 +520,22 @@ gen8_hiz_exec(struct brw_context *brw, struct intel_mipmap_tree *mt,
    OUT_BATCH(0);
    OUT_BATCH(0);
    ADVANCE_BATCH();
+
+   /*
+    * From the Broadwell PRM, volume 7, "Depth Buffer Clear":
+    *
+    *  Depth buffer clear pass using any of the methods (WM_STATE, 3DSTATE_WM
+    *  or 3DSTATE_WM_HZ_OP) must be followed by a PIPE_CONTROL command with
+    *  DEPTH_STALL bit and Depth FLUSH bits "set" before starting to render.
+    *  DepthStall and DepthFlush are not needed between consecutive depth
+    *  clear passes nor is it required if th e depth clear pass was done with
+    *  "full_surf_clear" bit set in the 3DSTATE_WM_HZ_OP.
+    *
+    *  TODO: Such as the spec says, this could be conditional.
+    */
+   brw_emit_pipe_control_flush(brw, 
+                               PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+                               PIPE_CONTROL_DEPTH_STALL);
 
    /* Mark this buffer as needing a TC flush, as we've rendered to it. */
    brw_render_cache_set_add_bo(brw, mt->bo);

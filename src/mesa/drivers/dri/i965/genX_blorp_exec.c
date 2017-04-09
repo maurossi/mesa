@@ -144,6 +144,14 @@ blorp_alloc_vertex_buffer(struct blorp_batch *batch, uint32_t size,
 }
 
 static void
+blorp_flush_range(struct blorp_batch *batch, void *start, size_t size)
+{
+   /* All allocated states come from the batch which we will flush before we
+    * submit it.  There's nothing for us to do here.
+    */
+}
+
+static void
 blorp_emit_urb_config(struct blorp_batch *batch, unsigned vs_entry_size)
 {
    assert(batch->blorp->driver_ctx == batch->driver_batch);
@@ -205,6 +213,10 @@ retry:
       gen7_disable_hw_binding_tables(brw);
 
    brw_emit_depth_stall_flushes(brw);
+
+#if GEN_GEN == 8
+   gen8_write_pma_stall_bits(brw, 0);
+#endif
 
    blorp_emit(batch, GENX(3DSTATE_DRAWING_RECTANGLE), rect) {
       rect.ClippedDrawingRectangleXMax = MAX2(params->x1, params->x0) - 1;

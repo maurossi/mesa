@@ -1377,6 +1377,9 @@ AC_ARG_ENABLE([driglx-direct],
 dnl
 dnl libGL configuration per driver
 dnl
+if test "x$enable_glx" != xno; then
+    PKG_CHECK_MODULES([GLPROTO], [glproto >= $GLPROTO_REQUIRED])
+fi
 case "x$enable_glx" in
 xxlib | xgallium-xlib)
     # Xlib-based GLX
@@ -1390,7 +1393,6 @@ xxlib | xgallium-xlib)
     ;;
 xdri)
     # DRI-based GLX
-    PKG_CHECK_MODULES([GLPROTO], [glproto >= $GLPROTO_REQUIRED])
 
     # find the DRI deps for libGL
     dri_modules="x11 xext xdamage xfixes x11-xcb xcb xcb-glx >= $XCBGLX_REQUIRED"
@@ -1648,7 +1650,7 @@ fi
 AC_ARG_WITH([vulkan-drivers],
     [AS_HELP_STRING([--with-vulkan-drivers@<:@=DIRS...@:>@],
         [comma delimited Vulkan drivers list, e.g.
-        "intel"
+        "intel,radeon"
         @<:@default=no@:>@])],
     [with_vulkan_drivers="$withval"],
     [with_vulkan_drivers="no"])
@@ -1972,6 +1974,21 @@ if test "x$enable_opencl" = xyes; then
     if test "x$have_libelf" != xyes; then
        AC_MSG_ERROR([Clover requires libelf])
     fi
+
+    if test "x${ac_cv_cxx_compiler_gnu}" = xyes; then
+        altivec_enabled=no
+        AC_COMPILE_IFELSE([AC_LANG_SOURCE([
+        #if !defined(__VEC__) || !defined(__ALTIVEC__)
+        #error "AltiVec not enabled"
+        #endif
+        ])], altivec_enabled=yes)
+
+        if test "$altivec_enabled" = yes; then
+            CLOVER_STD_OVERRIDE="-std=gnu++11"
+        fi
+        AC_SUBST([CLOVER_STD_OVERRIDE])
+    fi
+
 fi
 AM_CONDITIONAL(HAVE_CLOVER, test "x$enable_opencl" = xyes)
 AM_CONDITIONAL(HAVE_CLOVER_ICD, test "x$enable_opencl_icd" = xyes)
