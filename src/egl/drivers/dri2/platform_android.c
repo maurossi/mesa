@@ -154,6 +154,41 @@ get_native_buffer_name(struct ANativeWindowBuffer *buf)
    return gralloc_drm_get_gem_handle(buf->handle);
 }
 
+static __DRIbuffer *
+droid_alloc_local_buffer(struct dri2_egl_surface *dri2_surf,
+                         unsigned int att, unsigned int format)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+
+   if (att >= ARRAY_SIZE(dri2_surf->local_buffers))
+      return NULL;
+
+   if (!dri2_surf->local_buffers[att]) {
+      dri2_surf->local_buffers[att] =
+         dri2_dpy->dri2->allocateBuffer(dri2_dpy->dri_screen, att, format,
+               dri2_surf->base.Width, dri2_surf->base.Height);
+   }
+
+   return dri2_surf->local_buffers[att];
+}
+
+static void
+droid_free_local_buffers(struct dri2_egl_surface *dri2_surf)
+{
+   struct dri2_egl_display *dri2_dpy =
+      dri2_egl_display(dri2_surf->base.Resource.Display);
+   int i;
+
+   for (i = 0; i < ARRAY_SIZE(dri2_surf->local_buffers); i++) {
+      if (dri2_surf->local_buffers[i]) {
+         dri2_dpy->dri2->releaseBuffer(dri2_dpy->dri_screen,
+               dri2_surf->local_buffers[i]);
+         dri2_surf->local_buffers[i] = NULL;
+      }
+   }
+}
+
 static EGLBoolean
 droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
 {
@@ -268,41 +303,6 @@ droid_window_cancel_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_surf
 {
    /* no cancel buffer? */
    droid_window_enqueue_buffer(disp, dri2_surf);
-}
-
-static __DRIbuffer *
-droid_alloc_local_buffer(struct dri2_egl_surface *dri2_surf,
-                         unsigned int att, unsigned int format)
-{
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
-
-   if (att >= ARRAY_SIZE(dri2_surf->local_buffers))
-      return NULL;
-
-   if (!dri2_surf->local_buffers[att]) {
-      dri2_surf->local_buffers[att] =
-         dri2_dpy->dri2->allocateBuffer(dri2_dpy->dri_screen, att, format,
-               dri2_surf->base.Width, dri2_surf->base.Height);
-   }
-
-   return dri2_surf->local_buffers[att];
-}
-
-static void
-droid_free_local_buffers(struct dri2_egl_surface *dri2_surf)
-{
-   struct dri2_egl_display *dri2_dpy =
-      dri2_egl_display(dri2_surf->base.Resource.Display);
-   int i;
-
-   for (i = 0; i < ARRAY_SIZE(dri2_surf->local_buffers); i++) {
-      if (dri2_surf->local_buffers[i]) {
-         dri2_dpy->dri2->releaseBuffer(dri2_dpy->dri_screen,
-               dri2_surf->local_buffers[i]);
-         dri2_surf->local_buffers[i] = NULL;
-      }
-   }
 }
 
 static _EGLSurface *
