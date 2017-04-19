@@ -258,7 +258,8 @@ droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
 }
 
 static EGLBoolean
-droid_window_enqueue_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_surf)
+droid_window_enqueue_buffer(_EGLDisplay *disp,
+                            struct dri2_egl_surface *dri2_surf, bool cancel)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
 
@@ -281,8 +282,12 @@ droid_window_enqueue_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_sur
     *    is responsible for closing it.
     */
    int fence_fd = -1;
-   dri2_surf->window->queueBuffer(dri2_surf->window, dri2_surf->buffer,
-                                  fence_fd);
+   if (cancel)
+      dri2_surf->window->cancelBuffer(dri2_surf->window, dri2_surf->buffer,
+                                      fence_fd);
+   else
+      dri2_surf->window->queueBuffer(dri2_surf->window, dri2_surf->buffer,
+                                     fence_fd);
 
    dri2_surf->buffer->common.decRef(&dri2_surf->buffer->common);
    dri2_surf->buffer = NULL;
@@ -296,13 +301,6 @@ droid_window_enqueue_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_sur
    }
 
    return EGL_TRUE;
-}
-
-static void
-droid_window_cancel_buffer(_EGLDisplay *disp, struct dri2_egl_surface *dri2_surf)
-{
-   /* no cancel buffer? */
-   droid_window_enqueue_buffer(disp, dri2_surf);
 }
 
 static _EGLSurface *
@@ -399,7 +397,7 @@ droid_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
 
    if (dri2_surf->base.Type == EGL_WINDOW_BIT) {
       if (dri2_surf->buffer)
-         droid_window_cancel_buffer(disp, dri2_surf);
+         droid_window_enqueue_buffer(disp, dri2_surf, true);
 
       dri2_surf->window->common.decRef(&dri2_surf->window->common);
    }
@@ -624,7 +622,7 @@ droid_swap_buffers(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *draw)
    dri2_flush_drawable_for_swapbuffers(disp, draw);
 
    if (dri2_surf->buffer)
-      droid_window_enqueue_buffer(disp, dri2_surf);
+      droid_window_enqueue_buffer(disp, dri2_surf, false);
 
    dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
 
