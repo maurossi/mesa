@@ -227,8 +227,7 @@ wait_and_close_acquire_fence(struct dri2_egl_surface *dri2_surf)
 }
 
 static EGLBoolean
-droid_window_dequeue_buffer(_EGLDisplay *disp,
-                            struct dri2_egl_surface *dri2_surf)
+droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
 {
    if (dri2_surf->window->dequeueBuffer(dri2_surf->window, &dri2_surf->buffer,
                                         &dri2_surf->acquire_fence_fd))
@@ -388,7 +387,7 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
    if (window) {
       window->common.incRef(&window->common);
       dri2_surf->window = window;
-      if (!droid_window_dequeue_buffer(disp, dri2_surf)) {
+      if (!droid_window_dequeue_buffer(dri2_surf)) {
          _eglError(EGL_BAD_SURFACE, "Could not dequeue buffer from native window");
          goto cleanup_window;
       }
@@ -641,7 +640,7 @@ droid_swap_buffers(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *draw)
    dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
 
    /* try to dequeue the next back buffer */
-   if (!droid_window_dequeue_buffer(disp, dri2_surf)) {
+   if (!droid_window_dequeue_buffer(dri2_surf)) {
       _eglError(EGL_BAD_SURFACE, "Could not dequeue buffer from native window");
       return EGL_FALSE;
    }
