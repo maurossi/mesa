@@ -14,24 +14,38 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-// THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 //
-
-#include <algorithm>
 
 #include "core/context.hpp"
 
 using namespace clover;
 
-_cl_context::_cl_context(const std::vector<cl_context_properties> &props,
-                         const std::vector<device *> &devs) :
-   devs(devs), __props(props) {
+context::context(const property_list &props,
+                 const ref_vector<device> &devs,
+                 const notify_action &notify) :
+   notify(notify), props(props), devs(devs) {
 }
 
 bool
-_cl_context::has_device(clover::device *dev) const {
-   return std::count(devs.begin(), devs.end(), dev);
+context::operator==(const context &ctx) const {
+   return this == &ctx;
+}
+
+bool
+context::operator!=(const context &ctx) const {
+   return this != &ctx;
+}
+
+const context::property_list &
+context::properties() const {
+   return props;
+}
+
+context::device_range
+context::devices() const {
+   return map(evals(), devs);
 }

@@ -70,8 +70,9 @@ int main(int argc, char** argv)
 
    util_cpu_detect();
 
-   if(argc <= 1)
-   {}
+   if (argc <= 1 ||
+       !strcmp(argv[1], "default") )
+      create_fn = translate_create;
    else if (!strcmp(argv[1], "generic"))
       create_fn = translate_generic_create;
    else if (!strcmp(argv[1], "x86"))
@@ -129,11 +130,11 @@ int main(int argc, char** argv)
 
    if (!create_fn)
    {
-      printf("Usage: ./translate_test [generic|x86|nosse|sse|sse2|sse3|sse4.1]\n");
+      printf("Usage: ./translate_test [default|generic|x86|nosse|sse|sse2|sse3|sse4.1]\n");
       return 2;
    }
 
-   for (i = 1; i < Elements(buffer); ++i)
+   for (i = 1; i < ARRAY_SIZE(buffer); ++i)
       buffer[i] = align_malloc(buffer_size, 4096);
 
    byte_buffer = align_malloc(buffer_size, 4096);
@@ -260,13 +261,13 @@ int main(int argc, char** argv)
             buffer[0] = byte_buffer;
 
          translate[0]->set_buffer(translate[0], 0, buffer[0], input_format_size, count - 1);
-         translate[0]->run_elts(translate[0], elts, count, 0, buffer[1]);
+         translate[0]->run_elts(translate[0], elts, count, 0, 0, buffer[1]);
          translate[1]->set_buffer(translate[1], 0, buffer[1], output_format_size, count - 1);
-         translate[1]->run_elts(translate[1], elts, count, 0, buffer[2]);
+         translate[1]->run_elts(translate[1], elts, count, 0, 0, buffer[2]);
          translate[0]->set_buffer(translate[0], 0, buffer[2], input_format_size, count - 1);
-         translate[0]->run_elts(translate[0], elts, count, 0, buffer[3]);
+         translate[0]->run_elts(translate[0], elts, count, 0, 0, buffer[3]);
          translate[1]->set_buffer(translate[1], 0, buffer[3], output_format_size, count - 1);
-         translate[1]->run_elts(translate[1], elts, count, 0, buffer[4]);
+         translate[1]->run_elts(translate[1], elts, count, 0, 0, buffer[4]);
 
          for (i = 0; i < count; ++i)
          {
@@ -293,7 +294,7 @@ int main(int argc, char** argv)
 
          if (1)
          {
-            for (i = 0; i < Elements(buffer); ++i)
+            for (i = 0; i < ARRAY_SIZE(buffer); ++i)
             {
                unsigned format_size = (i & 1) ? output_format_size : input_format_size;
                printf("%c ", (i == 2 || i == 4) ? '*' : ' ');

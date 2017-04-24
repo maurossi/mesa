@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.3
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -41,12 +41,15 @@ void GLAPIENTRY
 _mesa_LineWidth( GLfloat width )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glLineWidth %f\n", width);
 
-   if (width<=0.0) {
+   /* If width is unchanged, there can't be an error */
+   if (ctx->Line.Width == width)
+      return;
+
+   if (width <= 0.0F) {
       _mesa_error( ctx, GL_INVALID_VALUE, "glLineWidth" );
       return;
    }
@@ -63,13 +66,11 @@ _mesa_LineWidth( GLfloat width )
     */
    if (ctx->API == API_OPENGL_CORE
        && ((ctx->Const.ContextFlags & GL_CONTEXT_FLAG_FORWARD_COMPATIBLE_BIT)
-           != 0)) {
+           != 0)
+       && width > 1.0F) {
       _mesa_error( ctx, GL_INVALID_VALUE, "glLineWidth" );
       return;
    }
-
-   if (ctx->Line.Width == width)
-      return;
 
    FLUSH_VERTICES(ctx, _NEW_LINE);
    ctx->Line.Width = width;
@@ -95,7 +96,6 @@ void GLAPIENTRY
 _mesa_LineStipple( GLint factor, GLushort pattern )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glLineStipple %d %u\n", factor, pattern);

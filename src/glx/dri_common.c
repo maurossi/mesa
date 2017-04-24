@@ -40,6 +40,7 @@
 #include <stdarg.h>
 #include "glxclient.h"
 #include "dri_common.h"
+#include "loader.h"
 
 #ifndef RTLD_NOW
 #define RTLD_NOW 0
@@ -48,65 +49,33 @@
 #define RTLD_GLOBAL 0
 #endif
 
-/**
- * Print informational message to stderr if LIBGL_DEBUG is set to
- * "verbose".
- */
 _X_HIDDEN void
-InfoMessageF(const char *f, ...)
+dri_message(int level, const char *f, ...)
 {
    va_list args;
-   const char *env;
+   int threshold = _LOADER_WARNING;
+   const char *libgl_debug;
 
-   if ((env = getenv("LIBGL_DEBUG")) && strstr(env, "verbose")) {
-      fprintf(stderr, "libGL: ");
+   libgl_debug = getenv("LIBGL_DEBUG");
+   if (libgl_debug) {
+      if (strstr(libgl_debug, "quiet"))
+         threshold = _LOADER_FATAL;
+      else if (strstr(libgl_debug, "verbose"))
+         threshold = _LOADER_DEBUG;
+   }
+
+   /* Note that the _LOADER_* levels are lower numbers for more severe. */
+   if (level <= threshold) {
+      fprintf(stderr, "libGL%s: ", level <= _LOADER_WARNING ? " error" : "");
       va_start(args, f);
       vfprintf(stderr, f, args);
       va_end(args);
    }
 }
 
-/**
- * Print error message to stderr if LIBGL_DEBUG is set to anything but
- * "quiet", (do nothing if LIBGL_DEBUG is unset).
- */
-_X_HIDDEN void
-ErrorMessageF(const char *f, ...)
-{
-   va_list args;
-   const char *env;
-
-   if ((env = getenv("LIBGL_DEBUG")) && !strstr(env, "quiet")) {
-      fprintf(stderr, "libGL error: ");
-      va_start(args, f);
-      vfprintf(stderr, f, args);
-      va_end(args);
-   }
-}
-
-/**
- * Print error message unless LIBGL_DEBUG is set to "quiet".
- *
- * The distinction between CriticalErrorMessageF and ErrorMessageF is
- * that critcial errors will be printed by default, (even when
- * LIBGL_DEBUG is unset).
- */
-_X_HIDDEN void
-CriticalErrorMessageF(const char *f, ...)
-{
-   va_list args;
-   const char *env;
-
-   if (!(env = getenv("LIBGL_DEBUG")) || !strstr(env, "quiet")) {
-      fprintf(stderr, "libGL error: ");
-      va_start(args, f);
-      vfprintf(stderr, f, args);
-      va_end(args);
-
-      if (!env || !strstr(env, "verbose"))
-         fprintf(stderr, "libGL error: Try again with LIBGL_DEBUG=verbose for more details.\n");
-   }
-}
+#ifndef GL_LIB_NAME
+#define GL_LIB_NAME "libGL.so.1"
+#endif
 
 #ifndef DEFAULT_DRIVER_DIR
 /* this is normally defined in Mesa/configs/default with DRI_DRIVER_SEARCH_PATH */
@@ -134,7 +103,7 @@ driOpenDriver(const char *driverName)
    int len;
 
    /* Attempt to make sure libGL symbols will be visible to the driver */
-   glhandle = dlopen("libGL.so.1", RTLD_NOW | RTLD_GLOBAL);
+   glhandle = dlopen(GL_LIB_NAME, RTLD_NOW | RTLD_GLOBAL);
 
    libPaths = NULL;
    if (geteuid() == getuid()) {
@@ -175,7 +144,7 @@ driOpenDriver(const char *driverName)
       if (handle != NULL)
          break;
       else
-         ErrorMessageF("dlopen %s failed (%s)\n", realDriverName, dlerror());
+         InfoMessageF("dlopen %s failed (%s)\n", realDriverName, dlerror());
    }
 
    if (!handle)
@@ -187,6 +156,34 @@ driOpenDriver(const char *driverName)
    return handle;
 }
 
+_X_HIDDEN const __DRIextension **
+driGetDriverExtensions(void *handle, const char *driver_name)
+{
+   const __DRIextension **extensions = NULL;
+   const __DRIextension **(*get_extensions)(void);
+   char *get_extensions_name = loader_get_extensions_name(driver_name);
+
+   if (get_extensions_name) {
+      get_extensions = dlsym(handle, get_extensions_name);
+      if (get_extensions) {
+         free(get_extensions_name);
+         return get_extensions();
+      } else {
+         InfoMessageF("driver does not expose %s(): %s\n",
+                      get_extensions_name, dlerror());
+         free(get_extensions_name);
+      }
+   }
+
+   extensions = dlsym(handle, __DRI_DRIVER_EXTENSIONS);
+   if (extensions == NULL) {
+      ErrorMessageF("driver exports no extensions (%s)\n", dlerror());
+      return NULL;
+   }
+
+   return extensions;
+}
+
 static GLboolean
 __driGetMSCRate(__DRIdrawable *draw,
 		int32_t * numerator, int32_t * denominator,
@@ -194,13 +191,14 @@ __driGetMSCRate(__DRIdrawable *draw,
 {
    __GLXDRIdrawable *glxDraw = loaderPrivate;
 
-   return __glxGetMscRate(glxDraw, numerator, denominator);
+   return __glxGetMscRate(glxDraw->psc, numerator, denominator);
 }
 
 _X_HIDDEN const __DRIsystemTimeExtension systemTimeExtension = {
-   {__DRI_SYSTEM_TIME, __DRI_SYSTEM_TIME_VERSION},
-   __glXGetUST,
-   __driGetMSCRate
+   .base = {__DRI_SYSTEM_TIME, 1 },
+
+   .getUST              = __glXGetUST,
+   .getMSCRate          = __driGetMSCRate
 };
 
 #define __ATTRIB(attrib, field) \
@@ -258,8 +256,7 @@ __ATTRIB(__DRI_ATTRIB_BIND_TO_TEXTURE_RGB, bindToTextureRgb),
 static int
 scalarEqual(struct glx_config *mode, unsigned int attrib, unsigned int value)
 {
-   unsigned int glxValue;
-   int i;
+   unsigned glxValue, i;
 
    for (i = 0; i < ARRAY_SIZE(attribMap); i++)
       if (attribMap[i].attrib == attrib) {
@@ -285,8 +282,14 @@ driConfigEqual(const __DRIcoreExtension *core,
          if (value & __DRI_ATTRIB_RGBA_BIT) {
             glxValue |= GLX_RGBA_BIT;
          }
-         else if (value & __DRI_ATTRIB_COLOR_INDEX_BIT) {
+         if (value & __DRI_ATTRIB_COLOR_INDEX_BIT) {
             glxValue |= GLX_COLOR_INDEX_BIT;
+         }
+         if (value & __DRI_ATTRIB_FLOAT_BIT) {
+            glxValue |= GLX_RGBA_FLOAT_BIT_ARB;
+         }
+         if (value & __DRI_ATTRIB_UNSIGNED_FLOAT_BIT) {
+            glxValue |= GLX_RGBA_UNSIGNED_FLOAT_BIT_EXT;
          }
          if (glxValue != config->renderType)
             return GL_FALSE;
@@ -340,7 +343,7 @@ createDriMode(const __DRIcoreExtension * core,
    if (driConfigs[i] == NULL)
       return NULL;
 
-   driConfig = Xmalloc(sizeof *driConfig);
+   driConfig = malloc(sizeof *driConfig);
    if (driConfig == NULL)
       return NULL;
 
@@ -390,6 +393,9 @@ driFetchDrawable(struct glx_context *gc, GLXDrawable glxDrawable)
    struct glx_screen *psc;
 
    if (priv == NULL)
+      return NULL;
+
+   if (glxDrawable == None)
       return NULL;
 
    psc = priv->screens[gc->screen];
@@ -456,17 +462,22 @@ driReleaseDrawables(struct glx_context *gc)
 
 _X_HIDDEN bool
 dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
-			 unsigned *major_ver, unsigned *minor_ver,
-			 uint32_t *flags, unsigned *api, int *reset,
-                         unsigned *error)
+                         unsigned *major_ver, unsigned *minor_ver,
+                         uint32_t *render_type, uint32_t *flags, unsigned *api,
+                         int *reset, unsigned *error)
 {
    unsigned i;
    bool got_profile = false;
    uint32_t profile;
-   int render_type = GLX_RGBA_TYPE;
+
+   *major_ver = 1;
+   *minor_ver = 0;
+   *render_type = GLX_RGBA_TYPE;
+   *reset = __DRI_CTX_RESET_NO_NOTIFICATION;
+   *flags = 0;
+   *api = __DRI_API_OPENGL;
 
    if (num_attribs == 0) {
-      *api = __DRI_API_OPENGL;
       return true;
    }
 
@@ -476,10 +487,6 @@ dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
       *error = __DRI_CTX_ERROR_UNKNOWN_ATTRIBUTE;
       return false;
    }
-
-   *major_ver = 1;
-   *minor_ver = 0;
-   *reset = __DRI_CTX_RESET_NO_NOTIFICATION;
 
    for (i = 0; i < num_attribs; i++) {
       switch (attribs[i * 2]) {
@@ -497,7 +504,7 @@ dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
 	 got_profile = true;
 	 break;
       case GLX_RENDER_TYPE:
-	 render_type = attribs[i * 2 + 1];
+         *render_type = attribs[i * 2 + 1];
 	 break;
       case GLX_CONTEXT_RESET_NOTIFICATION_STRATEGY_ARB:
          switch (attribs[i * 2 + 1]) {
@@ -520,7 +527,6 @@ dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
       }
    }
 
-   *api = __DRI_API_OPENGL;
    if (!got_profile) {
       if (*major_ver > 3 || (*major_ver == 3 && *minor_ver >= 2))
 	 *api = __DRI_API_OPENGL_CORE;
@@ -540,9 +546,18 @@ dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
       case GLX_CONTEXT_COMPATIBILITY_PROFILE_BIT_ARB:
 	 *api = __DRI_API_OPENGL;
 	 break;
-      case GLX_CONTEXT_ES2_PROFILE_BIT_EXT:
-	 *api = __DRI_API_GLES2;
-	 break;
+      case GLX_CONTEXT_ES_PROFILE_BIT_EXT:
+         if (*major_ver >= 3)
+            *api = __DRI_API_GLES3;
+         else if (*major_ver == 2 && *minor_ver == 0)
+            *api = __DRI_API_GLES2;
+         else if (*major_ver == 1 && *minor_ver < 2)
+            *api = __DRI_API_GLES;
+         else {
+            *error = __DRI_CTX_ERROR_BAD_API;
+            return false;
+         }
+         break;
       default:
 	 *error = __DRI_CTX_ERROR_BAD_API;
 	 return false;
@@ -568,21 +583,8 @@ dri2_convert_glx_attribs(unsigned num_attribs, const uint32_t *attribs,
       return false;
    }
 
-   if (*major_ver >= 3 && render_type == GLX_COLOR_INDEX_TYPE) {
+   if (*major_ver >= 3 && *render_type == GLX_COLOR_INDEX_TYPE) {
       *error = __DRI_CTX_ERROR_BAD_FLAG;
-      return false;
-   }
-
-   /* The GLX_EXT_create_context_es2_profile spec says:
-    *
-    *     "... If the version requested is 2.0, and the
-    *     GLX_CONTEXT_ES2_PROFILE_BIT_EXT bit is set in the
-    *     GLX_CONTEXT_PROFILE_MASK_ARB attribute (see below), then the context
-    *     returned will implement OpenGL ES 2.0. This is the only way in which
-    *     an implementation may request an OpenGL ES 2.0 context."
-    */
-   if (*api == __DRI_API_GLES2 && (*major_ver != 2 || *minor_ver != 0)) {
-      *error = __DRI_CTX_ERROR_BAD_API;
       return false;
    }
 

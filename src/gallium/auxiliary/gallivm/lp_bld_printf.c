@@ -26,6 +26,7 @@
  **************************************************************************/
 
 #include <stdio.h>
+#include <inttypes.h>
 
 #include "util/u_debug.h"
 #include "util/u_memory.h"
@@ -106,11 +107,17 @@ lp_build_print_value(struct gallivm_state *gallivm,
       type_fmt[4] = 'g';
       type_fmt[5] = '\0';
    } else if (type_kind == LLVMIntegerTypeKind) {
-      if (LLVMGetIntTypeWidth(type_ref) == 8) {
+      if (LLVMGetIntTypeWidth(type_ref) == 64) {
+         unsigned flen = strlen(PRId64);
+         assert(flen <= 3);
+         strncpy(type_fmt + 2, PRId64, flen);
+      } else if (LLVMGetIntTypeWidth(type_ref) == 8) {
          type_fmt[2] = 'u';
       } else {
          type_fmt[2] = 'i';
       }
+   } else if (type_kind == LLVMPointerTypeKind) {
+      type_fmt[2] = 'p';
    } else {
       /* Unsupported type */
       assert(0);
@@ -125,8 +132,19 @@ lp_build_print_value(struct gallivm_state *gallivm,
       params[2] = value;
    } else {
       for (i = 0; i < length; ++i) {
+         LLVMValueRef param;
          util_strncat(format, type_fmt, sizeof(format) - strlen(format) - 1);
-         params[2 + i] = LLVMBuildExtractElement(builder, value, lp_build_const_int32(gallivm, i), "");
+         param = LLVMBuildExtractElement(builder, value, lp_build_const_int32(gallivm, i), "");
+         if (type_kind == LLVMIntegerTypeKind &&
+             LLVMGetIntTypeWidth(type_ref) < sizeof(int) * 8) {
+            LLVMTypeRef int_type = LLVMIntTypeInContext(gallivm->context, sizeof(int) * 8);
+            if (LLVMGetIntTypeWidth(type_ref) == 8) {
+               param = LLVMBuildZExt(builder, param, int_type, "");
+            } else {
+               param = LLVMBuildSExt(builder, param, int_type, "");
+            }
+         }
+         params[2 + i] = param;
       }
    }
 
@@ -137,10 +155,10 @@ lp_build_print_value(struct gallivm_state *gallivm,
 }
 
 
-static int
+static unsigned
 lp_get_printf_arg_count(const char *fmt)
 {
-   int count =0;
+   unsigned count = 0;
    const char *p = fmt;
    int c;
 
@@ -177,11 +195,10 @@ lp_build_printf(struct gallivm_state *gallivm,
 {
    LLVMValueRef params[50];
    va_list arglist;
-   int argcount;
-   int i;
+   unsigned argcount, i;
 
    argcount = lp_get_printf_arg_count(fmt);
-   assert(Elements(params) >= argcount + 1);
+   assert(ARRAY_SIZE(params) >= argcount + 1);
 
    va_start(arglist, fmt);
    for (i = 1; i <= argcount; i++) {

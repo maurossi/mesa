@@ -1,6 +1,5 @@
-/**************************************************************************
- *
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+/*
+ * Copyright 2003 VMware, Inc.
  * Copyright 2009, 2012 Intel Corporation.
  * All Rights Reserved.
  *
@@ -8,7 +7,7 @@
  * copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
  * without limitation the rights to use, copy, modify, merge, publish,
- * distribute, sub license, and/or sell copies of the Software, and to
+ * distribute, sublicense, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
  *
@@ -18,27 +17,26 @@
  *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- *
- **************************************************************************/
+ */
 
-#include "main/glheader.h"
 #include "main/mtypes.h"
 #include "main/condrender.h"
 #include "swrast/swrast.h"
 #include "drivers/common/meta.h"
 
 #include "intel_batchbuffer.h"
-#include "intel_context.h"
 #include "intel_blit.h"
-#include "intel_clear.h"
 #include "intel_fbo.h"
 #include "intel_mipmap_tree.h"
-#include "intel_regions.h"
+
+#include "brw_context.h"
+#include "brw_blorp.h"
+#include "brw_defines.h"
 
 #define FILE_DEBUG_FLAG DEBUG_BLIT
 
@@ -77,6 +75,18 @@ debug_mask(const char *name, GLbitfield mask)
 }
 
 /**
+ * Returns true if the scissor is a noop (cuts out nothing).
+ */
+static bool
+noop_scissor(struct gl_framebuffer *fb)
+{
+   return fb->_Xmin <= 0 &&
+          fb->_Ymin <= 0 &&
+          fb->_Xmax >= fb->Width &&
+          fb->_Ymax >= fb->Height;
+}
+
+/**
  * Implements fast depth clears on gen6+.
  *
  * Fast clears basically work by setting a flag in each of the subspans
@@ -91,45 +101,34 @@ debug_mask(const char *name, GLbitfield mask)
 static bool
 brw_fast_clear_depth(struct gl_context *ctx)
 {
-   struct intel_context *intel = intel_context(ctx);
+   struct brw_context *brw = brw_context(ctx);
    struct gl_framebuffer *fb = ctx->DrawBuffer;
    struct intel_renderbuffer *depth_irb =
       intel_get_renderbuffer(fb, BUFFER_DEPTH);
    struct intel_mipmap_tree *mt = depth_irb->mt;
+   struct gl_renderbuffer_attachment *depth_att = &fb->Attachment[BUFFER_DEPTH];
 
-   if (intel->gen < 6)
+   if (brw->gen < 6)
       return false;
 
-   if (!mt->hiz_mt)
+   if (!intel_renderbuffer_has_hiz(depth_irb))
       return false;
 
    /* We only handle full buffer clears -- otherwise you'd have to track whether
     * a previous clear had happened at a different clear value and resolve it
     * first.
     */
-   if (ctx->Scissor.Enabled) {
-      perf_debug("Failed to fast clear depth due to scissor being enabled.  "
-                 "Possible 5%% performance win if avoided.\n");
-      return false;
-   }
-
-   /* The rendered area has to be 8x4 samples, not resolved pixels, so we look
-    * at the miptree slice dimensions instead of renderbuffer size.
-    */
-   if (mt->level[depth_irb->mt_level].width % 8 != 0 ||
-       mt->level[depth_irb->mt_level].height % 4 != 0) {
-      perf_debug("Failed to fast clear depth due to width/height %d,%d not "
-                 "being aligned to 8,4.  Possible 5%% performance win if "
-                 "avoided\n",
-                 mt->level[depth_irb->mt_level].width,
-                 mt->level[depth_irb->mt_level].height);
+   if ((ctx->Scissor.EnableFlags & 1) && !noop_scissor(fb)) {
+      perf_debug("Failed to fast clear %dx%d depth because of scissors.  "
+                 "Possible 5%% performance win if avoided.\n",
+                 mt->logical_width0, mt->logical_height0);
       return false;
    }
 
    uint32_t depth_clear_value;
    switch (mt->format) {
-   case MESA_FORMAT_Z32_FLOAT_X24S8:
-   case MESA_FORMAT_S8_Z24:
+   case MESA_FORMAT_Z32_FLOAT_S8X24_UINT:
+   case MESA_FORMAT_Z24_UNORM_S8_UINT:
       /* From the Sandy Bridge PRM, volume 2 part 1, page 314:
        *
        *     "[DevSNB+]: Several cases exist where Depth Buffer Clear cannot be
@@ -140,11 +139,11 @@ brw_fast_clear_depth(struct gl_context *ctx)
        */
       return false;
 
-   case MESA_FORMAT_Z32_FLOAT:
+   case MESA_FORMAT_Z_FLOAT32:
       depth_clear_value = float_as_int(ctx->Depth.Clear);
       break;
 
-   case MESA_FORMAT_Z16:
+   case MESA_FORMAT_Z_UNORM16:
       /* From the Sandy Bridge PRM, volume 2 part 1, page 314:
        *
        *     "[DevSNB+]: Several cases exist where Depth Buffer Clear cannot be
@@ -154,12 +153,17 @@ brw_fast_clear_depth(struct gl_context *ctx)
        *        width of the map (LOD0) is not multiple of 16, fast clear
        *        optimization must be disabled.
        */
-      if (intel->gen == 6 && (mt->level[depth_irb->mt_level].width % 16) != 0)
+      if (brw->gen == 6 &&
+          (minify(mt->physical_width0,
+                  depth_irb->mt_level - mt->first_level) % 16) != 0)
 	 return false;
       /* FALLTHROUGH */
 
    default:
-      depth_clear_value = fb->_DepthMax * ctx->Depth.Clear;
+      if (brw->gen >= 8)
+         depth_clear_value = float_as_int(ctx->Depth.Clear);
+      else
+         depth_clear_value = fb->_DepthMax * ctx->Depth.Clear;
       break;
    }
 
@@ -167,36 +171,81 @@ brw_fast_clear_depth(struct gl_context *ctx)
     * flags out of the HiZ buffer into the real depth buffer.
     */
    if (mt->depth_clear_value != depth_clear_value) {
-      intel_miptree_all_slices_resolve_depth(intel, mt);
+      intel_miptree_all_slices_resolve_depth(brw, mt);
       mt->depth_clear_value = depth_clear_value;
    }
 
-   /* From the Sandy Bridge PRM, volume 2 part 1, page 313:
-    *
-    *     "If other rendering operations have preceded this clear, a
-    *      PIPE_CONTROL with write cache flush enabled and Z-inhibit disabled
-    *      must be issued before the rectangle primitive used for the depth
-    *      buffer clear operation.
-    */
-   intel_batchbuffer_emit_mi_flush(intel);
+   if (brw->gen == 6) {
+      /* From the Sandy Bridge PRM, volume 2 part 1, page 313:
+       *
+       *   "If other rendering operations have preceded this clear, a
+       *    PIPE_CONTROL with write cache flush enabled and Z-inhibit disabled
+       *    must be issued before the rectangle primitive used for the depth
+       *    buffer clear operation.
+       */
+       brw_emit_pipe_control_flush(brw,
+                                   PIPE_CONTROL_RENDER_TARGET_FLUSH |
+                                   PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+                                   PIPE_CONTROL_CS_STALL);
+   } else if (brw->gen >= 7) {
+      /*
+       * From the Ivybridge PRM, volume 2, "Depth Buffer Clear":
+       *
+       *   If other rendering operations have preceded this clear, a
+       *   PIPE_CONTROL with depth cache flush enabled, Depth Stall bit
+       *   enabled must be issued before the rectangle primitive used for the
+       *   depth buffer clear operation.
+       *
+       * Same applies for Gen8 and Gen9.
+       *
+       * In addition, from the Ivybridge PRM, volume 2, 1.10.4.1 PIPE_CONTROL,
+       * Depth Cache Flush Enable:
+       *
+       *   This bit must not be set when Depth Stall Enable bit is set in
+       *   this packet.
+       *
+       * This is confirmed to hold for real, HSW gets immediate gpu hangs.
+       *
+       * Therefore issue two pipe control flushes, one for cache flush and
+       * another for depth stall.
+       */
+       brw_emit_pipe_control_flush(brw,
+                                   PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+                                   PIPE_CONTROL_CS_STALL);
 
-   intel_hiz_exec(intel, mt, depth_irb->mt_level, depth_irb->mt_layer,
-		  GEN6_HIZ_OP_DEPTH_CLEAR);
+       brw_emit_pipe_control_flush(brw, PIPE_CONTROL_DEPTH_STALL);
+   }
 
-   if (intel->gen == 6) {
+   if (fb->MaxNumLayers > 0) {
+      for (unsigned layer = 0; layer < depth_irb->layer_count; layer++) {
+         intel_hiz_exec(brw, mt, depth_irb->mt_level,
+                        depth_irb->mt_layer + layer,
+                        BLORP_HIZ_OP_DEPTH_CLEAR);
+      }
+   } else {
+      intel_hiz_exec(brw, mt, depth_irb->mt_level, depth_irb->mt_layer,
+                     BLORP_HIZ_OP_DEPTH_CLEAR);
+   }
+
+   if (brw->gen == 6) {
       /* From the Sandy Bridge PRM, volume 2 part 1, page 314:
        *
        *     "DevSNB, DevSNB-B{W/A}]: Depth buffer clear pass must be followed
        *      by a PIPE_CONTROL command with DEPTH_STALL bit set and Then
        *      followed by Depth FLUSH'
       */
-      intel_batchbuffer_emit_mi_flush(intel);
+      brw_emit_pipe_control_flush(brw,
+                                  PIPE_CONTROL_DEPTH_STALL);
+
+      brw_emit_pipe_control_flush(brw,
+                                  PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+                                  PIPE_CONTROL_CS_STALL);
    }
 
    /* Now, the HiZ buffer contains data that needs to be resolved to the depth
     * buffer.
     */
-   intel_renderbuffer_set_needs_depth_resolve(depth_irb);
+   intel_renderbuffer_att_set_needs_depth_resolve(depth_att);
 
    return true;
 }
@@ -207,21 +256,41 @@ brw_fast_clear_depth(struct gl_context *ctx)
 static void
 brw_clear(struct gl_context *ctx, GLbitfield mask)
 {
-   struct intel_context *intel = intel_context(ctx);
+   struct brw_context *brw = brw_context(ctx);
+   struct gl_framebuffer *fb = ctx->DrawBuffer;
+   bool partial_clear = ctx->Scissor.EnableFlags && !noop_scissor(fb);
 
    if (!_mesa_check_conditional_render(ctx))
       return;
 
    if (mask & (BUFFER_BIT_FRONT_LEFT | BUFFER_BIT_FRONT_RIGHT)) {
-      intel->front_buffer_dirty = true;
+      brw->front_buffer_dirty = true;
    }
 
-   intel_prepare_render(intel);
+   intel_prepare_render(brw);
+   brw_workaround_depthstencil_alignment(brw, partial_clear ? 0 : mask);
 
    if (mask & BUFFER_BIT_DEPTH) {
       if (brw_fast_clear_depth(ctx)) {
 	 DBG("fast clear: depth\n");
 	 mask &= ~BUFFER_BIT_DEPTH;
+      }
+   }
+
+   if (mask & BUFFER_BIT_STENCIL) {
+      struct intel_renderbuffer *stencil_irb =
+         intel_get_renderbuffer(fb, BUFFER_STENCIL);
+      struct intel_mipmap_tree *mt = stencil_irb->mt;
+      if (mt && mt->stencil_mt)
+         mt->stencil_mt->r8stencil_needs_update = true;
+   }
+
+   /* BLORP is currently only supported on Gen6+. */
+   if (brw->gen >= 6 && (mask & BUFFER_BITS_COLOR)) {
+      const bool encode_srgb = ctx->Color.sRGBEnabled;
+      if (brw_blorp_clear_color(brw, fb, mask, partial_clear, encode_srgb)) {
+         debug_mask("blorp color", mask & BUFFER_BITS_COLOR);
+         mask &= ~BUFFER_BITS_COLOR;
       }
    }
 
@@ -234,9 +303,9 @@ brw_clear(struct gl_context *ctx, GLbitfield mask)
       mask &= ~tri_mask;
 
       if (ctx->API == API_OPENGLES) {
-         _mesa_meta_Clear(&intel->ctx, tri_mask);
+         _mesa_meta_Clear(&brw->ctx, tri_mask);
       } else {
-         _mesa_meta_glsl_Clear(&intel->ctx, tri_mask);
+         _mesa_meta_glsl_Clear(&brw->ctx, tri_mask);
       }
    }
 

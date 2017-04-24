@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -63,11 +63,19 @@ extern "C" {
 #define align_malloc(_size, _alignment) os_malloc_aligned(_size, _alignment)
 #define align_free(_ptr) os_free_aligned(_ptr)
 
+static inline void *
+align_calloc(size_t size, unsigned long alignment)
+{
+   void *ptr = align_malloc(size, alignment);
+   if (ptr)
+      memset(ptr, 0, size);
+   return ptr;
+}
 
 /**
  * Duplicate a block of memory.
  */
-static INLINE void *
+static inline void *
 mem_dup(const void *src, uint size)
 {
    void *dup = MALLOC(size);
@@ -75,14 +83,6 @@ mem_dup(const void *src, uint size)
       memcpy(dup, src, size);
    return dup;
 }
-
-
-/**
- * Number of elements in an array.
- */
-#ifndef Elements
-#define Elements(x) (sizeof(x)/sizeof((x)[0]))
-#endif
 
 
 /**

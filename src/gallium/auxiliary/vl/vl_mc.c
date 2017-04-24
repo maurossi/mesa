@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -79,14 +79,18 @@ calc_position(struct vl_mc *r, struct ureg_program *shader, struct ureg_src bloc
 }
 
 static struct ureg_dst
-calc_line(struct ureg_program *shader)
+calc_line(struct pipe_screen *screen, struct ureg_program *shader)
 {
    struct ureg_dst tmp;
    struct ureg_src pos;
 
    tmp = ureg_DECL_temporary(shader);
 
-   pos = ureg_DECL_fs_input(shader, TGSI_SEMANTIC_POSITION, VS_O_VPOS, TGSI_INTERPOLATE_LINEAR);
+   if (screen->get_param(screen, PIPE_CAP_TGSI_FS_POSITION_IS_SYSVAL))
+      pos = ureg_DECL_system_value(shader, TGSI_SEMANTIC_POSITION, 0);
+   else
+      pos = ureg_DECL_fs_input(shader, TGSI_SEMANTIC_POSITION, VS_O_VPOS,
+                               TGSI_INTERPOLATE_LINEAR);
 
    /*
     * tmp.y = fraction(pos.y / 2) >= 0.5 ? 1 : 0
@@ -108,7 +112,7 @@ create_ref_vert_shader(struct vl_mc *r)
    struct ureg_dst o_vmv[2];
    unsigned i;
 
-   shader = ureg_create(TGSI_PROCESSOR_VERTEX);
+   shader = ureg_create(PIPE_SHADER_VERTEX);
    if (!shader)
       return NULL;
 
@@ -165,7 +169,7 @@ create_ref_frag_shader(struct vl_mc *r)
    struct ureg_dst fragment;
    unsigned label;
 
-   shader = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   shader = ureg_create(PIPE_SHADER_FRAGMENT);
    if (!shader)
       return NULL;
 
@@ -177,7 +181,7 @@ create_ref_frag_shader(struct vl_mc *r)
 
    fragment = ureg_DECL_output(shader, TGSI_SEMANTIC_COLOR, 0);
 
-   field = calc_line(shader);
+   field = calc_line(r->pipe->screen, shader);
 
    /*
     * ref = field.z ? tc[1] : tc[0]
@@ -237,7 +241,7 @@ create_ycbcr_vert_shader(struct vl_mc *r, vl_mc_ycbcr_vert_shader vs_callback, v
 
    unsigned label;
 
-   shader = ureg_create(TGSI_PROCESSOR_VERTEX);
+   shader = ureg_create(PIPE_SHADER_VERTEX);
    if (!shader)
       return NULL;
 
@@ -316,7 +320,7 @@ create_ycbcr_frag_shader(struct vl_mc *r, float scale, bool invert,
    struct ureg_dst fragment;
    unsigned label;
 
-   shader = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   shader = ureg_create(PIPE_SHADER_FRAGMENT);
    if (!shader)
       return NULL;
 
@@ -324,7 +328,7 @@ create_ycbcr_frag_shader(struct vl_mc *r, float scale, bool invert,
 
    fragment = ureg_DECL_output(shader, TGSI_SEMANTIC_COLOR, 0);
 
-   tmp = calc_line(shader);
+   tmp = calc_line(r->pipe->screen, shader);
 
    /*
     * if (field == tc.w)
@@ -340,7 +344,7 @@ create_ycbcr_frag_shader(struct vl_mc *r, float scale, bool invert,
 
    ureg_IF(shader, ureg_scalar(ureg_src(tmp), TGSI_SWIZZLE_Y), &label);
 
-      ureg_KILP(shader);
+      ureg_KILL(shader);
 
    ureg_fixup_label(shader, label, ureg_get_instruction_number(shader));
    ureg_ELSE(shader, &label);
@@ -428,7 +432,8 @@ init_pipe_state(struct vl_mc *r)
    rs_state.sprite_coord_mode = PIPE_SPRITE_COORD_UPPER_LEFT;
    rs_state.point_quad_rasterization = true;
    rs_state.point_size = VL_BLOCK_WIDTH;
-   rs_state.gl_rasterization_rules = true;
+   rs_state.half_pixel_center = true;
+   rs_state.bottom_edge_rule = true;
    rs_state.depth_clip = 1;
    r->rs_state = r->pipe->create_rasterizer_state(r->pipe, &rs_state);
    if (!r->rs_state)
@@ -553,11 +558,9 @@ vl_mc_init_buffer(struct vl_mc *renderer, struct vl_mc_buffer *buffer)
    assert(renderer && buffer);
 
    buffer->viewport.scale[2] = 1;
-   buffer->viewport.scale[3] = 1;
    buffer->viewport.translate[0] = 0;
    buffer->viewport.translate[1] = 0;
    buffer->viewport.translate[2] = 0;
-   buffer->viewport.translate[3] = 0;
 
    buffer->fb_state.nr_cbufs = 1;
    buffer->fb_state.zsbuf = NULL;
@@ -599,7 +602,7 @@ prepare_pipe_4_rendering(struct vl_mc *renderer, struct vl_mc_buffer *buffer, un
       renderer->pipe->bind_blend_state(renderer->pipe, renderer->blend_clear[mask]);
 
    renderer->pipe->set_framebuffer_state(renderer->pipe, &buffer->fb_state);
-   renderer->pipe->set_viewport_state(renderer->pipe, &buffer->viewport);
+   renderer->pipe->set_viewport_states(renderer->pipe, 0, 1, &buffer->viewport);
 }
 
 void
@@ -612,8 +615,10 @@ vl_mc_render_ref(struct vl_mc *renderer, struct vl_mc_buffer *buffer, struct pip
    renderer->pipe->bind_vs_state(renderer->pipe, renderer->vs_ref);
    renderer->pipe->bind_fs_state(renderer->pipe, renderer->fs_ref);
 
-   renderer->pipe->set_fragment_sampler_views(renderer->pipe, 1, &ref);
-   renderer->pipe->bind_fragment_sampler_states(renderer->pipe, 1, &renderer->sampler_ref);
+   renderer->pipe->set_sampler_views(renderer->pipe, PIPE_SHADER_FRAGMENT,
+                                     0, 1, &ref);
+   renderer->pipe->bind_sampler_states(renderer->pipe, PIPE_SHADER_FRAGMENT,
+                                       0, 1, &renderer->sampler_ref);
 
    util_draw_arrays_instanced(renderer->pipe, PIPE_PRIM_QUADS, 0, 4, 0,
                               renderer->buffer_width / VL_MACROBLOCK_WIDTH *

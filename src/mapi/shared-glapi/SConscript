@@ -26,10 +26,11 @@ def mapi_objects(env, printer, mode):
     header_name = '%s-tmp.h' % (printer)
 
     # generate ABI header
+    GLAPI = '../glapi/'
     header = env.CodeGenerate(
         target = header_name,
-        script = '../mapi/mapi_abi.py',
-        source = '../glapi/gen/gl_and_es_API.xml',
+        script = '../mapi_abi.py',
+        source = [GLAPI + 'gen/gl_and_es_API.xml'] + env.Glob(GLAPI + 'gen/*.xml'),
         command = python_cmd + ' $SCRIPT ' + \
                 '--printer %s --mode lib $SOURCE > $TARGET' % (printer),
     )
@@ -37,9 +38,10 @@ def mapi_objects(env, printer, mode):
     cpppath = [
         header[0].dir,
         '#/include',
+        '#/src',
         '#/src/mapi',
     ]
-    
+
     cppdefines = mapi_defines[mode] + [
         'MAPI_ABI_HEADER=\\"%s\\"' % (header_name),
     ]
@@ -59,7 +61,7 @@ def mapi_objects(env, printer, mode):
     for s in mapi_sources[mode]:
         o = env.SharedObject(
             target = '%s-%s' % (printer, s[:-2]),
-            source = '../mapi/' + s,
+            source = '../' + s,
             CPPPATH = cpppath,
             CPPDEFINES = cppdefines,
         )

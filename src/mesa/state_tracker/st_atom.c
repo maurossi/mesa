@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -26,54 +26,29 @@
  **************************************************************************/
 
 
+#include <stdio.h>
 #include "main/glheader.h"
 #include "main/context.h"
 
 #include "pipe/p_defines.h"
 #include "st_context.h"
 #include "st_atom.h"
-#include "st_cb_bitmap.h"
 #include "st_program.h"
 #include "st_manager.h"
 
 
-/**
- * This is used to initialize st->atoms[].
- */
+/* The list state update functions. */
 static const struct st_tracked_state *atoms[] =
 {
-   &st_update_depth_stencil_alpha,
-   &st_update_clip,
-
-   &st_finalize_textures,
-   &st_update_fp,
-   &st_update_gp,
-   &st_update_vp,
-
-   &st_update_rasterizer,
-   &st_update_polygon_stipple,
-   &st_update_viewport,
-   &st_update_scissor,
-   &st_update_blend,
-   &st_update_sampler,
-   &st_update_vertex_texture,
-   &st_update_fragment_texture,
-   &st_update_geometry_texture,
-   &st_update_framebuffer,
-   &st_update_msaa,
-   &st_update_vs_constants,
-   &st_update_gs_constants,
-   &st_update_fs_constants,
-   &st_update_pixel_transfer,
-
-   /* this must be done after the vertex program update */
-   &st_update_array
+#define ST_STATE(FLAG, st_update) &st_update,
+#include "st_atom_list.h"
+#undef ST_STATE
 };
 
 
 void st_init_atoms( struct st_context *st )
 {
-   /* no-op */
+   STATIC_ASSERT(ARRAY_SIZE(atoms) <= 64);
 }
 
 
@@ -83,62 +58,91 @@ void st_destroy_atoms( struct st_context *st )
 }
 
 
-/***********************************************************************
- */
-
-static GLboolean check_state( const struct st_state_flags *a,
-			      const struct st_state_flags *b )
-{
-   return ((a->mesa & b->mesa) ||
-	   (a->st & b->st));
-}
-
-static void accumulate_state( struct st_state_flags *a,
-			      const struct st_state_flags *b )
-{
-   a->mesa |= b->mesa;
-   a->st |= b->st;
-}
-
-
-static void xor_states( struct st_state_flags *result,
-			     const struct st_state_flags *a,
-			      const struct st_state_flags *b )
-{
-   result->mesa = a->mesa ^ b->mesa;
-   result->st = a->st ^ b->st;
-}
-
-
 /* Too complex to figure out, just check every time:
  */
 static void check_program_state( struct st_context *st )
 {
    struct gl_context *ctx = st->ctx;
+   struct st_vertex_program *old_vp = st->vp;
+   struct st_tessctrl_program *old_tcp = st->tcp;
+   struct st_tesseval_program *old_tep = st->tep;
+   struct st_geometry_program *old_gp = st->gp;
+   struct st_fragment_program *old_fp = st->fp;
 
-   if (ctx->VertexProgram._Current != &st->vp->Base)
-      st->dirty.st |= ST_NEW_VERTEX_PROGRAM;
+   struct gl_program *new_vp = ctx->VertexProgram._Current;
+   struct gl_program *new_tcp = ctx->TessCtrlProgram._Current;
+   struct gl_program *new_tep = ctx->TessEvalProgram._Current;
+   struct gl_program *new_gp = ctx->GeometryProgram._Current;
+   struct gl_program *new_fp = ctx->FragmentProgram._Current;
+   uint64_t dirty = 0;
 
-   if (ctx->FragmentProgram._Current != &st->fp->Base)
-      st->dirty.st |= ST_NEW_FRAGMENT_PROGRAM;
+   /* Flag states used by both new and old shaders to unbind shader resources
+    * properly when transitioning to shaders that don't use them.
+    */
+   if (unlikely(new_vp != &old_vp->Base)) {
+      if (old_vp)
+         dirty |= old_vp->affected_states;
+      if (new_vp)
+         dirty |= ST_NEW_VERTEX_PROGRAM(st, st_vertex_program(new_vp));
+   }
 
-   if (ctx->GeometryProgram._Current != &st->gp->Base)
-      st->dirty.st |= ST_NEW_GEOMETRY_PROGRAM;
+   if (unlikely(new_tcp != &old_tcp->Base)) {
+      if (old_tcp)
+         dirty |= old_tcp->affected_states;
+      if (new_tcp)
+         dirty |= st_tessctrl_program(new_tcp)->affected_states;
+   }
+
+   if (unlikely(new_tep != &old_tep->Base)) {
+      if (old_tep)
+         dirty |= old_tep->affected_states;
+      if (new_tep)
+         dirty |= st_tesseval_program(new_tep)->affected_states;
+   }
+
+   if (unlikely(new_gp != &old_gp->Base)) {
+      if (old_gp)
+         dirty |= old_gp->affected_states;
+      if (new_gp)
+         dirty |= st_geometry_program(new_gp)->affected_states;
+   }
+
+   if (unlikely(new_fp != &old_fp->Base)) {
+      if (old_fp)
+         dirty |= old_fp->affected_states;
+      if (new_fp)
+         dirty |= st_fragment_program(new_fp)->affected_states;
+   }
+
+   st->dirty |= dirty;
+   st->gfx_shaders_may_be_dirty = false;
 }
 
 static void check_attrib_edgeflag(struct st_context *st)
 {
-   const struct gl_client_array **arrays = st->ctx->Array._DrawArrays;
-   GLboolean vertDataEdgeFlags;
+   const struct gl_vertex_array **arrays = st->ctx->Array._DrawArrays;
+   GLboolean vertdata_edgeflags, edgeflag_culls_prims, edgeflags_enabled;
+   struct gl_program *vp = st->ctx->VertexProgram._Current;
 
    if (!arrays)
       return;
 
-   vertDataEdgeFlags = arrays[VERT_ATTRIB_EDGEFLAG]->BufferObj &&
-                       arrays[VERT_ATTRIB_EDGEFLAG]->BufferObj->Name;
-   if (vertDataEdgeFlags != st->vertdata_edgeflags) {
-      st->vertdata_edgeflags = vertDataEdgeFlags;
-      st->dirty.st |= ST_NEW_EDGEFLAGS_DATA;
+   edgeflags_enabled = st->ctx->Polygon.FrontMode != GL_FILL ||
+                       st->ctx->Polygon.BackMode != GL_FILL;
+
+   vertdata_edgeflags = edgeflags_enabled &&
+                        arrays[VERT_ATTRIB_EDGEFLAG]->StrideB != 0;
+   if (vertdata_edgeflags != st->vertdata_edgeflags) {
+      st->vertdata_edgeflags = vertdata_edgeflags;
+      if (vp)
+         st->dirty |= ST_NEW_VERTEX_PROGRAM(st, st_vertex_program(vp));
+   }
+
+   edgeflag_culls_prims = edgeflags_enabled && !vertdata_edgeflags &&
+                          !st->ctx->Current.Attrib[VERT_ATTRIB_EDGEFLAG][0];
+   if (edgeflag_culls_prims != st->edgeflag_culls_prims) {
+      st->edgeflag_culls_prims = edgeflag_culls_prims;
+      st->dirty |= ST_NEW_RASTERIZER;
    }
 }
 
@@ -147,85 +151,75 @@ static void check_attrib_edgeflag(struct st_context *st)
  * Update all derived state:
  */
 
-void st_validate_state( struct st_context *st )
+void st_validate_state( struct st_context *st, enum st_pipeline pipeline )
 {
-   struct st_state_flags *state = &st->dirty;
-   GLuint i;
+   struct gl_context *ctx = st->ctx;
+   uint64_t dirty, pipeline_mask;
+   uint32_t dirty_lo, dirty_hi;
 
-   /* Get Mesa driver state. */
-   st->dirty.st |= st->ctx->NewDriverState;
-   st->ctx->NewDriverState = 0;
-
-   check_attrib_edgeflag(st);
-
-   /* The bitmap cache is immune to pixel unpack changes.
-    * Note that GLUT makes several calls to glPixelStore for each
-    * bitmap char it draws so this is an important check.
+   /* Get Mesa driver state.
+    *
+    * Inactive states are shader states not used by shaders at the moment.
     */
-   if (state->mesa & ~_NEW_PACKUNPACK)
-      st_flush_bitmap_cache(st);
+   st->dirty |= ctx->NewDriverState & st->active_states & ST_ALL_STATES_MASK;
+   ctx->NewDriverState = 0;
 
-   check_program_state( st );
+   /* Get pipeline state. */
+   switch (pipeline) {
+   case ST_PIPELINE_RENDER:
+      if (st->ctx->API == API_OPENGL_COMPAT)
+         check_attrib_edgeflag(st);
 
-   st_manager_validate_framebuffers(st);
+      check_program_state(st);
+      st_manager_validate_framebuffers(st);
 
-   if (state->st == 0)
+      pipeline_mask = ST_PIPELINE_RENDER_STATE_MASK;
+      break;
+
+   case ST_PIPELINE_COMPUTE: {
+      struct st_compute_program *old_cp = st->cp;
+      struct gl_program *new_cp = ctx->ComputeProgram._Current;
+
+      if (new_cp != &old_cp->Base) {
+         if (old_cp)
+            st->dirty |= old_cp->affected_states;
+         assert(new_cp);
+         st->dirty |= st_compute_program(new_cp)->affected_states;
+      }
+
+      st->compute_shader_may_be_dirty = false;
+
+      /*
+       * We add the ST_NEW_FB_STATE bit here as well, because glBindFramebuffer
+       * acts as a barrier that breaks feedback loops between the framebuffer
+       * and textures bound to the framebuffer, even when those textures are
+       * accessed by compute shaders; so we must inform the driver of new
+       * framebuffer state.
+       */
+      pipeline_mask = ST_PIPELINE_COMPUTE_STATE_MASK | ST_NEW_FB_STATE;
+      break;
+   }
+
+   default:
+      unreachable("Invalid pipeline specified");
+   }
+
+   dirty = st->dirty & pipeline_mask;
+   if (!dirty)
       return;
 
-   /*printf("%s %x/%x\n", __FUNCTION__, state->mesa, state->st);*/
+   dirty_lo = dirty;
+   dirty_hi = dirty >> 32;
 
-#ifdef DEBUG
-   if (1) {
-#else
-   if (0) {
-#endif
-      /* Debug version which enforces various sanity checks on the
-       * state flags which are generated and checked to help ensure
-       * state atoms are ordered correctly in the list.
-       */
-      struct st_state_flags examined, prev;      
-      memset(&examined, 0, sizeof(examined));
-      prev = *state;
+   /* Update states.
+    *
+    * Don't use u_bit_scan64, it may be slower on 32-bit.
+    */
+   while (dirty_lo)
+      atoms[u_bit_scan(&dirty_lo)]->update(st);
+   while (dirty_hi)
+      atoms[32 + u_bit_scan(&dirty_hi)]->update(st);
 
-      for (i = 0; i < Elements(atoms); i++) {	 
-	 const struct st_tracked_state *atom = atoms[i];
-	 struct st_state_flags generated;
-	 
-	 /*printf("atom %s %x/%x\n", atom->name, atom->dirty.mesa, atom->dirty.st);*/
-
-	 if (!(atom->dirty.mesa || atom->dirty.st) ||
-	     !atom->update) {
-	    printf("malformed atom %s\n", atom->name);
-	    assert(0);
-	 }
-
-	 if (check_state(state, &atom->dirty)) {
-	    atoms[i]->update( st );
-	    /*printf("after: %x\n", atom->dirty.mesa);*/
-	 }
-
-	 accumulate_state(&examined, &atom->dirty);
-
-	 /* generated = (prev ^ state)
-	  * if (examined & generated)
-	  *     fail;
-	  */
-	 xor_states(&generated, &prev, state);
-	 assert(!check_state(&examined, &generated));
-	 prev = *state;
-      }
-      /*printf("\n");*/
-
-   }
-   else {
-      for (i = 0; i < Elements(atoms); i++) {	 
-	 if (check_state(state, &atoms[i]->dirty))
-	    atoms[i]->update( st );
-      }
-   }
-
-   memset(state, 0, sizeof(*state));
+   /* Clear the render or compute state bits. */
+   st->dirty &= ~pipeline_mask;
 }
-
-
-

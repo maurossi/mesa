@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -26,9 +26,7 @@
  **************************************************************************/
 
 /*
- * vl targets use either a dri or sw based winsys backend, so their
- * Makefiles directly refer to either vl_winsys_dri.c or vl_winsys_xsp.c.
- * Both files implement the interface described in this header.
+ * Target makefiles directly refer to vl_winsys_dri.c to avoid DRI dependency
  */
 
 #ifndef vl_winsys_h
@@ -40,30 +38,45 @@
 
 struct pipe_screen;
 struct pipe_surface;
+struct pipe_loader_device;
 
 struct vl_screen
 {
+   void (*destroy)(struct vl_screen *vscreen);
+
+   struct pipe_resource *
+   (*texture_from_drawable)(struct vl_screen *vscreen, void *drawable);
+
+   struct u_rect *
+   (*get_dirty_area)(struct vl_screen *vscreen);
+
+   uint64_t
+   (*get_timestamp)(struct vl_screen *vscreen, void *drawable);
+
+   void
+   (*set_next_timestamp)(struct vl_screen *vscreen, uint64_t stamp);
+
+   void *
+   (*get_private)(struct vl_screen *vscreen);
+
+   void
+   (*set_back_texture_from_output)(struct vl_screen *vscreen,
+                                   struct pipe_resource *buffer,
+                                   uint32_t width, uint32_t height);
+
    struct pipe_screen *pscreen;
+   struct pipe_loader_device *dev;
 };
 
-struct vl_screen*
-vl_screen_create(Display *display, int screen);
+struct vl_screen *
+vl_dri2_screen_create(Display *display, int screen);
 
-void vl_screen_destroy(struct vl_screen *vscreen);
+struct vl_screen *
+vl_drm_screen_create(int fd);
 
-struct pipe_resource*
-vl_screen_texture_from_drawable(struct vl_screen *vscreen, Drawable drawable);
-
-struct u_rect *
-vl_screen_get_dirty_area(struct vl_screen *vscreen);
-
-uint64_t
-vl_screen_get_timestamp(struct vl_screen *vscreen, Drawable drawable);
-
-void
-vl_screen_set_next_timestamp(struct vl_screen *vscreen, uint64_t stamp);
-
-void*
-vl_screen_get_private(struct vl_screen *vscreen);
+#if defined(HAVE_DRI3)
+struct vl_screen *
+vl_dri3_screen_create(Display *display, int screen);
+#endif
 
 #endif

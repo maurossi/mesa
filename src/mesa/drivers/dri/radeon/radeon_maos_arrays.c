@@ -1,7 +1,7 @@
 /**************************************************************************
 
 Copyright 2000, 2001 ATI Technologies Inc., Ontario, Canada, and
-                     Tungsten Graphics Inc., Cedar Park, Texas.
+                     VMware, Inc.
 
 All Rights Reserved.
 
@@ -29,7 +29,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #include "main/glheader.h"
@@ -53,7 +53,7 @@ static void emit_s0_vec(uint32_t *out, GLvoid *data, int stride, int count)
    int i;
    if (RADEON_DEBUG & RADEON_VERTS)
       fprintf(stderr, "%s count %d stride %d\n",
-	      __FUNCTION__, count, stride);
+	      __func__, count, stride);
 
    for (i = 0; i < count; i++) {
       out[0] = *(int *)data;
@@ -69,7 +69,7 @@ static void emit_stq_vec(uint32_t *out, GLvoid *data, int stride, int count)
 
    if (RADEON_DEBUG & RADEON_VERTS)
       fprintf(stderr, "%s count %d stride %d\n",
-	      __FUNCTION__, count, stride);
+	      __func__, count, stride);
 
    for (i = 0; i < count; i++) {
       out[0] = *(int *)data;
@@ -88,7 +88,7 @@ static void emit_tex_vector(struct gl_context *ctx, struct radeon_aos *aos,
    uint32_t *out;
 
    if (RADEON_DEBUG & RADEON_VERTS)
-      fprintf(stderr, "%s %d/%d\n", __FUNCTION__, count, size);
+      fprintf(stderr, "%s %d/%d\n", __func__, count, size);
 
    switch (size) {
    case 4: emitsize = 3; break;
@@ -152,7 +152,7 @@ void radeonEmitArrays( struct gl_context *ctx, GLuint inputs )
    
 #if 0
    if (RADEON_DEBUG & RADEON_VERTS)
-      _tnl_print_vert_flags( __FUNCTION__, inputs );
+      _tnl_print_vert_flags( __func__, inputs );
 #endif
 
    if (1) {
@@ -269,7 +269,8 @@ void radeonEmitArrays( struct gl_context *ctx, GLuint inputs )
 	 if ( (ctx->Texture.Unit[unit].TexGenEnabled & (R_BIT | Q_BIT)) )
 	    vtx |= RADEON_Q_BIT(unit);
 	 else if ((VB->AttribPtr[_TNL_ATTRIB_TEX0 + unit]->size >= 3) &&
-	          ((ctx->Texture.Unit[unit]._ReallyEnabled & (TEXTURE_CUBE_BIT)) == 0)) {
+	          (!ctx->Texture.Unit[unit]._Current ||
+                   ctx->Texture.Unit[unit]._Current->Target != GL_TEXTURE_CUBE_MAP)) {
 	    GLuint swaptexmatcol = (VB->AttribPtr[_TNL_ATTRIB_TEX0 + unit]->size - 3);
 	    if (((rmesa->NeedTexMatrix >> unit) & 1) &&
 		 (swaptexmatcol != ((rmesa->TexMatColSwap >> unit) & 1)))

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,18 +16,16 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef _GLAPI_PRIV_H
 #define _GLAPI_PRIV_H
 
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
 
 #ifdef HAVE_DIX_CONFIG_H
 #include <dix-config.h>
@@ -40,8 +37,8 @@
 
 #ifndef GL_OES_fixed_point
 typedef int GLfixed;
-typedef int GLclampx;
 #endif
+typedef int GLclampx;
 
 #ifndef GL_OES_EGL_image
 typedef void *GLeglImageOES;
@@ -52,15 +49,9 @@ typedef void *GLeglImageOES;
 #include "glapi/glapi.h"
 
 
-/* getproc */
-
-extern void
-_glapi_check_table_not_null(const struct _glapi_table *table);
-
-
-extern void
-_glapi_check_table(const struct _glapi_table *table);
-
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /* entrypoint */
 
@@ -86,10 +77,8 @@ get_entrypoint_address(unsigned int functionOffset);
 #if defined(USE_X86_ASM)
 # if defined(GLX_USE_TLS)
 #  define DISPATCH_FUNCTION_SIZE  16
-# elif defined(THREADS)
-#  define DISPATCH_FUNCTION_SIZE  32
 # else
-#  define DISPATCH_FUNCTION_SIZE  16
+#  define DISPATCH_FUNCTION_SIZE  32
 # endif
 #endif
 
@@ -110,5 +99,9 @@ get_entrypoint_address(unsigned int functionOffset);
  */
 #define MAX_EXTENSION_FUNCS 256
 
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

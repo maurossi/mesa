@@ -1,7 +1,7 @@
 /**************************************************************************
 
 Copyright 2000, 2001 ATI Technologies Inc., Ontario, Canada, and
-                     Tungsten Graphics Inc., Austin, Texas.
+                     VMware, Inc.
 
 All Rights Reserved.
 
@@ -29,9 +29,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
+#include "c99_math.h"
 #include "main/glheader.h"
 #include "main/imports.h"
 #include "main/context.h"
@@ -39,6 +40,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "main/enums.h"
 #include "main/macros.h"
 
+#include "radeon_screen.h"
 #include "radeon_fog.h"
 
 /**********************************************************************/
@@ -96,7 +98,7 @@ radeonComputeFogBlendFactor( struct gl_context *ctx, GLfloat fogcoord )
 {
 	GLfloat end  = ctx->Fog.End;
 	GLfloat d, temp;
-	const GLfloat z = FABSF(fogcoord);
+	const GLfloat z = fabsf(fogcoord);
 
 	switch (ctx->Fog.Mode) {
 	case GL_LINEAR:

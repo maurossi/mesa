@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,13 +16,15 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "glheader.h"
 #include "imports.h"
+#include "api_validate.h"
 #include "bufferobj.h"
 #include "context.h"
 #include "drawpix.h"
@@ -31,7 +32,6 @@
 #include "feedback.h"
 #include "framebuffer.h"
 #include "image.h"
-#include "mfeatures.h"
 #include "pbo.h"
 #include "state.h"
 #include "dispatch.h"
@@ -39,27 +39,25 @@
 #include "fbobject.h"
 
 
-#if FEATURE_drawpix
-
-
 /*
  * Execute glDrawPixels
  */
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_DrawPixels( GLsizei width, GLsizei height,
                   GLenum format, GLenum type, const GLvoid *pixels )
 {
    GLenum err;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+
+   FLUSH_VERTICES(ctx, 0);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glDrawPixels(%d, %d, %s, %s, %p) // to %s at %d, %d\n",
                   width, height,
-                  _mesa_lookup_enum_by_nr(format),
-                  _mesa_lookup_enum_by_nr(type),
+                  _mesa_enum_to_string(format),
+                  _mesa_enum_to_string(type),
                   pixels,
-                  _mesa_lookup_enum_by_nr(ctx->DrawBuffer->ColorDrawBuffer[0]),
+                  _mesa_enum_to_string(ctx->DrawBuffer->ColorDrawBuffer[0]),
                   IROUND(ctx->Current.RasterPos[0]),
                   IROUND(ctx->Current.RasterPos[1]));
 
@@ -99,8 +97,8 @@ _mesa_DrawPixels( GLsizei width, GLsizei height,
    err = _mesa_error_check_format_and_type(ctx, format, type);
    if (err != GL_NO_ERROR) {
       _mesa_error(ctx, err, "glDrawPixels(invalid format %s and/or type %s)",
-                  _mesa_lookup_enum_by_nr(format),
-                  _mesa_lookup_enum_by_nr(type));
+                  _mesa_enum_to_string(format),
+                  _mesa_enum_to_string(type));
       goto end;
    }
 
@@ -112,7 +110,7 @@ _mesa_DrawPixels( GLsizei width, GLsizei height,
       /* these buffers must exist */
       if (!_mesa_dest_buffer_exists(ctx, format)) {
          _mesa_error(ctx, GL_INVALID_OPERATION,
-                     "glDrawPixels(missing deest buffer)");
+                     "glDrawPixels(missing dest buffer)");
          goto end;
       }
       break;
@@ -154,7 +152,7 @@ _mesa_DrawPixels( GLsizei width, GLsizei height,
                            "glDrawPixels(invalid PBO access)");
                goto end;
             }
-            if (_mesa_bufferobj_mapped(ctx->Unpack.BufferObj)) {
+            if (_mesa_check_disallowed_mapping(ctx->Unpack.BufferObj)) {
                /* buffer is mapped - that's an error */
                _mesa_error(ctx, GL_INVALID_OPERATION,
                            "glDrawPixels(PBO is mapped)");
@@ -176,7 +174,7 @@ _mesa_DrawPixels( GLsizei width, GLsizei height,
                              ctx->Current.RasterTexCoords[0] );
    }
    else {
-      ASSERT(ctx->RenderMode == GL_SELECT);
+      assert(ctx->RenderMode == GL_SELECT);
       /* Do nothing.  See OpenGL Spec, Appendix B, Corollary 6. */
    }
 
@@ -189,20 +187,21 @@ end:
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
                   GLenum type )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+
+   FLUSH_VERTICES(ctx, 0);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx,
                   "glCopyPixels(%d, %d, %d, %d, %s) // from %s to %s at %d, %d\n",
                   srcx, srcy, width, height,
-                  _mesa_lookup_enum_by_nr(type),
-                  _mesa_lookup_enum_by_nr(ctx->ReadBuffer->ColorReadBuffer),
-                  _mesa_lookup_enum_by_nr(ctx->DrawBuffer->ColorDrawBuffer[0]),
+                  _mesa_enum_to_string(type),
+                  _mesa_enum_to_string(ctx->ReadBuffer->ColorReadBuffer),
+                  _mesa_enum_to_string(ctx->DrawBuffer->ColorDrawBuffer[0]),
                   IROUND(ctx->Current.RasterPos[0]),
                   IROUND(ctx->Current.RasterPos[1]));
 
@@ -220,7 +219,7 @@ _mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
        type != GL_STENCIL &&
        type != GL_DEPTH_STENCIL) {
       _mesa_error(ctx, GL_INVALID_ENUM, "glCopyPixels(type=%s)",
-                  _mesa_lookup_enum_by_nr(type));
+                  _mesa_enum_to_string(type));
       return;
    }
 
@@ -281,7 +280,7 @@ _mesa_CopyPixels( GLint srcx, GLint srcy, GLsizei width, GLsizei height,
                              ctx->Current.RasterTexCoords[0] );
    }
    else {
-      ASSERT(ctx->RenderMode == GL_SELECT);
+      assert(ctx->RenderMode == GL_SELECT);
       /* Do nothing.  See OpenGL Spec, Appendix B, Corollary 6. */
    }
 
@@ -294,13 +293,14 @@ end:
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_Bitmap( GLsizei width, GLsizei height,
               GLfloat xorig, GLfloat yorig, GLfloat xmove, GLfloat ymove,
               const GLubyte *bitmap )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+
+   FLUSH_VERTICES(ctx, 0);
 
    if (width < 0 || height < 0) {
       _mesa_error( ctx, GL_INVALID_VALUE, "glBitmap(width or height < 0)" );
@@ -336,7 +336,7 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
                            "glBitmap(invalid PBO access)");
                return;
             }
-            if (_mesa_bufferobj_mapped(ctx->Unpack.BufferObj)) {
+            if (_mesa_check_disallowed_mapping(ctx->Unpack.BufferObj)) {
                /* buffer is mapped - that's an error */
                _mesa_error(ctx, GL_INVALID_OPERATION,
                            "glBitmap(PBO is mapped)");
@@ -347,7 +347,6 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
          ctx->Driver.Bitmap( ctx, x, y, width, height, &ctx->Unpack, bitmap );
       }
    }
-#if _HAVE_FULL_GL
    else if (ctx->RenderMode == GL_FEEDBACK) {
       FLUSH_CURRENT(ctx, 0);
       _mesa_feedback_token( ctx, (GLfloat) (GLint) GL_BITMAP_TOKEN );
@@ -357,10 +356,9 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
                              ctx->Current.RasterTexCoords[0] );
    }
    else {
-      ASSERT(ctx->RenderMode == GL_SELECT);
+      assert(ctx->RenderMode == GL_SELECT);
       /* Do nothing.  See OpenGL Spec, Appendix B, Corollary 6. */
    }
-#endif
 
    /* update raster position */
    ctx->Current.RasterPos[0] += xmove;
@@ -370,15 +368,3 @@ _mesa_Bitmap( GLsizei width, GLsizei height,
       _mesa_flush(ctx);
    }
 }
-
-
-void
-_mesa_init_drawpix_dispatch(struct _glapi_table *disp)
-{
-   SET_Bitmap(disp, _mesa_Bitmap);
-   SET_CopyPixels(disp, _mesa_CopyPixels);
-   SET_DrawPixels(disp, _mesa_DrawPixels);
-}
-
-
-#endif /* FEATURE_drawpix */

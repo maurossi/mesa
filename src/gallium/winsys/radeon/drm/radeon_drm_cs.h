@@ -28,34 +28,45 @@
 #define RADEON_DRM_CS_H
 
 #include "radeon_drm_bo.h"
-#include <radeon_drm.h>
+
+struct radeon_bo_item {
+    struct radeon_bo    *bo;
+    union {
+        struct {
+            uint64_t    priority_usage;
+        } real;
+        struct {
+            unsigned    real_idx;
+        } slab;
+    } u;
+};
 
 struct radeon_cs_context {
-    uint32_t                    buf[RADEON_MAX_CMDBUF_DWORDS];
+    uint32_t                    buf[16 * 1024];
 
-    int fd;
+    int                         fd;
     struct drm_radeon_cs        cs;
     struct drm_radeon_cs_chunk  chunks[3];
     uint64_t                    chunk_array[3];
     uint32_t                    flags[2];
 
-    /* Relocs. */
-    unsigned                    nrelocs;
-    unsigned                    crelocs;
-    unsigned                    validated_crelocs;
-    struct radeon_bo            **relocs_bo;
+    /* Buffers. */
+    unsigned                    max_relocs;
+    unsigned                    num_relocs;
+    unsigned                    num_validated_relocs;
+    struct radeon_bo_item       *relocs_bo;
     struct drm_radeon_cs_reloc  *relocs;
 
-    /* 0 = BO not added, 1 = BO added */
-    char                        is_handle_added[256];
-    unsigned                    reloc_indices_hashlist[256];
+    unsigned                    num_slab_buffers;
+    unsigned                    max_slab_buffers;
+    struct radeon_bo_item       *slab_buffers;
 
-    unsigned                    used_vram;
-    unsigned                    used_gart;
+    int                         reloc_indices_hashlist[4096];
 };
 
 struct radeon_drm_cs {
     struct radeon_winsys_cs base;
+    enum ring_type          ring_type;
 
     /* We flip between these two CS. While one is being consumed
      * by the kernel in another thread, the other one is being filled
@@ -71,54 +82,57 @@ struct radeon_drm_cs {
     struct radeon_drm_winsys *ws;
 
     /* Flush CS. */
-    void (*flush_cs)(void *ctx, unsigned flags);
+    void (*flush_cs)(void *ctx, unsigned flags, struct pipe_fence_handle **fence);
     void *flush_data;
 
-    pipe_thread thread;
-    int flush_started, kill_thread;
-    pipe_semaphore flush_queued, flush_completed;
+    struct util_queue_fence flush_completed;
+    struct pipe_fence_handle *next_fence;
 };
 
-int radeon_get_reloc(struct radeon_cs_context *csc, struct radeon_bo *bo);
+int radeon_lookup_buffer(struct radeon_cs_context *csc, struct radeon_bo *bo);
 
-static INLINE struct radeon_drm_cs *
+static inline struct radeon_drm_cs *
 radeon_drm_cs(struct radeon_winsys_cs *base)
 {
     return (struct radeon_drm_cs*)base;
 }
 
-static INLINE boolean
+static inline bool
 radeon_bo_is_referenced_by_cs(struct radeon_drm_cs *cs,
                               struct radeon_bo *bo)
 {
     int num_refs = bo->num_cs_references;
     return num_refs == bo->rws->num_cs ||
-           (num_refs && radeon_get_reloc(cs->csc, bo) != -1);
+           (num_refs && radeon_lookup_buffer(cs->csc, bo) != -1);
 }
 
-static INLINE boolean
+static inline bool
 radeon_bo_is_referenced_by_cs_for_write(struct radeon_drm_cs *cs,
                                         struct radeon_bo *bo)
 {
     int index;
 
     if (!bo->num_cs_references)
-        return FALSE;
+        return false;
 
-    index = radeon_get_reloc(cs->csc, bo);
+    index = radeon_lookup_buffer(cs->csc, bo);
     if (index == -1)
-        return FALSE;
+        return false;
+
+    if (!bo->handle)
+        index = cs->csc->slab_buffers[index].u.slab.real_idx;
 
     return cs->csc->relocs[index].write_domain != 0;
 }
 
-static INLINE boolean
+static inline bool
 radeon_bo_is_referenced_by_any_cs(struct radeon_bo *bo)
 {
     return bo->num_cs_references != 0;
 }
 
-void radeon_drm_cs_sync_flush(struct radeon_drm_cs *cs);
+void radeon_drm_cs_sync_flush(struct radeon_winsys_cs *rcs);
 void radeon_drm_cs_init_functions(struct radeon_drm_winsys *ws);
+void radeon_drm_cs_emit_ioctl_oneshot(void *job, int thread_index);
 
 #endif

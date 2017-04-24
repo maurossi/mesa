@@ -37,8 +37,13 @@
 #define LP_BLD_TYPE_H
 
 
+#include "util/u_format.h"
 #include "pipe/p_compiler.h"
 #include "gallivm/lp_bld.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * Native SIMD architecture width available at runtime.
@@ -165,7 +170,37 @@ struct lp_build_context
 };
 
 
-static INLINE unsigned
+/**
+ * Converts a format description into an lp_type.
+ *
+ * Only works with "array formats".
+ *
+ * e.g. With PIPE_FORMAT_R32G32B32A32_FLOAT returns an lp_type with float[4]
+ */
+static inline void
+lp_type_from_format_desc(struct lp_type* type, const struct util_format_description *format_desc)
+{
+   assert(format_desc->is_array);
+   assert(!format_desc->is_mixed);
+
+   memset(type, 0, sizeof(struct lp_type));
+   type->floating = format_desc->channel[0].type == UTIL_FORMAT_TYPE_FLOAT;
+   type->fixed    = format_desc->channel[0].type == UTIL_FORMAT_TYPE_FIXED;
+   type->sign     = format_desc->channel[0].type != UTIL_FORMAT_TYPE_UNSIGNED;
+   type->norm     = format_desc->channel[0].normalized;
+   type->width    = format_desc->channel[0].size;
+   type->length   = format_desc->nr_channels;
+}
+
+
+static inline void
+lp_type_from_format(struct lp_type* type, enum pipe_format format)
+{
+   lp_type_from_format_desc(type, util_format_description(format));
+}
+
+
+static inline unsigned
 lp_type_width(struct lp_type type)
 {
    return type.width * type.length;
@@ -173,7 +208,7 @@ lp_type_width(struct lp_type type)
 
 
 /** Create scalar float type */
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_float(unsigned width)
 {
    struct lp_type res_type;
@@ -189,7 +224,7 @@ lp_type_float(unsigned width)
 
 
 /** Create vector of float type */
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_float_vec(unsigned width, unsigned total_width)
 {
    struct lp_type res_type;
@@ -205,7 +240,7 @@ lp_type_float_vec(unsigned width, unsigned total_width)
 
 
 /** Create scalar int type */
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_int(unsigned width)
 {
    struct lp_type res_type;
@@ -220,7 +255,7 @@ lp_type_int(unsigned width)
 
 
 /** Create vector int type */
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_int_vec(unsigned width, unsigned total_width)
 {
    struct lp_type res_type;
@@ -235,7 +270,7 @@ lp_type_int_vec(unsigned width, unsigned total_width)
 
 
 /** Create scalar uint type */
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_uint(unsigned width)
 {
    struct lp_type res_type;
@@ -249,7 +284,7 @@ lp_type_uint(unsigned width)
 
 
 /** Create vector uint type */
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_uint_vec(unsigned width, unsigned total_width)
 {
    struct lp_type res_type;
@@ -262,7 +297,7 @@ lp_type_uint_vec(unsigned width, unsigned total_width)
 }
 
 
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_unorm(unsigned width, unsigned total_width)
 {
    struct lp_type res_type;
@@ -276,7 +311,7 @@ lp_type_unorm(unsigned width, unsigned total_width)
 }
 
 
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_fixed(unsigned width, unsigned total_width)
 {
    struct lp_type res_type;
@@ -291,7 +326,7 @@ lp_type_fixed(unsigned width, unsigned total_width)
 }
 
 
-static INLINE struct lp_type
+static inline struct lp_type
 lp_type_ufixed(unsigned width, unsigned total_width)
 {
    struct lp_type res_type;
@@ -333,7 +368,7 @@ LLVMTypeRef
 lp_build_int_vec_type(struct gallivm_state *gallivm, struct lp_type type);
 
 
-static INLINE struct lp_type
+static inline struct lp_type
 lp_float32_vec4_type(void)
 {
    struct lp_type type;
@@ -349,7 +384,7 @@ lp_float32_vec4_type(void)
 }
 
 
-static INLINE struct lp_type
+static inline struct lp_type
 lp_int32_vec4_type(void)
 {
    struct lp_type type;
@@ -365,7 +400,7 @@ lp_int32_vec4_type(void)
 }
 
 
-static INLINE struct lp_type
+static inline struct lp_type
 lp_unorm8_vec4_type(void)
 {
    struct lp_type type;
@@ -416,7 +451,10 @@ lp_build_context_init(struct lp_build_context *bld,
 
 
 unsigned
-lp_build_count_instructions(LLVMValueRef function);
+lp_build_count_ir_module(LLVMModuleRef module);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* !LP_BLD_TYPE_H */

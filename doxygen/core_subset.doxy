@@ -73,7 +73,6 @@ FILE_PATTERNS          = \
 			fog.h \
 			get.h \
 			glheader.h \
-			glthread.h \
 			hash.[ch] \
 			hint.h \
 			histogram.h \
@@ -191,8 +190,7 @@ SKIP_FUNCTION_MACROS   = YES
 # Configuration::addtions related to external references   
 #---------------------------------------------------------------------------
 TAGFILES		= \
-			 math_subset.tag=../math_subset \
-			 miniglx.tag=../miniglx
+			 math_subset.tag=../math_subset
 GENERATE_TAGFILE       = core_subset.tag
 ALLEXTERNALS           = NO
 PERL_PATH              = 

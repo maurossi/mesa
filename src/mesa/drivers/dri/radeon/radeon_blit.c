@@ -28,6 +28,7 @@
 #include "radeon_common.h"
 #include "radeon_context.h"
 #include "radeon_blit.h"
+#include "radeon_tex.h"
 
 static inline uint32_t cmdpacket0(struct radeon_screen *rscrn,
                                   int reg, int count)
@@ -38,21 +39,38 @@ static inline uint32_t cmdpacket0(struct radeon_screen *rscrn,
 }
 
 /* common formats supported as both textures and render targets */
-unsigned r100_check_blit(gl_format mesa_format, uint32_t dst_pitch)
+unsigned r100_check_blit(mesa_format mesa_format, uint32_t dst_pitch)
 {
-    /* XXX others?  BE/LE? */
-    switch (mesa_format) {
-    case MESA_FORMAT_ARGB8888:
-    case MESA_FORMAT_XRGB8888:
-    case MESA_FORMAT_RGB565:
-    case MESA_FORMAT_ARGB4444:
-    case MESA_FORMAT_ARGB1555:
-    case MESA_FORMAT_A8:
-    case MESA_FORMAT_L8:
-    case MESA_FORMAT_I8:
+    /* XXX others?  */
+    if (_mesa_little_endian()) {
+	switch (mesa_format) {
+	case MESA_FORMAT_B8G8R8A8_UNORM:
+	case MESA_FORMAT_B8G8R8X8_UNORM:
+	case MESA_FORMAT_B5G6R5_UNORM:
+	case MESA_FORMAT_B4G4R4A4_UNORM:
+	case MESA_FORMAT_B5G5R5A1_UNORM:
+	case MESA_FORMAT_A_UNORM8:
+	case MESA_FORMAT_L_UNORM8:
+	case MESA_FORMAT_I_UNORM8:
 	    break;
-    default:
+	default:
 	    return 0;
+	}
+    }
+    else {
+	switch (mesa_format) {
+	case MESA_FORMAT_A8R8G8B8_UNORM:
+	case MESA_FORMAT_X8R8G8B8_UNORM:
+	case MESA_FORMAT_R5G6B5_UNORM:
+	case MESA_FORMAT_A4R4G4B4_UNORM:
+	case MESA_FORMAT_A1R5G5B5_UNORM:
+	case MESA_FORMAT_A_UNORM8:
+	case MESA_FORMAT_L_UNORM8:
+	case MESA_FORMAT_I_UNORM8:
+	    break;
+	default:
+	    return 0;
+	}
     }
 
     /* Rendering to small buffer doesn't work.
@@ -92,7 +110,7 @@ static inline void emit_vtx_state(struct r100_context *r100)
 }
 
 static void inline emit_tx_setup(struct r100_context *r100,
-				 gl_format mesa_format,
+				 mesa_format mesa_format,
 				 struct radeon_bo *bo,
 				 intptr_t offset,
 				 unsigned width,
@@ -106,40 +124,8 @@ static void inline emit_tx_setup(struct r100_context *r100,
     assert(height <= 2048);
     assert(offset % 32 == 0);
 
-    /* XXX others?  BE/LE? */
-    switch (mesa_format) {
-    case MESA_FORMAT_ARGB8888:
-	    txformat |= RADEON_TXFORMAT_ARGB8888 | RADEON_TXFORMAT_ALPHA_IN_MAP;
-	    break;
-    case MESA_FORMAT_RGBA8888:
-            txformat |= RADEON_TXFORMAT_RGBA8888 | RADEON_TXFORMAT_ALPHA_IN_MAP;
-            break;
-    case MESA_FORMAT_XRGB8888:
-	    txformat |= RADEON_TXFORMAT_ARGB8888;
-	    break;
-    case MESA_FORMAT_RGB565:
-	    txformat |= RADEON_TXFORMAT_RGB565;
-	    break;
-    case MESA_FORMAT_ARGB4444:
-	    txformat |= RADEON_TXFORMAT_ARGB4444 | RADEON_TXFORMAT_ALPHA_IN_MAP;
-	    break;
-    case MESA_FORMAT_ARGB1555:
-	    txformat |= RADEON_TXFORMAT_ARGB1555 | RADEON_TXFORMAT_ALPHA_IN_MAP;
-	    break;
-    case MESA_FORMAT_A8:
-    case MESA_FORMAT_I8:
-	    txformat |= RADEON_TXFORMAT_I8 | RADEON_TXFORMAT_ALPHA_IN_MAP;
-	    break;
-    case MESA_FORMAT_L8:
-            txformat |= RADEON_TXFORMAT_I8;
-            break;
-    case MESA_FORMAT_AL88:
-            txformat |= RADEON_TXFORMAT_AI88 | RADEON_TXFORMAT_ALPHA_IN_MAP;
-            break;
-    default:
-	    break;
-    }
-    
+    txformat |= tx_table[mesa_format].format;
+
     if (bo->flags & RADEON_BO_FLAGS_MACRO_TILE)
        offset |= RADEON_TXO_MACRO_TILE;
     if (bo->flags & RADEON_BO_FLAGS_MICRO_TILE)
@@ -175,7 +161,7 @@ static void inline emit_tx_setup(struct r100_context *r100,
 static inline void emit_cb_setup(struct r100_context *r100,
 				 struct radeon_bo *bo,
 				 intptr_t offset,
-				 gl_format mesa_format,
+				 mesa_format mesa_format,
 				 unsigned pitch,
 				 unsigned width,
 				 unsigned height)
@@ -184,24 +170,30 @@ static inline void emit_cb_setup(struct r100_context *r100,
     uint32_t dst_format = 0;
     BATCH_LOCALS(&r100->radeon);
 
-    /* XXX others?  BE/LE? */
+    /* XXX others? */
     switch (mesa_format) {
-    case MESA_FORMAT_ARGB8888:
-    case MESA_FORMAT_XRGB8888:
+    /* The first of each pair is for little, the second for big endian. */
+    case MESA_FORMAT_B8G8R8A8_UNORM:
+    case MESA_FORMAT_A8R8G8B8_UNORM:
+    case MESA_FORMAT_B8G8R8X8_UNORM:
+    case MESA_FORMAT_X8R8G8B8_UNORM:
 	    dst_format = RADEON_COLOR_FORMAT_ARGB8888;
 	    break;
-    case MESA_FORMAT_RGB565:
+    case MESA_FORMAT_B5G6R5_UNORM:
+    case MESA_FORMAT_R5G6B5_UNORM:
 	    dst_format = RADEON_COLOR_FORMAT_RGB565;
 	    break;
-    case MESA_FORMAT_ARGB4444:
+    case MESA_FORMAT_B4G4R4A4_UNORM:
+    case MESA_FORMAT_A4R4G4B4_UNORM:
 	    dst_format = RADEON_COLOR_FORMAT_ARGB4444;
 	    break;
-    case MESA_FORMAT_ARGB1555:
+    case MESA_FORMAT_B5G5R5A1_UNORM:
+    case MESA_FORMAT_A1R5G5B5_UNORM:
 	    dst_format = RADEON_COLOR_FORMAT_ARGB1555;
 	    break;
-    case MESA_FORMAT_A8:
-    case MESA_FORMAT_L8:
-    case MESA_FORMAT_I8:
+    case MESA_FORMAT_A_UNORM8:
+    case MESA_FORMAT_L_UNORM8:
+    case MESA_FORMAT_I_UNORM8:
 	    dst_format = RADEON_COLOR_FORMAT_RGB8;
 	    break;
     default:
@@ -214,7 +206,7 @@ static inline void emit_cb_setup(struct r100_context *r100,
     if (bo->flags & RADEON_BO_FLAGS_MICRO_TILE)
         dst_pitch |= RADEON_COLOR_MICROTILE_ENABLE;
 
-    BEGIN_BATCH_NO_AUTOSTATE(18);
+    BEGIN_BATCH(18);
     OUT_BATCH_REGVAL(RADEON_RE_TOP_LEFT, 0);
     OUT_BATCH_REGVAL(RADEON_RE_WIDTH_HEIGHT, (((width - 1) << RADEON_RE_WIDTH_SHIFT) |
 					      ((height - 1) << RADEON_RE_HEIGHT_SHIFT)));
@@ -341,7 +333,7 @@ static inline void emit_draw_packet(struct r100_context *r100,
 unsigned r100_blit(struct gl_context *ctx,
                    struct radeon_bo *src_bo,
                    intptr_t src_offset,
-                   gl_format src_mesaformat,
+                   mesa_format src_mesaformat,
                    unsigned src_pitch,
                    unsigned src_width,
                    unsigned src_height,
@@ -349,7 +341,7 @@ unsigned r100_blit(struct gl_context *ctx,
                    unsigned src_y_offset,
                    struct radeon_bo *dst_bo,
                    intptr_t dst_offset,
-                   gl_format dst_mesaformat,
+                   mesa_format dst_mesaformat,
                    unsigned dst_pitch,
                    unsigned dst_width,
                    unsigned dst_height,
@@ -405,7 +397,7 @@ unsigned r100_blit(struct gl_context *ctx,
     /* Flush is needed to make sure that source buffer has correct data */
     radeonFlush(ctx);
 
-    rcommonEnsureCmdBufSpace(&r100->radeon, 59, __FUNCTION__);
+    rcommonEnsureCmdBufSpace(&r100->radeon, 59, __func__);
 
     if (!validate_buffers(r100, src_bo, dst_bo))
         return GL_FALSE;
@@ -424,6 +416,14 @@ unsigned r100_blit(struct gl_context *ctx,
                      flip_y);
 
     radeonFlush(ctx);
+
+    /* We submitted those packets outside our state atom mechanism. Thus
+     * make sure they are all resubmitted the next time. */
+    r100->hw.ctx.dirty = GL_TRUE;
+    r100->hw.msk.dirty = GL_TRUE;
+    r100->hw.set.dirty = GL_TRUE;
+    r100->hw.tex[0].dirty = GL_TRUE;
+    r100->hw.txr[0].dirty = GL_TRUE;
 
     return GL_TRUE;
 }

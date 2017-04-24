@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.2
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,29 +16,27 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /* Author:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #include "main/glheader.h"
 #include "main/bufferobj.h"
 #include "main/context.h"
 #include "main/imports.h"
-#include "main/mfeatures.h"
 #include "main/mtypes.h"
 #include "main/macros.h"
 #include "main/light.h"
 #include "main/state.h"
+#include "util/bitscan.h"
 
 #include "vbo_context.h"
-
-
-#if FEATURE_dlist
 
 
 /**
@@ -51,9 +48,10 @@ _playback_copy_to_current(struct gl_context *ctx,
                           const struct vbo_save_vertex_list *node)
 {
    struct vbo_context *vbo = vbo_context(ctx);
-   GLfloat vertex[VBO_ATTRIB_MAX * 4];
-   GLfloat *data;
-   GLuint i, offset;
+   fi_type vertex[VBO_ATTRIB_MAX * 4];
+   fi_type *data;
+   GLbitfield64 mask;
+   GLuint offset;
 
    if (node->current_size == 0)
       return;
@@ -77,35 +75,36 @@ _playback_copy_to_current(struct gl_context *ctx,
       data += node->attrsz[0]; /* skip vertex position */
    }
 
-   for (i = VBO_ATTRIB_POS+1 ; i < VBO_ATTRIB_MAX ; i++) {
-      if (node->attrsz[i]) {
-	 GLfloat *current = (GLfloat *)vbo->currval[i].Ptr;
-         GLfloat tmp[4];
+   mask = node->enabled & (~BITFIELD64_BIT(VBO_ATTRIB_POS));
+   while (mask) {
+      const int i = u_bit_scan64(&mask);
+      fi_type *current = (fi_type *)vbo->currval[i].Ptr;
+      fi_type tmp[4];
+      assert(node->attrsz[i]);
 
-         COPY_CLEAN_4V_TYPE_AS_FLOAT(tmp,
-                                     node->attrsz[i],
-                                     data,
-                                     node->attrtype[i]);
+      COPY_CLEAN_4V_TYPE_AS_UNION(tmp,
+                                  node->attrsz[i],
+                                  data,
+                                  node->attrtype[i]);
+
+      if (node->attrtype[i] != vbo->currval[i].Type ||
+          memcmp(current, tmp, 4 * sizeof(GLfloat)) != 0) {
+         memcpy(current, tmp, 4 * sizeof(GLfloat));
          
-         if (node->attrtype[i] != vbo->currval[i].Type ||
-             memcmp(current, tmp, 4 * sizeof(GLfloat)) != 0) {
-            memcpy(current, tmp, 4 * sizeof(GLfloat));
+         vbo->currval[i].Size = node->attrsz[i];
+         vbo->currval[i]._ElementSize = vbo->currval[i].Size * sizeof(GLfloat);
+         vbo->currval[i].Type = node->attrtype[i];
+         vbo->currval[i].Integer =
+            vbo_attrtype_to_integer_flag(node->attrtype[i]);
 
-            vbo->currval[i].Size = node->attrsz[i];
-            vbo->currval[i]._ElementSize = vbo->currval[i].Size * sizeof(GLfloat);
-            vbo->currval[i].Type = node->attrtype[i];
-            vbo->currval[i].Integer =
-                  vbo_attrtype_to_integer_flag(node->attrtype[i]);
+         if (i >= VBO_ATTRIB_FIRST_MATERIAL &&
+             i <= VBO_ATTRIB_LAST_MATERIAL)
+            ctx->NewState |= _NEW_LIGHT;
 
-            if (i >= VBO_ATTRIB_FIRST_MATERIAL &&
-                i <= VBO_ATTRIB_LAST_MATERIAL)
-               ctx->NewState |= _NEW_LIGHT;
-
-            ctx->NewState |= _NEW_CURRENT_ATTRIB;
-         }
-
-	 data += node->attrsz[i];
+         ctx->NewState |= _NEW_CURRENT_ATTRIB;
       }
+
+      data += node->attrsz[i];
    }
 
    /* Colormaterial -- this kindof sucks.
@@ -136,7 +135,7 @@ static void vbo_bind_vertex_list(struct gl_context *ctx,
 {
    struct vbo_context *vbo = vbo_context(ctx);
    struct vbo_save_context *save = &vbo->save;
-   struct gl_client_array *arrays = save->arrays;
+   struct gl_vertex_array *arrays = save->arrays;
    GLuint buffer_offset = node->buffer_offset;
    const GLuint *map;
    GLuint attr;
@@ -161,12 +160,7 @@ static void vbo_bind_vertex_list(struct gl_context *ctx,
       }
       map = vbo->map_vp_none;
       break;
-   case VP_NV:
    case VP_ARB:
-      /* The aliasing of attributes for NV vertex programs has already
-       * occurred.  NV vertex programs cannot access material values,
-       * nor attributes greater than VERT_ATTRIB_TEX7.  
-       */
       for (attr = 0; attr < VERT_ATTRIB_FF_MAX; attr++) {
          save->inputs[attr] = &vbo->currval[VBO_ATTRIB_POS+attr];
       }
@@ -180,8 +174,10 @@ static void vbo_bind_vertex_list(struct gl_context *ctx,
        * In that case we effectively need to route the data from
        * glVertexAttrib(0, val) calls to feed into the GENERIC0 input.
        */
-      if ((ctx->VertexProgram._Current->Base.InputsRead & VERT_BIT_POS) == 0 &&
-          (ctx->VertexProgram._Current->Base.InputsRead & VERT_BIT_GENERIC0)) {
+      if ((ctx->VertexProgram._Current->info.inputs_read &
+           VERT_BIT_POS) == 0 &&
+          (ctx->VertexProgram._Current->info.inputs_read &
+           VERT_BIT_GENERIC0)) {
          save->inputs[VERT_ATTRIB_GENERIC0] = save->inputs[0];
          node_attrsz[VERT_ATTRIB_GENERIC0] = node_attrsz[0];
          node_attrtype[VERT_ATTRIB_GENERIC0] = node_attrtype[0];
@@ -202,17 +198,14 @@ static void vbo_bind_vertex_list(struct gl_context *ctx,
 	 arrays[attr].Ptr = (const GLubyte *) NULL + buffer_offset;
 	 arrays[attr].Size = node_attrsz[src];
 	 arrays[attr].StrideB = node->vertex_size * sizeof(GLfloat);
-	 arrays[attr].Stride = node->vertex_size * sizeof(GLfloat);
          arrays[attr].Type = node_attrtype[src];
          arrays[attr].Integer =
                vbo_attrtype_to_integer_flag(node_attrtype[src]);
          arrays[attr].Format = GL_RGBA;
-	 arrays[attr].Enabled = 1;
          arrays[attr]._ElementSize = arrays[attr].Size * sizeof(GLfloat);
          _mesa_reference_buffer_object(ctx,
                                        &arrays[attr].BufferObj,
                                        node->vertex_store->bufferobj);
-	 arrays[attr]._MaxElement = node->count; /* ??? */
 	 
 	 assert(arrays[attr].BufferObj->Name);
 
@@ -234,7 +227,8 @@ vbo_save_loopback_vertex_list(struct gl_context *ctx,
       ctx->Driver.MapBufferRange(ctx, 0,
 				 list->vertex_store->bufferobj->Size,
 				 GL_MAP_READ_BIT, /* ? */
-				 list->vertex_store->bufferobj);
+				 list->vertex_store->bufferobj,
+                                 MAP_INTERNAL);
 
    vbo_loopback_vertex_list(ctx,
                             (const GLfloat *)(buffer + list->buffer_offset),
@@ -244,7 +238,8 @@ vbo_save_loopback_vertex_list(struct gl_context *ctx,
                             list->wrap_count,
                             list->vertex_size);
 
-   ctx->Driver.UnmapBuffer(ctx, list->vertex_store->bufferobj);
+   ctx->Driver.UnmapBuffer(ctx, list->vertex_store->bufferobj,
+                           MAP_INTERNAL);
 }
 
 
@@ -261,7 +256,7 @@ vbo_save_playback_vertex_list(struct gl_context *ctx, void *data)
    struct vbo_save_context *save = &vbo_context(ctx)->save;
    GLboolean remap_vertex_store = GL_FALSE;
 
-   if (save->vertex_store->buffer) {
+   if (save->vertex_store && save->vertex_store->buffer) {
       /* The vertex store is currently mapped but we're about to replay
        * a display list.  This can happen when a nested display list is
        * being build with GL_COMPILE_AND_EXECUTE.
@@ -277,21 +272,16 @@ vbo_save_playback_vertex_list(struct gl_context *ctx, void *data)
 
    if (node->prim_count > 0) {
 
-      if (ctx->Driver.CurrentExecPrimitive != PRIM_OUTSIDE_BEGIN_END &&
-	  node->prim[0].begin) {
-
-	 /* Degenerate case: list is called inside begin/end pair and
-	  * includes operations such as glBegin or glDrawArrays.
-	  */
-	 if (0)
-	    printf("displaylist recursive begin");
-
-	 vbo_save_loopback_vertex_list( ctx, node );
-
+      if (_mesa_inside_begin_end(ctx) && node->prim[0].begin) {
+         /* Error: we're about to begin a new primitive but we're already
+          * inside a glBegin/End pair.
+          */
+         _mesa_error(ctx, GL_INVALID_OPERATION,
+                     "draw operation inside glBegin/End");
          goto end;
       }
       else if (save->replay_flags) {
-	 /* Various degnerate cases: translate into immediate mode
+	 /* Various degenerate cases: translate into immediate mode
 	  * calls rather than trying to execute in place.
 	  */
 	 vbo_save_loopback_vertex_list( ctx, node );
@@ -327,7 +317,7 @@ vbo_save_playback_vertex_list(struct gl_context *ctx, void *data)
                                       GL_TRUE,
                                       0,    /* Node is a VBO, so this is ok */
                                       node->count - 1,
-                                      NULL);
+                                      NULL, 0, NULL);
       }
    }
 
@@ -340,6 +330,3 @@ end:
       save->buffer_ptr = vbo_save_map_vertex_store(ctx, save->vertex_store);
    }
 }
-
-
-#endif /* FEATURE_dlist */

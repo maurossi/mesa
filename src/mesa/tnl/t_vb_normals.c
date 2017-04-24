@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,17 +16,17 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
 #include "main/glheader.h"
-#include "main/colormac.h"
 #include "main/macros.h"
 #include "main/imports.h"
 #include "main/mtypes.h"
@@ -115,7 +114,7 @@ validate_normal_stage(struct gl_context *ctx, struct tnl_pipeline_stage *stage)
 	 store->NormalTransform = _mesa_normal_tab[transform | NORM_NORMALIZE];
       }
       else if (ctx->Transform.RescaleNormals &&
-               ctx->_ModelViewInvScale != 1.0) {
+               ctx->_ModelViewInvScale != 1.0F) {
 	 store->NormalTransform = _mesa_normal_tab[transform | NORM_RESCALE];
       }
       else {
@@ -132,7 +131,7 @@ validate_normal_stage(struct gl_context *ctx, struct tnl_pipeline_stage *stage)
 	 store->NormalTransform = _mesa_normal_tab[NORM_NORMALIZE];
       }
       else if (!ctx->Transform.RescaleNormals &&
-	       ctx->_ModelViewInvScale != 1.0) {
+	       ctx->_ModelViewInvScale != 1.0F) {
 	 store->NormalTransform = _mesa_normal_tab[NORM_RESCALE];
       }
       else {

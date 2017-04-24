@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -50,12 +50,12 @@ sp_create_tex_tile_cache( struct pipe_context *pipe )
    uint pos;
 
    /* make sure max texture size works */
-   assert((TILE_SIZE << TEX_ADDR_BITS) >= (1 << (SP_MAX_TEXTURE_2D_LEVELS-1)));
+   assert((TEX_TILE_SIZE << TEX_ADDR_BITS) >= (1 << (SP_MAX_TEXTURE_2D_LEVELS-1)));
 
    tc = CALLOC_STRUCT( softpipe_tex_tile_cache );
    if (tc) {
       tc->pipe = pipe;
-      for (pos = 0; pos < NUM_ENTRIES; pos++) {
+      for (pos = 0; pos < ARRAY_SIZE(tc->entries); pos++) {
          tc->entries[pos].addr.bits.invalid = 1;
       }
       tc->last_tile = &tc->entries[0]; /* any tile */
@@ -70,39 +70,20 @@ sp_destroy_tex_tile_cache(struct softpipe_tex_tile_cache *tc)
    if (tc) {
       uint pos;
 
-      for (pos = 0; pos < NUM_ENTRIES; pos++) {
+      for (pos = 0; pos < ARRAY_SIZE(tc->entries); pos++) {
          /*assert(tc->entries[pos].x < 0);*/
       }
       if (tc->transfer) {
-         tc->pipe->transfer_destroy(tc->pipe, tc->transfer);
+         tc->pipe->transfer_unmap(tc->pipe, tc->transfer);
       }
       if (tc->tex_trans) {
-         tc->pipe->transfer_destroy(tc->pipe, tc->tex_trans);
+         tc->pipe->transfer_unmap(tc->pipe, tc->tex_trans);
       }
 
       FREE( tc );
    }
 }
 
-
-
-
-void
-sp_tex_tile_cache_map_transfers(struct softpipe_tex_tile_cache *tc)
-{
-   if (tc->tex_trans && !tc->tex_trans_map)
-      tc->tex_trans_map = tc->pipe->transfer_map(tc->pipe, tc->tex_trans);
-}
-
-
-void
-sp_tex_tile_cache_unmap_transfers(struct softpipe_tex_tile_cache *tc)
-{
-   if (tc->tex_trans_map) {
-      tc->pipe->transfer_unmap(tc->pipe, tc->tex_trans);
-      tc->tex_trans_map = NULL;
-   }
-}
 
 /**
  * Invalidate all cached tiles for the cached texture.
@@ -116,7 +97,7 @@ sp_tex_tile_cache_validate_texture(struct softpipe_tex_tile_cache *tc)
    assert(tc);
    assert(tc->texture);
 
-   for (i = 0; i < NUM_ENTRIES; i++) {
+   for (i = 0; i < ARRAY_SIZE(tc->entries); i++) {
       tc->entries[i].addr.bits.invalid = 1;
    }
 }
@@ -150,14 +131,10 @@ sp_tex_tile_cache_set_sampler_view(struct softpipe_tex_tile_cache *tc,
    if (!sp_tex_tile_is_compat_view(tc, view)) {
       pipe_resource_reference(&tc->texture, texture);
 
-      if (tc->tex_trans) {
-         if (tc->tex_trans_map) {
-            tc->pipe->transfer_unmap(tc->pipe, tc->tex_trans);
-            tc->tex_trans_map = NULL;
-         }
-
-         tc->pipe->transfer_destroy(tc->pipe, tc->tex_trans);
+      if (tc->tex_trans_map) {
+         tc->pipe->transfer_unmap(tc->pipe, tc->tex_trans);
          tc->tex_trans = NULL;
+         tc->tex_trans_map = NULL;
       }
 
       if (view) {
@@ -170,11 +147,11 @@ sp_tex_tile_cache_set_sampler_view(struct softpipe_tex_tile_cache *tc,
 
       /* mark as entries as invalid/empty */
       /* XXX we should try to avoid this when the teximage hasn't changed */
-      for (i = 0; i < NUM_ENTRIES; i++) {
+      for (i = 0; i < ARRAY_SIZE(tc->entries); i++) {
          tc->entries[i].addr.bits.invalid = 1;
       }
 
-      tc->tex_face = -1; /* any invalid value here */
+      tc->tex_z = -1; /* any invalid value here */
    }
 }
 
@@ -192,10 +169,10 @@ sp_flush_tex_tile_cache(struct softpipe_tex_tile_cache *tc)
 
    if (tc->texture) {
       /* caching a texture, mark all entries as empty */
-      for (pos = 0; pos < NUM_ENTRIES; pos++) {
+      for (pos = 0; pos < ARRAY_SIZE(tc->entries); pos++) {
          tc->entries[pos].addr.bits.invalid = 1;
       }
-      tc->tex_face = -1;
+      tc->tex_z = -1;
    }
 
 }
@@ -208,16 +185,15 @@ sp_flush_tex_tile_cache(struct softpipe_tex_tile_cache *tc)
  * This is basically a direct-map cache.
  * XXX There's probably lots of ways in which we can improve this.
  */
-static INLINE uint
+static inline uint
 tex_cache_pos( union tex_tile_address addr )
 {
    uint entry = (addr.bits.x + 
                  addr.bits.y * 9 + 
-                 addr.bits.z * 3 + 
-                 addr.bits.face + 
+                 addr.bits.z +
                  addr.bits.level * 7);
 
-   return entry % NUM_ENTRIES;
+   return entry % NUM_TEX_TILE_ENTRIES;
 }
 
 /**
@@ -235,7 +211,7 @@ sp_find_cached_tile_tex(struct softpipe_tex_tile_cache *tc,
 
    if (addr.value != tile->addr.value) {
 
-      /* cache miss.  Most misses are because we've invaldiated the
+      /* cache miss.  Most misses are because we've invalidated the
        * texture cache previously -- most commonly on binding a new
        * texture.  Currently we effectively flush the cache on texture
        * bind.
@@ -249,20 +225,15 @@ sp_find_cached_tile_tex(struct softpipe_tex_tile_cache *tc,
 
       /* check if we need to get a new transfer */
       if (!tc->tex_trans ||
-          tc->tex_face != addr.bits.face ||
           tc->tex_level != addr.bits.level ||
           tc->tex_z != addr.bits.z) {
          /* get new transfer (view into texture) */
          unsigned width, height, layer;
 
-         if (tc->tex_trans) {
-            if (tc->tex_trans_map) {
-               tc->pipe->transfer_unmap(tc->pipe, tc->tex_trans);
-               tc->tex_trans_map = NULL;
-            }
-
-            tc->pipe->transfer_destroy(tc->pipe, tc->tex_trans);
+         if (tc->tex_trans_map) {
+            tc->pipe->transfer_unmap(tc->pipe, tc->tex_trans);
             tc->tex_trans = NULL;
+            tc->tex_trans_map = NULL;
          }
 
          width = u_minify(tc->texture->width0, addr.bits.level);
@@ -272,19 +243,16 @@ sp_find_cached_tile_tex(struct softpipe_tex_tile_cache *tc,
          }
          else {
             height = u_minify(tc->texture->height0, addr.bits.level);
-            layer = addr.bits.face + addr.bits.z;
+            layer = addr.bits.z;
          }
 
-         tc->tex_trans = 
-            pipe_get_transfer(tc->pipe, tc->texture,
+         tc->tex_trans_map =
+            pipe_transfer_map(tc->pipe, tc->texture,
                               addr.bits.level,
                               layer,
                               PIPE_TRANSFER_READ | PIPE_TRANSFER_UNSYNCHRONIZED,
-                              0, 0, width, height);
+                              0, 0, width, height, &tc->tex_trans);
 
-         tc->tex_trans_map = tc->pipe->transfer_map(tc->pipe, tc->tex_trans);
-
-         tc->tex_face = addr.bits.face;
          tc->tex_level = addr.bits.level;
          tc->tex_z = addr.bits.z;
       }
@@ -293,30 +261,27 @@ sp_find_cached_tile_tex(struct softpipe_tex_tile_cache *tc,
        * the image format.
        */
       if (!zs && util_format_is_pure_uint(tc->format)) {
-         pipe_get_tile_ui_format(tc->pipe,
-                                 tc->tex_trans,
-                                 addr.bits.x * TILE_SIZE,
-                                 addr.bits.y * TILE_SIZE,
-                                 TILE_SIZE,
-                                 TILE_SIZE,
+         pipe_get_tile_ui_format(tc->tex_trans, tc->tex_trans_map,
+                                 addr.bits.x * TEX_TILE_SIZE,
+                                 addr.bits.y * TEX_TILE_SIZE,
+                                 TEX_TILE_SIZE,
+                                 TEX_TILE_SIZE,
                                  tc->format,
                                  (unsigned *) tile->data.colorui);
       } else if (!zs && util_format_is_pure_sint(tc->format)) {
-         pipe_get_tile_i_format(tc->pipe,
-                                tc->tex_trans,
-                                addr.bits.x * TILE_SIZE,
-                                addr.bits.y * TILE_SIZE,
-                                TILE_SIZE,
-                                 TILE_SIZE,
+         pipe_get_tile_i_format(tc->tex_trans, tc->tex_trans_map,
+                                addr.bits.x * TEX_TILE_SIZE,
+                                addr.bits.y * TEX_TILE_SIZE,
+                                TEX_TILE_SIZE,
+                                TEX_TILE_SIZE,
                                 tc->format,
                                 (int *) tile->data.colori);
       } else {
-         pipe_get_tile_rgba_format(tc->pipe,
-                                   tc->tex_trans,
-                                   addr.bits.x * TILE_SIZE,
-                                   addr.bits.y * TILE_SIZE,
-                                   TILE_SIZE,
-                                   TILE_SIZE,
+         pipe_get_tile_rgba_format(tc->tex_trans, tc->tex_trans_map,
+                                   addr.bits.x * TEX_TILE_SIZE,
+                                   addr.bits.y * TEX_TILE_SIZE,
+                                   TEX_TILE_SIZE,
+                                   TEX_TILE_SIZE,
                                    tc->format,
                                    (float *) tile->data.color);
       }

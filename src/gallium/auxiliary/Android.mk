@@ -28,15 +28,29 @@ include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(C_SOURCES)
+LOCAL_SRC_FILES := \
+	$(C_SOURCES) \
+	$(NIR_SOURCES) \
+	$(VL_STUB_SOURCES)
 
-LOCAL_C_INCLUDES := $(GALLIUM_TOP)/auxiliary/util
+LOCAL_C_INCLUDES := \
+	$(GALLIUM_TOP)/auxiliary/util
 
+ifeq ($(MESA_ENABLE_LLVM),true)
+LOCAL_SRC_FILES += \
+	$(GALLIVM_SOURCES) \
+	$(GALLIVM_CPP_SOURCES)
+LOCAL_STATIC_LIBRARIES += libLLVMCore
+LOCAL_CPPFLAGS := -std=c++11
+endif
+
+# We need libmesa_nir to get NIR's generated include directories.
 LOCAL_MODULE := libmesa_gallium
+LOCAL_STATIC_LIBRARIES += libmesa_nir
 
 # generate sources
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
-intermediates := $(call local-intermediates-dir)
+intermediates := $(call local-generated-sources-dir)
 LOCAL_GENERATED_SOURCES := $(addprefix $(intermediates)/, $(GENERATED_SOURCES))
 
 $(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON2)
@@ -49,6 +63,8 @@ $(intermediates)/util/u_format_srgb.c: $(intermediates)/%.c: $(LOCAL_PATH)/%.py
 
 $(intermediates)/util/u_format_table.c: $(intermediates)/%.c: $(LOCAL_PATH)/%.py $(LOCAL_PATH)/util/u_format.csv
 	$(transform-generated-source)
+
+LOCAL_GENERATED_SOURCES += $(MESA_GEN_NIR_H)
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

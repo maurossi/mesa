@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,15 +32,11 @@
 
 #include <fcntl.h>
 #include <stdio.h>
-#include <libudev.h>
 #include <xf86drm.h>
+#include <unistd.h>
 
-#ifdef PIPE_LOADER_HAVE_XCB
-
-#include <xcb/dri2.h>
-
-#endif
-
+#include "loader.h"
+#include "target-helpers/drm_helper_public.h"
 #include "state_tracker/drm_driver.h"
 #include "pipe_loader_priv.h"
 
@@ -48,175 +44,193 @@
 #include "util/u_dl.h"
 #include "util/u_debug.h"
 
-#define DRIVER_MAP_GALLIUM_ONLY
-#include "pci_ids/pci_id_driver_map.h"
+#define DRM_RENDER_NODE_DEV_NAME_FORMAT "%s/renderD%d"
+#define DRM_RENDER_NODE_MAX_NODES 63
+#define DRM_RENDER_NODE_MIN_MINOR 128
+#define DRM_RENDER_NODE_MAX_MINOR (DRM_RENDER_NODE_MIN_MINOR + DRM_RENDER_NODE_MAX_NODES)
 
 struct pipe_loader_drm_device {
    struct pipe_loader_device base;
+   const struct drm_driver_descriptor *dd;
+#ifndef GALLIUM_STATIC_TARGETS
    struct util_dl_library *lib;
+#endif
    int fd;
 };
 
 #define pipe_loader_drm_device(dev) ((struct pipe_loader_drm_device *)dev)
 
-static boolean
-find_drm_pci_id(struct pipe_loader_drm_device *ddev)
+static const struct pipe_loader_ops pipe_loader_drm_ops;
+
+#ifdef GALLIUM_STATIC_TARGETS
+static const struct drm_conf_ret throttle_ret = {
+   DRM_CONF_INT,
+   {2},
+};
+
+static const struct drm_conf_ret share_fd_ret = {
+   DRM_CONF_BOOL,
+   {true},
+};
+
+static inline const struct drm_conf_ret *
+configuration_query(enum drm_conf conf)
 {
-   struct udev *udev = NULL;
-   struct udev_device *parent, *device = NULL;
-   struct stat stat;
-   const char *pci_id;
-
-   if (fstat(ddev->fd, &stat) < 0)
-      goto fail;
-
-   udev = udev_new();
-   if (!udev)
-      goto fail;
-
-   device = udev_device_new_from_devnum(udev, 'c', stat.st_rdev);
-   if (!device)
-      goto fail;
-
-   parent = udev_device_get_parent(device);
-   if (!parent)
-      goto fail;
-
-   pci_id = udev_device_get_property_value(parent, "PCI_ID");
-   if (!pci_id ||
-       sscanf(pci_id, "%x:%x", &ddev->base.u.pci.vendor_id,
-              &ddev->base.u.pci.chip_id) != 2)
-      goto fail;
-
-   return TRUE;
-
-  fail:
-   if (device)
-      udev_device_unref(device);
-   if (udev)
-      udev_unref(udev);
-
-   debug_printf("pci id for fd %d not found\n", ddev->fd);
-   return FALSE;
+   switch (conf) {
+   case DRM_CONF_THROTTLE:
+      return &throttle_ret;
+   case DRM_CONF_SHARE_FD:
+      return &share_fd_ret;
+   default:
+      break;
+   }
+   return NULL;
 }
 
-static boolean
-find_drm_driver_name(struct pipe_loader_drm_device *ddev)
-{
-   struct pipe_loader_device *dev = &ddev->base;
-   int i, j;
-
-   for (i = 0; driver_map[i].driver; i++) {
-      if (dev->u.pci.vendor_id != driver_map[i].vendor_id)
-         continue;
-
-      if (driver_map[i].num_chips_ids == -1) {
-         dev->driver_name = driver_map[i].driver;
-         goto found;
-      }
-
-      for (j = 0; j < driver_map[i].num_chips_ids; j++) {
-         if (dev->u.pci.chip_id == driver_map[i].chip_ids[j]) {
-            dev->driver_name = driver_map[i].driver;
-            goto found;
-         }
-      }
-   }
-
-   return FALSE;
-
-  found:
-   debug_printf("driver for %04x:%04x: %s\n", dev->u.pci.vendor_id,
-                dev->u.pci.chip_id, dev->driver_name);
-   return TRUE;
-}
-
-static struct pipe_loader_ops pipe_loader_drm_ops;
-
-static void
-pipe_loader_drm_x_auth(int fd)
-{
-#if PIPE_LOADER_HAVE_XCB
-   /* Try authenticate with the X server to give us access to devices that X
-    * is running on. */
-   xcb_connection_t *xcb_conn;
-   const xcb_setup_t *xcb_setup;
-   xcb_screen_iterator_t s;
-   xcb_dri2_connect_cookie_t connect_cookie;
-   xcb_dri2_connect_reply_t *connect;
-   drm_magic_t magic;
-   xcb_dri2_authenticate_cookie_t authenticate_cookie;
-   xcb_dri2_authenticate_reply_t *authenticate;
-
-   xcb_conn = xcb_connect(NULL,  NULL);
-
-   if(!xcb_conn)
-      return;
-
-   xcb_setup = xcb_get_setup(xcb_conn);
-
-  if (!xcb_setup)
-    goto disconnect;
-
-   s = xcb_setup_roots_iterator(xcb_setup);
-   connect_cookie = xcb_dri2_connect_unchecked(xcb_conn, s.data->root,
-                                               XCB_DRI2_DRIVER_TYPE_DRI);
-   connect = xcb_dri2_connect_reply(xcb_conn, connect_cookie, NULL);
-
-   if (!connect || connect->driver_name_length
-                   + connect->device_name_length == 0) {
-
-      goto disconnect;
-   }
-
-   if (drmGetMagic(fd, &magic))
-      goto disconnect;
-
-   authenticate_cookie = xcb_dri2_authenticate_unchecked(xcb_conn,
-                                                         s.data->root,
-                                                         magic);
-   authenticate = xcb_dri2_authenticate_reply(xcb_conn,
-                                              authenticate_cookie,
-                                              NULL);
-   FREE(authenticate);
-
-disconnect:
-   xcb_disconnect(xcb_conn);
-
+static const struct drm_driver_descriptor driver_descriptors[] = {
+    {
+        .driver_name = "i915",
+        .create_screen = pipe_i915_create_screen,
+        .configuration = configuration_query,
+    },
+#ifdef USE_VC4_SIMULATOR
+    /* VC4 simulator and ILO (i965) are mutually exclusive (error at
+     * configure). As the latter is unconditionally added, keep this one above
+     * it.
+     */
+    {
+        .driver_name = "i965",
+        .create_screen = pipe_vc4_create_screen,
+        .configuration = configuration_query,
+    },
 #endif
-}
+    {
+        .driver_name = "i965",
+        .create_screen = pipe_ilo_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "nouveau",
+        .create_screen = pipe_nouveau_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "r300",
+        .create_screen = pipe_r300_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "r600",
+        .create_screen = pipe_r600_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "radeonsi",
+        .create_screen = pipe_radeonsi_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "vmwgfx",
+        .create_screen = pipe_vmwgfx_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "kgsl",
+        .create_screen = pipe_freedreno_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "msm",
+        .create_screen = pipe_freedreno_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "virtio_gpu",
+        .create_screen = pipe_virgl_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "vc4",
+        .create_screen = pipe_vc4_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "etnaviv",
+        .create_screen = pipe_etna_create_screen,
+        .configuration = configuration_query,
+    },
+    {
+        .driver_name = "imx-drm",
+        .create_screen = pipe_imx_drm_create_screen,
+        .configuration = configuration_query,
+    }
+};
+#endif
 
-boolean
+bool
 pipe_loader_drm_probe_fd(struct pipe_loader_device **dev, int fd)
 {
    struct pipe_loader_drm_device *ddev = CALLOC_STRUCT(pipe_loader_drm_device);
+   int vendor_id, chip_id;
 
-   ddev->base.type = PIPE_LOADER_DEVICE_PCI;
+   if (!ddev)
+      return false;
+
+   if (loader_get_pci_id_for_fd(fd, &vendor_id, &chip_id)) {
+      ddev->base.type = PIPE_LOADER_DEVICE_PCI;
+      ddev->base.u.pci.vendor_id = vendor_id;
+      ddev->base.u.pci.chip_id = chip_id;
+   } else {
+      ddev->base.type = PIPE_LOADER_DEVICE_PLATFORM;
+   }
    ddev->base.ops = &pipe_loader_drm_ops;
    ddev->fd = fd;
 
-   pipe_loader_drm_x_auth(fd);
-
-   if (!find_drm_pci_id(ddev))
+   ddev->base.driver_name = loader_get_driver_for_fd(fd);
+   if (!ddev->base.driver_name)
       goto fail;
 
-   if (!find_drm_driver_name(ddev))
+#ifdef GALLIUM_STATIC_TARGETS
+   for (int i = 0; i < ARRAY_SIZE(driver_descriptors); i++) {
+      if (strcmp(driver_descriptors[i].driver_name, ddev->base.driver_name) == 0) {
+         ddev->dd = &driver_descriptors[i];
+         break;
+      }
+   }
+   if (!ddev->dd)
       goto fail;
+#else
+   ddev->lib = pipe_loader_find_module(&ddev->base, PIPE_SEARCH_DIR);
+   if (!ddev->lib)
+      goto fail;
+
+   ddev->dd = (const struct drm_driver_descriptor *)
+      util_dl_get_proc_address(ddev->lib, "driver_descriptor");
+
+   /* sanity check on the driver name */
+   if (!ddev->dd || strcmp(ddev->dd->driver_name, ddev->base.driver_name) != 0)
+      goto fail;
+#endif
 
    *dev = &ddev->base;
-   return TRUE;
+   return true;
 
   fail:
+#ifndef GALLIUM_STATIC_TARGETS
+   if (ddev->lib)
+      util_dl_close(ddev->lib);
+#endif
    FREE(ddev);
-   return FALSE;
+   return false;
 }
 
 static int
-open_drm_minor(int minor)
+open_drm_render_node_minor(int minor)
 {
    char path[PATH_MAX];
-   snprintf(path, sizeof(path), DRM_DEV_NAME, DRM_DIR_NAME, minor);
-   return open(path, O_RDWR, 0);
+   snprintf(path, sizeof(path), DRM_RENDER_NODE_DEV_NAME_FORMAT, DRM_DIR_NAME,
+            minor);
+   return loader_open_device(path);
 }
 
 int
@@ -224,14 +238,25 @@ pipe_loader_drm_probe(struct pipe_loader_device **devs, int ndev)
 {
    int i, j, fd;
 
-   for (i = 0, j = 0; i < DRM_MAX_MINOR; i++) {
-      fd = open_drm_minor(i);
+   for (i = DRM_RENDER_NODE_MIN_MINOR, j = 0;
+        i <= DRM_RENDER_NODE_MAX_MINOR; i++) {
+      struct pipe_loader_device *dev;
+
+      fd = open_drm_render_node_minor(i);
       if (fd < 0)
          continue;
 
-      if (j >= ndev || !pipe_loader_drm_probe_fd(&devs[j], fd))
+      if (!pipe_loader_drm_probe_fd(&dev, fd)) {
          close(fd);
+         continue;
+      }
 
+      if (j < ndev) {
+         devs[j] = dev;
+      } else {
+         close(fd);
+         dev->ops->release(&dev);
+      }
       j++;
    }
 
@@ -243,37 +268,39 @@ pipe_loader_drm_release(struct pipe_loader_device **dev)
 {
    struct pipe_loader_drm_device *ddev = pipe_loader_drm_device(*dev);
 
+#ifndef GALLIUM_STATIC_TARGETS
    if (ddev->lib)
       util_dl_close(ddev->lib);
+#endif
 
    close(ddev->fd);
+   FREE(ddev->base.driver_name);
    FREE(ddev);
    *dev = NULL;
 }
 
-static struct pipe_screen *
-pipe_loader_drm_create_screen(struct pipe_loader_device *dev,
-                              const char *library_paths)
+static const struct drm_conf_ret *
+pipe_loader_drm_configuration(struct pipe_loader_device *dev,
+                              enum drm_conf conf)
 {
    struct pipe_loader_drm_device *ddev = pipe_loader_drm_device(dev);
-   const struct drm_driver_descriptor *dd;
 
-   if (!ddev->lib)
-      ddev->lib = pipe_loader_find_module(dev, library_paths);
-   if (!ddev->lib)
+   if (!ddev->dd->configuration)
       return NULL;
 
-   dd = (const struct drm_driver_descriptor *)
-      util_dl_get_proc_address(ddev->lib, "driver_descriptor");
-
-   /* sanity check on the name */
-   if (!dd || strcmp(dd->name, ddev->base.driver_name) != 0)
-      return NULL;
-
-   return dd->create_screen(ddev->fd);
+   return ddev->dd->configuration(conf);
 }
 
-static struct pipe_loader_ops pipe_loader_drm_ops = {
+static struct pipe_screen *
+pipe_loader_drm_create_screen(struct pipe_loader_device *dev)
+{
+   struct pipe_loader_drm_device *ddev = pipe_loader_drm_device(dev);
+
+   return ddev->dd->create_screen(ddev->fd);
+}
+
+static const struct pipe_loader_ops pipe_loader_drm_ops = {
    .create_screen = pipe_loader_drm_create_screen,
+   .configuration = pipe_loader_drm_configuration,
    .release = pipe_loader_drm_release
 };

@@ -33,12 +33,9 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "main/glheader.h"
 #include "main/imports.h"
-#include "main/colormac.h"
 #include "main/context.h"
 #include "main/enums.h"
 #include "main/image.h"
-#include "main/mfeatures.h"
-#include "main/simple_list.h"
 #include "main/teximage.h"
 #include "main/texobj.h"
 
@@ -96,7 +93,7 @@ static void radeonSetTexWrap( radeonTexObjPtr t, GLenum swrap, GLenum twrap )
       is_clamp_to_border = GL_TRUE;
       break;
    default:
-      _mesa_problem(NULL, "bad S wrap mode in %s", __FUNCTION__);
+      _mesa_problem(NULL, "bad S wrap mode in %s", __func__);
    }
 
    if (t->base.Target != GL_TEXTURE_1D) {
@@ -130,7 +127,7 @@ static void radeonSetTexWrap( radeonTexObjPtr t, GLenum swrap, GLenum twrap )
 	 is_clamp_to_border = GL_TRUE;
 	 break;
       default:
-	 _mesa_problem(NULL, "bad T wrap mode in %s", __FUNCTION__);
+	 _mesa_problem(NULL, "bad T wrap mode in %s", __func__);
       }
    }
 
@@ -264,7 +261,7 @@ static void radeonTexEnv( struct gl_context *ctx, GLenum target,
 
    if ( RADEON_DEBUG & RADEON_STATE ) {
       fprintf( stderr, "%s( %s )\n",
-	       __FUNCTION__, _mesa_lookup_enum_by_nr( pname ) );
+	       __func__, _mesa_enum_to_string( pname ) );
    }
 
    switch ( pname ) {
@@ -329,14 +326,14 @@ void radeonTexUpdateParameters(struct gl_context *ctx, GLuint unit)
  * next UpdateTextureState
  */
 
-static void radeonTexParameter( struct gl_context *ctx, GLenum target,
+static void radeonTexParameter( struct gl_context *ctx,
 				struct gl_texture_object *texObj,
-				GLenum pname, const GLfloat *params )
+				GLenum pname )
 {
    radeonTexObj* t = radeon_tex_obj(texObj);
 
-   radeon_print(RADEON_TEXTURE, RADEON_VERBOSE, "%s( %s )\n", __FUNCTION__,
-	       _mesa_lookup_enum_by_nr( pname ) );
+   radeon_print(RADEON_TEXTURE, RADEON_VERBOSE, "%s( %s )\n", __func__,
+	       _mesa_enum_to_string( pname ) );
 
    switch ( pname ) {
    case GL_TEXTURE_BASE_LEVEL:
@@ -359,12 +356,12 @@ static void radeonDeleteTexture( struct gl_context *ctx,
    int i;
 
    radeon_print(RADEON_TEXTURE, RADEON_NORMAL,
-	 "%s( %p (target = %s) )\n", __FUNCTION__, (void *)texObj,
-	       _mesa_lookup_enum_by_nr( texObj->Target ) );
+	 "%s( %p (target = %s) )\n", __func__, (void *)texObj,
+	       _mesa_enum_to_string( texObj->Target ) );
 
    if ( rmesa ) {
      radeon_firevertices(&rmesa->radeon);
-     for ( i = 0 ; i < rmesa->radeon.glCtx->Const.MaxTextureUnits ; i++ ) {
+     for ( i = 0 ; i < rmesa->radeon.glCtx.Const.MaxTextureUnits ; i++ ) {
        if ( t == rmesa->state.texture.unit[i].texobj ) {
 	 rmesa->state.texture.unit[i].texobj = NULL;
 	 rmesa->hw.tex[i].dirty = GL_FALSE;
@@ -411,7 +408,7 @@ radeonNewTextureObject( struct gl_context *ctx, GLuint name, GLenum target )
    r100ContextPtr rmesa = R100_CONTEXT(ctx);
    radeonTexObj* t = CALLOC_STRUCT(radeon_tex_obj);
 
-   _mesa_initialize_texture_object(&t->base, name, target);
+   _mesa_initialize_texture_object(ctx, &t->base, name, target);
    t->base.Sampler.MaxAnisotropy = rmesa->radeon.initialMaxAnisotropy;
 
    t->border_fallback = GL_FALSE;

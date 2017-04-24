@@ -53,16 +53,17 @@ static void set_vertices( void )
    handle = info.ctx->create_vertex_elements_state(info.ctx, 2, ve);
    info.ctx->bind_vertex_elements_state(info.ctx, handle);
 
+   memset(&vbuf, 0, sizeof vbuf);
 
    vbuf.stride = sizeof( struct vertex );
    vbuf.buffer_offset = 0;
    vbuf.buffer = pipe_buffer_create_with_data(info.ctx,
                                               PIPE_BIND_VERTEX_BUFFER,
-                                              PIPE_USAGE_STATIC,
+                                              PIPE_USAGE_DEFAULT,
                                               sizeof(vertices),
                                               vertices);
 
-   info.ctx->set_vertex_buffers(info.ctx, 1, &vbuf);
+   info.ctx->set_vertex_buffers(info.ctx, 0, 1, &vbuf);
 }
 
 static void set_vertex_shader( void )
@@ -91,6 +92,7 @@ static void set_fragment_shader( void )
       "DCL OUT[0], COLOR\n"
       "DCL TEMP[0]\n"
       "DCL SAMP[0]\n"
+      "DCL SVIEW[0], 2D, FLOAT\n"
       "  0: TXP TEMP[0], IN[0], SAMP[0], 2D\n"
       "  1: MOV OUT[0], TEMP[0]\n"
       "  2: END\n";
@@ -106,7 +108,7 @@ static void draw( void )
 
    info.ctx->clear(info.ctx, PIPE_CLEAR_COLOR, &clear_color, 0, 0);
    util_draw_arrays(info.ctx, PIPE_PRIM_QUADS, 0, 4);
-   info.ctx->flush(info.ctx, NULL);
+   info.ctx->flush(info.ctx, NULL, 0);
 
    graw_save_surface_to_file(info.ctx, info.color_surf[0], NULL);
 
@@ -166,12 +168,13 @@ static void init_tex( void )
                                     PIPE_FORMAT_B8G8R8A8_UNORM, tex2d);
 
    sv = graw_util_create_simple_sampler_view(&info, texture);
-   info.ctx->set_fragment_sampler_views(info.ctx, 1, &sv);
+   info.ctx->set_sampler_views(info.ctx, PIPE_SHADER_FRAGMENT, 0, 1, &sv);
 
    sampler = graw_util_create_simple_sampler(&info, 
                                              PIPE_TEX_WRAP_REPEAT,
                                              PIPE_TEX_FILTER_NEAREST);
-   info.ctx->bind_fragment_sampler_states(info.ctx, 1, &sampler);
+   info.ctx->bind_sampler_states(info.ctx, PIPE_SHADER_FRAGMENT,
+                                 0, 1, &sampler);
 }
 
 
@@ -187,7 +190,8 @@ static void init( void )
       void *handle;
       memset(&rasterizer, 0, sizeof rasterizer);
       rasterizer.cull_face = PIPE_FACE_NONE;
-      rasterizer.gl_rasterization_rules = 1;
+      rasterizer.half_pixel_center = 1;
+      rasterizer.bottom_edge_rule = 1;
       rasterizer.depth_clip = 1;
       handle = info.ctx->create_rasterizer_state(info.ctx, &rasterizer);
       info.ctx->bind_rasterizer_state(info.ctx, handle);

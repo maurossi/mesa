@@ -52,6 +52,7 @@ struct util_cpu_caps {
    int x86_cpu_type;
    unsigned cacheline;
 
+   unsigned has_intel:1;
    unsigned has_tsc:1;
    unsigned has_mmx:1;
    unsigned has_mmx2:1;
@@ -61,10 +62,26 @@ struct util_cpu_caps {
    unsigned has_ssse3:1;
    unsigned has_sse4_1:1;
    unsigned has_sse4_2:1;
+   unsigned has_popcnt:1;
    unsigned has_avx:1;
+   unsigned has_avx2:1;
+   unsigned has_f16c:1;
+   unsigned has_fma:1;
    unsigned has_3dnow:1;
    unsigned has_3dnow_ext:1;
+   unsigned has_xop:1;
    unsigned has_altivec:1;
+   unsigned has_daz:1;
+
+   unsigned has_avx512f:1;
+   unsigned has_avx512dq:1;
+   unsigned has_avx512ifma:1;
+   unsigned has_avx512pf:1;
+   unsigned has_avx512er:1;
+   unsigned has_avx512cd:1;
+   unsigned has_avx512bw:1;
+   unsigned has_avx512vl:1;
+   unsigned has_avx512vbmi:1;
 };
 
 extern struct util_cpu_caps

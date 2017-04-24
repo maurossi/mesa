@@ -18,15 +18,18 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  **************************************************************************/
 
+/* Force assertions, even on release builds. */
+#undef NDEBUG
 #include <assert.h>
-#include <error.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include "testlib.h"
 
 int main(int argc, char **argv)
@@ -58,7 +61,8 @@ int main(int argc, char **argv)
 	))
 	{
 		XCloseDisplay(display);
-		error(1, 0, "Error, unable to find a good port.\n");
+		fprintf(stderr, "Error, unable to find a good port.\n");
+		exit(1);
 	}
 
 	if (is_overlay)

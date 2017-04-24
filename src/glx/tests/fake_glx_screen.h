@@ -20,9 +20,7 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
  * DEALINGS IN THE SOFTWARE.
  */
-extern "C" {
 #include "glxclient.h"
-};
 
 class fake_glx_screen : public glx_screen {
 public:
@@ -86,21 +84,6 @@ public:
    ~fake_glx_context()
    {
       contexts_allocated--;
-   }
-
-   static glx_context *create_attribs(struct glx_screen *psc,
-				      struct glx_config *mode,
-				      struct glx_context *shareList,
-				      unsigned num_attribs,
-				      const uint32_t *attribs,
-				      unsigned *error)
-   {
-      (void) shareList;
-      (void) num_attribs;
-      (void) attribs;
-
-      *error = 0;
-      return new fake_glx_context(psc, mode);
    }
 
    /** Number of context that are allocated (and not freed). */

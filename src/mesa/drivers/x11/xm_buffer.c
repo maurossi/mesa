@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.2
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -203,7 +203,7 @@ alloc_back_buffer(XMesaBuffer b, GLuint width, GLuint height)
 	    _mesa_warning(NULL, "alloc_back_buffer: XCreateImage failed.\n");
             return;
 	 }
-         b->backxrb->ximage->data = (char *) MALLOC(b->backxrb->ximage->height
+         b->backxrb->ximage->data = malloc(b->backxrb->ximage->height
                                         * b->backxrb->ximage->bytes_per_line);
          if (!b->backxrb->ximage->data) {
             _mesa_warning(NULL, "alloc_back_buffer: MALLOC failed.\n");
@@ -343,20 +343,20 @@ xmesa_new_renderbuffer(struct gl_context *ctx, GLuint name,
          /* This will really only happen for pixmaps.  We'll access the
           * pixmap via a temporary XImage which will be 32bpp.
           */
-         xrb->Base.Base.Format = MESA_FORMAT_XRGB8888;
+         xrb->Base.Base.Format = MESA_FORMAT_B8G8R8X8_UNORM;
          break;
       case PF_8A8R8G8B:
-         xrb->Base.Base.Format = MESA_FORMAT_ARGB8888;
+         xrb->Base.Base.Format = MESA_FORMAT_B8G8R8A8_UNORM;
          break;
       case PF_8A8B8G8R:
-         xrb->Base.Base.Format = MESA_FORMAT_RGBA8888_REV;
+         xrb->Base.Base.Format = MESA_FORMAT_R8G8B8A8_UNORM;
          break;
       case PF_5R6G5B:
-         xrb->Base.Base.Format = MESA_FORMAT_RGB565;
+         xrb->Base.Base.Format = MESA_FORMAT_B5G6R5_UNORM;
          break;
       default:
          _mesa_warning(ctx, "Bad pixel format in xmesa_new_renderbuffer");
-         xrb->Base.Base.Format = MESA_FORMAT_ARGB8888;
+         xrb->Base.Base.Format = MESA_FORMAT_B8G8R8A8_UNORM;
          break;
       }
 
@@ -451,7 +451,7 @@ xmesa_MapRenderbuffer(struct gl_context *ctx,
 
          assert(xrb->pixmap);
 
-         /* Install error handler for XGetImage() in case the the window
+         /* Install error handler for XGetImage() in case the window
           * isn't mapped.  If we fail we'll create a temporary XImage.
           */
          mesaXErrorFlag = 0;
@@ -469,7 +469,7 @@ xmesa_MapRenderbuffer(struct gl_context *ctx,
             int bytes_per_line =
                _mesa_format_row_stride(xrb->Base.Base.Format,
                                        xrb->Base.Base.Width);
-            char *image = (char *) malloc(bytes_per_line *
+            char *image = malloc(bytes_per_line *
                                           xrb->Base.Base.Height);
             ximage = XCreateImage(xrb->Parent->display,
                                   xrb->Parent->xm_visual->visinfo->visual,

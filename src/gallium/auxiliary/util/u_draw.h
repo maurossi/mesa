@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -39,7 +39,7 @@ extern "C" {
 #endif
 
 
-static INLINE void
+static inline void
 util_draw_init_info(struct pipe_draw_info *info)
 {
    memset(info, 0, sizeof(*info));
@@ -48,8 +48,11 @@ util_draw_init_info(struct pipe_draw_info *info)
 }
 
 
-static INLINE void
-util_draw_arrays(struct pipe_context *pipe, uint mode, uint start, uint count)
+static inline void
+util_draw_arrays(struct pipe_context *pipe,
+                 enum pipe_prim_type mode,
+                 uint start,
+                 uint count)
 {
    struct pipe_draw_info info;
 
@@ -63,9 +66,11 @@ util_draw_arrays(struct pipe_context *pipe, uint mode, uint start, uint count)
    pipe->draw_vbo(pipe, &info);
 }
 
-static INLINE void
+static inline void
 util_draw_elements(struct pipe_context *pipe, int index_bias,
-                   uint mode, uint start, uint count)
+                   enum pipe_prim_type mode,
+                   uint start,
+                   uint count)
 {
    struct pipe_draw_info info;
 
@@ -79,9 +84,11 @@ util_draw_elements(struct pipe_context *pipe, int index_bias,
    pipe->draw_vbo(pipe, &info);
 }
 
-static INLINE void
+static inline void
 util_draw_arrays_instanced(struct pipe_context *pipe,
-                           uint mode, uint start, uint count,
+                           enum pipe_prim_type mode,
+                           uint start,
+                           uint count,
                            uint start_instance,
                            uint instance_count)
 {
@@ -99,10 +106,12 @@ util_draw_arrays_instanced(struct pipe_context *pipe,
    pipe->draw_vbo(pipe, &info);
 }
 
-static INLINE void
+static inline void
 util_draw_elements_instanced(struct pipe_context *pipe,
                              int index_bias,
-                             uint mode, uint start, uint count,
+                             enum pipe_prim_type mode,
+                             uint start,
+                             uint count,
                              uint start_instance,
                              uint instance_count)
 {
@@ -120,12 +129,14 @@ util_draw_elements_instanced(struct pipe_context *pipe,
    pipe->draw_vbo(pipe, &info);
 }
 
-static INLINE void
+static inline void
 util_draw_range_elements(struct pipe_context *pipe,
                          int index_bias,
                          uint min_index,
                          uint max_index,
-                         uint mode, uint start, uint count)
+                         enum pipe_prim_type mode,
+                         uint start,
+                         uint count)
 {
    struct pipe_draw_info info;
 
@@ -140,6 +151,14 @@ util_draw_range_elements(struct pipe_context *pipe,
 
    pipe->draw_vbo(pipe, &info);
 }
+
+
+/* This converts an indirect draw into a direct draw by mapping the indirect
+ * buffer, extracting its arguments, and calling pipe->draw_vbo.
+ */
+void
+util_draw_indirect(struct pipe_context *pipe,
+                   const struct pipe_draw_info *info);
 
 
 unsigned

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright 2008, 2010 George Sapountzis <gsapountzis@gmail.com>
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -41,13 +41,13 @@
 #define DEBUG_SPAN	0
 
 #if DEBUG_CORE
-#define TRACE printf("--> %s\n", __FUNCTION__)
+#define TRACE printf("--> %s\n", __func__)
 #else
 #define TRACE
 #endif
 
 #if DEBUG_SPAN
-#define TRACE_SPAN printf("--> %s\n", __FUNCTION__)
+#define TRACE_SPAN printf("--> %s\n", __func__)
 #else
 #define TRACE_SPAN
 #endif
@@ -65,13 +65,13 @@ struct dri_context
     __DRIcontext *cPriv;
 };
 
-static INLINE struct dri_context *
+static inline struct dri_context *
 dri_context(__DRIcontext * driContextPriv)
 {
     return (struct dri_context *)driContextPriv->driverPrivate;
 }
 
-static INLINE struct dri_context *
+static inline struct dri_context *
 swrast_context(struct gl_context *ctx)
 {
     return (struct dri_context *) ctx;
@@ -89,13 +89,13 @@ struct dri_drawable
     char *row;
 };
 
-static INLINE struct dri_drawable *
+static inline struct dri_drawable *
 dri_drawable(__DRIdrawable * driDrawPriv)
 {
     return (struct dri_drawable *)driDrawPriv->driverPrivate;
 }
 
-static INLINE struct dri_drawable *
+static inline struct dri_drawable *
 swrast_drawable(struct gl_framebuffer *fb)
 {
     return (struct dri_drawable *) fb;
@@ -115,7 +115,7 @@ struct dri_swrast_renderbuffer {
     GLuint bpp;
 };
 
-static INLINE struct dri_swrast_renderbuffer *
+static inline struct dri_swrast_renderbuffer *
 dri_swrast_renderbuffer(struct gl_renderbuffer *rb)
 {
     return (struct dri_swrast_renderbuffer *) rb;

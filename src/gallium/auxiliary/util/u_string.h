@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,19 +29,20 @@
  * @file
  * Platform independent functions for string manipulation.
  *
- * @author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * @author Jose Fonseca <jfonseca@vmware.com>
  */
 
 #ifndef U_STRING_H_
 #define U_STRING_H_
 
-#if !defined(WIN32) && !defined(XF86_LIBC_H)
+#if !defined(XF86_LIBC_H)
 #include <stdio.h>
 #endif
 #include <stddef.h>
 #include <stdarg.h>
 
 #include "pipe/p_compiler.h"
+#include "util/macros.h" // PRINTFLIKE
 
 
 #ifdef __cplusplus
@@ -54,7 +55,7 @@ extern "C" {
 
 #else
 
-static INLINE char *
+static inline char *
 util_strchrnul(const char *s, char c)
 {
    for (; *s && *s != c; ++s);
@@ -64,18 +65,44 @@ util_strchrnul(const char *s, char c)
 
 #endif
 
-#ifdef WIN32
+#ifdef _WIN32
 
-int util_vsnprintf(char *, size_t, const char *, va_list);
-int util_snprintf(char *str, size_t size, const char *format, ...);
+static inline int
+util_vsnprintf(char *str, size_t size, const char *format, va_list ap)
+{
+   /* We need to use _vscprintf to calculate the length as vsnprintf returns -1
+    * if the number of characters to write is greater than count.
+    */
+   va_list ap_copy;
+   int ret;
+   va_copy(ap_copy, ap);
+   ret = _vsnprintf(str, size, format, ap);
+   if (ret < 0) {
+      ret = _vscprintf(format, ap_copy);
+   }
+   return ret;
+}
 
-static INLINE void
+static inline int
+   PRINTFLIKE(3, 4)
+util_snprintf(char *str, size_t size, const char *format, ...)
+{
+   va_list ap;
+   int ret;
+   va_start(ap, format);
+   ret = util_vsnprintf(str, size, format, ap);
+   va_end(ap);
+   return ret;
+}
+
+static inline void
 util_vsprintf(char *str, const char *format, va_list ap)
 {
    util_vsnprintf(str, (size_t)-1, format, ap);
 }
 
-static INLINE void
+static inline void
+   PRINTFLIKE(2, 3)
 util_sprintf(char *str, const char *format, ...)
 {
    va_list ap;
@@ -84,7 +111,7 @@ util_sprintf(char *str, const char *format, ...)
    va_end(ap);
 }
 
-static INLINE char *
+static inline char *
 util_strchr(const char *s, char c)
 {
    char *p = util_strchrnul(s, c);
@@ -92,7 +119,7 @@ util_strchr(const char *s, char c)
    return *p ? p : NULL;
 }
 
-static INLINE char*
+static inline char*
 util_strncat(char *dst, const char *src, size_t n)
 {
    char *p = dst + strlen(dst);
@@ -106,7 +133,7 @@ util_strncat(char *dst, const char *src, size_t n)
    return dst;
 }
 
-static INLINE int
+static inline int
 util_strcmp(const char *s1, const char *s2)
 {
    unsigned char u1, u2;
@@ -122,7 +149,7 @@ util_strcmp(const char *s1, const char *s2)
    return 0;
 }
 
-static INLINE int
+static inline int
 util_strncmp(const char *s1, const char *s2, size_t n)
 {
    unsigned char u1, u2;
@@ -138,7 +165,7 @@ util_strncmp(const char *s1, const char *s2, size_t n)
    return 0;
 }
 
-static INLINE char *
+static inline char *
 util_strstr(const char *haystack, const char *needle)
 {
    const char *p = haystack;
@@ -152,7 +179,7 @@ util_strstr(const char *haystack, const char *needle)
    return NULL;
 }
 
-static INLINE void *
+static inline void *
 util_memmove(void *dest, const void *src, size_t n)
 {
    char *p = (char *)dest;
@@ -172,6 +199,8 @@ util_memmove(void *dest, const void *src, size_t n)
 }
 
 
+#define util_strcasecmp stricmp
+
 #else
 
 #define util_vsnprintf vsnprintf
@@ -184,6 +213,7 @@ util_memmove(void *dest, const void *src, size_t n)
 #define util_strncat strncat
 #define util_strstr strstr
 #define util_memmove memmove
+#define util_strcasecmp strcasecmp
 
 #endif
 
@@ -199,7 +229,7 @@ struct util_strbuf
 };
 
 
-static INLINE void
+static inline void
 util_strbuf_init(struct util_strbuf *sbuf, char *str, size_t size) 
 {
    sbuf->str = str;
@@ -209,7 +239,7 @@ util_strbuf_init(struct util_strbuf *sbuf, char *str, size_t size)
 }
 
 
-static INLINE void
+static inline void
 util_strbuf_printf(struct util_strbuf *sbuf, const char *format, ...)
 {
    if(sbuf->left > 1) {

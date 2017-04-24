@@ -30,6 +30,11 @@
 
 #include "gallivm/lp_bld_type.h"
 #include "gallivm/lp_bld_arit.h"
+#include "gallivm/lp_bld_const.h"
+#include "gallivm/lp_bld_logic.h"
+#include "gallivm/lp_bld_swizzle.h"
+#include "gallivm/lp_bld_flow.h"
+#include "gallivm/lp_bld_debug.h"
 
 #include "lp_bld_blend.h"
 
@@ -73,7 +78,7 @@ lp_build_blend_func_reverse(unsigned rgb_func, unsigned alpha_func)
 /**
  * Whether the blending factors are complementary of each other.
  */
-static INLINE boolean
+static inline boolean
 lp_build_blend_factor_complementary(unsigned src_factor, unsigned dst_factor)
 {
    return dst_factor == (src_factor ^ 0x10);
@@ -146,9 +151,9 @@ lp_build_blend(struct lp_build_context *bld,
       if (lp_build_blend_factor_complementary(factor_src, factor_dst)) {
          if (func == PIPE_BLEND_ADD) {
             if (factor_src < factor_dst) {
-               return lp_build_lerp(bld, src_factor, dst, src);
+               return lp_build_lerp(bld, src_factor, dst, src, 0);
             } else {
-               return lp_build_lerp(bld, dst_factor, src, dst);
+               return lp_build_lerp(bld, dst_factor, src, dst, 0);
             }
          } else if(bld->type.floating && func == PIPE_BLEND_SUBTRACT) {
             result = lp_build_add(bld, src, dst);
@@ -190,4 +195,29 @@ lp_build_blend(struct lp_build_context *bld,
    src_term = lp_build_mul(bld, src, src_factor);
    dst_term = lp_build_mul(bld, dst, dst_factor);
    return lp_build_blend_func(bld, func, src_term, dst_term);
+}
+
+void
+lp_build_alpha_to_coverage(struct gallivm_state *gallivm,
+                           struct lp_type type,
+                           struct lp_build_mask_context *mask,
+                           LLVMValueRef alpha,
+                           boolean do_branch)
+{
+   struct lp_build_context bld;
+   LLVMValueRef test;
+   LLVMValueRef alpha_ref_value;
+
+   lp_build_context_init(&bld, gallivm, type);
+
+   alpha_ref_value = lp_build_const_vec(gallivm, type, 0.5);
+
+   test = lp_build_cmp(&bld, PIPE_FUNC_GREATER, alpha, alpha_ref_value);
+
+   lp_build_name(test, "alpha_to_coverage");
+
+   lp_build_mask_update(mask, test);
+
+   if (do_branch)
+      lp_build_mask_check(mask);
 }

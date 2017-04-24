@@ -1,16 +1,26 @@
-AUTOMAKE_OPTIONS = subdir-objects
+include $(top_srcdir)/src/gallium/Automake.inc
 
-lib_LTLIBRARIES = libOpenCL.la
+lib_LTLIBRARIES = lib@OPENCL_LIBNAME@.la
 
-libOpenCL_la_LDFLAGS = \
+lib@OPENCL_LIBNAME@_la_LDFLAGS = \
 	$(LLVM_LDFLAGS) \
-	-version-number 1:0
+	-no-undefined \
+	-version-number @OPENCL_VERSION@:0 \
+	$(GC_SECTIONS) \
+	$(LD_NO_UNDEFINED)
 
-libOpenCL_la_LIBADD = \
+if HAVE_LD_VERSION_SCRIPT
+lib@OPENCL_LIBNAME@_la_LDFLAGS += \
+	-Wl,--version-script=$(top_srcdir)/src/gallium/targets/opencl/opencl.sym
+endif
+
+lib@OPENCL_LIBNAME@_la_LIBADD = \
+	$(top_builddir)/src/gallium/auxiliary/pipe-loader/libpipe_loader_dynamic.la \
 	$(top_builddir)/src/gallium/state_trackers/clover/libclover.la \
-	$(top_builddir)/src/gallium/auxiliary/libgallium.a \
-	$(GALLIUM_PIPE_LOADER_LIBS) $(LIBUDEV_LIBS) \
-	-ldl \
+	$(top_builddir)/src/gallium/auxiliary/libgallium.la \
+	$(top_builddir)/src/util/libmesautil.la \
+	$(LIBELF_LIBS) \
+	$(DLOPEN_LIBS) \
 	-lclangCodeGen \
 	-lclangFrontendTool \
 	-lclangFrontend \
@@ -20,34 +30,22 @@ libOpenCL_la_LIBADD = \
 	-lclangParse \
 	-lclangSema \
 	-lclangAnalysis \
-	-lclangRewrite \
 	-lclangAST \
+	-lclangEdit \
 	-lclangLex \
 	-lclangBasic \
-	-lclangEdit \
-	$(LLVM_LIBS)
+	$(LLVM_LIBS) \
+	$(PTHREAD_LIBS)
 
+nodist_EXTRA_lib@OPENCL_LIBNAME@_la_SOURCES = dummy.cpp
+lib@OPENCL_LIBNAME@_la_SOURCES =
 
-libOpenCL_la_SOURCES =
+EXTRA_lib@OPENCL_LIBNAME@_la_DEPENDENCIES = opencl.sym
+EXTRA_DIST = mesa.icd opencl.sym
 
-# Force usage of a C++ linker
-nodist_EXTRA_libOpenCL_la_SOURCES = dummy.cpp
+if HAVE_CLOVER_ICD
+icddir = /etc/OpenCL/vendors/
+icd_DATA = mesa.icd
+endif
 
-PIPE_SRC_DIR = $(top_srcdir)/src/gallium/targets/pipe-loader
-
-# Provide compatibility with scripts for the old Mesa build system for
-# a while by putting a link to the driver into /lib of the build tree.
-all-local: libOpenCL.la
-	@$(MAKE) -C $(PIPE_SRC_DIR)
-	$(MKDIR_P) $(top_builddir)/$(LIB_DIR)
-	ln -f .libs/libOpenCL.so* $(top_builddir)/$(LIB_DIR)/
-
-install-exec-local:
-	@$(MAKE) -C $(PIPE_SRC_DIR) PIPE_INSTALL_DIR=$(OPENCL_LIB_INSTALL_DIR) install
-
-clean-local:
-	@$(MAKE) -C $(PIPE_SRC_DIR) clean
-
-# FIXME: Remove when the rest of Gallium is converted to automake.
-TOP=$(top_builddir)
-default: all
+include $(top_srcdir)/install-gallium-links.mk

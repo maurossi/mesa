@@ -22,15 +22,17 @@
  */
 
 #include "brw_fs.h"
-#include "brw_fs_cfg.h"
+#include "brw_cfg.h"
 
 /** @file brw_fs_cse.cpp
  *
  * Support for local common subexpression elimination.
  *
- * See Muchnik's Advanced Compiler Design and Implementation, section
+ * See Muchnick's Advanced Compiler Design and Implementation, section
  * 13.1 (p378).
  */
+
+using namespace brw;
 
 namespace {
 struct aeb_entry : public exec_node {
@@ -43,9 +45,10 @@ struct aeb_entry : public exec_node {
 }
 
 static bool
-is_expression(const fs_inst *const inst)
+is_expression(const fs_visitor *v, const fs_inst *const inst)
 {
    switch (inst->opcode) {
+   case BRW_OPCODE_MOV:
    case BRW_OPCODE_SEL:
    case BRW_OPCODE_NOT:
    case BRW_OPCODE_AND:
@@ -53,11 +56,12 @@ is_expression(const fs_inst *const inst)
    case BRW_OPCODE_XOR:
    case BRW_OPCODE_SHR:
    case BRW_OPCODE_SHL:
-   case BRW_OPCODE_RSR:
-   case BRW_OPCODE_RSL:
    case BRW_OPCODE_ASR:
+   case BRW_OPCODE_CMP:
+   case BRW_OPCODE_CMPN:
    case BRW_OPCODE_ADD:
    case BRW_OPCODE_MUL:
+   case SHADER_OPCODE_MULH:
    case BRW_OPCODE_FRC:
    case BRW_OPCODE_RNDU:
    case BRW_OPCODE_RNDD:
@@ -66,107 +70,294 @@ is_expression(const fs_inst *const inst)
    case BRW_OPCODE_LINE:
    case BRW_OPCODE_PLN:
    case BRW_OPCODE_MAD:
+   case BRW_OPCODE_LRP:
+   case FS_OPCODE_FB_READ_LOGICAL:
+   case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
+   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_LOGICAL:
+   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GEN7:
    case FS_OPCODE_CINTERP:
    case FS_OPCODE_LINTERP:
+   case SHADER_OPCODE_FIND_LIVE_CHANNEL:
+   case SHADER_OPCODE_BROADCAST:
+   case SHADER_OPCODE_MOV_INDIRECT:
+   case SHADER_OPCODE_TEX_LOGICAL:
+   case SHADER_OPCODE_TXD_LOGICAL:
+   case SHADER_OPCODE_TXF_LOGICAL:
+   case SHADER_OPCODE_TXL_LOGICAL:
+   case SHADER_OPCODE_TXS_LOGICAL:
+   case FS_OPCODE_TXB_LOGICAL:
+   case SHADER_OPCODE_TXF_CMS_LOGICAL:
+   case SHADER_OPCODE_TXF_CMS_W_LOGICAL:
+   case SHADER_OPCODE_TXF_UMS_LOGICAL:
+   case SHADER_OPCODE_TXF_MCS_LOGICAL:
+   case SHADER_OPCODE_LOD_LOGICAL:
+   case SHADER_OPCODE_TG4_LOGICAL:
+   case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
+   case FS_OPCODE_PACK:
       return true;
+   case SHADER_OPCODE_RCP:
+   case SHADER_OPCODE_RSQ:
+   case SHADER_OPCODE_SQRT:
+   case SHADER_OPCODE_EXP2:
+   case SHADER_OPCODE_LOG2:
+   case SHADER_OPCODE_POW:
+   case SHADER_OPCODE_INT_QUOTIENT:
+   case SHADER_OPCODE_INT_REMAINDER:
+   case SHADER_OPCODE_SIN:
+   case SHADER_OPCODE_COS:
+      return inst->mlen < 2;
+   case SHADER_OPCODE_LOAD_PAYLOAD:
+      return !inst->is_copy_payload(v->alloc);
    default:
-      return false;
+      return inst->is_send_from_grf() && !inst->has_side_effects() &&
+         !inst->is_volatile();
    }
 }
 
 static bool
-operands_match(fs_reg *xs, fs_reg *ys)
+operands_match(const fs_inst *a, const fs_inst *b, bool *negate)
 {
-   return xs[0].equals(ys[0]) && xs[1].equals(ys[1]) && xs[2].equals(ys[2]);
+   fs_reg *xs = a->src;
+   fs_reg *ys = b->src;
+
+   if (a->opcode == BRW_OPCODE_MAD) {
+      return xs[0].equals(ys[0]) &&
+             ((xs[1].equals(ys[1]) && xs[2].equals(ys[2])) ||
+              (xs[2].equals(ys[1]) && xs[1].equals(ys[2])));
+   } else if (a->opcode == BRW_OPCODE_MUL && a->dst.type == BRW_REGISTER_TYPE_F) {
+      bool xs0_negate = xs[0].negate;
+      bool xs1_negate = xs[1].file == IMM ? xs[1].f < 0.0f
+                                          : xs[1].negate;
+      bool ys0_negate = ys[0].negate;
+      bool ys1_negate = ys[1].file == IMM ? ys[1].f < 0.0f
+                                          : ys[1].negate;
+      float xs1_imm = xs[1].f;
+      float ys1_imm = ys[1].f;
+
+      xs[0].negate = false;
+      xs[1].negate = false;
+      ys[0].negate = false;
+      ys[1].negate = false;
+      xs[1].f = fabsf(xs[1].f);
+      ys[1].f = fabsf(ys[1].f);
+
+      bool ret = (xs[0].equals(ys[0]) && xs[1].equals(ys[1])) ||
+                 (xs[1].equals(ys[0]) && xs[0].equals(ys[1]));
+
+      xs[0].negate = xs0_negate;
+      xs[1].negate = xs[1].file == IMM ? false : xs1_negate;
+      ys[0].negate = ys0_negate;
+      ys[1].negate = ys[1].file == IMM ? false : ys1_negate;
+      xs[1].f = xs1_imm;
+      ys[1].f = ys1_imm;
+
+      *negate = (xs0_negate != xs1_negate) != (ys0_negate != ys1_negate);
+      if (*negate && (a->saturate || b->saturate))
+         return false;
+      return ret;
+   } else if (!a->is_commutative()) {
+      bool match = true;
+      for (int i = 0; i < a->sources; i++) {
+         if (!xs[i].equals(ys[i])) {
+            match = false;
+            break;
+         }
+      }
+      return match;
+   } else {
+      return (xs[0].equals(ys[0]) && xs[1].equals(ys[1])) ||
+             (xs[1].equals(ys[0]) && xs[0].equals(ys[1]));
+   }
+}
+
+static bool
+instructions_match(fs_inst *a, fs_inst *b, bool *negate)
+{
+   return a->opcode == b->opcode &&
+          a->force_writemask_all == b->force_writemask_all &&
+          a->exec_size == b->exec_size &&
+          a->group == b->group &&
+          a->saturate == b->saturate &&
+          a->predicate == b->predicate &&
+          a->predicate_inverse == b->predicate_inverse &&
+          a->conditional_mod == b->conditional_mod &&
+          a->flag_subreg == b->flag_subreg &&
+          a->dst.type == b->dst.type &&
+          a->offset == b->offset &&
+          a->mlen == b->mlen &&
+          a->size_written == b->size_written &&
+          a->base_mrf == b->base_mrf &&
+          a->eot == b->eot &&
+          a->header_size == b->header_size &&
+          a->shadow_compare == b->shadow_compare &&
+          a->pi_noperspective == b->pi_noperspective &&
+          a->target == b->target &&
+          a->sources == b->sources &&
+          operands_match(a, b, negate);
+}
+
+static void
+create_copy_instr(const fs_builder &bld, fs_inst *inst, fs_reg src, bool negate)
+{
+   unsigned written = regs_written(inst);
+   unsigned dst_width =
+      DIV_ROUND_UP(inst->dst.component_size(inst->exec_size), REG_SIZE);
+   fs_inst *copy;
+
+   if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD ||
+       written != dst_width) {
+      fs_reg *payload;
+      int sources, header_size;
+      if (inst->opcode == SHADER_OPCODE_LOAD_PAYLOAD) {
+         sources = inst->sources;
+         header_size = inst->header_size;
+      } else {
+         assert(written % dst_width == 0);
+         sources = written / dst_width;
+         header_size = 0;
+      }
+
+      assert(src.file == VGRF);
+      payload = ralloc_array(bld.shader->mem_ctx, fs_reg, sources);
+      for (int i = 0; i < header_size; i++) {
+         payload[i] = src;
+         src.offset += REG_SIZE;
+      }
+      for (int i = header_size; i < sources; i++) {
+         payload[i] = src;
+         src = offset(src, bld, 1);
+      }
+      copy = bld.LOAD_PAYLOAD(inst->dst, payload, sources, header_size);
+   } else {
+      copy = bld.MOV(inst->dst, src);
+      copy->group = inst->group;
+      copy->force_writemask_all = inst->force_writemask_all;
+      copy->src[0].negate = negate;
+   }
+   assert(regs_written(copy) == written);
 }
 
 bool
-fs_visitor::opt_cse_local(fs_bblock *block, exec_list *aeb)
+fs_visitor::opt_cse_local(bblock_t *block)
 {
    bool progress = false;
+   exec_list aeb;
 
-   void *mem_ctx = ralloc_context(this->mem_ctx);
+   void *cse_ctx = ralloc_context(NULL);
 
-   for (fs_inst *inst = block->start;
-	inst != block->end->next;
-	inst = (fs_inst *) inst->next) {
-
+   int ip = block->start_ip;
+   foreach_inst_in_block(fs_inst, inst, block) {
       /* Skip some cases. */
-      if (is_expression(inst) && !inst->predicated && inst->mlen == 0 &&
-          !inst->force_uncompressed && !inst->force_sechalf &&
-          !inst->conditional_mod)
+      if (is_expression(this, inst) && !inst->is_partial_write() &&
+          ((inst->dst.file != ARF && inst->dst.file != FIXED_GRF) ||
+           inst->dst.is_null()))
       {
-	 bool found = false;
+         bool found = false;
+         bool negate = false;
 
-	 aeb_entry *entry;
-	 foreach_list(entry_node, aeb) {
-	    entry = (aeb_entry *) entry_node;
+         foreach_in_list_use_after(aeb_entry, entry, &aeb) {
+            /* Match current instruction's expression against those in AEB. */
+            if (!(entry->generator->dst.is_null() && !inst->dst.is_null()) &&
+                instructions_match(inst, entry->generator, &negate)) {
+               found = true;
+               progress = true;
+               break;
+            }
+         }
 
-	    /* Match current instruction's expression against those in AEB. */
-	    if (inst->opcode == entry->generator->opcode &&
-		inst->saturate == entry->generator->saturate &&
-		operands_match(entry->generator->src, inst->src)) {
+         if (!found) {
+            if (inst->opcode != BRW_OPCODE_MOV ||
+                (inst->opcode == BRW_OPCODE_MOV &&
+                 inst->src[0].file == IMM &&
+                 inst->src[0].type == BRW_REGISTER_TYPE_VF)) {
+               /* Our first sighting of this expression.  Create an entry. */
+               aeb_entry *entry = ralloc(cse_ctx, aeb_entry);
+               entry->tmp = reg_undef;
+               entry->generator = inst;
+               aeb.push_tail(entry);
+            }
+         } else {
+            /* This is at least our second sighting of this expression.
+             * If we don't have a temporary already, make one.
+             */
+            bool no_existing_temp = entry->tmp.file == BAD_FILE;
+            if (no_existing_temp && !entry->generator->dst.is_null()) {
+               const fs_builder ibld = fs_builder(this, block, entry->generator)
+                                       .at(block, entry->generator->next);
+               int written = regs_written(entry->generator);
 
-	       found = true;
-	       progress = true;
-	       break;
-	    }
-	 }
+               entry->tmp = fs_reg(VGRF, alloc.allocate(written),
+                                   entry->generator->dst.type);
 
-	 if (!found) {
-	    /* Our first sighting of this expression.  Create an entry. */
-	    aeb_entry *entry = ralloc(mem_ctx, aeb_entry);
-	    entry->tmp = reg_undef;
-	    entry->generator = inst;
-	    aeb->push_tail(entry);
-	 } else {
-	    /* This is at least our second sighting of this expression.
-	     * If we don't have a temporary already, make one.
-	     */
-	    bool no_existing_temp = entry->tmp.file == BAD_FILE;
-	    if (no_existing_temp) {
-	       entry->tmp = fs_reg(this, glsl_type::float_type);
-	       entry->tmp.type = inst->dst.type;
+               create_copy_instr(ibld, entry->generator, entry->tmp, false);
 
-	       fs_inst *copy = new(ralloc_parent(inst))
-		  fs_inst(BRW_OPCODE_MOV, entry->generator->dst, entry->tmp);
-	       entry->generator->insert_after(copy);
-	       entry->generator->dst = entry->tmp;
-	    }
+               entry->generator->dst = entry->tmp;
+            }
 
-	    /* dest <- temp */
-	    fs_inst *copy = new(ralloc_parent(inst))
-	       fs_inst(BRW_OPCODE_MOV, inst->dst, entry->tmp);
-	    inst->replace_with(copy);
+            /* dest <- temp */
+            if (!inst->dst.is_null()) {
+               assert(inst->size_written == entry->generator->size_written);
+               assert(inst->dst.type == entry->tmp.type);
+               const fs_builder ibld(this, block, inst);
 
-	    /* Appending an instruction may have changed our bblock end. */
-	    if (inst == block->end) {
-	       block->end = copy;
-	    }
+               create_copy_instr(ibld, inst, entry->tmp, negate);
+            }
 
-	    /* Continue iteration with copy->next */
-	    inst = copy;
-	 }
+            /* Set our iterator so that next time through the loop inst->next
+             * will get the instruction in the basic block after the one we've
+             * removed.
+             */
+            fs_inst *prev = (fs_inst *)inst->prev;
+
+            inst->remove(block);
+            inst = prev;
+         }
       }
 
-      /* Kill all AEB entries that use the destination. */
-      foreach_list_safe(entry_node, aeb) {
-	 aeb_entry *entry = (aeb_entry *)entry_node;
+      foreach_in_list_safe(aeb_entry, entry, &aeb) {
+         /* Kill all AEB entries that write a different value to or read from
+          * the flag register if we just wrote it.
+          */
+         if (inst->flags_written()) {
+            bool negate; /* dummy */
+            if (entry->generator->flags_read(devinfo) ||
+                (entry->generator->flags_written() &&
+                 !instructions_match(inst, entry->generator, &negate))) {
+               entry->remove();
+               ralloc_free(entry);
+               continue;
+            }
+         }
 
-	 for (int i = 0; i < 3; i++) {
-            if (inst->overwrites_reg(entry->generator->src[i])) {
-	       entry->remove();
-	       ralloc_free(entry);
-	       break;
-	    }
-	 }
+         for (int i = 0; i < entry->generator->sources; i++) {
+            fs_reg *src_reg = &entry->generator->src[i];
+
+            /* Kill all AEB entries that use the destination we just
+             * overwrote.
+             */
+            if (regions_overlap(inst->dst, inst->size_written,
+                                entry->generator->src[i],
+                                entry->generator->size_read(i))) {
+               entry->remove();
+               ralloc_free(entry);
+               break;
+            }
+
+            /* Kill any AEB entries using registers that don't get reused any
+             * more -- a sure sign they'll fail operands_match().
+             */
+            if (src_reg->file == VGRF && virtual_grf_end[src_reg->nr] < ip) {
+               entry->remove();
+               ralloc_free(entry);
+               break;
+            }
+         }
       }
+
+      ip++;
    }
 
-   ralloc_free(mem_ctx);
-
-   if (progress)
-      this->live_intervals_valid = false;
+   ralloc_free(cse_ctx);
 
    return progress;
 }
@@ -176,14 +367,14 @@ fs_visitor::opt_cse()
 {
    bool progress = false;
 
-   fs_cfg cfg(this);
+   calculate_live_intervals();
 
-   for (int b = 0; b < cfg.num_blocks; b++) {
-      fs_bblock *block = cfg.blocks[b];
-      exec_list aeb;
-
-      progress = opt_cse_local(block, &aeb) || progress;
+   foreach_block (block, cfg) {
+      progress = opt_cse_local(block) || progress;
    }
+
+   if (progress)
+      invalidate_live_intervals();
 
    return progress;
 }

@@ -70,8 +70,9 @@ enum wl_drm_format {
 struct wl_drm;
 
 struct wl_drm_buffer {
-	struct wl_buffer buffer;
+	struct wl_resource *resource;
 	struct wl_drm *drm;
+	int32_t width, height;
 	uint32_t format;
         const void *driver_format;
         int32_t offset[3];
@@ -82,26 +83,29 @@ struct wl_drm_buffer {
 struct wayland_drm_callbacks {
 	int (*authenticate)(void *user_data, uint32_t id);
 
-	void (*reference_buffer)(void *user_data, uint32_t name,
+        void (*reference_buffer)(void *user_data, uint32_t name, int fd,
                                  struct wl_drm_buffer *buffer);
 
 	void (*release_buffer)(void *user_data, struct wl_drm_buffer *buffer);
 };
 
+enum { WAYLAND_DRM_PRIME = 0x01 };
+
+struct wl_drm_buffer *
+wayland_drm_buffer_get(struct wl_drm *drm, struct wl_resource *resource);
+
 struct wl_drm *
 wayland_drm_init(struct wl_display *display, char *device_name,
-		 struct wayland_drm_callbacks *callbacks, void *user_data);
+		 struct wayland_drm_callbacks *callbacks, void *user_data,
+                 uint32_t flags);
 
 void
 wayland_drm_uninit(struct wl_drm *drm);
 
-int
-wayland_buffer_is_drm(struct wl_buffer *buffer);
-
 uint32_t
-wayland_drm_buffer_get_format(struct wl_buffer *buffer_base);
+wayland_drm_buffer_get_format(struct wl_drm_buffer *buffer);
 
 void *
-wayland_drm_buffer_get_buffer(struct wl_buffer *buffer);
+wayland_drm_buffer_get_buffer(struct wl_drm_buffer *buffer);
 
 #endif

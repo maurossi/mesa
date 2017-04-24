@@ -26,6 +26,9 @@
  */
 
 #include "brw_fs.h"
+#include "util/bitset.h"
+
+struct cfg_t;
 
 namespace brw {
 
@@ -36,46 +39,77 @@ struct block_data {
     * Note that for our purposes, "defined" means unconditionally, completely
     * defined.
     */
-   bool *def;
+   BITSET_WORD *def;
 
    /**
     * Which variables are used before being defined in the block.
     */
-   bool *use;
+   BITSET_WORD *use;
 
    /** Which defs reach the entry point of the block. */
-   bool *livein;
+   BITSET_WORD *livein;
 
    /** Which defs reach the exit point of the block. */
-   bool *liveout;
+   BITSET_WORD *liveout;
+
+   BITSET_WORD flag_def[1];
+   BITSET_WORD flag_use[1];
+   BITSET_WORD flag_livein[1];
+   BITSET_WORD flag_liveout[1];
 };
 
 class fs_live_variables {
 public:
-   static void* operator new(size_t size, void *ctx)
-   {
-      void *node;
+   DECLARE_RALLOC_CXX_OPERATORS(fs_live_variables)
 
-      node = rzalloc_size(ctx, size);
-      assert(node != NULL);
-
-      return node;
-   }
-
-   fs_live_variables(fs_visitor *v, fs_cfg *cfg);
+   fs_live_variables(fs_visitor *v, const cfg_t *cfg);
    ~fs_live_variables();
 
-   void setup_def_use();
-   void compute_live_variables();
+   bool vars_interfere(int a, int b);
+   int var_from_reg(const fs_reg &reg) const
+   {
+      return var_from_vgrf[reg.nr] + reg.offset / REG_SIZE;
+   }
 
-   fs_visitor *v;
-   fs_cfg *cfg;
-   void *mem_ctx;
+   /** Map from virtual GRF number to index in block_data arrays. */
+   int *var_from_vgrf;
+
+   /**
+    * Map from any index in block_data to the virtual GRF containing it.
+    *
+    * For alloc.sizes of [1, 2, 3], vgrf_from_var would contain
+    * [0, 1, 1, 2, 2, 2].
+    */
+   int *vgrf_from_var;
 
    int num_vars;
+   int num_vgrfs;
+   int bitset_words;
+
+   /** @{
+    * Final computed live ranges for each var (each component of each virtual
+    * GRF).
+    */
+   int *start;
+   int *end;
+   /** @} */
 
    /** Per-basic-block information on live variables */
-   struct block_data *bd;
+   struct block_data *block_data;
+
+protected:
+   void setup_def_use();
+   void setup_one_read(struct block_data *bd, fs_inst *inst, int ip,
+                       const fs_reg &reg);
+   void setup_one_write(struct block_data *bd, fs_inst *inst, int ip,
+                        const fs_reg &reg);
+   void compute_live_variables();
+   void compute_start_end();
+
+   fs_visitor *v;
+   const cfg_t *cfg;
+   void *mem_ctx;
+
 };
 
 } /* namespace brw */

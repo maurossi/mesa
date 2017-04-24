@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Tungsten Graphics, inc.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -16,7 +16,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.  IN NO EVENT SHALL
- * TUNGSTEN GRAPHICS AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
+ * VMWARE AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
  * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -33,7 +33,7 @@
  *
  *
  * Authors:
- *    Keith Whitwell <keithw@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef _TRANSLATE_H
@@ -43,6 +43,14 @@
 #include "pipe/p_compiler.h"
 #include "pipe/p_format.h"
 #include "pipe/p_state.h"
+
+/**
+ * Translate has to work on one more attribute because
+ * the draw module has to be able to pass the vertex
+ * position even if the fragment shader already consumes
+ * PIPE_MAX_ATTRIBS inputs.
+ */
+#define TRANSLATE_MAX_ATTRIBS (PIPE_MAX_ATTRIBS + 1)
 
 enum translate_element_type {
    TRANSLATE_ELEMENT_NORMAL,
@@ -64,7 +72,7 @@ struct translate_element
 struct translate_key {
    unsigned output_stride;
    unsigned nr_elements;
-   struct translate_element element[PIPE_MAX_ATTRIBS + 1];
+   struct translate_element element[TRANSLATE_MAX_ATTRIBS];
 };
 
 
@@ -74,24 +82,28 @@ struct translate;
 typedef void (PIPE_CDECL *run_elts_func)(struct translate *,
                                          const unsigned *elts,
                                          unsigned count,
+                                         unsigned start_instance,
                                          unsigned instance_id,
                                          void *output_buffer);
 
 typedef void (PIPE_CDECL *run_elts16_func)(struct translate *,
                                            const uint16_t *elts,
                                            unsigned count,
+                                           unsigned start_instance,
                                            unsigned instance_id,
                                            void *output_buffer);
 
 typedef void (PIPE_CDECL *run_elts8_func)(struct translate *,
                                           const uint8_t *elts,
                                           unsigned count,
+                                          unsigned start_instance,
                                           unsigned instance_id,
                                           void *output_buffer);
 
 typedef void (PIPE_CDECL *run_func)(struct translate *,
                                     unsigned start,
                                     unsigned count,
+                                    unsigned start_instance,
                                     unsigned instance_id,
                                     void *output_buffer);
 
@@ -118,12 +130,12 @@ struct translate *translate_create( const struct translate_key *key );
 
 boolean translate_is_output_format_supported(enum pipe_format format);
 
-static INLINE int translate_keysize( const struct translate_key *key )
+static inline int translate_keysize( const struct translate_key *key )
 {
    return 2 * sizeof(int) + key->nr_elements * sizeof(struct translate_element);
 }
 
-static INLINE int translate_key_compare( const struct translate_key *a,
+static inline int translate_key_compare( const struct translate_key *a,
                                          const struct translate_key *b )
 {
    int keysize_a = translate_keysize(a);
@@ -136,7 +148,7 @@ static INLINE int translate_key_compare( const struct translate_key *a,
 }
 
 
-static INLINE void translate_key_sanitize( struct translate_key *a )
+static inline void translate_key_sanitize( struct translate_key *a )
 {
    int keysize = translate_keysize(a);
    char *ptr = (char *)a;

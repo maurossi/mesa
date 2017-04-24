@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -108,12 +108,10 @@ void GLAPIENTRY
 _mesa_ClearStencil( GLint s )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
-   if (ctx->Stencil.Clear == (GLuint) s)
-      return;
+   if (MESA_VERBOSE & VERBOSE_API)
+      _mesa_debug(ctx, "glClearStencil(%d)\n", s);
 
-   FLUSH_VERTICES(ctx, _NEW_STENCIL);
    ctx->Stencil.Clear = (GLuint) s;
 }
 
@@ -129,15 +127,13 @@ _mesa_ClearStencil( GLint s )
  * \sa glStencilFunc().
  *
  * Verifies the parameters and updates the respective values in
- * __struct gl_contextRec::Stencil. On change flushes the vertices and notifies the
- * driver via the dd_function_table::StencilFunc callback.
+ * __struct gl_contextRec::Stencil. On change flushes the vertices and notifies
+ * the driver via the dd_function_table::StencilFunc callback.
  */
 void GLAPIENTRY
 _mesa_StencilFuncSeparateATI( GLenum frontfunc, GLenum backfunc, GLint ref, GLuint mask )
 {
    GET_CURRENT_CONTEXT(ctx);
-   const GLint stencilMax = (1 << ctx->DrawBuffer->Visual.stencilBits) - 1;
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glStencilFuncSeparateATI()\n");
@@ -152,8 +148,6 @@ _mesa_StencilFuncSeparateATI( GLenum frontfunc, GLenum backfunc, GLint ref, GLui
                   "glStencilFuncSeparateATI(backfunc)");
       return;
    }
-
-   ref = CLAMP( ref, 0, stencilMax );
 
    /* set both front and back state */
    if (ctx->Stencil.Function[0] == frontfunc &&
@@ -187,16 +181,14 @@ _mesa_StencilFuncSeparateATI( GLenum frontfunc, GLenum backfunc, GLint ref, GLui
  * \sa glStencilFunc().
  *
  * Verifies the parameters and updates the respective values in
- * __struct gl_contextRec::Stencil. On change flushes the vertices and notifies the
- * driver via the dd_function_table::StencilFunc callback.
+ * __struct gl_contextRec::Stencil. On change flushes the vertices and notifies
+ * the driver via the dd_function_table::StencilFunc callback.
  */
 void GLAPIENTRY
 _mesa_StencilFunc( GLenum func, GLint ref, GLuint mask )
 {
    GET_CURRENT_CONTEXT(ctx);
-   const GLint stencilMax = (1 << ctx->DrawBuffer->Visual.stencilBits) - 1;
    const GLint face = ctx->Stencil.ActiveFace;
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glStencilFunc()\n");
@@ -205,8 +197,6 @@ _mesa_StencilFunc( GLenum func, GLint ref, GLuint mask )
       _mesa_error(ctx, GL_INVALID_ENUM, "glStencilFunc(func)");
       return;
    }
-
-   ref = CLAMP( ref, 0, stencilMax );
 
    if (face != 0) {
       if (ctx->Stencil.Function[face] == func &&
@@ -268,8 +258,6 @@ _mesa_StencilMask( GLuint mask )
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glStencilMask()\n");
 
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
    if (face != 0) {
       /* Only modify the EXT_stencil_two_side back-face state.
        */
@@ -313,8 +301,8 @@ _mesa_StencilMask( GLuint mask )
  * \sa glStencilOp().
  * 
  * Verifies the parameters and updates the respective fields in
- * __struct gl_contextRec::Stencil. On change flushes the vertices and notifies the
- * driver via the dd_function_table::StencilOp callback.
+ * __struct gl_contextRec::Stencil. On change flushes the vertices and notifies
+ * the driver via the dd_function_table::StencilOp callback.
  */
 void GLAPIENTRY
 _mesa_StencilOp(GLenum fail, GLenum zfail, GLenum zpass)
@@ -324,8 +312,6 @@ _mesa_StencilOp(GLenum fail, GLenum zfail, GLenum zpass)
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glStencilOp()\n");
-
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (!validate_stencil_op(ctx, fail)) {
       _mesa_error(ctx, GL_INVALID_ENUM, "glStencilOp(sfail)");
@@ -382,13 +368,11 @@ _mesa_StencilOp(GLenum fail, GLenum zfail, GLenum zpass)
 
 
 
-#if _HAVE_FULL_GL
 /* GL_EXT_stencil_two_side */
 void GLAPIENTRY
 _mesa_ActiveStencilFaceEXT(GLenum face)
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glActiveStencilFaceEXT()\n");
@@ -399,29 +383,20 @@ _mesa_ActiveStencilFaceEXT(GLenum face)
    }
 
    if (face == GL_FRONT || face == GL_BACK) {
-      FLUSH_VERTICES(ctx, _NEW_STENCIL);
       ctx->Stencil.ActiveFace = (face == GL_FRONT) ? 0 : 2;
    }
    else {
       _mesa_error(ctx, GL_INVALID_ENUM, "glActiveStencilFaceEXT(face)");
    }
 }
-#endif
 
 
 
-/**
- * OpenGL 2.0 function.
- * \todo Make StencilOp() call this function.  And eventually remove the
- * ctx->Driver.StencilOp function and use ctx->Driver.StencilOpSeparate
- * instead.
- */
 void GLAPIENTRY
 _mesa_StencilOpSeparate(GLenum face, GLenum sfail, GLenum zfail, GLenum zpass)
 {
    GLboolean set = GL_FALSE;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glStencilOpSeparate()\n");
@@ -478,8 +453,6 @@ void GLAPIENTRY
 _mesa_StencilFuncSeparate(GLenum face, GLenum func, GLint ref, GLuint mask)
 {
    GET_CURRENT_CONTEXT(ctx);
-   const GLint stencilMax = (1 << ctx->DrawBuffer->Visual.stencilBits) - 1;
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glStencilFuncSeparate()\n");
@@ -492,8 +465,6 @@ _mesa_StencilFuncSeparate(GLenum face, GLenum func, GLint ref, GLuint mask)
       _mesa_error(ctx, GL_INVALID_ENUM, "glStencilFuncSeparate(func)");
       return;
    }
-
-   ref = CLAMP(ref, 0, stencilMax);
 
    FLUSH_VERTICES(ctx, _NEW_STENCIL);
 
@@ -520,7 +491,6 @@ void GLAPIENTRY
 _mesa_StencilMaskSeparate(GLenum face, GLuint mask)
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glStencilMaskSeparate()\n");
@@ -564,6 +534,11 @@ _mesa_update_stencil(struct gl_context *ctx)
 	ctx->Stencil.Ref[0] != ctx->Stencil.Ref[face] ||
 	ctx->Stencil.ValueMask[0] != ctx->Stencil.ValueMask[face] ||
 	ctx->Stencil.WriteMask[0] != ctx->Stencil.WriteMask[face]);
+
+   ctx->Stencil._WriteEnabled =
+      ctx->Stencil._Enabled &&
+      (ctx->Stencil.WriteMask[0] != 0 ||
+       (ctx->Stencil._TestTwoSide && ctx->Stencil.WriteMask[face] != 0));
 }
 
 
@@ -595,12 +570,24 @@ _mesa_init_stencil(struct gl_context *ctx)
    ctx->Stencil.Ref[0] = 0;
    ctx->Stencil.Ref[1] = 0;
    ctx->Stencil.Ref[2] = 0;
-   ctx->Stencil.ValueMask[0] = ~0U;
-   ctx->Stencil.ValueMask[1] = ~0U;
-   ctx->Stencil.ValueMask[2] = ~0U;
-   ctx->Stencil.WriteMask[0] = ~0U;
-   ctx->Stencil.WriteMask[1] = ~0U;
-   ctx->Stencil.WriteMask[2] = ~0U;
+
+   /* 4.1.4 Stencil Test section of the GL-ES 3.0 specification says:
+    *
+    *     "In the initial state, [...] the front and back stencil mask are both
+    *     set to the value 2^s − 1, where s is greater than or equal to the
+    *     number of bits in the deepest stencil buffer* supported by the GL
+    *     implementation."
+    *
+    * Since the maximum supported precision for stencil buffers is 8 bits,
+    * mask values should be initialized to 2^8 - 1 = 0xFF.
+    */
+   ctx->Stencil.ValueMask[0] = 0xFF;
+   ctx->Stencil.ValueMask[1] = 0xFF;
+   ctx->Stencil.ValueMask[2] = 0xFF;
+   ctx->Stencil.WriteMask[0] = 0xFF;
+   ctx->Stencil.WriteMask[1] = 0xFF;
+   ctx->Stencil.WriteMask[2] = 0xFF;
+
    ctx->Stencil.Clear = 0;
    ctx->Stencil._BackFace = 1;
 }

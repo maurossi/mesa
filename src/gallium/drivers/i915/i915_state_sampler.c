@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -63,7 +63,7 @@ static void update_map(struct i915_context *i915,
                        const struct i915_texture *tex,
                        const struct i915_sampler_state *sampler,
                        const struct pipe_sampler_view* view,
-                       uint state[2]);
+                       uint state[3]);
 
 
 
@@ -96,7 +96,11 @@ static void update_sampler(struct i915_context *i915,
        pt->format == PIPE_FORMAT_YUYV)
       state[0] |= SS2_COLORSPACE_CONVERSION;
 
-   /* 3D textures don't seem to respect the border color.
+   if (pt->format == PIPE_FORMAT_B8G8R8A8_SRGB ||
+       pt->format == PIPE_FORMAT_L8_SRGB )
+      state[0] |= SS2_REVERSE_GAMMA_ENABLE;
+
+    /* 3D textures don't seem to respect the border color.
     * Fallback if there's ever a danger that they might refer to
     * it.  
     * 
@@ -157,13 +161,13 @@ static void update_samplers(struct i915_context *i915)
 
          update_sampler(i915,
                         unit,
-                        i915->sampler[unit],          /* sampler state */
+                        i915->fragment_sampler[unit], /* sampler state */
                         texture,                      /* texture */
                         i915->current.sampler[unit]); /* the result */
          update_map(i915,
                     unit,
                     texture,                             /* texture */
-                    i915->sampler[unit],                 /* sampler state */
+                    i915->fragment_sampler[unit],        /* sampler state */
                     i915->fragment_sampler_views[unit],  /* sampler view */
                     i915->current.texbuffer[unit]);      /* the result */
 
@@ -189,10 +193,10 @@ struct i915_tracked_state i915_hw_samplers = {
 static uint translate_texture_format(enum pipe_format pipeFormat,
                                      const struct pipe_sampler_view* view)
 {
-   if ( (view->swizzle_r != PIPE_SWIZZLE_RED ||
-         view->swizzle_g != PIPE_SWIZZLE_GREEN ||
-         view->swizzle_b != PIPE_SWIZZLE_BLUE ||
-         view->swizzle_a != PIPE_SWIZZLE_ALPHA ) &&
+   if ( (view->swizzle_r != PIPE_SWIZZLE_X ||
+         view->swizzle_g != PIPE_SWIZZLE_Y ||
+         view->swizzle_b != PIPE_SWIZZLE_Z ||
+         view->swizzle_a != PIPE_SWIZZLE_W ) &&
          pipeFormat != PIPE_FORMAT_Z24_UNORM_S8_UINT &&
          pipeFormat != PIPE_FORMAT_Z24X8_UNORM )
       debug_printf("i915: unsupported texture swizzle for format %d\n", pipeFormat);
@@ -244,20 +248,20 @@ static uint translate_texture_format(enum pipe_format pipeFormat,
    case PIPE_FORMAT_Z24_UNORM_S8_UINT:
    case PIPE_FORMAT_Z24X8_UNORM:
       {
-         if ( view->swizzle_r == PIPE_SWIZZLE_RED &&
-              view->swizzle_g == PIPE_SWIZZLE_RED &&
-              view->swizzle_b == PIPE_SWIZZLE_RED &&
-              view->swizzle_a == PIPE_SWIZZLE_ONE)
+         if ( view->swizzle_r == PIPE_SWIZZLE_X &&
+              view->swizzle_g == PIPE_SWIZZLE_X &&
+              view->swizzle_b == PIPE_SWIZZLE_X &&
+              view->swizzle_a == PIPE_SWIZZLE_1)
             return (MAPSURF_32BIT | MT_32BIT_xA824);
-         if ( view->swizzle_r == PIPE_SWIZZLE_RED &&
-              view->swizzle_g == PIPE_SWIZZLE_RED &&
-              view->swizzle_b == PIPE_SWIZZLE_RED &&
-              view->swizzle_a == PIPE_SWIZZLE_RED)
+         if ( view->swizzle_r == PIPE_SWIZZLE_X &&
+              view->swizzle_g == PIPE_SWIZZLE_X &&
+              view->swizzle_b == PIPE_SWIZZLE_X &&
+              view->swizzle_a == PIPE_SWIZZLE_X)
             return (MAPSURF_32BIT | MT_32BIT_xI824);
-         if ( view->swizzle_r == PIPE_SWIZZLE_ZERO &&
-              view->swizzle_g == PIPE_SWIZZLE_ZERO &&
-              view->swizzle_b == PIPE_SWIZZLE_ZERO &&
-              view->swizzle_a == PIPE_SWIZZLE_RED)
+         if ( view->swizzle_r == PIPE_SWIZZLE_0 &&
+              view->swizzle_g == PIPE_SWIZZLE_0 &&
+              view->swizzle_b == PIPE_SWIZZLE_0 &&
+              view->swizzle_a == PIPE_SWIZZLE_X)
             return (MAPSURF_32BIT | MT_32BIT_xL824);
          debug_printf("i915: unsupported depth swizzle %d %d %d %d\n",
                       view->swizzle_r,
@@ -296,13 +300,25 @@ static void update_map(struct i915_context *i915,
                        const struct i915_texture *tex,
                        const struct i915_sampler_state *sampler,
                        const struct pipe_sampler_view* view,
-                       uint state[2])
+                       uint state[3])
 {
    const struct pipe_resource *pt = &tex->b.b;
-   uint format, pitch;
-   const uint width = pt->width0, height = pt->height0, depth = pt->depth0;
-   const uint num_levels = pt->last_level;
+   uint width = pt->width0, height = pt->height0, depth = pt->depth0;
+   int first_level = view->u.tex.first_level;
+   const uint num_levels = pt->last_level - first_level;
    unsigned max_lod = num_levels * 4;
+   bool is_npot = (!util_is_power_of_two(pt->width0) || !util_is_power_of_two(pt->height0)); 
+   uint format, pitch;
+
+   /*
+    * This is a bit messy. i915 doesn't support NPOT with mipmaps, but we can
+    * still texture from a single level. This is useful to make u_blitter work.
+    */
+   if (is_npot) {
+      width = u_minify(width, first_level);
+      height = u_minify(height, first_level);
+      max_lod = 1;
+   }
 
    assert(tex);
    assert(width);
@@ -310,8 +326,6 @@ static void update_map(struct i915_context *i915,
    assert(depth);
 
    format = translate_texture_format(pt->format, view);
-   i915->current.sampler_srgb[unit] = ( pt->format == PIPE_FORMAT_B8G8R8A8_SRGB ||
-                                        pt->format == PIPE_FORMAT_L8_SRGB );
    pitch = tex->stride;
 
    assert(format);
@@ -339,6 +353,11 @@ static void update_map(struct i915_context *i915,
        | MS4_CUBE_FACE_ENA_MASK
        | ((max_lod) << MS4_MAX_LOD_SHIFT)
        | ((depth - 1) << MS4_VOLUME_DEPTH_SHIFT));
+
+   if (is_npot)
+      state[2] = i915_texture_offset(tex, first_level, 0);
+   else
+      state[2] = 0;
 }
 
 static void update_maps(struct i915_context *i915)
@@ -355,7 +374,7 @@ static void update_maps(struct i915_context *i915)
          update_map(i915,
                     unit,
                     texture,                            /* texture */
-                    i915->sampler[unit],                /* sampler state */
+                    i915->fragment_sampler[unit],       /* sampler state */
                     i915->fragment_sampler_views[unit], /* sampler view */
                     i915->current.texbuffer[unit]);
       }

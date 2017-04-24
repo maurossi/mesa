@@ -149,6 +149,8 @@ static void get_external_state(
     struct r300_textures_state *texstate = r300->textures_state.state;
     unsigned i;
 
+    state->alpha_to_one = r300->alpha_to_one && r300->msaa_enable;
+
     for (i = 0; i < texstate->sampler_state_count; i++) {
         struct r300_sampler_state *s = texstate->sampler_states[i];
         struct r300_sampler_view *v = texstate->sampler_views[i];
@@ -168,24 +170,9 @@ static void get_external_state(
         }
 
         state->unit[i].non_normalized_coords = !s->state.normalized_coords;
-        state->unit[i].convert_unorm_to_snorm =
-                v->base.format == PIPE_FORMAT_RGTC1_SNORM ||
-                v->base.format == PIPE_FORMAT_LATC1_SNORM;
 
         /* Pass texture swizzling to the compiler, some lowering passes need it. */
-        if (v->base.format == PIPE_FORMAT_RGTC1_SNORM ||
-            v->base.format == PIPE_FORMAT_LATC1_SNORM) {
-            unsigned char swizzle[4];
-
-            util_format_compose_swizzles(
-                            util_format_description(v->base.format)->swizzle,
-                            v->swizzle,
-                            swizzle);
-
-            state->unit[i].texture_swizzle =
-                    RC_MAKE_SWIZZLE(swizzle[0], swizzle[1],
-                                    swizzle[2], swizzle[3]);
-        } else if (state->unit[i].compare_mode_enabled) {
+        if (state->unit[i].compare_mode_enabled) {
             state->unit[i].texture_swizzle =
                 RC_MAKE_SWIZZLE(v->swizzle[0], v->swizzle[1],
                                 v->swizzle[2], v->swizzle[3]);
@@ -233,7 +220,7 @@ static void r300_dummy_fragment_shader(
     struct ureg_src imm;
 
     /* Make a simple fragment shader which outputs (0, 0, 0, 1) */
-    ureg = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+    ureg = ureg_create(PIPE_SHADER_FRAGMENT);
     out = ureg_DECL_output(ureg, TGSI_SEMANTIC_COLOR, 0);
     imm = ureg_imm4f(ureg, 0, 0, 0, 1);
 
@@ -442,7 +429,7 @@ static void r300_translate_fragment_shader(
 
     /* Setup the compiler. */
     memset(&compiler, 0, sizeof(compiler));
-    rc_init(&compiler.Base);
+    rc_init(&compiler.Base, &r300->fs_regalloc_state);
     DBG_ON(r300, DBG_FP) ? compiler.Base.Debug |= RC_DBG_LOG : 0;
     DBG_ON(r300, DBG_P_STAT) ? compiler.Base.Debug |= RC_DBG_STATS : 0;
 
@@ -466,12 +453,8 @@ static void r300_translate_fragment_shader(
 
     find_output_registers(&compiler, shader);
 
-    shader->write_all = FALSE;
-    for (i = 0; i < shader->info.num_properties; i++) {
-        if (shader->info.properties[i].name == TGSI_PROPERTY_FS_COLOR0_WRITES_ALL_CBUFS) {
-            shader->write_all = TRUE;
-        }
-    }
+    shader->write_all =
+          shader->info.properties[TGSI_PROPERTY_FS_COLOR0_WRITES_ALL_CBUFS];
 
     if (compiler.Base.Debug & RC_DBG_LOG) {
         DBG(r300, DBG_FP, "r300: Initial fragment program\n");
@@ -581,9 +564,10 @@ static void r300_translate_fragment_shader(
 boolean r300_pick_fragment_shader(struct r300_context* r300)
 {
     struct r300_fragment_shader* fs = r300_fs(r300);
-    struct r300_fragment_program_external_state state = {{{ 0 }}};
+    struct r300_fragment_program_external_state state;
     struct r300_fragment_shader_code* ptr;
 
+    memset(&state, 0, sizeof(state));
     get_external_state(r300, &state);
 
     if (!fs->first) {
