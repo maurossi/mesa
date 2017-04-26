@@ -28,6 +28,7 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 endif
 
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
 LOCAL_SRC_FILES := $(LOCAL_SRC_FILES)
 
@@ -92,14 +93,11 @@ $(intermediates)/glsl/glcpp/glcpp-parse.c: $(LOCAL_PATH)/glsl/glcpp/glcpp-parse.
 
 $(LOCAL_PATH)/glsl/ir.h: $(intermediates)/glsl/ir_expression_operation.h
 
-$(intermediates)/glsl/ir_expression_operation.h: $(LOCAL_PATH)/glsl/ir_expression_operation.py
-	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< enum > $@
+$(intermediates)/glsl/ir_expression_operation.h: $(prebuilt_intermediates)/glsl/ir_expression_operation.h
+	cp -a $< $@
 
-$(intermediates)/glsl/ir_expression_operation_constant.h: $(LOCAL_PATH)/glsl/ir_expression_operation.py
-	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< constant > $@
+$(intermediates)/glsl/ir_expression_operation_constant.h: $(prebuilt_intermediates)/glsl/ir_expression_operation_constant.h
+	cp -a $< $@
 
-$(intermediates)/glsl/ir_expression_operation_strings.h: $(LOCAL_PATH)/glsl/ir_expression_operation.py
-	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< strings > $@
+$(intermediates)/glsl/ir_expression_operation_strings.h: $(prebuilt_intermediates)/glsl/ir_expression_operation_strings.h
+	cp -a $< $@
