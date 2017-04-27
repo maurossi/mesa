@@ -105,10 +105,9 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_util \
 	libmesa_loader
 
-LOCAL_STATIC_LIBRARIES :=
+LOCAL_STATIC_LIBRARIES := libelf
 
 ifeq ($(MESA_ENABLE_LLVM),true)
-LOCAL_STATIC_LIBRARIES += libelf
 LOCAL_LDLIBS += -lgcc
 endif
 

@@ -56,15 +56,15 @@ LOCAL_C_INCLUDES := \
 	$(intermediates)/common \
 	external/llvm/include \
 	external/llvm/device/include \
-	external/libcxx/include \
-	$(ELF_INCLUDES)
+	external/libcxx/include
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(LOCAL_PATH)/common
 
 LOCAL_STATIC_LIBRARIES := \
 	libLLVMCore \
-	libmesa_nir
+	libmesa_nir \
+	libelf
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
