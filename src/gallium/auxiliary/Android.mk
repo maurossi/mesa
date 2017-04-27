@@ -38,11 +38,15 @@ LOCAL_C_INCLUDES := \
 
 ifeq ($(MESA_ENABLE_LLVM),true)
 LOCAL_SRC_FILES += \
-	$(GALLIVM_SOURCES) \
-	$(GALLIVM_CPP_SOURCES)
-LOCAL_STATIC_LIBRARIES += libLLVMCore
-LOCAL_CPPFLAGS := -std=c++11
+	$(GALLIVM_SOURCES)
+ifneq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 5 6 7),)
+LOCAL_STATIC_LIBRARIES := libLLVMCore
+else
+LOCAL_HEADER_LIBRARIES := llvm-headers
 endif
+endif
+
+LOCAL_CPPFLAGS := -std=c++11
 
 # We need libmesa_nir to get NIR's generated include directories.
 LOCAL_MODULE := libmesa_gallium
