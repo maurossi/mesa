@@ -94,7 +94,7 @@ LOCAL_SHARED_LIBRARIES += libc++
 endif
 
 LOCAL_WHOLE_STATIC_LIBRARIES := \
-	$(gallium_DRIVERS) \
+	$(sort $(gallium_DRIVERS)) \
 	libmesa_st_dri \
 	libmesa_st_mesa \
 	libmesa_glsl \
