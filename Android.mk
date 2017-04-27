@@ -71,8 +71,6 @@ endif
 MESA_ENABLE_LLVM := $(if $(filter radeonsi swrast,$(MESA_GPU_DRIVERS)),true,false)
 
 # add subdirectories
-ifneq ($(strip $(MESA_GPU_DRIVERS)),)
-
 SUBDIRS := \
 	src/gbm \
 	src/loader \
@@ -87,11 +85,5 @@ SUBDIRS := \
 	src/vulkan
 
 INC_DIRS := $(call all-named-subdir-makefiles,$(SUBDIRS))
-
-ifeq ($(strip $(MESA_BUILD_GALLIUM)),true)
 INC_DIRS += $(call all-named-subdir-makefiles,src/gallium)
-endif
-
 include $(INC_DIRS)
-
-endif
