@@ -58,16 +58,10 @@ LOCAL_SHARED_LIBRARIES := \
 	libgralloc_drm \
 	libsync
 
-ifeq ($(strip $(MESA_BUILD_CLASSIC)),true)
-# require i915_dri and/or i965_dri
-LOCAL_REQUIRED_MODULES += \
-	$(addsuffix _dri, $(filter i915 i965, $(MESA_GPU_DRIVERS)))
-endif # MESA_BUILD_CLASSIC
-
-ifeq ($(strip $(MESA_BUILD_GALLIUM)),true)
-LOCAL_REQUIRED_MODULES += gallium_dri
-endif # MESA_BUILD_GALLIUM
-
+# This controls enabling building of driver libraries
+LOCAL_REQUIRED_MODULES += $(if $(HAVE_I915_DRI),i915_dri,)
+LOCAL_REQUIRED_MODULES += $(if $(HAVE_I965_DRI),i965_dri,)
+LOCAL_REQUIRED_MODULES += $(if $(MESA_BUILD_GALLIUM),gallium_dri,)
 
 LOCAL_MODULE := libGLES_mesa
 LOCAL_MODULE_RELATIVE_PATH := egl

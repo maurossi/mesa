@@ -42,7 +42,9 @@ SUBDIRS += winsys/amdgpu/drm winsys/radeon/drm
 SUBDIRS += winsys/vc4/drm drivers/vc4
 SUBDIRS += winsys/virgl/drm winsys/virgl/vtest drivers/virgl
 SUBDIRS += winsys/svga/drm drivers/svga
+SUBDIRS += state_trackers/dri
 
-SUBDIRS += state_trackers/dri targets/dri
+INC_DIRS := $(call all-named-subdir-makefiles,$(SUBDIRS))
+INC_DIRS += $(call all-named-subdir-makefiles,targets/dri)
 
-include $(call all-named-subdir-makefiles,$(SUBDIRS))
+include $(INC_DIRS)
