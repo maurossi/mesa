@@ -326,7 +326,7 @@ intel_update_state(struct gl_context * ctx, GLuint new_state)
     * enabled because otherwise the surface state will be programmed with the
     * linear equivalent format anyway.
     */
-   if (brw->gen >= 9 && ctx->Color.sRGBEnabled) {
+   if (brw->gen == 9 && ctx->Color.sRGBEnabled) {
       struct gl_framebuffer *fb = ctx->DrawBuffer;
       for (int i = 0; i < fb->_NumColorDrawBuffers; i++) {
          struct gl_renderbuffer *rb = fb->_ColorDrawBuffers[i];
