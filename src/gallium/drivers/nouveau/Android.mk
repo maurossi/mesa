@@ -42,3 +42,8 @@ LOCAL_MODULE := libmesa_pipe_nouveau
 LOCAL_C_INCLUDES := external/libcxx/include
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
+
+ifneq ($(HAVE_GALLIUM_NOUVEAU),)
+$(eval GALLIUM_LIBS += $(LOCAL_MODULE) libmesa_winsys_nouveau)
+$(eval GALLIUM_SHARED_LIBS += $(LOCAL_SHARED_LIBRARIES))
+endif
