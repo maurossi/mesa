@@ -62,9 +62,14 @@ LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(LOCAL_PATH)/common
 
 LOCAL_STATIC_LIBRARIES := \
-	libLLVMCore \
 	libmesa_nir \
 	libelf
+
+ifneq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 5 6 7),)
+LOCAL_STATIC_LIBRARIES += libLLVMCore
+else
+LOCAL_HEADER_LIBRARIES := llvm-headers
+endif
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
