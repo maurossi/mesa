@@ -107,11 +107,5 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_util \
 	libmesa_loader
 
-ifeq ($(MESA_ENABLE_LLVM),true)
-LOCAL_LDLIBS += -lgcc
-endif
-
-LOCAL_ADDITION_DEPENDENCIES := $(LOCAL_PATH)/Android.mk
-
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)
