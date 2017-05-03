@@ -56,6 +56,9 @@ LOCAL_C_INCLUDES := \
 	external/llvm/device/include \
 	$(ELF_INCLUDES)
 
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+	$(LOCAL_PATH)/common
+
 LOCAL_STATIC_LIBRARIES := libLLVMCore
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(MESA_TOP)/src/amd/common
