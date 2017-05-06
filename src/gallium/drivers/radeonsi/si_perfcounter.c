@@ -620,7 +620,7 @@ static void si_pc_emit_read(struct r600_common_context *ctx,
 			reg_delta = -reg_delta;
 
 		for (idx = 0; idx < count; ++idx) {
-			if (regs->counters)
+			if (regs->counters[idx])
 				reg = regs->counters[idx];
 
 			radeon_emit(cs, PKT3(PKT3_COPY_DATA, 4, 0));
