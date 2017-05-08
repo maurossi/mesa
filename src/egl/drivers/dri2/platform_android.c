@@ -1627,8 +1627,6 @@ dri2_initialize_android(_EGLDriver *drv, _EGLDisplay *disp)
 {
    EGLBoolean initialized = EGL_FALSE;
 
-   _eglSetLogProc(droid_log);
-
    loader_set_logger(_eglLog);
 
    if (!getenv("LIBGL_ALWAYS_SOFTWARE"))
