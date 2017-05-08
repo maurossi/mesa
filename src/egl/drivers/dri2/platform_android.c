@@ -1494,8 +1494,6 @@ dri2_initialize_android_swrast(_EGLDriver *drv, _EGLDisplay *dpy)
    const char *err = "";
    const hw_module_t *mod;
 
-   _eglSetLogProc(droid_log);
-
    loader_set_logger(_eglLog);
 
    dri2_dpy = calloc(1, sizeof(*dri2_dpy));
