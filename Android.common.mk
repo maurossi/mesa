@@ -31,6 +31,7 @@ LOCAL_C_INCLUDES += \
 
 MESA_VERSION := $(shell cat $(MESA_TOP)/VERSION)
 LOCAL_CFLAGS += \
+	-O3 \
 	-Wno-error \
 	-Wno-unused-parameter \
 	-Wno-pointer-arith \
