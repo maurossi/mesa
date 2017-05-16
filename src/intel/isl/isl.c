@@ -1674,6 +1674,9 @@ isl_surf_fill_state_s(const struct isl_device *dev, void *state,
    case 9:
       isl_gen9_surf_fill_state_s(dev, state, info);
       break;
+   case 10:
+      isl_gen10_surf_fill_state_s(dev, state, info);
+      break;
    default:
       assert(!"Cannot fill surface state for this gen");
    }
@@ -1704,6 +1707,9 @@ isl_buffer_fill_state_s(const struct isl_device *dev, void *state,
       break;
    case 9:
       isl_gen9_buffer_fill_state_s(state, info);
+      break;
+   case 10:
+      isl_gen10_buffer_fill_state_s(state, info);
       break;
    default:
       assert(!"Cannot fill surface state for this gen");
@@ -1771,6 +1777,9 @@ isl_emit_depth_stencil_hiz_s(const struct isl_device *dev, void *batch,
       break;
    case 9:
       isl_gen9_emit_depth_stencil_hiz_s(dev, batch, info);
+      break;
+   case 10:
+      isl_gen10_emit_depth_stencil_hiz_s(dev, batch, info);
       break;
    default:
       assert(!"Cannot fill surface state for this gen");
