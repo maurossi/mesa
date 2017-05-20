@@ -895,12 +895,12 @@ static void atomic_emit_memory(struct si_shader_context *ctx,
 		                               inst, 3, 0);
 
 		new_data = LLVMBuildBitCast(builder, new_data, ctx->i32, "");
-
+#if HAVE_LLVM >= 0x0309
 		result = LLVMBuildAtomicCmpXchg(builder, ptr, arg, new_data,
 		                       LLVMAtomicOrderingSequentiallyConsistent,
 		                       LLVMAtomicOrderingSequentiallyConsistent,
 		                       false);
-
+#endif
 		result = LLVMBuildExtractValue(builder, result, 0, "");
 	} else {
 		LLVMAtomicRMWBinOp op;
