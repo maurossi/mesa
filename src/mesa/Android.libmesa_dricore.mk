@@ -31,7 +31,6 @@ LOCAL_PATH := $(call my-dir)
 # Import the following variables:
 #     MESA_FILES
 #     X86_FILES
-#     X86_64_FILES
 include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
@@ -43,9 +42,18 @@ LOCAL_SRC_FILES := \
 	$(MESA_FILES)
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
-	LOCAL_SRC_FILES_x86 += $(X86_FILES)
-	LOCAL_SRC_FILES_x86_64 += $(X86_64_FILES)
+ifeq ($(TARGET_ARCH),x86)
+	LOCAL_SRC_FILES += $(X86_FILES)
+endif # x86
 endif # MESA_ENABLE_ASM
+
+ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
+LOCAL_WHOLE_STATIC_LIBRARIES := \
+	libmesa_sse41
+LOCAL_CFLAGS := \
+	-msse4.1 \
+       -DUSE_SSE41
+endif
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
@@ -60,12 +68,6 @@ LOCAL_GENERATED_SOURCES += \
 
 LOCAL_WHOLE_STATIC_LIBRARIES += \
 	libmesa_program
-
-LOCAL_WHOLE_STATIC_LIBRARIES_x86 += \
-	libmesa_sse41 \
-
-LOCAL_WHOLE_STATIC_LIBRARIES_x86_64 += \
-	libmesa_sse41 \
 
 include $(LOCAL_PATH)/Android.gen.mk
 include $(MESA_COMMON_MK)
