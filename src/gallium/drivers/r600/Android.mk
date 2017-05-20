@@ -36,7 +36,7 @@ else
 LOCAL_C_INCLUDES += $(MESA_TOP)/src/amd/common
 endif
 
-LOCAL_SHARED_LIBRARIES := libdrm_radeon
+LOCAL_SHARED_LIBRARIES := libdrm_radeon libdrm_amdgpu
 LOCAL_MODULE := libmesa_pipe_r600
 
 include $(GALLIUM_COMMON_MK)
