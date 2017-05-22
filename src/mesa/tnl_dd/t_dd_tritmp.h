@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.3
  *
  * Copyright (C) 1999-2005  Brian Paul   All Rights Reserved.
  *
@@ -17,12 +16,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
@@ -121,7 +121,7 @@ static void TAG(triangle)( struct gl_context *ctx, GLuint e0, GLuint e1, GLuint 
    GLuint facing = 0;
    LOCAL_VARS(3);
 
-/*     fprintf(stderr, "%s\n", __FUNCTION__); */
+/*     fprintf(stderr, "%s\n", __func__); */
 
    v[0] = (VERTEX *)GET_VERTEX(e0);
    v[1] = (VERTEX *)GET_VERTEX(e1);
@@ -187,7 +187,7 @@ static void TAG(triangle)( struct gl_context *ctx, GLuint e0, GLuint e1, GLuint 
 	       VERT_SAVE_RGBA( 2 );
 
 	       if (VB->BackfaceColorPtr->stride) {
-		  ASSERT(VB->BackfaceColorPtr->stride == 4*sizeof(GLfloat));
+		  assert(VB->BackfaceColorPtr->stride == 4*sizeof(GLfloat));
 
 		  if (!DO_FLAT) {
 		     VERT_SET_RGBA( v[0], vbcolor[e0] );
@@ -205,7 +205,7 @@ static void TAG(triangle)( struct gl_context *ctx, GLuint e0, GLuint e1, GLuint 
 
 	       if (HAVE_SPEC && VB->BackfaceSecondaryColorPtr) {
 		  GLfloat (*vbspec)[4] = VB->BackfaceSecondaryColorPtr->data;
-		  ASSERT(VB->BackfaceSecondaryColorPtr->stride == 4*sizeof(GLfloat));
+		  assert(VB->BackfaceSecondaryColorPtr->stride == 4*sizeof(GLfloat));
 
 		  if (!DO_FLAT) {
 		     VERT_SAVE_SPEC( 0 );
@@ -435,7 +435,7 @@ static void TAG(quadr)( struct gl_context *ctx,
 
 	       if (HAVE_SPEC && VB->BackfaceSecondaryColorPtr) {
 		  GLfloat (*vbspec)[4] = VB->BackfaceSecondaryColorPtr->data;
-		  ASSERT(VB->BackfaceSecondaryColorPtr->stride==4*sizeof(GLfloat));
+		  assert(VB->BackfaceSecondaryColorPtr->stride==4*sizeof(GLfloat));
 
 		  if (!DO_FLAT) {
 		     VERT_SAVE_SPEC( 0 );

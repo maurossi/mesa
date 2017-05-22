@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,8 +29,8 @@
  * \file
  * Buffer cache.
  * 
- * \author Jose Fonseca <jrfonseca-at-tungstengraphics-dot-com>
- * \author Thomas Hellström <thomas-at-tungstengraphics-dot-com>
+ * \author Jose Fonseca <jfonseca-at-vmware-dot-com>
+ * \author Thomas Hellström <thellstom-at-vmware-dot-com>
  */
 
 
@@ -38,20 +38,12 @@
 #include "util/u_debug.h"
 #include "os/os_thread.h"
 #include "util/u_memory.h"
-#include "util/u_double_list.h"
+#include "util/list.h"
 #include "util/u_time.h"
 
 #include "pb_buffer.h"
 #include "pb_bufmgr.h"
-
-
-/**
- * Convenience macro (type safe).
- */
-#define SUPER(__derived) (&(__derived)->base)
-
-
-struct pb_cache_manager;
+#include "pb_cache.h"
 
 
 /**
@@ -60,32 +52,21 @@ struct pb_cache_manager;
 struct pb_cache_buffer
 {
    struct pb_buffer base;
-   
    struct pb_buffer *buffer;
    struct pb_cache_manager *mgr;
-
-   /** Caching time interval */
-   int64_t start, end;
-
-   struct list_head head;
+   struct pb_cache_entry cache_entry;
 };
 
 
 struct pb_cache_manager
 {
    struct pb_manager base;
-
    struct pb_manager *provider;
-   unsigned usecs;
-   
-   pipe_mutex mutex;
-   
-   struct list_head delayed;
-   pb_size numDelayed;
+   struct pb_cache cache;
 };
 
 
-static INLINE struct pb_cache_buffer *
+static inline struct pb_cache_buffer *
 pb_cache_buffer(struct pb_buffer *buf)
 {
    assert(buf);
@@ -93,7 +74,7 @@ pb_cache_buffer(struct pb_buffer *buf)
 }
 
 
-static INLINE struct pb_cache_manager *
+static inline struct pb_cache_manager *
 pb_cache_manager(struct pb_manager *mgr)
 {
    assert(mgr);
@@ -101,48 +82,26 @@ pb_cache_manager(struct pb_manager *mgr)
 }
 
 
+void
+pb_cache_manager_remove_buffer(struct pb_buffer *pb_buf)
+{
+   struct pb_cache_buffer *buf = pb_cache_buffer(pb_buf);
+
+   /* the buffer won't be added if mgr is NULL */
+   buf->mgr = NULL;
+}
+
 /**
  * Actually destroy the buffer.
  */
-static INLINE void
-_pb_cache_buffer_destroy(struct pb_cache_buffer *buf)
+static void
+_pb_cache_buffer_destroy(struct pb_buffer *pb_buf)
 {
-   struct pb_cache_manager *mgr = buf->mgr;
+   struct pb_cache_buffer *buf = pb_cache_buffer(pb_buf);
 
-   LIST_DEL(&buf->head);
-   assert(mgr->numDelayed);
-   --mgr->numDelayed;
    assert(!pipe_is_referenced(&buf->base.reference));
    pb_reference(&buf->buffer, NULL);
    FREE(buf);
-}
-
-
-/**
- * Free as many cache buffers from the list head as possible. 
- */
-static void
-_pb_cache_buffer_list_check_free(struct pb_cache_manager *mgr)
-{
-   struct list_head *curr, *next;
-   struct pb_cache_buffer *buf;
-   int64_t now;
-   
-   now = os_time_get();
-   
-   curr = mgr->delayed.next;
-   next = curr->next;
-   while(curr != &mgr->delayed) {
-      buf = LIST_ENTRY(struct pb_cache_buffer, curr, head);
-
-      if(!os_time_timeout(buf->start, buf->end, now))
-	 break;
-	 
-      _pb_cache_buffer_destroy(buf);
-
-      curr = next; 
-      next = curr->next;
-   }
 }
 
 
@@ -152,16 +111,13 @@ pb_cache_buffer_destroy(struct pb_buffer *_buf)
    struct pb_cache_buffer *buf = pb_cache_buffer(_buf);   
    struct pb_cache_manager *mgr = buf->mgr;
 
-   pipe_mutex_lock(mgr->mutex);
-   assert(!pipe_is_referenced(&buf->base.reference));
-   
-   _pb_cache_buffer_list_check_free(mgr);
-   
-   buf->start = os_time_get();
-   buf->end = buf->start + mgr->usecs;
-   LIST_ADDTAIL(&buf->head, &mgr->delayed);
-   ++mgr->numDelayed;
-   pipe_mutex_unlock(mgr->mutex);
+   if (!mgr) {
+      pb_reference(&buf->buffer, NULL);
+      FREE(buf);
+      return;
+   }
+
+   pb_cache_add_buffer(&buf->cache_entry);
 }
 
 
@@ -222,37 +178,24 @@ pb_cache_buffer_vtbl = {
 };
 
 
-static INLINE int
-pb_cache_is_buffer_compat(struct pb_cache_buffer *buf,  
-                          pb_size size,
-                          const struct pb_desc *desc)
+static bool
+pb_cache_can_reclaim_buffer(struct pb_buffer *_buf)
 {
-   if(buf->base.size < size)
-      return 0;
-
-   /* be lenient with size */
-   if(buf->base.size >= 2*size)
-      return 0;
-   
-   if(!pb_check_alignment(desc->alignment, buf->base.alignment))
-      return 0;
-   
-   if(!pb_check_usage(desc->usage, buf->base.usage))
-      return 0;
+   struct pb_cache_buffer *buf = pb_cache_buffer(_buf);
 
    if (buf->mgr->provider->is_buffer_busy) {
       if (buf->mgr->provider->is_buffer_busy(buf->mgr->provider, buf->buffer))
-         return -1;
+         return false;
    } else {
       void *ptr = pb_map(buf->buffer, PB_USAGE_DONTBLOCK, NULL);
 
       if (!ptr)
-         return -1;
+         return false;
 
       pb_unmap(buf->buffer);
    }
 
-   return 1;
+   return true;
 }
 
 
@@ -263,71 +206,24 @@ pb_cache_manager_create_buffer(struct pb_manager *_mgr,
 {
    struct pb_cache_manager *mgr = pb_cache_manager(_mgr);
    struct pb_cache_buffer *buf;
-   struct pb_cache_buffer *curr_buf;
-   struct list_head *curr, *next;
-   int64_t now;
-   int ret = 0;
 
-   pipe_mutex_lock(mgr->mutex);
-
-   buf = NULL;
-   curr = mgr->delayed.next;
-   next = curr->next;
-   
-   /* search in the expired buffers, freeing them in the process */
-   now = os_time_get();
-   while(curr != &mgr->delayed) {
-      curr_buf = LIST_ENTRY(struct pb_cache_buffer, curr, head);
-      if(!buf && (ret = pb_cache_is_buffer_compat(curr_buf, size, desc) > 0))
-         buf = curr_buf;
-      else if(os_time_timeout(curr_buf->start, curr_buf->end, now))
-         _pb_cache_buffer_destroy(curr_buf);
-      else
-         /* This buffer (and all hereafter) are still hot in cache */
-         break;
-      if (ret == -1)
-         break;
-      curr = next; 
-      next = curr->next;
-   }
-
-   /* keep searching in the hot buffers */
-   if(!buf && ret != -1) {
-      while(curr != &mgr->delayed) {
-         curr_buf = LIST_ENTRY(struct pb_cache_buffer, curr, head);
-         ret = pb_cache_is_buffer_compat(curr_buf, size, desc);
-         if (ret > 0) {
-            buf = curr_buf;
-            break;
-         }
-         if (ret == -1)
-            break;
-         /* no need to check the timeout here */
-         curr = next;
-         next = curr->next;
-      }
-   }
-   
-   if(buf) {
-      LIST_DEL(&buf->head);
-      --mgr->numDelayed;
-      pipe_mutex_unlock(mgr->mutex);
-      /* Increase refcount */
-      pipe_reference_init(&buf->base.reference, 1);
+   /* get a buffer from the cache */
+   buf = (struct pb_cache_buffer *)
+         pb_cache_reclaim_buffer(&mgr->cache, size, desc->alignment,
+                                 desc->usage, 0);
+   if (buf)
       return &buf->base;
-   }
-   
-   pipe_mutex_unlock(mgr->mutex);
 
+   /* create a new one */
    buf = CALLOC_STRUCT(pb_cache_buffer);
-   if(!buf)
+   if (!buf)
       return NULL;
    
    buf->buffer = mgr->provider->create_buffer(mgr->provider, size, desc);
 
    /* Empty the cache and try again. */
    if (!buf->buffer) {
-      mgr->base.flush(&mgr->base);
+      pb_cache_release_all_buffers(&mgr->cache);
       buf->buffer = mgr->provider->create_buffer(mgr->provider, size, desc);
    }
 
@@ -338,7 +234,6 @@ pb_cache_manager_create_buffer(struct pb_manager *_mgr,
    
    assert(pipe_is_referenced(&buf->buffer->reference));
    assert(pb_check_alignment(desc->alignment, buf->buffer->alignment));
-   assert(pb_check_usage(desc->usage, buf->buffer->usage));
    assert(buf->buffer->size >= size);
    
    pipe_reference_init(&buf->base.reference, 1);
@@ -348,6 +243,7 @@ pb_cache_manager_create_buffer(struct pb_manager *_mgr,
    
    buf->base.vtbl = &pb_cache_buffer_vtbl;
    buf->mgr = mgr;
+   pb_cache_init_entry(&mgr->cache, &buf->cache_entry, &buf->base, 0);
    
    return &buf->base;
 }
@@ -357,19 +253,8 @@ static void
 pb_cache_manager_flush(struct pb_manager *_mgr)
 {
    struct pb_cache_manager *mgr = pb_cache_manager(_mgr);
-   struct list_head *curr, *next;
-   struct pb_cache_buffer *buf;
 
-   pipe_mutex_lock(mgr->mutex);
-   curr = mgr->delayed.next;
-   next = curr->next;
-   while(curr != &mgr->delayed) {
-      buf = LIST_ENTRY(struct pb_cache_buffer, curr, head);
-      _pb_cache_buffer_destroy(buf);
-      curr = next; 
-      next = curr->next;
-   }
-   pipe_mutex_unlock(mgr->mutex);
+   pb_cache_release_all_buffers(&mgr->cache);
    
    assert(mgr->provider->flush);
    if(mgr->provider->flush)
@@ -378,20 +263,38 @@ pb_cache_manager_flush(struct pb_manager *_mgr)
 
 
 static void
-pb_cache_manager_destroy(struct pb_manager *mgr)
+pb_cache_manager_destroy(struct pb_manager *_mgr)
 {
-   pb_cache_manager_flush(mgr);
+   struct pb_cache_manager *mgr = pb_cache_manager(_mgr);
+
+   pb_cache_deinit(&mgr->cache);
    FREE(mgr);
 }
 
-
+/**
+ * Create a caching buffer manager
+ *
+ * @param provider The buffer manager to which cache miss buffer requests
+ * should be redirected.
+ * @param usecs Unused buffers may be released from the cache after this
+ * time
+ * @param size_factor Declare buffers that are size_factor times bigger than
+ * the requested size as cache hits.
+ * @param bypass_usage Bitmask. If (requested usage & bypass_usage) != 0,
+ * buffer allocation requests are redirected to the provider.
+ * @param maximum_cache_size  Maximum size of all unused buffers the cache can
+ * hold.
+ */
 struct pb_manager *
 pb_cache_manager_create(struct pb_manager *provider, 
-                     	unsigned usecs) 
+                        unsigned usecs,
+                        float size_factor,
+                        unsigned bypass_usage,
+                        uint64_t maximum_cache_size)
 {
    struct pb_cache_manager *mgr;
 
-   if(!provider)
+   if (!provider)
       return NULL;
    
    mgr = CALLOC_STRUCT(pb_cache_manager);
@@ -402,10 +305,9 @@ pb_cache_manager_create(struct pb_manager *provider,
    mgr->base.create_buffer = pb_cache_manager_create_buffer;
    mgr->base.flush = pb_cache_manager_flush;
    mgr->provider = provider;
-   mgr->usecs = usecs;
-   LIST_INITHEAD(&mgr->delayed);
-   mgr->numDelayed = 0;
-   pipe_mutex_init(mgr->mutex);
-      
+   pb_cache_init(&mgr->cache, usecs, size_factor, bypass_usage,
+                 maximum_cache_size,
+                 _pb_cache_buffer_destroy,
+                 pb_cache_can_reclaim_buffer);
    return &mgr->base;
 }

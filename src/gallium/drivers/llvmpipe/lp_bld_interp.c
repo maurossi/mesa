@@ -1,7 +1,7 @@
 /**************************************************************************
  * 
  * Copyright 2009 VMware, Inc.
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -237,7 +237,6 @@ coeffs_init_simple(struct lp_build_interp_soa_context *bld,
 static void
 attribs_update_simple(struct lp_build_interp_soa_context *bld,
                       struct gallivm_state *gallivm,
-                      int quad_start_index,
                       LLVMValueRef loop_iter,
                       int start,
                       int end)
@@ -249,20 +248,15 @@ attribs_update_simple(struct lp_build_interp_soa_context *bld,
    unsigned attrib;
    LLVMValueRef pixoffx;
    LLVMValueRef pixoffy;
+   LLVMValueRef ptr;
 
    /* could do this with code-generated passed in pixel offsets too */
-   if (bld->dynamic_offsets) {
-      LLVMValueRef ptr;
 
-      assert(loop_iter);
-      ptr = LLVMBuildGEP(builder, bld->xoffset_store, &loop_iter, 1, "");
-      pixoffx = LLVMBuildLoad(builder, ptr, "");
-      ptr = LLVMBuildGEP(builder, bld->yoffset_store, &loop_iter, 1, "");
-      pixoffy = LLVMBuildLoad(builder, ptr, "");
-   }
-   else {
-      calc_offsets(coeff_bld, quad_start_index, &pixoffx, &pixoffy);
-   }
+   assert(loop_iter);
+   ptr = LLVMBuildGEP(builder, bld->xoffset_store, &loop_iter, 1, "");
+   pixoffx = LLVMBuildLoad(builder, ptr, "");
+   ptr = LLVMBuildGEP(builder, bld->yoffset_store, &loop_iter, 1, "");
+   pixoffy = LLVMBuildLoad(builder, ptr, "");
 
    pixoffx = LLVMBuildFAdd(builder, pixoffx,
                            lp_build_broadcast_scalar(coeff_bld, bld->x), "");
@@ -289,9 +283,15 @@ attribs_update_simple(struct lp_build_interp_soa_context *bld,
             case LP_INTERP_LINEAR:
                if (attrib == 0 && chan == 0) {
                   dadx = coeff_bld->one;
+                  if (bld->pos_offset) {
+                     a = lp_build_const_vec(gallivm, coeff_bld->type, bld->pos_offset);
+                  }
                }
                else if (attrib == 0 && chan == 1) {
                   dady = coeff_bld->one;
+                  if (bld->pos_offset) {
+                     a = lp_build_const_vec(gallivm, coeff_bld->type, bld->pos_offset);
+                  }
                }
                else {
                   dadx = lp_build_extract_broadcast(gallivm, setup_bld->type,
@@ -307,10 +307,8 @@ attribs_update_simple(struct lp_build_interp_soa_context *bld,
                /*
                 * a = a0 + (x * dadx + y * dady)
                 */
-               dadx = LLVMBuildFMul(builder, dadx, pixoffx, "");
-               dady = LLVMBuildFMul(builder, dady, pixoffy, "");
-               a = LLVMBuildFAdd(builder, a, dadx, "");
-               a = LLVMBuildFAdd(builder, a, dady, "");
+               a = lp_build_fmuladd(builder, dadx, pixoffx, a);
+               a = lp_build_fmuladd(builder, dady, pixoffy, a);
 
                if (interp == LP_INTERP_PERSPECTIVE) {
                   if (oow == NULL) {
@@ -340,10 +338,18 @@ attribs_update_simple(struct lp_build_interp_soa_context *bld,
                break;
             }
 
-            if ((attrib == 0) && (chan == 2)){
+            if ((attrib == 0) && (chan == 2) && !bld->depth_clamp){
                /* FIXME: Depth values can exceed 1.0, due to the fact that
                 * setup interpolation coefficients refer to (0,0) which causes
-                * precision loss. So we must clamp to 1.0 here to avoid artifacts
+                * precision loss. So we must clamp to 1.0 here to avoid artifacts.
+                * Note though values outside [0,1] are perfectly valid with
+                * depth clip disabled.
+                * XXX: If depth clip is disabled but we force depth clamp
+                * we may get values larger than 1.0 in the fs (but not in
+                * depth test). Not sure if that's an issue...
+                * Also, on a similar note, it is not obvious if the depth values
+                * appearing in fs (with depth clip disabled) should be clamped
+                * to [0,1], clamped to near/far or not be clamped at all...
                 */
                a = lp_build_min(coeff_bld, a, coeff_bld->one);
             }
@@ -437,13 +443,10 @@ coeffs_init(struct lp_build_interp_soa_context *bld,
        */
       if (interp != LP_INTERP_CONSTANT &&
           interp != LP_INTERP_FACING) {
-         LLVMValueRef axaos, ayaos;
-         axaos = LLVMBuildFMul(builder, lp_build_broadcast_scalar(setup_bld, bld->x),
-                               dadxaos, "");
-         ayaos = LLVMBuildFMul(builder, lp_build_broadcast_scalar(setup_bld, bld->y),
-                               dadyaos, "");
-         a0aos = LLVMBuildFAdd(builder, a0aos, ayaos, "");
-         a0aos = LLVMBuildFAdd(builder, a0aos, axaos, "");
+         LLVMValueRef x = lp_build_broadcast_scalar(setup_bld, bld->x);
+         LLVMValueRef y = lp_build_broadcast_scalar(setup_bld, bld->y);
+         a0aos = lp_build_fmuladd(builder, x, dadxaos, a0aos);
+         a0aos = lp_build_fmuladd(builder, y, dadyaos, a0aos);
       }
 
       /*
@@ -460,12 +463,20 @@ coeffs_init(struct lp_build_interp_soa_context *bld,
             LLVMValueRef chan_index = lp_build_const_int32(gallivm, chan);
 
             if (attrib == 0 && chan == 0) {
-               a = lp_build_broadcast_scalar(coeff_bld, bld->x);
+               a = bld->x;
+               if (bld->pos_offset) {
+                  a = LLVMBuildFAdd(builder, a, lp_build_const_float(gallivm, bld->pos_offset), "");
+               }
+               a = lp_build_broadcast_scalar(coeff_bld, a);
                dadx = coeff_bld->one;
                dady = coeff_bld->zero;
             }
             else if (attrib == 0 && chan == 1) {
-               a = lp_build_broadcast_scalar(coeff_bld, bld->y);
+               a = bld->y;
+               if (bld->pos_offset) {
+                  a = LLVMBuildFAdd(builder, a, lp_build_const_float(gallivm, bld->pos_offset), "");
+               }
+               a = lp_build_broadcast_scalar(coeff_bld, a);
                dady = coeff_bld->one;
                dadx = coeff_bld->zero;
             }
@@ -527,14 +538,9 @@ coeffs_init(struct lp_build_interp_soa_context *bld,
             attrib_name(a, attrib, chan, ".a");
             attrib_name(dadq, attrib, chan, ".dadq");
 
-            if (bld->dynamic_offsets) {
-               bld->a[attrib][chan] = lp_build_alloca(gallivm,
-                                                      LLVMTypeOf(a), "");
-               LLVMBuildStore(builder, a, bld->a[attrib][chan]);
-            }
-            else {
-               bld->a[attrib][chan] = a;
-            }
+            bld->a[attrib][chan] = lp_build_alloca(gallivm,
+                                                   LLVMTypeOf(a), "");
+            LLVMBuildStore(builder, a, bld->a[attrib][chan]);
             bld->dadq[attrib][chan] = dadq;
          }
       }
@@ -549,19 +555,15 @@ coeffs_init(struct lp_build_interp_soa_context *bld,
 static void
 attribs_update(struct lp_build_interp_soa_context *bld,
                struct gallivm_state *gallivm,
-               int quad_start_index,
                LLVMValueRef loop_iter,
                int start,
                int end)
 {
    LLVMBuilderRef builder = gallivm->builder;
    struct lp_build_context *coeff_bld = &bld->coeff_bld;
-   LLVMValueRef shuffle = lp_build_const_int_vec(gallivm, coeff_bld->type, quad_start_index);
    LLVMValueRef oow = NULL;
    unsigned attrib;
    unsigned chan;
-
-   assert(quad_start_index < 4);
 
    for(attrib = start; attrib < end; ++attrib) {
       const unsigned mask = bld->mask[attrib];
@@ -571,10 +573,7 @@ attribs_update(struct lp_build_interp_soa_context *bld,
             LLVMValueRef a;
             if (interp == LP_INTERP_CONSTANT ||
                 interp == LP_INTERP_FACING) {
-               a = bld->a[attrib][chan];
-               if (bld->dynamic_offsets) {
-                  a = LLVMBuildLoad(builder, a, "");
-               }
+               a = LLVMBuildLoad(builder, bld->a[attrib][chan], "");
             }
             else if (interp == LP_INTERP_POSITION) {
                assert(attrib > 0);
@@ -589,7 +588,7 @@ attribs_update(struct lp_build_interp_soa_context *bld,
                 * Broadcast the attribute value for this quad into all elements
                 */
 
-               if (bld->dynamic_offsets) {
+               {
                   /* stored as vector load as float */
                   LLVMTypeRef ptr_type = LLVMPointerType(LLVMFloatTypeInContext(
                                                             gallivm->context), 0);
@@ -598,10 +597,6 @@ attribs_update(struct lp_build_interp_soa_context *bld,
                   ptr = LLVMBuildGEP(builder, a, &loop_iter, 1, "");
                   a = LLVMBuildLoad(builder, ptr, "");
                   a = lp_build_broadcast_scalar(&bld->coeff_bld, a);
-               }
-               else {
-                  a = LLVMBuildShuffleVector(builder,
-                                             a, coeff_bld->undef, shuffle, "");
                }
 
                /*
@@ -646,10 +641,18 @@ attribs_update(struct lp_build_interp_soa_context *bld,
                }
 #endif
 
-               if (attrib == 0 && chan == 2) {
+               if (attrib == 0 && chan == 2 && !bld->depth_clamp) {
                   /* FIXME: Depth values can exceed 1.0, due to the fact that
                    * setup interpolation coefficients refer to (0,0) which causes
-                   * precision loss. So we must clamp to 1.0 here to avoid artifacts
+                   * precision loss. So we must clamp to 1.0 here to avoid artifacts.
+                   * Note though values outside [0,1] are perfectly valid with
+                   * depth clip disabled..
+                   * XXX: If depth clip is disabled but we force depth clamp
+                   * we may get values larger than 1.0 in the fs (but not in
+                   * depth test). Not sure if that's an issue...
+                   * Also, on a similar note, it is not obvious if the depth values
+                   * appearing in fs (with depth clip disabled) should be clamped
+                   * to [0,1], clamped to near/far or not be clamped at all...
                    */
                   a = lp_build_min(coeff_bld, a, coeff_bld->one);
                }
@@ -689,9 +692,10 @@ lp_build_interp_soa_init(struct lp_build_interp_soa_context *bld,
                          struct gallivm_state *gallivm,
                          unsigned num_inputs,
                          const struct lp_shader_input *inputs,
+                         boolean pixel_center_integer,
+                         boolean depth_clamp,
                          LLVMBuilderRef builder,
                          struct lp_type type,
-                         boolean dynamic_offsets,
                          LLVMValueRef a0_ptr,
                          LLVMValueRef dadx_ptr,
                          LLVMValueRef dady_ptr,
@@ -746,18 +750,29 @@ lp_build_interp_soa_init(struct lp_build_interp_soa_context *bld,
       }
    }
 
+   if (pixel_center_integer) {
+      bld->pos_offset = 0.0;
+   } else {
+      bld->pos_offset = 0.5;
+   }
+   bld->depth_clamp = depth_clamp;
+
    pos_init(bld, x0, y0);
 
-   if (coeff_type.length > 4) {
+   /*
+    * Simple method (single step interpolation) may be slower if vector length
+    * is just 4, but the results are different (generally less accurate) with
+    * the other method, so always use more accurate version.
+    */
+   if (1) {
       bld->simple_interp = TRUE;
-      if (dynamic_offsets) {
-         /* XXX this should use a global static table */
+      {
+         /* XXX this should use a global static table */
          unsigned i;
          unsigned num_loops = 16 / type.length;
          LLVMValueRef pixoffx, pixoffy, index;
          LLVMValueRef ptr;
 
-         bld->dynamic_offsets = TRUE;
          bld->xoffset_store = lp_build_array_alloca(gallivm,
                                                     lp_build_vec_type(gallivm, type),
                                                     lp_build_const_int32(gallivm, num_loops),
@@ -779,47 +794,15 @@ lp_build_interp_soa_init(struct lp_build_interp_soa_context *bld,
    }
    else {
       bld->simple_interp = FALSE;
-      if (dynamic_offsets) {
-         bld->dynamic_offsets = TRUE;
-      }
       coeffs_init(bld, a0_ptr, dadx_ptr, dady_ptr);
    }
 
 }
 
 
-/**
+/*
  * Advance the position and inputs to the given quad within the block.
  */
-void
-lp_build_interp_soa_update_inputs(struct lp_build_interp_soa_context *bld,
-                                  struct gallivm_state *gallivm,
-                                  int quad_start_index)
-{
-   assert(quad_start_index < 4);
-
-   if (bld->simple_interp) {
-      attribs_update_simple(bld, gallivm, quad_start_index, NULL, 1, bld->num_attribs);
-   }
-   else {
-      attribs_update(bld, gallivm, quad_start_index, NULL, 1, bld->num_attribs);
-   }
-}
-
-void
-lp_build_interp_soa_update_pos(struct lp_build_interp_soa_context *bld,
-                               struct gallivm_state *gallivm,
-                               int quad_start_index)
-{
-   assert(quad_start_index < 4);
-
-   if (bld->simple_interp) {
-      attribs_update_simple(bld, gallivm, quad_start_index, NULL, 0, 1);
-   }
-   else {
-      attribs_update(bld, gallivm, quad_start_index, NULL, 0, 1);
-   }
-}
 
 void
 lp_build_interp_soa_update_inputs_dyn(struct lp_build_interp_soa_context *bld,
@@ -827,10 +810,10 @@ lp_build_interp_soa_update_inputs_dyn(struct lp_build_interp_soa_context *bld,
                                       LLVMValueRef quad_start_index)
 {
    if (bld->simple_interp) {
-      attribs_update_simple(bld, gallivm, 0, quad_start_index, 1, bld->num_attribs);
+      attribs_update_simple(bld, gallivm, quad_start_index, 1, bld->num_attribs);
    }
    else {
-      attribs_update(bld, gallivm, 0, quad_start_index, 1, bld->num_attribs);
+      attribs_update(bld, gallivm, quad_start_index, 1, bld->num_attribs);
    }
 }
 
@@ -840,10 +823,10 @@ lp_build_interp_soa_update_pos_dyn(struct lp_build_interp_soa_context *bld,
                                    LLVMValueRef quad_start_index)
 {
    if (bld->simple_interp) {
-      attribs_update_simple(bld, gallivm, 0, quad_start_index, 0, 1);
+      attribs_update_simple(bld, gallivm, quad_start_index, 0, 1);
    }
    else {
-      attribs_update(bld, gallivm, 0, quad_start_index, 0, 1);
+      attribs_update(bld, gallivm, quad_start_index, 0, 1);
    }
 }
 

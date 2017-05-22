@@ -25,18 +25,21 @@
  */
 
 #include <stdbool.h>
+#include <stdio.h>
 #include "nouveau_driver.h"
 #include "nouveau_context.h"
 #include "nouveau_bufferobj.h"
 #include "nouveau_fbo.h"
 #include "nv_object.xml.h"
 
+#include "main/api_exec.h"
 #include "main/dd.h"
 #include "main/framebuffer.h"
 #include "main/fbobject.h"
 #include "main/light.h"
 #include "main/state.h"
 #include "main/version.h"
+#include "main/vtxfmt.h"
 #include "drivers/common/meta.h"
 #include "drivers/common/driverfuncs.h"
 #include "swrast/swrast.h"
@@ -51,6 +54,7 @@ nouveau_context_create(gl_api api,
 		       unsigned major_version,
 		       unsigned minor_version,
 		       uint32_t flags,
+		       bool notify_reset,
 		       unsigned *error,
 		       void *share_ctx)
 {
@@ -59,38 +63,23 @@ nouveau_context_create(gl_api api,
 	struct nouveau_context *nctx;
 	struct gl_context *ctx;
 
-	switch (api) {
-	case API_OPENGL:
-		/* Do after-the-fact version checking (below).
-		 */
-		break;
-	case API_OPENGLES:
-		/* NV10 and NV20 can support OpenGL ES 1.0 only.  Older chips
-		 * cannot do even that.
-		 */
-		if ((screen->device->chipset & 0xf0) == 0x00) {
-			*error = __DRI_CTX_ERROR_BAD_API;
-			return GL_FALSE;
-		} else if (minor_version != 0) {
-			*error = __DRI_CTX_ERROR_BAD_VERSION;
-			return GL_FALSE;
-		}
-		break;
-	case API_OPENGLES2:
-	case API_OPENGL_CORE:
-		*error = __DRI_CTX_ERROR_BAD_API;
-		return GL_FALSE;
+	if (flags & ~__DRI_CTX_FLAG_DEBUG) {
+		*error = __DRI_CTX_ERROR_UNKNOWN_FLAG;
+		return false;
 	}
 
-	/* API and flag filtering is handled in dri2CreateContextAttribs.
-	 */
-	(void) flags;
+	if (notify_reset) {
+		*error = __DRI_CTX_ERROR_UNKNOWN_ATTRIBUTE;
+		return false;
+	}
 
-	ctx = screen->driver->context_create(screen, visual, share_ctx);
+	ctx = screen->driver->context_create(screen, api, visual, share_ctx);
 	if (!ctx) {
 		*error = __DRI_CTX_ERROR_NO_MEMORY;
 		return GL_FALSE;
 	}
+
+	driContextSetFlags(ctx, flags);
 
 	nctx = to_nouveau_context(ctx);
 	nctx->dri_context = dri_ctx;
@@ -102,6 +91,10 @@ nouveau_context_create(gl_api api,
 	   *error = __DRI_CTX_ERROR_BAD_VERSION;
 	   return GL_FALSE;
 	}
+
+	/* Exec table initialization requires the version to be computed */
+	_mesa_initialize_dispatch_tables(ctx);
+	_mesa_initialize_vbo_vtxfmt(ctx);
 
 	if (nouveau_bo_new(context_dev(ctx), NOUVEAU_BO_VRAM, 0, 4096,
 			   NULL, &nctx->fence)) {
@@ -115,7 +108,8 @@ nouveau_context_create(gl_api api,
 }
 
 GLboolean
-nouveau_context_init(struct gl_context *ctx, struct nouveau_screen *screen,
+nouveau_context_init(struct gl_context *ctx, gl_api api,
+		     struct nouveau_screen *screen,
 		     const struct gl_config *visual, struct gl_context *share_ctx)
 {
 	struct nouveau_context *nctx = to_nouveau_context(ctx);
@@ -133,8 +127,8 @@ nouveau_context_init(struct gl_context *ctx, struct nouveau_screen *screen,
 	nouveau_fbo_functions_init(&functions);
 
 	/* Initialize the mesa context. */
-	_mesa_initialize_context(ctx, API_OPENGL, visual,
-                                 share_ctx, &functions, NULL);
+	if (!_mesa_initialize_context(ctx, api, visual, share_ctx, &functions))
+		return GL_FALSE;
 
 	nouveau_state_init(ctx);
 	nouveau_scratch_init(ctx);
@@ -192,14 +186,12 @@ nouveau_context_init(struct gl_context *ctx, struct nouveau_screen *screen,
 	/* Enable any supported extensions. */
 	ctx->Extensions.EXT_blend_color = true;
 	ctx->Extensions.EXT_blend_minmax = true;
-	ctx->Extensions.EXT_fog_coord = true;
-	ctx->Extensions.EXT_framebuffer_blit = true;
-	ctx->Extensions.EXT_framebuffer_object = true;
-	ctx->Extensions.EXT_packed_depth_stencil = true;
-	ctx->Extensions.EXT_secondary_color = true;
 	ctx->Extensions.EXT_texture_filter_anisotropic = true;
-	ctx->Extensions.NV_blend_square = true;
 	ctx->Extensions.NV_texture_env_combine4 = true;
+	ctx->Const.MaxDrawBuffers = ctx->Const.MaxColorAttachments = 1;
+
+	/* This effectively disables 3D textures */
+	ctx->Const.Max3DTextureLevels = 1;
 
 	return GL_TRUE;
 }
@@ -267,9 +259,9 @@ nouveau_update_renderbuffers(__DRIcontext *dri_ctx, __DRIdrawable *draw)
 	else if (fb->Visual.haveStencilBuffer)
 		attachments[i++] = __DRI_BUFFER_STENCIL;
 
-	buffers = (*screen->dri2.loader->getBuffers)(draw, &draw->w, &draw->h,
-						     attachments, i, &count,
-						     draw->loaderPrivate);
+	buffers = screen->dri2.loader->getBuffers(draw, &draw->w, &draw->h,
+						  attachments, i, &count,
+						  draw->loaderPrivate);
 	if (buffers == NULL)
 		return;
 

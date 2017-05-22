@@ -45,7 +45,9 @@
  */
 #define LP_MAX_TEXTURE_SIZE (1 * 1024 * 1024 * 1024ULL)  /* 1GB for now */
 #define LP_MAX_TEXTURE_2D_LEVELS 14  /* 8K x 8K for now */
-#define LP_MAX_TEXTURE_3D_LEVELS 11  /* 1K x 1K x 1K for now */
+#define LP_MAX_TEXTURE_3D_LEVELS 12  /* 2K x 2K x 2K for now */
+#define LP_MAX_TEXTURE_CUBE_LEVELS 14  /* 8K x 8K for now */
+#define LP_MAX_TEXTURE_ARRAY_LAYERS 512 /* 8K x 512 / 8K x 8K x 512 */
 
 
 /** This must be the larger of LP_MAX_TEXTURE_2D/3D_LEVELS */
@@ -59,7 +61,7 @@
 #define LP_MAX_WIDTH  (1 << (LP_MAX_TEXTURE_LEVELS - 1))
 
 
-#define LP_MAX_THREADS 8
+#define LP_MAX_THREADS 16
 
 
 /**
@@ -75,9 +77,11 @@
 
 /**
  * Max number of instructions (for all fragment shaders combined per context)
- * that will be kept around.
+ * that will be kept around (counted in terms of llvm ir).
+ * Note: the definition looks odd, but there's branches which use a different
+ * number of max shader variants.
  */
-#define LP_MAX_SHADER_INSTRUCTIONS (128*1024)
+#define LP_MAX_SHADER_INSTRUCTIONS MAX2(256*1024, 512*LP_MAX_SHADER_VARIANTS)
 
 /**
  * Max number of setup variants that will be kept around.

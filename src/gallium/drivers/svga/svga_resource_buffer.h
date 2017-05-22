@@ -31,9 +31,10 @@
 #include "pipe/p_state.h"
 #include "util/u_transfer.h"
 
-#include "util/u_double_list.h"
-
 #include "svga_screen_cache.h"
+#include "svga_screen.h"
+#include "svga_cmd.h"
+#include "svga_context.h"
 
 
 /**
@@ -55,6 +56,7 @@ struct svga_buffer_range
    unsigned end;
 };
 
+struct svga_3d_update_gb_image;
 
 /**
  * SVGA pipe buffer.
@@ -62,6 +64,9 @@ struct svga_buffer_range
 struct svga_buffer 
 {
    struct u_resource b;
+
+   /** This is a superset of b.b.bind */
+   unsigned bind_flags;
 
    /**
     * Regular (non DMA'able) memory.
@@ -167,6 +172,12 @@ struct svga_buffer
       SVGA3dCopyBox *boxes;
 
       /**
+       * Pointer to the sequence of update commands
+       * *inside* the command buffer.
+       */
+      struct svga_3d_update_gb_image *updates;
+
+      /**
        * Context that has the pending DMA to this buffer.
        */
       struct svga_context *svga;
@@ -177,17 +188,30 @@ struct svga_buffer
     * a context. It is only valid if the dma.pending is set above.
     */
    struct list_head head;
+
+   unsigned size;  /**< Approximate size in bytes */
+
+   boolean dirty;  /**< Need to do a readback before mapping? */
+
+   /** In some cases we try to keep the results of the translate_indices()
+    * function from svga_draw_elements.c
+    */
+   struct {
+      enum pipe_prim_type orig_prim, new_prim;
+      struct pipe_resource *buffer;
+      unsigned index_size;
+      unsigned offset;  /**< first index */
+      unsigned count;   /**< num indices */
+   } translated_indices;
 };
 
 
-static INLINE struct svga_buffer *
-svga_buffer(struct pipe_resource *buffer)
+static inline struct svga_buffer *
+svga_buffer(struct pipe_resource *resource)
 {
-   if (buffer) {
-      assert(((struct svga_buffer *)buffer)->b.vtbl == &svga_buffer_vtbl);
-      return (struct svga_buffer *)buffer;
-   }
-   return NULL;
+   struct svga_buffer *buf = (struct svga_buffer *) resource;
+   assert(buf == NULL || buf->b.vtbl == &svga_buffer_vtbl);
+   return buf;
 }
 
 
@@ -195,7 +219,7 @@ svga_buffer(struct pipe_resource *buffer)
  * Returns TRUE for user buffers.  We may
  * decide to use an alternate upload path for these buffers.
  */
-static INLINE boolean 
+static inline boolean 
 svga_buffer_is_user_buffer( struct pipe_resource *buffer )
 {
    if (buffer) {
@@ -205,7 +229,76 @@ svga_buffer_is_user_buffer( struct pipe_resource *buffer )
    }
 }
 
+/**
+ * Returns a pointer to a struct svga_winsys_screen given a
+ * struct svga_buffer.
+ */
+static inline struct svga_winsys_screen *
+svga_buffer_winsys_screen(struct svga_buffer *sbuf)
+{
+   return svga_screen(sbuf->b.b.screen)->sws;
+}
 
+
+/**
+ * Returns whether a buffer has hardware storage that is
+ * visible to the GPU.
+ */
+static inline boolean
+svga_buffer_has_hw_storage(struct svga_buffer *sbuf)
+{
+   if (svga_buffer_winsys_screen(sbuf)->have_gb_objects)
+      return (sbuf->handle ? TRUE : FALSE);
+   else
+      return (sbuf->hwbuf ? TRUE : FALSE);
+}
+
+/**
+ * Map the hardware storage of a buffer.
+ */
+static inline void *
+svga_buffer_hw_storage_map(struct svga_context *svga,
+                           struct svga_buffer *sbuf,
+                           unsigned flags, boolean *retry)
+{
+   struct svga_winsys_screen *sws = svga_buffer_winsys_screen(sbuf);
+
+   svga->hud.num_buffers_mapped++;
+
+   if (sws->have_gb_objects) {
+      return svga->swc->surface_map(svga->swc, sbuf->handle, flags, retry);
+   } else {
+      *retry = FALSE;
+      return sws->buffer_map(sws, sbuf->hwbuf, flags);
+   }
+}
+
+/**
+ * Unmap the hardware storage of a buffer.
+ */
+static inline void
+svga_buffer_hw_storage_unmap(struct svga_context *svga,
+                             struct svga_buffer *sbuf)
+{
+   struct svga_winsys_screen *sws = svga_buffer_winsys_screen(sbuf);
+
+   if (sws->have_gb_objects) {
+      struct svga_winsys_context *swc = svga->swc;
+      boolean rebind;
+      swc->surface_unmap(swc, sbuf->handle, &rebind);
+      if (rebind) {
+         enum pipe_error ret;
+         ret = SVGA3D_BindGBSurface(swc, sbuf->handle);
+         if (ret != PIPE_OK) {
+            /* flush and retry */
+            svga_context_flush(svga, NULL);
+            ret = SVGA3D_BindGBSurface(swc, sbuf->handle);
+            assert(ret == PIPE_OK);
+         }
+      }
+   } else
+      sws->buffer_unmap(sws, sbuf->hwbuf);
+}
 
 
 struct pipe_resource *

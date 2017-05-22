@@ -48,7 +48,7 @@
 #include "cso_cache/cso_context.h"
 
 /* debug_dump_surface_bmp */
-#include "util/u_debug.h"
+#include "util/u_debug_image.h"
 /* util_draw_vertex_buffer helper */
 #include "util/u_draw_quad.h"
 /* FREE & CALLOC_STRUCT */
@@ -91,11 +91,11 @@ static void init_prog(struct program *p)
 	assert(ret);
 
 	/* init a pipe screen */
-	p->screen = pipe_loader_create_screen(p->dev, PIPE_SEARCH_DIR);
+	p->screen = pipe_loader_create_screen(p->dev);
 	assert(p->screen);
 
 	/* create the pipe driver context and cso context */
-	p->pipe = p->screen->context_create(p->screen, NULL);
+	p->pipe = p->screen->context_create(p->screen, NULL, 0);
 	p->cso = cso_create_context(p->pipe);
 
 	/* set clear color */
@@ -122,7 +122,7 @@ static void init_prog(struct program *p)
 		};
 
 		p->vbuf = pipe_buffer_create(p->screen, PIPE_BIND_VERTEX_BUFFER,
-					     PIPE_USAGE_STATIC, sizeof(vertices));
+					     PIPE_USAGE_DEFAULT, sizeof(vertices));
 		pipe_buffer_write(p->pipe, p->vbuf, 0, sizeof(vertices), vertices);
 	}
 
@@ -152,11 +152,11 @@ static void init_prog(struct program *p)
 	/* rasterizer */
 	memset(&p->rasterizer, 0, sizeof(p->rasterizer));
 	p->rasterizer.cull_face = PIPE_FACE_NONE;
-	p->rasterizer.gl_rasterization_rules = 1;
+	p->rasterizer.half_pixel_center = 1;
+	p->rasterizer.bottom_edge_rule = 1;
 	p->rasterizer.depth_clip = 1;
 
 	surf_tmpl.format = PIPE_FORMAT_B8G8R8A8_UNORM;
-	surf_tmpl.usage = PIPE_BIND_RENDER_TARGET;
 	surf_tmpl.u.tex.level = 0;
 	surf_tmpl.u.tex.first_layer = 0;
 	surf_tmpl.u.tex.last_layer = 0;
@@ -188,12 +188,10 @@ static void init_prog(struct program *p)
 		p->viewport.scale[0] = half_width;
 		p->viewport.scale[1] = half_height * scale;
 		p->viewport.scale[2] = half_depth;
-		p->viewport.scale[3] = 1.0f;
 
 		p->viewport.translate[0] = half_width + x;
 		p->viewport.translate[1] = (half_height + y) * scale + bias;
 		p->viewport.translate[2] = half_depth + z;
-		p->viewport.translate[3] = 0.0f;
 	}
 
 	/* vertex elements state */
@@ -213,17 +211,17 @@ static void init_prog(struct program *p)
 			const uint semantic_names[] = { TGSI_SEMANTIC_POSITION,
 							TGSI_SEMANTIC_COLOR };
 			const uint semantic_indexes[] = { 0, 0 };
-			p->vs = util_make_vertex_passthrough_shader(p->pipe, 2, semantic_names, semantic_indexes);
+			p->vs = util_make_vertex_passthrough_shader(p->pipe, 2, semantic_names, semantic_indexes, FALSE);
 	}
 
 	/* fragment shader */
-	p->fs = util_make_fragment_passthrough_shader(p->pipe);
+	p->fs = util_make_fragment_passthrough_shader(p->pipe,
+                    TGSI_SEMANTIC_COLOR, TGSI_INTERPOLATE_PERSPECTIVE, TRUE);
 }
 
 static void close_prog(struct program *p)
 {
-	/* unset all state */
-	cso_release_all(p->cso);
+	cso_destroy_context(p->cso);
 
 	p->pipe->delete_vs_state(p->pipe, p->vs);
 	p->pipe->delete_fs_state(p->pipe, p->fs);
@@ -232,7 +230,6 @@ static void close_prog(struct program *p)
 	pipe_resource_reference(&p->target, NULL);
 	pipe_resource_reference(&p->vbuf, NULL);
 
-	cso_destroy_context(p->cso);
 	p->pipe->destroy(p->pipe);
 	p->screen->destroy(p->screen);
 	pipe_loader_release(&p->dev, 1);
@@ -262,12 +259,12 @@ static void draw(struct program *p)
 	cso_set_vertex_elements(p->cso, 2, p->velem);
 
 	util_draw_vertex_buffer(p->pipe, p->cso,
-	                        p->vbuf, 0,
+	                        p->vbuf, 0, 0,
 	                        PIPE_PRIM_TRIANGLES,
 	                        3,  /* verts */
 	                        2); /* attribs/vert */
 
-        p->pipe->flush(p->pipe, NULL);
+        p->pipe->flush(p->pipe, NULL, 0);
 
 	debug_dump_surface_bmp(p->pipe, "result.bmp", p->framebuffer.cbufs[0]);
 }

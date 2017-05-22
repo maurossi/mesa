@@ -34,19 +34,21 @@
 
 #include <X11/Xlib.h>
 #include <X11/extensions/Xfixes.h>
-#include "glapi.h"
+#include <X11/Xlib-xcb.h>
+#include <xcb/xcb.h>
+#include <xcb/dri2.h>
 #include "glxclient.h"
 #include <X11/extensions/dri2proto.h>
-#include "xf86dri.h"
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/mman.h>
 #include <sys/time.h>
-#include "xf86drm.h"
 #include "dri2.h"
 #include "dri_common.h"
+#include "dri2_priv.h"
+#include "loader.h"
 
 /* From xmlpool/options.h, user exposed so should be stable */
 #define DRI_CONF_VBLANK_NEVER 0
@@ -75,32 +77,6 @@ struct dri2_display
    const __DRIextension *loader_extensions[4];
 };
 
-struct dri2_screen {
-   struct glx_screen base;
-
-   __DRIscreen *driScreen;
-   __GLXDRIscreen vtable;
-   const __DRIdri2Extension *dri2;
-   const __DRIcoreExtension *core;
-
-   const __DRI2flushExtension *f;
-   const __DRI2configQueryExtension *config;
-   const __DRItexBufferExtension *texBuffer;
-   const __DRI2throttleExtension *throttle;
-   const __DRIconfig **driver_configs;
-
-   void *driver;
-   int fd;
-
-   Bool show_fps;
-};
-
-struct dri2_context
-{
-   struct glx_context base;
-   __DRIcontext *driContext;
-};
-
 struct dri2_drawable
 {
    __GLXDRIdrawable base;
@@ -112,11 +88,27 @@ struct dri2_drawable
    int have_fake_front;
    int swap_interval;
 
-   double previous_time;
+   uint64_t previous_time;
    unsigned frames;
 };
 
 static const struct glx_context_vtable dri2_context_vtable;
+
+/* For XCB's handling of ust/msc/sbc counters, we have to hand it the high and
+ * low halves separately.  This helps you split them.
+ */
+static void
+split_counter(uint64_t counter, uint32_t *hi, uint32_t *lo)
+{
+   *hi = (counter >> 32);
+   *lo = counter & 0xffffffff;
+}
+
+static uint64_t
+merge_counter(uint32_t hi, uint32_t lo)
+{
+   return ((uint64_t)hi << 32) | lo;
+}
 
 static void
 dri2_destroy_context(struct glx_context *context)
@@ -126,12 +118,11 @@ dri2_destroy_context(struct glx_context *context)
 
    driReleaseDrawables(&pcp->base);
 
-   if (context->extensions)
-      XFree((char *) context->extensions);
+   free((char *) context->extensions);
 
    (*psc->core->destroyContext) (pcp->driContext);
 
-   Xfree(pcp);
+   free(pcp);
 }
 
 static Bool
@@ -141,6 +132,8 @@ dri2_bind_context(struct glx_context *context, struct glx_context *old,
    struct dri2_context *pcp = (struct dri2_context *) context;
    struct dri2_screen *psc = (struct dri2_screen *) pcp->base.psc;
    struct dri2_drawable *pdraw, *pread;
+   __DRIdrawable *dri_draw = NULL, *dri_read = NULL;
+   struct glx_display *dpyPriv = psc->base.display;
    struct dri2_display *pdp;
 
    pdraw = (struct dri2_drawable *) driFetchDrawable(context, draw);
@@ -148,20 +141,26 @@ dri2_bind_context(struct glx_context *context, struct glx_context *old,
 
    driReleaseDrawables(&pcp->base);
 
-   if (pdraw == NULL || pread == NULL)
+   if (pdraw)
+      dri_draw = pdraw->driDrawable;
+   else if (draw != None)
       return GLXBadDrawable;
 
-   if (!(*psc->core->bindContext) (pcp->driContext,
-				   pdraw->driDrawable, pread->driDrawable))
+   if (pread)
+      dri_read = pread->driDrawable;
+   else if (read != None)
+      return GLXBadDrawable;
+
+   if (!(*psc->core->bindContext) (pcp->driContext, dri_draw, dri_read))
       return GLXBadContext;
 
    /* If the server doesn't send invalidate events, we may miss a
     * resize before the rendering starts.  Invalidate the buffers now
     * so the driver will recheck before rendering starts. */
-   pdp = (struct dri2_display *) psc->base.display;
-   if (!pdp->invalidateAvailable) {
+   pdp = (struct dri2_display *) dpyPriv->dri2Display;
+   if (!pdp->invalidateAvailable && pdraw) {
       dri2InvalidateBuffers(psc->base.dpy, pdraw->base.xDrawable);
-      if (pread != pdraw)
+      if (pread != pdraw && pread)
 	 dri2InvalidateBuffers(psc->base.dpy, pread->base.xDrawable);
    }
 
@@ -187,6 +186,10 @@ dri2_create_context(struct glx_screen *base,
    __GLXDRIconfigPrivate *config = (__GLXDRIconfigPrivate *) config_base;
    __DRIcontext *shared = NULL;
 
+   /* Check the renderType value */
+   if (!validate_renderType_against_config(config_base, renderType))
+       return NULL;
+
    if (shareList) {
       /* If the shareList context is not a DRI2 context, we cannot possibly
        * create a DRI2 context that shares it.
@@ -199,22 +202,23 @@ dri2_create_context(struct glx_screen *base,
       shared = pcp_shared->driContext;
    }
 
-   pcp = Xmalloc(sizeof *pcp);
+   pcp = calloc(1, sizeof *pcp);
    if (pcp == NULL)
       return NULL;
 
-   memset(pcp, 0, sizeof *pcp);
    if (!glx_context_init(&pcp->base, &psc->base, &config->base)) {
-      Xfree(pcp);
+      free(pcp);
       return NULL;
    }
+
+   pcp->base.renderType = renderType;
 
    pcp->driContext =
       (*psc->dri2->createNewContext) (psc->driScreen,
                                       config->driConfig, shared, pcp);
 
    if (pcp->driContext == NULL) {
-      Xfree(pcp);
+      free(pcp);
       return NULL;
    }
 
@@ -237,11 +241,12 @@ dri2_create_context_attribs(struct glx_screen *base,
    __GLXDRIconfigPrivate *config = (__GLXDRIconfigPrivate *) config_base;
    __DRIcontext *shared = NULL;
 
-   uint32_t minor_ver = 1;
-   uint32_t major_ver = 2;
-   uint32_t flags = 0;
+   uint32_t minor_ver;
+   uint32_t major_ver;
+   uint32_t renderType;
+   uint32_t flags;
    unsigned api;
-   int reset = __DRI_CTX_RESET_NO_NOTIFICATION;
+   int reset;
    uint32_t ctx_attribs[2 * 5];
    unsigned num_ctx_attribs = 0;
 
@@ -253,22 +258,25 @@ dri2_create_context_attribs(struct glx_screen *base,
    /* Remap the GLX tokens to DRI2 tokens.
     */
    if (!dri2_convert_glx_attribs(num_attribs, attribs,
-				 &major_ver, &minor_ver, &flags, &api, &reset,
-                                 error))
+                                 &major_ver, &minor_ver, &renderType, &flags,
+                                 &api, &reset, error))
       goto error_exit;
+
+   /* Check the renderType value */
+   if (!validate_renderType_against_config(config_base, renderType))
+       goto error_exit;
 
    if (shareList) {
       pcp_shared = (struct dri2_context *) shareList;
       shared = pcp_shared->driContext;
    }
 
-   pcp = Xmalloc(sizeof *pcp);
+   pcp = calloc(1, sizeof *pcp);
    if (pcp == NULL) {
       *error = __DRI_CTX_ERROR_NO_MEMORY;
       goto error_exit;
    }
 
-   memset(pcp, 0, sizeof *pcp);
    if (!glx_context_init(&pcp->base, &psc->base, &config->base))
       goto error_exit;
 
@@ -295,6 +303,11 @@ dri2_create_context_attribs(struct glx_screen *base,
       ctx_attribs[num_ctx_attribs++] = flags;
    }
 
+   /* The renderType is retrieved from attribs, or set to default
+    *  of GLX_RGBA_TYPE.
+    */
+   pcp->base.renderType = renderType;
+
    pcp->driContext =
       (*psc->dri2->createContextAttribs) (psc->driScreen,
 					  api,
@@ -313,8 +326,7 @@ dri2_create_context_attribs(struct glx_screen *base,
    return &pcp->base;
 
 error_exit:
-   if (pcp != NULL)
-      Xfree(pcp);
+   free(pcp);
 
    return NULL;
 }
@@ -340,7 +352,7 @@ dri2DestroyDrawable(__GLXDRIdrawable *base)
    if (pdraw->base.xDrawable != pdraw->base.drawable)
       DRI2DestroyDrawable(psc->base.dpy, pdraw->base.xDrawable);
 
-   Xfree(pdraw);
+   free(pdraw);
 }
 
 static __GLXDRIdrawable *
@@ -354,11 +366,14 @@ dri2CreateDrawable(struct glx_screen *base, XID xDrawable,
    struct dri2_display *pdp;
    GLint vblank_mode = DRI_CONF_VBLANK_DEF_INTERVAL_1;
 
-   pdraw = Xmalloc(sizeof(*pdraw));
+   dpyPriv = __glXInitialize(psc->base.dpy);
+   if (dpyPriv == NULL)
+      return NULL;
+
+   pdraw = calloc(1, sizeof(*pdraw));
    if (!pdraw)
       return NULL;
 
-   memset(pdraw, 0, sizeof *pdraw);
    pdraw->base.destroyDrawable = dri2DestroyDrawable;
    pdraw->base.xDrawable = xDrawable;
    pdraw->base.drawable = drawable;
@@ -384,9 +399,7 @@ dri2CreateDrawable(struct glx_screen *base, XID xDrawable,
    }
 
    DRI2CreateDrawable(psc->base.dpy, xDrawable);
-
-   dpyPriv = __glXInitialize(psc->base.dpy);
-   pdp = (struct dri2_display *)dpyPriv->dri2Display;;
+   pdp = (struct dri2_display *)dpyPriv->dri2Display;
    /* Create a new drawable */
    pdraw->driDrawable =
       (*psc->dri2->createNewDrawable) (psc->driScreen,
@@ -394,86 +407,115 @@ dri2CreateDrawable(struct glx_screen *base, XID xDrawable,
 
    if (!pdraw->driDrawable) {
       DRI2DestroyDrawable(psc->base.dpy, xDrawable);
-      Xfree(pdraw);
+      free(pdraw);
       return NULL;
    }
 
    if (__glxHashInsert(pdp->dri2Hash, xDrawable, pdraw)) {
       (*psc->core->destroyDrawable) (pdraw->driDrawable);
       DRI2DestroyDrawable(psc->base.dpy, xDrawable);
-      Xfree(pdraw);
+      free(pdraw);
       return None;
    }
 
-
-#ifdef X_DRI2SwapInterval
    /*
     * Make sure server has the same swap interval we do for the new
     * drawable.
     */
-   if (pdp->swapAvailable)
-      DRI2SwapInterval(psc->base.dpy, xDrawable, pdraw->swap_interval);
-#endif
+   if (psc->vtable.setSwapInterval)
+      psc->vtable.setSwapInterval(&pdraw->base, pdraw->swap_interval);
 
    return &pdraw->base;
 }
-
-#ifdef X_DRI2GetMSC
 
 static int
 dri2DrawableGetMSC(struct glx_screen *psc, __GLXDRIdrawable *pdraw,
 		   int64_t *ust, int64_t *msc, int64_t *sbc)
 {
-   CARD64 dri2_ust, dri2_msc, dri2_sbc;
-   int ret;
+   xcb_connection_t *c = XGetXCBConnection(pdraw->psc->dpy);
+   xcb_dri2_get_msc_cookie_t get_msc_cookie;
+   xcb_dri2_get_msc_reply_t *get_msc_reply;
 
-   ret = DRI2GetMSC(psc->dpy, pdraw->xDrawable,
-		    &dri2_ust, &dri2_msc, &dri2_sbc);
-   *ust = dri2_ust;
-   *msc = dri2_msc;
-   *sbc = dri2_sbc;
+   get_msc_cookie = xcb_dri2_get_msc_unchecked(c, pdraw->xDrawable);
+   get_msc_reply = xcb_dri2_get_msc_reply(c, get_msc_cookie, NULL);
 
-   return ret;
+   if (!get_msc_reply)
+      return 0;
+
+   *ust = merge_counter(get_msc_reply->ust_hi, get_msc_reply->ust_lo);
+   *msc = merge_counter(get_msc_reply->msc_hi, get_msc_reply->msc_lo);
+   *sbc = merge_counter(get_msc_reply->sbc_hi, get_msc_reply->sbc_lo);
+   free(get_msc_reply);
+
+   return 1;
 }
-
-#endif
-
-
-#ifdef X_DRI2WaitMSC
 
 static int
 dri2WaitForMSC(__GLXDRIdrawable *pdraw, int64_t target_msc, int64_t divisor,
 	       int64_t remainder, int64_t *ust, int64_t *msc, int64_t *sbc)
 {
-   CARD64 dri2_ust, dri2_msc, dri2_sbc;
-   int ret;
+   xcb_connection_t *c = XGetXCBConnection(pdraw->psc->dpy);
+   xcb_dri2_wait_msc_cookie_t wait_msc_cookie;
+   xcb_dri2_wait_msc_reply_t *wait_msc_reply;
+   uint32_t target_msc_hi, target_msc_lo;
+   uint32_t divisor_hi, divisor_lo;
+   uint32_t remainder_hi, remainder_lo;
 
-   ret = DRI2WaitMSC(pdraw->psc->dpy, pdraw->xDrawable, target_msc, divisor,
-		     remainder, &dri2_ust, &dri2_msc, &dri2_sbc);
-   *ust = dri2_ust;
-   *msc = dri2_msc;
-   *sbc = dri2_sbc;
+   split_counter(target_msc, &target_msc_hi, &target_msc_lo);
+   split_counter(divisor, &divisor_hi, &divisor_lo);
+   split_counter(remainder, &remainder_hi, &remainder_lo);
 
-   return ret;
+   wait_msc_cookie = xcb_dri2_wait_msc_unchecked(c, pdraw->xDrawable,
+                                                 target_msc_hi, target_msc_lo,
+                                                 divisor_hi, divisor_lo,
+                                                 remainder_hi, remainder_lo);
+   wait_msc_reply = xcb_dri2_wait_msc_reply(c, wait_msc_cookie, NULL);
+
+   if (!wait_msc_reply)
+      return 0;
+
+   *ust = merge_counter(wait_msc_reply->ust_hi, wait_msc_reply->ust_lo);
+   *msc = merge_counter(wait_msc_reply->msc_hi, wait_msc_reply->msc_lo);
+   *sbc = merge_counter(wait_msc_reply->sbc_hi, wait_msc_reply->sbc_lo);
+   free(wait_msc_reply);
+
+   return 1;
 }
 
 static int
 dri2WaitForSBC(__GLXDRIdrawable *pdraw, int64_t target_sbc, int64_t *ust,
 	       int64_t *msc, int64_t *sbc)
 {
-   CARD64 dri2_ust, dri2_msc, dri2_sbc;
-   int ret;
+   xcb_connection_t *c = XGetXCBConnection(pdraw->psc->dpy);
+   xcb_dri2_wait_sbc_cookie_t wait_sbc_cookie;
+   xcb_dri2_wait_sbc_reply_t *wait_sbc_reply;
+   uint32_t target_sbc_hi, target_sbc_lo;
 
-   ret = DRI2WaitSBC(pdraw->psc->dpy, pdraw->xDrawable,
-		     target_sbc, &dri2_ust, &dri2_msc, &dri2_sbc);
-   *ust = dri2_ust;
-   *msc = dri2_msc;
-   *sbc = dri2_sbc;
+   split_counter(target_sbc, &target_sbc_hi, &target_sbc_lo);
 
-   return ret;
+   wait_sbc_cookie = xcb_dri2_wait_sbc_unchecked(c, pdraw->xDrawable,
+                                                 target_sbc_hi, target_sbc_lo);
+   wait_sbc_reply = xcb_dri2_wait_sbc_reply(c, wait_sbc_cookie, NULL);
+
+   if (!wait_sbc_reply)
+      return 0;
+
+   *ust = merge_counter(wait_sbc_reply->ust_hi, wait_sbc_reply->ust_lo);
+   *msc = merge_counter(wait_sbc_reply->msc_hi, wait_sbc_reply->msc_lo);
+   *sbc = merge_counter(wait_sbc_reply->sbc_hi, wait_sbc_reply->sbc_lo);
+   free(wait_sbc_reply);
+
+   return 1;
 }
 
-#endif /* X_DRI2WaitMSC */
+static __DRIcontext *
+dri2GetCurrentContext()
+{
+   struct glx_context *gc = __glXGetCurrentContext();
+   struct dri2_context *dri2Ctx = (struct dri2_context *)gc;
+
+   return (gc != &dummyContext) ? dri2Ctx->driContext : NULL;
+}
 
 /**
  * dri2Throttle - Request driver throttling
@@ -488,24 +530,49 @@ dri2Throttle(struct dri2_screen *psc,
 	     enum __DRI2throttleReason reason)
 {
    if (psc->throttle) {
-      struct glx_context *gc = __glXGetCurrentContext();
-      struct dri2_context *dri2Ctx = (struct dri2_context *)gc;
-      __DRIcontext *ctx =
-	 (dri2Ctx) ? dri2Ctx->driContext : NULL;
+      __DRIcontext *ctx = dri2GetCurrentContext();
 
       psc->throttle->throttle(ctx, draw->driDrawable, reason);
+   }
+}
+
+/**
+ * Asks the driver to flush any queued work necessary for serializing with the
+ * X command stream, and optionally the slightly more strict requirement of
+ * glFlush() equivalence (which would require flushing even if nothing had
+ * been drawn to a window system framebuffer, for example).
+ */
+static void
+dri2Flush(struct dri2_screen *psc,
+          __DRIcontext *ctx,
+          struct dri2_drawable *draw,
+          unsigned flags,
+          enum __DRI2throttleReason throttle_reason)
+{
+   if (ctx && psc->f && psc->f->base.version >= 4) {
+      psc->f->flush_with_flags(ctx, draw->driDrawable, flags, throttle_reason);
+   } else {
+      if (flags & __DRI2_FLUSH_CONTEXT)
+         glFlush();
+
+      if (psc->f)
+         psc->f->flush(draw->driDrawable);
+
+      dri2Throttle(psc, draw, throttle_reason);
    }
 }
 
 static void
 __dri2CopySubBuffer(__GLXDRIdrawable *pdraw, int x, int y,
 		    int width, int height,
-		    enum __DRI2throttleReason reason)
+		    enum __DRI2throttleReason reason, Bool flush)
 {
    struct dri2_drawable *priv = (struct dri2_drawable *) pdraw;
    struct dri2_screen *psc = (struct dri2_screen *) pdraw->psc;
    XRectangle xrect;
    XserverRegion region;
+   __DRIcontext *ctx = dri2GetCurrentContext();
+   unsigned flags;
 
    /* Check we have the right attachments */
    if (!priv->have_back)
@@ -516,12 +583,10 @@ __dri2CopySubBuffer(__GLXDRIdrawable *pdraw, int x, int y,
    xrect.width = width;
    xrect.height = height;
 
-#ifdef __DRI2_FLUSH
-   if (psc->f)
-      (*psc->f->flush) (priv->driDrawable);
-#endif
-
-   dri2Throttle(psc, priv, reason);
+   flags = __DRI2_FLUSH_DRAWABLE;
+   if (flush)
+      flags |= __DRI2_FLUSH_CONTEXT;
+   dri2Flush(psc, ctx, priv, flags, __DRI2_THROTTLE_SWAPBUFFER);
 
    region = XFixesCreateRegion(psc->base.dpy, &xrect, 1);
    DRI2CopyRegion(psc->base.dpy, pdraw->xDrawable, region,
@@ -539,10 +604,10 @@ __dri2CopySubBuffer(__GLXDRIdrawable *pdraw, int x, int y,
 
 static void
 dri2CopySubBuffer(__GLXDRIdrawable *pdraw, int x, int y,
-		  int width, int height)
+		  int width, int height, Bool flush)
 {
    __dri2CopySubBuffer(pdraw, x, y, width, height,
-		       __DRI2_THROTTLE_COPYSUBBUFFER);
+		       __DRI2_THROTTLE_COPYSUBBUFFER, flush);
 }
 
 
@@ -558,10 +623,8 @@ dri2_copy_drawable(struct dri2_drawable *priv, int dest, int src)
    xrect.width = priv->width;
    xrect.height = priv->height;
 
-#ifdef __DRI2_FLUSH
    if (psc->f)
       (*psc->f->flush) (priv->driDrawable);
-#endif
 
    region = XFixesCreateRegion(psc->base.dpy, &xrect, 1);
    DRI2CopyRegion(psc->base.dpy, priv->base.xDrawable, region, dest, src);
@@ -593,6 +656,10 @@ dri2_wait_gl(struct glx_context *gc)
    dri2_copy_drawable(priv, DRI2BufferFrontLeft, DRI2BufferFakeFrontLeft);
 }
 
+/**
+ * Called by the driver when it needs to update the real front buffer with the
+ * contents of its fake front buffer.
+ */
 static void
 dri2FlushFrontBuffer(__DRIdrawable *driDrawable, void *loaderPrivate)
 {
@@ -611,6 +678,10 @@ dri2FlushFrontBuffer(__DRIdrawable *driDrawable, void *loaderPrivate)
    psc = (struct dri2_screen *) pdraw->base.psc;
 
    priv = __glXInitialize(psc->base.dpy);
+
+   if (priv == NULL)
+       return;
+
    pdp = (struct dri2_display *) priv->dri2Display;
    gc = __glXGetCurrentContext();
 
@@ -633,7 +704,7 @@ dri2DestroyScreen(struct glx_screen *base)
    (*psc->core->destroyScreen) (psc->driScreen);
    driDestroyConfigs(psc->driver_configs);
    close(psc->fd);
-   Xfree(psc);
+   free(psc);
 }
 
 /**
@@ -680,18 +751,21 @@ unsigned dri2GetSwapEventType(Display* dpy, XID drawable)
 
 static void show_fps(struct dri2_drawable *draw)
 {
+   const int interval =
+      ((struct dri2_screen *) draw->base.psc)->show_fps_interval;
    struct timeval tv;
-   double current_time;
+   uint64_t current_time;
 
    gettimeofday(&tv, 0);
-   current_time = (double)tv.tv_sec + (double)tv.tv_usec * 0.000001;
+   current_time = (uint64_t)tv.tv_sec*1000000 + (uint64_t)tv.tv_usec;
 
    draw->frames++;
 
-   if (draw->previous_time + 1 < current_time) {
+   if (draw->previous_time + interval * 1000000 <= current_time) {
       if (draw->previous_time) {
          fprintf(stderr, "libGL: FPS = %.1f\n",
-                 draw->frames / (current_time - draw->previous_time));
+                 ((uint64_t)draw->frames * 1000000) /
+                 (double)(current_time - draw->previous_time));
       }
       draw->frames = 0;
       draw->previous_time = current_time;
@@ -699,15 +773,61 @@ static void show_fps(struct dri2_drawable *draw)
 }
 
 static int64_t
+dri2XcbSwapBuffers(Display *dpy,
+                  __GLXDRIdrawable *pdraw,
+                  int64_t target_msc,
+                  int64_t divisor,
+                  int64_t remainder)
+{
+   xcb_dri2_swap_buffers_cookie_t swap_buffers_cookie;
+   xcb_dri2_swap_buffers_reply_t *swap_buffers_reply;
+   uint32_t target_msc_hi, target_msc_lo;
+   uint32_t divisor_hi, divisor_lo;
+   uint32_t remainder_hi, remainder_lo;
+   int64_t ret = 0;
+   xcb_connection_t *c = XGetXCBConnection(dpy);
+
+   split_counter(target_msc, &target_msc_hi, &target_msc_lo);
+   split_counter(divisor, &divisor_hi, &divisor_lo);
+   split_counter(remainder, &remainder_hi, &remainder_lo);
+
+   swap_buffers_cookie =
+      xcb_dri2_swap_buffers_unchecked(c, pdraw->xDrawable,
+                                      target_msc_hi, target_msc_lo,
+                                      divisor_hi, divisor_lo,
+                                      remainder_hi, remainder_lo);
+
+   /* Immediately wait on the swapbuffers reply.  If we didn't, we'd have
+    * to do so some time before reusing a (non-pageflipped) backbuffer.
+    * Otherwise, the new rendering could get ahead of the X Server's
+    * dispatch of the swapbuffer and you'd display garbage.
+    *
+    * We use XSync() first to reap the invalidate events through the event
+    * filter, to ensure that the next drawing doesn't use an invalidated
+    * buffer.
+    */
+   XSync(dpy, False);
+
+   swap_buffers_reply =
+      xcb_dri2_swap_buffers_reply(c, swap_buffers_cookie, NULL);
+   if (swap_buffers_reply) {
+      ret = merge_counter(swap_buffers_reply->swap_hi,
+                          swap_buffers_reply->swap_lo);
+      free(swap_buffers_reply);
+   }
+   return ret;
+}
+
+static int64_t
 dri2SwapBuffers(__GLXDRIdrawable *pdraw, int64_t target_msc, int64_t divisor,
-		int64_t remainder)
+		int64_t remainder, Bool flush)
 {
     struct dri2_drawable *priv = (struct dri2_drawable *) pdraw;
     struct glx_display *dpyPriv = __glXInitialize(priv->base.psc->dpy);
     struct dri2_screen *psc = (struct dri2_screen *) priv->base.psc;
     struct dri2_display *pdp =
 	(struct dri2_display *)dpyPriv->dri2Display;
-    CARD64 ret = 0;
+    int64_t ret = 0;
 
     /* Check we have the right attachments */
     if (!priv->have_back)
@@ -716,27 +836,19 @@ dri2SwapBuffers(__GLXDRIdrawable *pdraw, int64_t target_msc, int64_t divisor,
     /* Old servers can't handle swapbuffers */
     if (!pdp->swapAvailable) {
        __dri2CopySubBuffer(pdraw, 0, 0, priv->width, priv->height,
-			   __DRI2_THROTTLE_SWAPBUFFER);
+			   __DRI2_THROTTLE_SWAPBUFFER, flush);
     } else {
-#ifdef X_DRI2SwapBuffers
-#ifdef __DRI2_FLUSH
-    if (psc->f) {
-       struct glx_context *gc = __glXGetCurrentContext();
+       __DRIcontext *ctx = dri2GetCurrentContext();
+       unsigned flags = __DRI2_FLUSH_DRAWABLE;
+       if (flush)
+          flags |= __DRI2_FLUSH_CONTEXT;
+       dri2Flush(psc, ctx, priv, flags, __DRI2_THROTTLE_SWAPBUFFER);
 
-       if (gc) {
-	  (*psc->f->flush)(priv->driDrawable);
-       }
-    }
-#endif
-
-       dri2Throttle(psc, priv, __DRI2_THROTTLE_SWAPBUFFER);
-
-       DRI2SwapBuffers(psc->base.dpy, pdraw->xDrawable,
-		       target_msc, divisor, remainder, &ret);
-#endif
+       ret = dri2XcbSwapBuffers(pdraw->psc->dpy, pdraw,
+                                target_msc, divisor, remainder);
     }
 
-    if (psc->show_fps) {
+    if (psc->show_fps_interval) {
        show_fps(priv);
     }
 
@@ -765,7 +877,7 @@ dri2GetBuffers(__DRIdrawable * driDrawable,
    pdraw->height = *height;
    process_buffers(pdraw, buffers, *out_count);
 
-   Xfree(buffers);
+   free(buffers);
 
    return pdraw->buffers;
 }
@@ -790,16 +902,15 @@ dri2GetBuffersWithFormat(__DRIdrawable * driDrawable,
    pdraw->height = *height;
    process_buffers(pdraw, buffers, *out_count);
 
-   Xfree(buffers);
+   free(buffers);
 
    return pdraw->buffers;
 }
 
-#ifdef X_DRI2SwapInterval
-
 static int
 dri2SetSwapInterval(__GLXDRIdrawable *pdraw, int interval)
 {
+   xcb_connection_t *c = XGetXCBConnection(pdraw->psc->dpy);
    struct dri2_drawable *priv =  (struct dri2_drawable *) pdraw;
    GLint vblank_mode = DRI_CONF_VBLANK_DEF_INTERVAL_1;
    struct dri2_screen *psc = (struct dri2_screen *) priv->base.psc;
@@ -810,7 +921,9 @@ dri2SetSwapInterval(__GLXDRIdrawable *pdraw, int interval)
 
    switch (vblank_mode) {
    case DRI_CONF_VBLANK_NEVER:
-      return GLX_BAD_VALUE;
+      if (interval != 0)
+         return GLX_BAD_VALUE;
+      break;
    case DRI_CONF_VBLANK_ALWAYS_SYNC:
       if (interval <= 0)
 	 return GLX_BAD_VALUE;
@@ -819,7 +932,7 @@ dri2SetSwapInterval(__GLXDRIdrawable *pdraw, int interval)
       break;
    }
 
-   DRI2SwapInterval(priv->base.psc->dpy, priv->base.xDrawable, interval);
+   xcb_dri2_swap_interval(c, priv->base.xDrawable, interval);
    priv->swap_interval = interval;
 
    return 0;
@@ -833,27 +946,25 @@ dri2GetSwapInterval(__GLXDRIdrawable *pdraw)
   return priv->swap_interval;
 }
 
-#endif /* X_DRI2SwapInterval */
-
 static const __DRIdri2LoaderExtension dri2LoaderExtension = {
-   {__DRI_DRI2_LOADER, __DRI_DRI2_LOADER_VERSION},
-   dri2GetBuffers,
-   dri2FlushFrontBuffer,
-   dri2GetBuffersWithFormat,
+   .base = { __DRI_DRI2_LOADER, 3 },
+
+   .getBuffers              = dri2GetBuffers,
+   .flushFrontBuffer        = dri2FlushFrontBuffer,
+   .getBuffersWithFormat    = dri2GetBuffersWithFormat,
 };
 
 static const __DRIdri2LoaderExtension dri2LoaderExtension_old = {
-   {__DRI_DRI2_LOADER, __DRI_DRI2_LOADER_VERSION},
-   dri2GetBuffers,
-   dri2FlushFrontBuffer,
-   NULL,
+   .base = { __DRI_DRI2_LOADER, 3 },
+
+   .getBuffers              = dri2GetBuffers,
+   .flushFrontBuffer        = dri2FlushFrontBuffer,
+   .getBuffersWithFormat    = NULL,
 };
 
-#ifdef __DRI_USE_INVALIDATE
 static const __DRIuseInvalidateExtension dri2UseInvalidate = {
-   { __DRI_USE_INVALIDATE, __DRI_USE_INVALIDATE_VERSION }
+   .base = { __DRI_USE_INVALIDATE, 1 }
 };
-#endif
 
 _X_HIDDEN void
 dri2InvalidateBuffers(Display *dpy, XID drawable)
@@ -868,10 +979,8 @@ dri2InvalidateBuffers(Display *dpy, XID drawable)
 
    psc = (struct dri2_screen *) pdraw->psc;
 
-#if __DRI2_FLUSH_VERSION >= 3
    if (pdraw && psc->f && psc->f->base.version >= 3 && psc->f->invalidate)
        psc->f->invalidate(pdp->driDrawable);
-#endif
 }
 
 static void
@@ -884,18 +993,20 @@ dri2_bind_tex_image(Display * dpy,
    __GLXDRIdrawable *base = GetGLXDRIDrawable(dpy, drawable);
    struct glx_display *dpyPriv = __glXInitialize(dpy);
    struct dri2_drawable *pdraw = (struct dri2_drawable *) base;
-   struct dri2_display *pdp =
-      (struct dri2_display *) dpyPriv->dri2Display;
+   struct dri2_display *pdp;
    struct dri2_screen *psc;
+
+   if (dpyPriv == NULL)
+       return;
+
+   pdp = (struct dri2_display *) dpyPriv->dri2Display;
 
    if (pdraw != NULL) {
       psc = (struct dri2_screen *) base->psc;
 
-#if __DRI2_FLUSH_VERSION >= 3
       if (!pdp->invalidateAvailable && psc->f &&
            psc->f->base.version >= 3 && psc->f->invalidate)
 	 psc->f->invalidate(pdraw->driDrawable);
-#endif
 
       if (psc->texBuffer->base.version >= 2 &&
 	  psc->texBuffer->setTexBuffer2 != NULL) {
@@ -915,17 +1026,14 @@ dri2_bind_tex_image(Display * dpy,
 static void
 dri2_release_tex_image(Display * dpy, GLXDrawable drawable, int buffer)
 {
-#if __DRI_TEX_BUFFER_VERSION >= 3
    struct glx_context *gc = __glXGetCurrentContext();
    struct dri2_context *pcp = (struct dri2_context *) gc;
    __GLXDRIdrawable *base = GetGLXDRIDrawable(dpy, drawable);
    struct glx_display *dpyPriv = __glXInitialize(dpy);
    struct dri2_drawable *pdraw = (struct dri2_drawable *) base;
-   struct dri2_display *pdp =
-      (struct dri2_display *) dpyPriv->dri2Display;
    struct dri2_screen *psc;
 
-   if (pdraw != NULL) {
+   if (dpyPriv != NULL && pdraw != NULL) {
       psc = (struct dri2_screen *) base->psc;
 
       if (psc->texBuffer->base.version >= 3 &&
@@ -935,26 +1043,32 @@ dri2_release_tex_image(Display * dpy, GLXDrawable drawable, int buffer)
                                            pdraw->driDrawable);
       }
    }
-#endif
 }
 
 static const struct glx_context_vtable dri2_context_vtable = {
-   dri2_destroy_context,
-   dri2_bind_context,
-   dri2_unbind_context,
-   dri2_wait_gl,
-   dri2_wait_x,
-   DRI_glXUseXFont,
-   dri2_bind_tex_image,
-   dri2_release_tex_image,
-   NULL, /* get_proc_address */
+   .destroy             = dri2_destroy_context,
+   .bind                = dri2_bind_context,
+   .unbind              = dri2_unbind_context,
+   .wait_gl             = dri2_wait_gl,
+   .wait_x              = dri2_wait_x,
+   .use_x_font          = DRI_glXUseXFont,
+   .bind_tex_image      = dri2_bind_tex_image,
+   .release_tex_image   = dri2_release_tex_image,
+   .get_proc_address    = NULL,
+   .interop_query_device_info = dri2_interop_query_device_info,
+   .interop_export_object = dri2_interop_export_object
 };
 
 static void
-dri2BindExtensions(struct dri2_screen *psc, const __DRIextension **extensions,
+dri2BindExtensions(struct dri2_screen *psc, struct glx_display * priv,
                    const char *driverName)
 {
+   const struct dri2_display *const pdp = (struct dri2_display *)
+      priv->dri2Display;
+   const __DRIextension **extensions;
    int i;
+
+   extensions = psc->core->getExtensions(psc->driScreen);
 
    __glXEnableDirectExtension(&psc->base, "GLX_SGI_video_sync");
    __glXEnableDirectExtension(&psc->base, "GLX_SGI_swap_control");
@@ -966,10 +1080,15 @@ dri2BindExtensions(struct dri2_screen *psc, const __DRIextension **extensions,
     * currently unconditionally enabled. This completely breaks
     * systems running on drivers which don't support that extension.
     * There's no way to test for its presence on this side, so instead
-    * of disabling it uncondtionally, just disable it for drivers
-    * which are known to not support it.
+    * of disabling it unconditionally, just disable it for drivers
+    * which are known to not support it, or for DDX drivers supporting
+    * only an older (pre-ScheduleSwap) version of DRI2.
+    *
+    * This is a hack which is required until:
+    * http://lists.x.org/archives/xorg-devel/2013-February/035449.html
+    * is merged and updated xserver makes it's way into distros:
     */
-   if (strcmp(driverName, "vmwgfx") != 0) {
+   if (pdp->swapAvailable && strcmp(driverName, "vmwgfx") != 0) {
       __glXEnableDirectExtension(&psc->base, "GLX_INTEL_swap_event");
    }
 
@@ -979,9 +1098,14 @@ dri2BindExtensions(struct dri2_screen *psc, const __DRIextension **extensions,
       __glXEnableDirectExtension(&psc->base, "GLX_ARB_create_context");
       __glXEnableDirectExtension(&psc->base, "GLX_ARB_create_context_profile");
 
-      if ((mask & (1 << __DRI_API_GLES2)) != 0)
-	 __glXEnableDirectExtension(&psc->base,
-				    "GLX_EXT_create_context_es2_profile");
+      if ((mask & ((1 << __DRI_API_GLES) |
+                   (1 << __DRI_API_GLES2) |
+                   (1 << __DRI_API_GLES3))) != 0) {
+         __glXEnableDirectExtension(&psc->base,
+                                    "GLX_EXT_create_context_es_profile");
+         __glXEnableDirectExtension(&psc->base,
+                                    "GLX_EXT_create_context_es2_profile");
+      }
    }
 
    for (i = 0; extensions[i]; i++) {
@@ -1008,12 +1132,26 @@ dri2BindExtensions(struct dri2_screen *psc, const __DRIextension **extensions,
           && strcmp(extensions[i]->name, __DRI2_ROBUSTNESS) == 0)
          __glXEnableDirectExtension(&psc->base,
                                     "GLX_ARB_create_context_robustness");
+
+      /* DRI2 version 3 is also required because GLX_MESA_query_renderer
+       * requires GLX_ARB_create_context_profile.
+       */
+      if (psc->dri2->base.version >= 3
+          && strcmp(extensions[i]->name, __DRI2_RENDERER_QUERY) == 0) {
+         psc->rendererQuery = (__DRI2rendererQueryExtension *) extensions[i];
+         __glXEnableDirectExtension(&psc->base, "GLX_MESA_query_renderer");
+      }
+
+      if (strcmp(extensions[i]->name, __DRI2_INTEROP) == 0)
+	 psc->interop = (__DRI2interopExtension*)extensions[i];
    }
 }
 
 static const struct glx_screen_vtable dri2_screen_vtable = {
-   dri2_create_context,
-   dri2_create_context_attribs
+   .create_context         = dri2_create_context,
+   .create_context_attribs = dri2_create_context_attribs,
+   .query_renderer_integer = dri2_query_renderer_integer,
+   .query_renderer_string  = dri2_query_renderer_string,
 };
 
 static struct glx_screen *
@@ -1026,63 +1164,30 @@ dri2CreateScreen(int screen, struct glx_display * priv)
    struct dri2_screen *psc;
    __GLXDRIscreen *psp;
    struct glx_config *configs = NULL, *visuals = NULL;
-   char *driverName, *deviceName, *tmp;
+   char *driverName = NULL, *loader_driverName, *deviceName, *tmp;
    drm_magic_t magic;
    int i;
 
-   psc = Xmalloc(sizeof *psc);
+   psc = calloc(1, sizeof *psc);
    if (psc == NULL)
       return NULL;
 
-   memset(psc, 0, sizeof *psc);
    psc->fd = -1;
 
    if (!glx_screen_init(&psc->base, screen, priv)) {
-      Xfree(psc);
+      free(psc);
       return NULL;
    }
 
    if (!DRI2Connect(priv->dpy, RootWindow(priv->dpy, screen),
 		    &driverName, &deviceName)) {
       glx_screen_cleanup(&psc->base);
-      XFree(psc);
+      free(psc);
       InfoMessageF("screen %d does not appear to be DRI2 capable\n", screen);
       return NULL;
    }
 
-   psc->driver = driOpenDriver(driverName);
-   if (psc->driver == NULL) {
-      ErrorMessageF("driver pointer missing\n");
-      goto handle_error;
-   }
-
-   extensions = dlsym(psc->driver, __DRI_DRIVER_EXTENSIONS);
-   if (extensions == NULL) {
-      ErrorMessageF("driver exports no extensions (%s)\n", dlerror());
-      goto handle_error;
-   }
-
-   for (i = 0; extensions[i]; i++) {
-      if (strcmp(extensions[i]->name, __DRI_CORE) == 0)
-	 psc->core = (__DRIcoreExtension *) extensions[i];
-      if (strcmp(extensions[i]->name, __DRI_DRI2) == 0)
-	 psc->dri2 = (__DRIdri2Extension *) extensions[i];
-   }
-
-   if (psc->core == NULL || psc->dri2 == NULL) {
-      ErrorMessageF("core dri or dri2 extension not found\n");
-      goto handle_error;
-   }
-
-#ifdef O_CLOEXEC
-   psc->fd = open(deviceName, O_RDWR | O_CLOEXEC);
-   if (psc->fd == -1 && errno == EINVAL)
-#endif
-   {
-      psc->fd = open(deviceName, O_RDWR);
-      if (psc->fd != -1)
-         fcntl(psc->fd, F_SETFD, fcntl(psc->fd, F_GETFD) | FD_CLOEXEC);
-   }
+   psc->fd = loader_open_device(deviceName);
    if (psc->fd < 0) {
       ErrorMessageF("failed to open drm device: %s\n", strerror(errno));
       goto handle_error;
@@ -1098,29 +1203,66 @@ dri2CreateScreen(int screen, struct glx_display * priv)
       goto handle_error;
    }
 
-   
-   /* If the server does not support the protocol for
-    * DRI2GetBuffersWithFormat, don't supply that interface to the driver.
+   /* If Mesa knows about the appropriate driver for this fd, then trust it.
+    * Otherwise, default to the server's value.
     */
-   psc->driScreen =
-      psc->dri2->createNewScreen(screen, psc->fd,
-				 (const __DRIextension **)
-				 &pdp->loader_extensions[0],
-				 &driver_configs, psc);
+   loader_driverName = loader_get_driver_for_fd(psc->fd);
+   if (loader_driverName) {
+      free(driverName);
+      driverName = loader_driverName;
+   }
+
+   psc->driver = driOpenDriver(driverName);
+   if (psc->driver == NULL) {
+      ErrorMessageF("driver pointer missing\n");
+      goto handle_error;
+   }
+
+   extensions = driGetDriverExtensions(psc->driver, driverName);
+   if (extensions == NULL)
+      goto handle_error;
+
+   for (i = 0; extensions[i]; i++) {
+      if (strcmp(extensions[i]->name, __DRI_CORE) == 0)
+	 psc->core = (__DRIcoreExtension *) extensions[i];
+      if (strcmp(extensions[i]->name, __DRI_DRI2) == 0)
+	 psc->dri2 = (__DRIdri2Extension *) extensions[i];
+   }
+
+   if (psc->core == NULL || psc->dri2 == NULL) {
+      ErrorMessageF("core dri or dri2 extension not found\n");
+      goto handle_error;
+   }
+
+   if (psc->dri2->base.version >= 4) {
+      psc->driScreen =
+         psc->dri2->createNewScreen2(screen, psc->fd,
+                                     (const __DRIextension **)
+                                     &pdp->loader_extensions[0],
+                                     extensions,
+                                     &driver_configs, psc);
+   } else {
+      psc->driScreen =
+         psc->dri2->createNewScreen(screen, psc->fd,
+                                    (const __DRIextension **)
+                                    &pdp->loader_extensions[0],
+                                    &driver_configs, psc);
+   }
 
    if (psc->driScreen == NULL) {
       ErrorMessageF("failed to create dri screen\n");
       goto handle_error;
    }
 
-   extensions = psc->core->getExtensions(psc->driScreen);
-   dri2BindExtensions(psc, extensions, driverName);
+   dri2BindExtensions(psc, priv, driverName);
 
    configs = driConvertConfigs(psc->core, psc->base.configs, driver_configs);
    visuals = driConvertConfigs(psc->core, psc->base.visuals, driver_configs);
 
-   if (!configs || !visuals)
+   if (!configs || !visuals) {
+       ErrorMessageF("No matching fbConfigs or visuals found\n");
        goto handle_error;
+   }
 
    glx_config_destroy_list(psc->base.configs);
    psc->base.configs = configs;
@@ -1140,34 +1282,31 @@ dri2CreateScreen(int screen, struct glx_display * priv)
    psp->waitForSBC = NULL;
    psp->setSwapInterval = NULL;
    psp->getSwapInterval = NULL;
+   psp->getBufferAge = NULL;
 
    if (pdp->driMinor >= 2) {
-#ifdef X_DRI2GetMSC
       psp->getDrawableMSC = dri2DrawableGetMSC;
-#endif
-#ifdef X_DRI2WaitMSC
       psp->waitForMSC = dri2WaitForMSC;
       psp->waitForSBC = dri2WaitForSBC;
-#endif
-#ifdef X_DRI2SwapInterval
       psp->setSwapInterval = dri2SetSwapInterval;
       psp->getSwapInterval = dri2GetSwapInterval;
-#endif
-#if defined(X_DRI2GetMSC) && defined(X_DRI2WaitMSC) && defined(X_DRI2SwapInterval)
       __glXEnableDirectExtension(&psc->base, "GLX_OML_sync_control");
-#endif
    }
 
-   /* DRI2 suports SubBuffer through DRI2CopyRegion, so it's always
+   /* DRI2 supports SubBuffer through DRI2CopyRegion, so it's always
     * available.*/
    psp->copySubBuffer = dri2CopySubBuffer;
    __glXEnableDirectExtension(&psc->base, "GLX_MESA_copy_sub_buffer");
 
-   Xfree(driverName);
-   Xfree(deviceName);
+   free(driverName);
+   free(deviceName);
 
    tmp = getenv("LIBGL_SHOW_FPS");
-   psc->show_fps = tmp && strcmp(tmp, "1") == 0;
+   psc->show_fps_interval = (tmp) ? atoi(tmp) : 0;
+   if (psc->show_fps_interval < 0)
+      psc->show_fps_interval = 0;
+
+   InfoMessageF("Using DRI2 for screen %d\n", screen);
 
    return &psc->base;
 
@@ -1186,10 +1325,10 @@ handle_error:
    if (psc->driver)
       dlclose(psc->driver);
 
-   Xfree(driverName);
-   Xfree(deviceName);
+   free(driverName);
+   free(deviceName);
    glx_screen_cleanup(&psc->base);
-   XFree(psc);
+   free(psc);
 
    return NULL;
 }
@@ -1202,7 +1341,7 @@ dri2DestroyDisplay(__GLXDRIdisplay * dpy)
    struct dri2_display *pdp = (struct dri2_display *) dpy;
 
    __glxHashDestroy(pdp->dri2Hash);
-   Xfree(dpy);
+   free(dpy);
 }
 
 _X_HIDDEN __GLXDRIdrawable *
@@ -1232,12 +1371,12 @@ dri2CreateDisplay(Display * dpy)
    if (!DRI2QueryExtension(dpy, &eventBase, &errorBase))
       return NULL;
 
-   pdp = Xmalloc(sizeof *pdp);
+   pdp = malloc(sizeof *pdp);
    if (pdp == NULL)
       return NULL;
 
    if (!DRI2QueryVersion(dpy, &pdp->driMajor, &pdp->driMinor)) {
-      Xfree(pdp);
+      free(pdp);
       return NULL;
    }
 
@@ -1256,14 +1395,13 @@ dri2CreateDisplay(Display * dpy)
    
    pdp->loader_extensions[i++] = &systemTimeExtension.base;
 
-#ifdef __DRI_USE_INVALIDATE
    pdp->loader_extensions[i++] = &dri2UseInvalidate.base;
-#endif
+
    pdp->loader_extensions[i++] = NULL;
 
    pdp->dri2Hash = __glxHashCreate();
    if (pdp->dri2Hash == NULL) {
-      Xfree(pdp);
+      free(pdp);
       return NULL;
    }
 

@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,10 +32,15 @@
 #include "util/u_string.h"
 #include "util/u_dl.h"
 
+#ifdef _MSC_VER
+#include <stdlib.h>
+#define PATH_MAX _MAX_PATH
+#endif
+
 #define MODULE_PREFIX "pipe_"
 
 static int (*backends[])(struct pipe_loader_device **, int) = {
-#ifdef HAVE_PIPE_LOADER_DRM
+#ifdef HAVE_LIBDRM
    &pipe_loader_drm_probe,
 #endif
    &pipe_loader_sw_probe
@@ -46,7 +51,7 @@ pipe_loader_probe(struct pipe_loader_device **devs, int ndev)
 {
    int i, n = 0;
 
-   for (i = 0; i < Elements(backends); i++)
+   for (i = 0; i < ARRAY_SIZE(backends); i++)
       n += backends[i](&devs[n], MAX2(0, ndev - n));
 
    return n;
@@ -61,11 +66,17 @@ pipe_loader_release(struct pipe_loader_device **devs, int ndev)
       devs[i]->ops->release(&devs[i]);
 }
 
-struct pipe_screen *
-pipe_loader_create_screen(struct pipe_loader_device *dev,
-                          const char *library_paths)
+const struct drm_conf_ret *
+pipe_loader_configuration(struct pipe_loader_device *dev,
+                          enum drm_conf conf)
 {
-   return dev->ops->create_screen(dev, library_paths);
+   return dev->ops->configuration(dev, conf);
+}
+
+struct pipe_screen *
+pipe_loader_create_screen(struct pipe_loader_device *dev)
+{
+   return dev->ops->create_screen(dev);
 }
 
 struct util_dl_library *
@@ -92,7 +103,6 @@ pipe_loader_find_module(struct pipe_loader_device *dev,
       if (ret > 0 && ret < sizeof(path)) {
          lib = util_dl_open(path);
          if (lib) {
-            debug_printf("loaded %s\n", path);
             return lib;
          }
       }

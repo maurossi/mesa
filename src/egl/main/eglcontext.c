@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright 2009-2010 Chia-I Wu <olvaffe@gmail.com>
  * Copyright 2010-2011 LunarG, Inc.
  * All Rights Reserved.
@@ -54,8 +54,10 @@ _eglGetContextAPIBit(_EGLContext *ctx)
          bit = EGL_OPENGL_ES_BIT;
          break;
       case 2:
-      case 3:
          bit = EGL_OPENGL_ES2_BIT;
+         break;
+      case 3:
+         bit = EGL_OPENGL_ES3_BIT_KHR;
          break;
       default:
          break;
@@ -99,11 +101,42 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *dpy,
 
       switch (attr) {
       case EGL_CONTEXT_CLIENT_VERSION:
+         /* The EGL 1.4 spec says:
+          *
+          *     "attribute EGL_CONTEXT_CLIENT_VERSION is only valid when the
+          *      current rendering API is EGL_OPENGL_ES_API"
+          *
+          * The EGL_KHR_create_context spec says:
+          *
+          *     "EGL_CONTEXT_MAJOR_VERSION_KHR           0x3098
+          *      (this token is an alias for EGL_CONTEXT_CLIENT_VERSION)"
+          *
+          *     "The values for attributes EGL_CONTEXT_MAJOR_VERSION_KHR and
+          *      EGL_CONTEXT_MINOR_VERSION_KHR specify the requested client API
+          *      version. They are only meaningful for OpenGL and OpenGL ES
+          *      contexts, and specifying them for other types of contexts will
+          *      generate an error."
+          */
+         if ((api != EGL_OPENGL_ES_API &&
+             (!dpy->Extensions.KHR_create_context || api != EGL_OPENGL_API))) {
+               err = EGL_BAD_ATTRIBUTE;
+               break;
+         }
+
          ctx->ClientMajorVersion = val;
          break;
 
       case EGL_CONTEXT_MINOR_VERSION_KHR:
-         if (!dpy->Extensions.KHR_create_context) {
+         /* The EGL_KHR_create_context spec says:
+          *
+          *     "The values for attributes EGL_CONTEXT_MAJOR_VERSION_KHR and
+          *      EGL_CONTEXT_MINOR_VERSION_KHR specify the requested client API
+          *      version. They are only meaningful for OpenGL and OpenGL ES
+          *      contexts, and specifying them for other types of contexts will
+          *      generate an error."
+          */
+         if (!dpy->Extensions.KHR_create_context ||
+             (api != EGL_OPENGL_ES_API && api != EGL_OPENGL_API)) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
@@ -119,17 +152,70 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *dpy,
 
          /* The EGL_KHR_create_context spec says:
           *
-          *     "Flags are only defined for OpenGL context creation, and
-          *     specifying a flags value other than zero for other types of
-          *     contexts, including OpenGL ES contexts, will generate an
-          *     error."
+          *     "If the EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR flag bit is set in
+          *     EGL_CONTEXT_FLAGS_KHR, then a <debug context> will be created.
+          *     [...]
+          *     In some cases a debug context may be identical to a non-debug
+          *     context. This bit is supported for OpenGL and OpenGL ES
+          *     contexts."
           */
-         if (api != EGL_OPENGL_API && val != 0) {
+         if ((val & EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR) &&
+             (api != EGL_OPENGL_API && api != EGL_OPENGL_ES_API)) {
             err = EGL_BAD_ATTRIBUTE;
             break;
          }
 
-         ctx->Flags = val;
+         /* The EGL_KHR_create_context spec says:
+          *
+          *     "If the EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR flag bit
+          *     is set in EGL_CONTEXT_FLAGS_KHR, then a <forward-compatible>
+          *     context will be created. Forward-compatible contexts are
+          *     defined only for OpenGL versions 3.0 and later. They must not
+          *     support functionality marked as <deprecated> by that version of
+          *     the API, while a non-forward-compatible context must support
+          *     all functionality in that version, deprecated or not. This bit
+          *     is supported for OpenGL contexts, and requesting a
+          *     forward-compatible context for OpenGL versions less than 3.0
+          *     will generate an error."
+          */
+         if ((val & EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR) &&
+             (api != EGL_OPENGL_API || ctx->ClientMajorVersion < 3)) {
+            err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+
+         if ((val & EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR) &&
+             api != EGL_OPENGL_API) {
+            /* The EGL_KHR_create_context spec says:
+             *
+             *   10) Which error should be generated if robust buffer access
+             *       or reset notifications are requested under OpenGL ES?
+             *
+             *       As per Issue 6, this extension does not support creating
+             *       robust contexts for OpenGL ES. This is only supported via
+             *       the EGL_EXT_create_context_robustness extension.
+             *
+             *       Attempting to use this extension to create robust OpenGL
+             *       ES context will generate an EGL_BAD_ATTRIBUTE error. This
+             *       specific error is generated because this extension does
+             *       not define the EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR
+             *       and EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY_KHR
+             *       bits for OpenGL ES contexts. Thus, use of these bits fall
+             *       under condition described by: "If an attribute is
+             *       specified that is not meaningful for the client API
+             *       type.." in the above specification.
+             *
+             * The spec requires that we emit the error even if the display
+             * supports EGL_EXT_create_context_robustness. To create a robust
+             * GLES context, the *attribute*
+             * EGL_CONTEXT_OPENGL_ROBUST_ACCESS_EXT must be used, not the
+             * *flag* EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR.
+             */
+            err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+
+         ctx->Flags |= val;
          break;
 
       case EGL_CONTEXT_OPENGL_PROFILE_MASK_KHR:
@@ -192,7 +278,38 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *dpy,
             break;
          }
 
-         ctx->Flags = EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR;
+         if (val == EGL_TRUE)
+            ctx->Flags |= EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR;
+         break;
+
+      case EGL_CONTEXT_OPENGL_ROBUST_ACCESS:
+         if (dpy->Version < 15) {
+            err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+
+         if (val == EGL_TRUE)
+            ctx->Flags |= EGL_CONTEXT_OPENGL_ROBUST_ACCESS_BIT_KHR;
+         break;
+
+      case EGL_CONTEXT_OPENGL_DEBUG:
+         if (dpy->Version < 15) {
+            err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+
+         if (val == EGL_TRUE)
+            ctx->Flags |= EGL_CONTEXT_OPENGL_DEBUG_BIT_KHR;
+         break;
+
+      case EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE:
+         if (dpy->Version < 15) {
+            err = EGL_BAD_ATTRIBUTE;
+            break;
+         }
+
+         if (val == EGL_TRUE)
+            ctx->Flags |= EGL_CONTEXT_OPENGL_FORWARD_COMPATIBLE_BIT_KHR;
          break;
 
       default:
@@ -320,10 +437,13 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *dpy,
          break;
 
       case 3:
-      default:
          /* Don't put additional version checks here.  We don't know that
           * there won't be versions > 3.0.
           */
+         break;
+
+      default:
+         err = EGL_BAD_MATCH;
          break;
       }
    }
@@ -351,6 +471,16 @@ _eglParseContextAttribList(_EGLContext *ctx, _EGLDisplay *dpy,
 /**
  * Initialize the given _EGLContext object to defaults and/or the values
  * in the attrib_list.
+ *
+ * According to EGL 1.5 Section 3.7:
+ *
+ *	"EGL_OPENGL_API and EGL_OPENGL_ES_API are interchangeable for all
+ *	purposes except eglCreateContext."
+ *
+ * And since we only support GL and GLES, this is the only place where the
+ * bound API matters at all. We look up the current API from the current
+ * thread, and stash that in the context we're initializing. Our caller is
+ * responsible for determining whether that's an API it supports.
  */
 EGLBoolean
 _eglInitContext(_EGLContext *ctx, _EGLDisplay *dpy, _EGLConfig *conf,
@@ -422,9 +552,14 @@ _eglQueryContext(_EGLDriver *drv, _EGLDisplay *dpy, _EGLContext *c,
 
    switch (attribute) {
    case EGL_CONFIG_ID:
-      if (!c->Config)
-         return _eglError(EGL_BAD_ATTRIBUTE, "eglQueryContext");
-      *value = c->Config->ConfigID;
+      /*
+       * From EGL_KHR_no_config_context:
+       *
+       *    "Querying EGL_CONFIG_ID returns the ID of the EGLConfig with
+       *     respect to which the context was created, or zero if created
+       *     without respect to an EGLConfig."
+       */
+      *value = c->Config ? c->Config->ConfigID : 0;
       break;
    case EGL_CONTEXT_CLIENT_VERSION:
       *value = c->ClientMajorVersion;
@@ -451,20 +586,16 @@ _eglQueryContext(_EGLDriver *drv, _EGLDisplay *dpy, _EGLContext *c,
 static _EGLContext *
 _eglBindContextToThread(_EGLContext *ctx, _EGLThreadInfo *t)
 {
-   EGLint apiIndex;
    _EGLContext *oldCtx;
 
-   apiIndex = (ctx) ?
-      _eglConvertApiToIndex(ctx->ClientAPI) : t->CurrentAPIIndex;
-
-   oldCtx = t->CurrentContexts[apiIndex];
+   oldCtx = t->CurrentContext;
    if (ctx != oldCtx) {
       if (oldCtx)
          oldCtx->Binding = NULL;
       if (ctx)
          ctx->Binding = t;
 
-      t->CurrentContexts[apiIndex] = ctx;
+      t->CurrentContext = ctx;
    }
 
    return oldCtx;
@@ -479,7 +610,6 @@ _eglCheckMakeCurrent(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read)
 {
    _EGLThreadInfo *t = _eglGetCurrentThread();
    _EGLDisplay *dpy;
-   EGLint conflict_api;
 
    if (_eglIsCurrentThreadDummy())
       return _eglError(EGL_BAD_ALLOC, "eglMakeCurrent");
@@ -511,36 +641,30 @@ _eglCheckMakeCurrent(_EGLContext *ctx, _EGLSurface *draw, _EGLSurface *read)
    if (ctx->Binding && ctx->Binding != t)
       return _eglError(EGL_BAD_ACCESS, "eglMakeCurrent");
    if (draw && draw->CurrentContext && draw->CurrentContext != ctx) {
-      if (draw->CurrentContext->Binding != t ||
-          draw->CurrentContext->ClientAPI != ctx->ClientAPI)
+      if (draw->CurrentContext->Binding != t)
          return _eglError(EGL_BAD_ACCESS, "eglMakeCurrent");
    }
    if (read && read->CurrentContext && read->CurrentContext != ctx) {
-      if (read->CurrentContext->Binding != t ||
-          read->CurrentContext->ClientAPI != ctx->ClientAPI)
+      if (read->CurrentContext->Binding != t)
          return _eglError(EGL_BAD_ACCESS, "eglMakeCurrent");
    }
 
-   /* simply require the configs to be equal */
-   if ((draw && draw->Config != ctx->Config) ||
-       (read && read->Config != ctx->Config))
-      return _eglError(EGL_BAD_MATCH, "eglMakeCurrent");
+   /* If the context has a config then it must match that of the two
+    * surfaces */
+   if (ctx->Config) {
+      if ((draw && draw->Config != ctx->Config) ||
+          (read && read->Config != ctx->Config))
+         return _eglError(EGL_BAD_MATCH, "eglMakeCurrent");
+   } else {
+      /* Otherwise we must be using the EGL_KHR_no_config_context
+       * extension */
+      assert(dpy->Extensions.KHR_no_config_context);
 
-   switch (ctx->ClientAPI) {
-   /* OpenGL and OpenGL ES are conflicting */
-   case EGL_OPENGL_ES_API:
-      conflict_api = EGL_OPENGL_API;
-      break;
-   case EGL_OPENGL_API:
-      conflict_api = EGL_OPENGL_ES_API;
-      break;
-   default:
-      conflict_api = -1;
-      break;
+      /* The extension doesn't permit binding draw and read buffers with
+       * differing contexts */
+      if (draw && read && draw->Config != read->Config)
+         return _eglError(EGL_BAD_MATCH, "eglMakeCurrent");
    }
-
-   if (conflict_api >= 0 && _eglGetAPIContext(conflict_api))
-      return _eglError(EGL_BAD_ACCESS, "eglMakeCurrent");
 
    return EGL_TRUE;
 }

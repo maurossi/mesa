@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -42,10 +42,10 @@
 #define I830_UPLOAD_STIPPLE          0x4
 #define I830_UPLOAD_INVARIENT        0x8
 #define I830_UPLOAD_RASTER_RULES     0x10
-#define I830_UPLOAD_TEX(i)           (0x10<<(i))
-#define I830_UPLOAD_TEXBLEND(i)      (0x100<<(i))
-#define I830_UPLOAD_TEX_ALL          (0x0f0)
-#define I830_UPLOAD_TEXBLEND_ALL     (0xf00)
+#define I830_UPLOAD_TEX(i)           (0x0100<<(i))
+#define I830_UPLOAD_TEXBLEND(i)      (0x1000<<(i))
+#define I830_UPLOAD_TEX_ALL          (0x0f00)
+#define I830_UPLOAD_TEXBLEND_ALL     (0xf000)
 
 /* State structure offsets - these will probably disappear.
  */
@@ -55,10 +55,10 @@
 #define I830_DESTREG_DBUFADDR1 3
 #define I830_DESTREG_DV0 4
 #define I830_DESTREG_DV1 5
-#define I830_DESTREG_SENABLE 6
-#define I830_DESTREG_SR0 7
-#define I830_DESTREG_SR1 8
-#define I830_DESTREG_SR2 9
+#define I830_DESTREG_SR0 6
+#define I830_DESTREG_SR1 7
+#define I830_DESTREG_SR2 8
+#define I830_DESTREG_SENABLE 9
 #define I830_DESTREG_DRAWRECT0 10
 #define I830_DESTREG_DRAWRECT1 11
 #define I830_DESTREG_DRAWRECT2 12
@@ -178,8 +178,13 @@ i830_state_draw_region(struct intel_context *intel,
 /* i830_context.c
  */
 extern bool
-i830CreateContext(const struct gl_config * mesaVis,
+i830CreateContext(int api,
+                  const struct gl_config * mesaVis,
                   __DRIcontext * driContextPriv,
+                  unsigned major_version,
+                  unsigned minor_version,
+                  uint32_t flags,
+                  unsigned *error,
                   void *sharedContextPrivate);
 
 /* i830_tex.c, i830_texstate.c
@@ -211,7 +216,7 @@ extern void i830_update_provoking_vertex(struct gl_context *ctx);
  * Inline conversion functions.  These are better-typed than the
  * macros used previously:
  */
-static INLINE struct i830_context *
+static inline struct i830_context *
 i830_context(struct gl_context * ctx)
 {
    return (struct i830_context *) ctx;

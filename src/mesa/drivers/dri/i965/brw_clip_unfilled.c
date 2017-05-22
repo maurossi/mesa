@@ -1,8 +1,8 @@
 /*
  Copyright (C) Intel Corp.  2006.  All Rights Reserved.
- Intel funded Tungsten Graphics (http://www.tungstengraphics.com) to
+ Intel funded Tungsten Graphics to
  develop this 3D driver.
- 
+
  Permission is hereby granted, free of charge, to any person obtaining
  a copy of this software and associated documentation files (the
  "Software"), to deal in the Software without restriction, including
@@ -10,11 +10,11 @@
  distribute, sublicense, and/or sell copies of the Software, and to
  permit persons to whom the Software is furnished to do so, subject to
  the following conditions:
- 
+
  The above copyright notice and this permission notice (including the
  next paragraph) shall be included in all copies or substantial
  portions of the Software.
- 
+
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -22,14 +22,13 @@
  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- 
+
  **********************************************************************/
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
 
-#include "main/glheader.h"
 #include "main/macros.h"
 #include "main/enums.h"
 #include "program/program.h"
@@ -49,11 +48,10 @@ BZZZT!
  */
 static void compute_tri_direction( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
    struct brw_reg e = c->reg.tmp0;
    struct brw_reg f = c->reg.tmp1;
-   GLuint hpos_offset = brw_vert_result_to_offset(&c->vue_map,
-                                                  VERT_RESULT_HPOS);
+   GLuint hpos_offset = brw_varying_to_offset(&c->vue_map, VARYING_SLOT_POS);
    struct brw_reg v0 = byte_offset(c->reg.vertex[0], hpos_offset);
    struct brw_reg v1 = byte_offset(c->reg.vertex[1], hpos_offset);
    struct brw_reg v2 = byte_offset(c->reg.vertex[2], hpos_offset);
@@ -81,15 +79,17 @@ static void compute_tri_direction( struct brw_clip_compile *c )
 
    /* Calculate the vectors of two edges of the triangle:
     */
-   brw_ADD(p, e, v0n, negate(v2n)); 
-   brw_ADD(p, f, v1n, negate(v2n)); 
+   brw_ADD(p, e, v0n, negate(v2n));
+   brw_ADD(p, f, v1n, negate(v2n));
 
    /* Take their crossproduct:
     */
-   brw_set_access_mode(p, BRW_ALIGN_16);
-   brw_MUL(p, vec4(brw_null_reg()), brw_swizzle(e, 1,2,0,3),  brw_swizzle(f,2,0,1,3));
-   brw_MAC(p, vec4(e),  negate(brw_swizzle(e, 2,0,1,3)), brw_swizzle(f,1,2,0,3));
-   brw_set_access_mode(p, BRW_ALIGN_1);
+   brw_set_default_access_mode(p, BRW_ALIGN_16);
+   brw_MUL(p, vec4(brw_null_reg()), brw_swizzle(e, BRW_SWIZZLE_YZXW),
+           brw_swizzle(f, BRW_SWIZZLE_ZXYW));
+   brw_MAC(p, vec4(e),  negate(brw_swizzle(e, BRW_SWIZZLE_ZXYW)),
+           brw_swizzle(f, BRW_SWIZZLE_YZXW));
+   brw_set_default_access_mode(p, BRW_ALIGN_1);
 
    brw_MUL(p, c->reg.dir, c->reg.dir, vec4(e));
 }
@@ -97,7 +97,7 @@ static void compute_tri_direction( struct brw_clip_compile *c )
 
 static void cull_direction( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
    GLuint conditional;
 
    assert (!(c->key.fill_ccw == CLIP_CULL &&
@@ -113,7 +113,7 @@ static void cull_direction( struct brw_clip_compile *c )
 	   conditional,
 	   get_element(c->reg.dir, 2),
 	   brw_imm_f(0));
-   
+
    brw_IF(p, BRW_EXECUTE_1);
    {
       brw_clip_kill_thread(c);
@@ -125,20 +125,20 @@ static void cull_direction( struct brw_clip_compile *c )
 
 static void copy_bfc( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
    GLuint conditional;
 
-   /* Do we have any colors to copy? 
+   /* Do we have any colors to copy?
     */
-   if (!(brw_clip_have_vert_result(c, VERT_RESULT_COL0) &&
-         brw_clip_have_vert_result(c, VERT_RESULT_BFC0)) &&
-       !(brw_clip_have_vert_result(c, VERT_RESULT_COL1) &&
-         brw_clip_have_vert_result(c, VERT_RESULT_BFC1)))
+   if (!(brw_clip_have_varying(c, VARYING_SLOT_COL0) &&
+         brw_clip_have_varying(c, VARYING_SLOT_BFC0)) &&
+       !(brw_clip_have_varying(c, VARYING_SLOT_COL1) &&
+         brw_clip_have_varying(c, VARYING_SLOT_BFC1)))
       return;
 
-   /* In some wierd degnerate cases we can end up testing the
+   /* In some weird degenerate cases we can end up testing the
     * direction twice, once for culling and once for bfc copying.  Oh
-    * well, that's what you get for setting wierd GL state.
+    * well, that's what you get for setting weird GL state.
     */
    if (c->key.copy_bfc_ccw)
       conditional = BRW_CONDITIONAL_GE;
@@ -150,31 +150,31 @@ static void copy_bfc( struct brw_clip_compile *c )
 	   conditional,
 	   get_element(c->reg.dir, 2),
 	   brw_imm_f(0));
-   
+
    brw_IF(p, BRW_EXECUTE_1);
    {
       GLuint i;
 
       for (i = 0; i < 3; i++) {
-	 if (brw_clip_have_vert_result(c, VERT_RESULT_COL0) &&
-             brw_clip_have_vert_result(c, VERT_RESULT_BFC0))
-	    brw_MOV(p, 
+	 if (brw_clip_have_varying(c, VARYING_SLOT_COL0) &&
+             brw_clip_have_varying(c, VARYING_SLOT_BFC0))
+	    brw_MOV(p,
 		    byte_offset(c->reg.vertex[i],
-                                brw_vert_result_to_offset(&c->vue_map,
-                                                          VERT_RESULT_COL0)),
+                                brw_varying_to_offset(&c->vue_map,
+                                                      VARYING_SLOT_COL0)),
 		    byte_offset(c->reg.vertex[i],
-                                brw_vert_result_to_offset(&c->vue_map,
-                                                          VERT_RESULT_BFC0)));
+                                brw_varying_to_offset(&c->vue_map,
+                                                      VARYING_SLOT_BFC0)));
 
-	 if (brw_clip_have_vert_result(c, VERT_RESULT_COL1) &&
-             brw_clip_have_vert_result(c, VERT_RESULT_BFC1))
-	    brw_MOV(p, 
+	 if (brw_clip_have_varying(c, VARYING_SLOT_COL1) &&
+             brw_clip_have_varying(c, VARYING_SLOT_BFC1))
+	    brw_MOV(p,
 		    byte_offset(c->reg.vertex[i],
-                                brw_vert_result_to_offset(&c->vue_map,
-                                                          VERT_RESULT_COL1)),
+                                brw_varying_to_offset(&c->vue_map,
+                                                      VARYING_SLOT_COL1)),
 		    byte_offset(c->reg.vertex[i],
-                                brw_vert_result_to_offset(&c->vue_map,
-                                                          VERT_RESULT_BFC1)));
+                                brw_varying_to_offset(&c->vue_map,
+                                                      VARYING_SLOT_BFC1)));
       }
    }
    brw_ENDIF(p);
@@ -189,40 +189,55 @@ static void copy_bfc( struct brw_clip_compile *c )
   GLfloat bc	= dir.y * iz;
   offset = ctx->Polygon.OffsetUnits * DEPTH_SCALE;
   offset += MAX2( abs(ac), abs(bc) ) * ctx->Polygon.OffsetFactor;
+  if (ctx->Polygon.OffsetClamp && isfinite(ctx->Polygon.OffsetClamp)) {
+    if (ctx->Polygon.OffsetClamp < 0)
+      offset = MAX2( offset, ctx->Polygon.OffsetClamp );
+    else
+      offset = MIN2( offset, ctx->Polygon.OffsetClamp );
+  }
   offset *= MRD;
 */
 static void compute_offset( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
    struct brw_reg off = c->reg.offset;
    struct brw_reg dir = c->reg.dir;
-   
-   brw_math_invert(p, get_element(off, 2), get_element(dir, 2));
-   brw_MUL(p, vec2(off), dir, get_element(off, 2));
 
-   brw_CMP(p, 
-	   vec1(brw_null_reg()), 
+   brw_math_invert(p, get_element(off, 2), get_element(dir, 2));
+   brw_MUL(p, vec2(off), vec2(dir), get_element(off, 2));
+
+   brw_CMP(p,
+	   vec1(brw_null_reg()),
 	   BRW_CONDITIONAL_GE,
-	   brw_abs(get_element(off, 0)), 
+	   brw_abs(get_element(off, 0)),
 	   brw_abs(get_element(off, 1)));
 
-   brw_SEL(p, vec1(off), brw_abs(get_element(off, 0)), brw_abs(get_element(off, 1)));
-   brw_set_predicate_control(p, BRW_PREDICATE_NONE);
+   brw_SEL(p, vec1(off),
+           brw_abs(get_element(off, 0)), brw_abs(get_element(off, 1)));
+   brw_inst_set_pred_control(p->devinfo, brw_last_inst, BRW_PREDICATE_NORMAL);
 
-   brw_MUL(p, vec1(off), off, brw_imm_f(c->key.offset_factor));
-   brw_ADD(p, vec1(off), off, brw_imm_f(c->key.offset_units));
+   brw_MUL(p, vec1(off), vec1(off), brw_imm_f(c->key.offset_factor));
+   brw_ADD(p, vec1(off), vec1(off), brw_imm_f(c->key.offset_units));
+   if (c->key.offset_clamp && isfinite(c->key.offset_clamp)) {
+      brw_CMP(p,
+              vec1(brw_null_reg()),
+              c->key.offset_clamp < 0 ? BRW_CONDITIONAL_GE : BRW_CONDITIONAL_L,
+              vec1(off),
+              brw_imm_f(c->key.offset_clamp));
+      brw_SEL(p, vec1(off), vec1(off), brw_imm_f(c->key.offset_clamp));
+   }
 }
 
 
 static void merge_edgeflags( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
    struct brw_reg tmp0 = get_element_ud(c->reg.tmp0, 0);
 
-   brw_AND(p, tmp0, get_element_ud(c->reg.R0, 2), brw_imm_ud(PRIM_MASK)); 
-   brw_CMP(p, 
-	   vec1(brw_null_reg()), 
-	   BRW_CONDITIONAL_EQ, 
+   brw_AND(p, tmp0, get_element_ud(c->reg.R0, 2), brw_imm_ud(PRIM_MASK));
+   brw_CMP(p,
+	   vec1(brw_null_reg()),
+	   BRW_CONDITIONAL_EQ,
 	   tmp0,
 	   brw_imm_ud(_3DPRIM_POLYGON));
 
@@ -230,22 +245,22 @@ static void merge_edgeflags( struct brw_clip_compile *c )
     * a _3DPRIM_TRISTRIP_REVERSE:
     */
    brw_IF(p, BRW_EXECUTE_1);
-   {   
-      brw_set_conditionalmod(p, BRW_CONDITIONAL_EQ);
+   {
       brw_AND(p, vec1(brw_null_reg()), get_element_ud(c->reg.R0, 2), brw_imm_ud(1<<8));
+      brw_inst_set_cond_modifier(p->devinfo, brw_last_inst, BRW_CONDITIONAL_EQ);
       brw_MOV(p, byte_offset(c->reg.vertex[0],
-                             brw_vert_result_to_offset(&c->vue_map,
-                                                       VERT_RESULT_EDGE)),
+                             brw_varying_to_offset(&c->vue_map,
+                                                   VARYING_SLOT_EDGE)),
               brw_imm_f(0));
-      brw_set_predicate_control(p, BRW_PREDICATE_NONE);
+      brw_inst_set_pred_control(p->devinfo, brw_last_inst, BRW_PREDICATE_NORMAL);
 
-      brw_set_conditionalmod(p, BRW_CONDITIONAL_EQ);
       brw_AND(p, vec1(brw_null_reg()), get_element_ud(c->reg.R0, 2), brw_imm_ud(1<<9));
+      brw_inst_set_cond_modifier(p->devinfo, brw_last_inst, BRW_CONDITIONAL_EQ);
       brw_MOV(p, byte_offset(c->reg.vertex[2],
-                             brw_vert_result_to_offset(&c->vue_map,
-                                                       VERT_RESULT_EDGE)),
+                             brw_varying_to_offset(&c->vue_map,
+                                                   VARYING_SLOT_EDGE)),
               brw_imm_f(0));
-      brw_set_predicate_control(p, BRW_PREDICATE_NONE);
+      brw_inst_set_pred_control(p->devinfo, brw_last_inst, BRW_PREDICATE_NORMAL);
    }
    brw_ENDIF(p);
 }
@@ -255,9 +270,9 @@ static void merge_edgeflags( struct brw_clip_compile *c )
 static void apply_one_offset( struct brw_clip_compile *c,
 			  struct brw_indirect vert )
 {
-   struct brw_compile *p = &c->func;
-   GLuint ndc_offset = brw_vert_result_to_offset(&c->vue_map,
-                                                 BRW_VERT_RESULT_NDC);
+   struct brw_codegen *p = &c->func;
+   GLuint ndc_offset = brw_varying_to_offset(&c->vue_map,
+                                             BRW_VARYING_SLOT_NDC);
    struct brw_reg z = deref_1f(vert, ndc_offset +
 			       2 * type_sz(BRW_REGISTER_TYPE_F));
 
@@ -272,13 +287,13 @@ static void apply_one_offset( struct brw_clip_compile *c,
 static void emit_lines(struct brw_clip_compile *c,
 		       bool do_offset)
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
    struct brw_indirect v0 = brw_indirect(0, 0);
    struct brw_indirect v1 = brw_indirect(1, 0);
    struct brw_indirect v0ptr = brw_indirect(2, 0);
    struct brw_indirect v1ptr = brw_indirect(3, 0);
 
-   /* Need a seperate loop for offset:
+   /* Need a separate loop for offset:
     */
    if (do_offset) {
       brw_MOV(p, c->reg.loopcount, c->reg.nr_verts);
@@ -288,13 +303,14 @@ static void emit_lines(struct brw_clip_compile *c,
       {
 	 brw_MOV(p, get_addr_reg(v0), deref_1uw(v0ptr, 0));
 	 brw_ADD(p, get_addr_reg(v0ptr), get_addr_reg(v0ptr), brw_imm_uw(2));
-	    
+
 	 apply_one_offset(c, v0);
-	    
-	 brw_set_conditionalmod(p, BRW_CONDITIONAL_G);
+
 	 brw_ADD(p, c->reg.loopcount, c->reg.loopcount, brw_imm_d(-1));
+         brw_inst_set_cond_modifier(p->devinfo, brw_last_inst, BRW_CONDITIONAL_G);
       }
       brw_WHILE(p);
+      brw_inst_set_pred_control(p->devinfo, brw_last_inst, BRW_PREDICATE_NORMAL);
    }
 
    /* v1ptr = &inlist[nr_verts]
@@ -313,26 +329,27 @@ static void emit_lines(struct brw_clip_compile *c,
       brw_ADD(p, get_addr_reg(v0ptr), get_addr_reg(v0ptr), brw_imm_uw(2));
 
       /* draw edge if edgeflag != 0 */
-      brw_CMP(p, 
-	      vec1(brw_null_reg()), BRW_CONDITIONAL_NZ, 
-	      deref_1f(v0, brw_vert_result_to_offset(&c->vue_map,
-                                                     VERT_RESULT_EDGE)),
+      brw_CMP(p,
+	      vec1(brw_null_reg()), BRW_CONDITIONAL_NZ,
+	      deref_1f(v0, brw_varying_to_offset(&c->vue_map,
+                                                 VARYING_SLOT_EDGE)),
 	      brw_imm_f(0));
       brw_IF(p, BRW_EXECUTE_1);
       {
-	 brw_clip_emit_vue(c, v0, 1, 0,
+	 brw_clip_emit_vue(c, v0, BRW_URB_WRITE_ALLOCATE_COMPLETE,
                            (_3DPRIM_LINESTRIP << URB_WRITE_PRIM_TYPE_SHIFT)
                            | URB_WRITE_PRIM_START);
-	 brw_clip_emit_vue(c, v1, 1, 0,
+	 brw_clip_emit_vue(c, v1, BRW_URB_WRITE_ALLOCATE_COMPLETE,
                            (_3DPRIM_LINESTRIP << URB_WRITE_PRIM_TYPE_SHIFT)
                            | URB_WRITE_PRIM_END);
       }
       brw_ENDIF(p);
 
-      brw_set_conditionalmod(p, BRW_CONDITIONAL_NZ);
       brw_ADD(p, c->reg.loopcount, c->reg.loopcount, brw_imm_d(-1));
+      brw_inst_set_cond_modifier(p->devinfo, brw_last_inst, BRW_CONDITIONAL_NZ);
    }
    brw_WHILE(p);
+   brw_inst_set_pred_control(p->devinfo, brw_last_inst, BRW_PREDICATE_NORMAL);
 }
 
 
@@ -340,7 +357,7 @@ static void emit_lines(struct brw_clip_compile *c,
 static void emit_points(struct brw_clip_compile *c,
 			bool do_offset )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
 
    struct brw_indirect v0 = brw_indirect(0, 0);
    struct brw_indirect v0ptr = brw_indirect(2, 0);
@@ -353,28 +370,29 @@ static void emit_points(struct brw_clip_compile *c,
       brw_MOV(p, get_addr_reg(v0), deref_1uw(v0ptr, 0));
       brw_ADD(p, get_addr_reg(v0ptr), get_addr_reg(v0ptr), brw_imm_uw(2));
 
-      /* draw if edgeflag != 0 
+      /* draw if edgeflag != 0
        */
-      brw_CMP(p, 
-	      vec1(brw_null_reg()), BRW_CONDITIONAL_NZ, 
-	      deref_1f(v0, brw_vert_result_to_offset(&c->vue_map,
-                                                     VERT_RESULT_EDGE)),
+      brw_CMP(p,
+	      vec1(brw_null_reg()), BRW_CONDITIONAL_NZ,
+	      deref_1f(v0, brw_varying_to_offset(&c->vue_map,
+                                                 VARYING_SLOT_EDGE)),
 	      brw_imm_f(0));
       brw_IF(p, BRW_EXECUTE_1);
       {
 	 if (do_offset)
 	    apply_one_offset(c, v0);
 
-	 brw_clip_emit_vue(c, v0, 1, 0,
+	 brw_clip_emit_vue(c, v0, BRW_URB_WRITE_ALLOCATE_COMPLETE,
                            (_3DPRIM_POINTLIST << URB_WRITE_PRIM_TYPE_SHIFT)
                            | URB_WRITE_PRIM_START | URB_WRITE_PRIM_END);
       }
       brw_ENDIF(p);
 
-      brw_set_conditionalmod(p, BRW_CONDITIONAL_NZ);
       brw_ADD(p, c->reg.loopcount, c->reg.loopcount, brw_imm_d(-1));
+      brw_inst_set_cond_modifier(p->devinfo, brw_last_inst, BRW_CONDITIONAL_NZ);
    }
    brw_WHILE(p);
+   brw_inst_set_pred_control(p->devinfo, brw_last_inst, BRW_PREDICATE_NORMAL);
 }
 
 
@@ -384,7 +402,7 @@ static void emit_points(struct brw_clip_compile *c,
 
 
 static void emit_primitives( struct brw_clip_compile *c,
-			     GLuint mode, 
+			     GLuint mode,
 			     bool do_offset )
 {
    switch (mode) {
@@ -401,16 +419,15 @@ static void emit_primitives( struct brw_clip_compile *c,
       break;
 
    case CLIP_CULL:
-      assert(0);
-      break;
+      unreachable("not reached");
    }
-} 
+}
 
 
 
 static void emit_unfilled_primitives( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
 
    /* Direction culling has already been done.
     */
@@ -423,7 +440,7 @@ static void emit_unfilled_primitives( struct brw_clip_compile *c )
 	      BRW_CONDITIONAL_GE,
 	      get_element(c->reg.dir, 2),
 	      brw_imm_f(0));
-   
+
       brw_IF(p, BRW_EXECUTE_1);
       {
 	 emit_primitives(c, c->key.fill_ccw, c->key.offset_ccw);
@@ -437,7 +454,7 @@ static void emit_unfilled_primitives( struct brw_clip_compile *c )
    else if (c->key.fill_cw != CLIP_CULL) {
       emit_primitives(c, c->key.fill_cw, c->key.offset_cw);
    }
-   else if (c->key.fill_ccw != CLIP_CULL) { 
+   else if (c->key.fill_ccw != CLIP_CULL) {
       emit_primitives(c, c->key.fill_ccw, c->key.offset_ccw);
    }
 }
@@ -447,9 +464,9 @@ static void emit_unfilled_primitives( struct brw_clip_compile *c )
 
 static void check_nr_verts( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
 
-   brw_CMP(p, vec1(brw_null_reg()), BRW_CONDITIONAL_L, c->reg.nr_verts, brw_imm_d(3));      
+   brw_CMP(p, vec1(brw_null_reg()), BRW_CONDITIONAL_L, c->reg.nr_verts, brw_imm_d(3));
    brw_IF(p, BRW_EXECUTE_1);
    {
       brw_clip_kill_thread(c);
@@ -460,7 +477,7 @@ static void check_nr_verts( struct brw_clip_compile *c )
 
 void brw_emit_unfilled_clip( struct brw_clip_compile *c )
 {
-   struct brw_compile *p = &c->func;
+   struct brw_codegen *p = &c->func;
 
    c->need_direction = ((c->key.offset_ccw || c->key.offset_cw) ||
 			(c->key.fill_ccw != c->key.fill_cw) ||
@@ -473,7 +490,7 @@ void brw_emit_unfilled_clip( struct brw_clip_compile *c )
    brw_clip_tri_init_vertices(c);
    brw_clip_init_ff_sync(c);
 
-   assert(brw_clip_have_vert_result(c, VERT_RESULT_EDGE));
+   assert(brw_clip_have_varying(c, VARYING_SLOT_EDGE));
 
    if (c->key.fill_ccw == CLIP_CULL &&
        c->key.fill_cw == CLIP_CULL) {
@@ -483,11 +500,11 @@ void brw_emit_unfilled_clip( struct brw_clip_compile *c )
 
    merge_edgeflags(c);
 
-   /* Need to use the inlist indirection here: 
+   /* Need to use the inlist indirection here:
     */
-   if (c->need_direction) 
+   if (c->need_direction)
       compute_tri_direction(c);
-   
+
    if (c->key.fill_ccw == CLIP_CULL ||
        c->key.fill_cw == CLIP_CULL)
       cull_direction(c);
@@ -502,9 +519,9 @@ void brw_emit_unfilled_clip( struct brw_clip_compile *c )
 
    /* Need to do this whether we clip or not:
     */
-   if (c->key.do_flat_shading)
+   if (c->key.contains_flat_varying)
       brw_clip_tri_flat_shade(c);
-   
+
    brw_clip_init_clipmask(c);
    brw_CMP(p, vec1(brw_null_reg()), BRW_CONDITIONAL_NZ, c->reg.planemask, brw_imm_ud(0));
    brw_IF(p, BRW_EXECUTE_1);
@@ -518,6 +535,3 @@ void brw_emit_unfilled_clip( struct brw_clip_compile *c )
    emit_unfilled_primitives(c);
    brw_clip_kill_thread(c);
 }
-
-
-

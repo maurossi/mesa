@@ -46,14 +46,14 @@ struct util_surfaces
 boolean
 util_surfaces_do_get(struct util_surfaces *us, unsigned surface_struct_size,
                      struct pipe_context *ctx, struct pipe_resource *pt,
-                     unsigned level, unsigned layer, unsigned flags,
+                     unsigned level, unsigned layer,
                      struct pipe_surface **res);
 
 /* fast inline path for the very common case */
-static INLINE boolean
+static inline boolean
 util_surfaces_get(struct util_surfaces *us, unsigned surface_struct_size,
                   struct pipe_context *ctx, struct pipe_resource *pt,
-                  unsigned level, unsigned layer, unsigned flags,
+                  unsigned level, unsigned layer,
                   struct pipe_surface **res)
 {
    if(likely((pt->target == PIPE_TEXTURE_2D || pt->target == PIPE_TEXTURE_RECT) && us->u.array))
@@ -67,10 +67,10 @@ util_surfaces_get(struct util_surfaces *us, unsigned surface_struct_size,
       }
    }
 
-   return util_surfaces_do_get(us, surface_struct_size, ctx, pt, level, layer, flags, res);
+   return util_surfaces_do_get(us, surface_struct_size, ctx, pt, level, layer, res);
 }
 
-static INLINE struct pipe_surface *
+static inline struct pipe_surface *
 util_surfaces_peek(struct util_surfaces *us, struct pipe_resource *pt, unsigned level, unsigned layer)
 {
    if(!us->u.pv)
@@ -84,7 +84,7 @@ util_surfaces_peek(struct util_surfaces *us, struct pipe_resource *pt, unsigned 
 
 void util_surfaces_do_detach(struct util_surfaces *us, struct pipe_surface *ps);
 
-static INLINE void
+static inline void
 util_surfaces_detach(struct util_surfaces *us, struct pipe_surface *ps)
 {
    if(likely(ps->texture->target == PIPE_TEXTURE_2D || ps->texture->target == PIPE_TEXTURE_RECT))

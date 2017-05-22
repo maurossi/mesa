@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  3.1
  *
  * Copyright (C) 1999  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -222,6 +222,10 @@ DRI_glXUseXFont(struct glx_context *CC, Font font, int first, int count, int lis
    unsigned long valuemask;
    XFontStruct *fs;
 
+#if !defined(GLX_USE_APPLEGL)
+   __GLXDRIdrawable *glxdraw;
+#endif
+
    GLint swapbytes, lsbfirst, rowlength;
    GLint skiprows, skippixels, alignment;
 
@@ -232,6 +236,12 @@ DRI_glXUseXFont(struct glx_context *CC, Font font, int first, int count, int lis
 
    dpy = CC->currentDpy;
    win = CC->currentDrawable;
+
+#if !defined(GLX_USE_APPLEGL)
+   glxdraw = GetGLXDRIDrawable(CC->currentDpy, CC->currentDrawable);
+   if (glxdraw)
+      win = glxdraw->xDrawable;
+#endif
 
    fs = XQueryFont(dpy, font);
    if (!fs) {
@@ -245,7 +255,7 @@ DRI_glXUseXFont(struct glx_context *CC, Font font, int first, int count, int lis
    max_bm_width = (max_width + 7) / 8;
    max_bm_height = max_height;
 
-   bm = (GLubyte *) Xmalloc((max_bm_width * max_bm_height) * sizeof(GLubyte));
+   bm = malloc((max_bm_width * max_bm_height) * sizeof(GLubyte));
    if (!bm) {
       XFreeFontInfo(NULL, fs, 1);
       __glXSetError(CC, GL_OUT_OF_MEMORY);
@@ -359,7 +369,7 @@ DRI_glXUseXFont(struct glx_context *CC, Font font, int first, int count, int lis
       glEndList();
    }
 
-   Xfree(bm);
+   free(bm);
    XFreeFontInfo(NULL, fs, 1);
    XFreeGC(dpy, gc);
 

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  * 
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  * 
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -61,11 +61,13 @@ and create a window, you must do the following to use the X/Mesa interface:
 #include "state_tracker/st_api.h"
 #include "os/os_thread.h"
 
-#include "state_tracker/xlib_sw_winsys.h"
+#include "state_tracker/xlibsw_api.h"
 
 # include <X11/Xlib.h>
 # include <X11/Xlibint.h>
 # include <X11/Xutil.h>
+
+struct hud_context;
 
 typedef struct xmesa_display *XMesaDisplay;
 typedef struct xmesa_buffer *XMesaBuffer;
@@ -305,6 +307,7 @@ struct xmesa_context {
    XMesaVisual xm_visual;	/** pixel format info */
    XMesaBuffer xm_buffer;	/** current drawbuffer */
    XMesaBuffer xm_read_buffer;  /** current readbuffer */
+   struct hud_context *hud;
 };
 
 
@@ -375,13 +378,16 @@ xmesa_check_buffer_size(XMesaBuffer b);
 extern void
 xmesa_destroy_buffers_on_display(Display *dpy);
 
-static INLINE GLuint
+extern void
+xmesa_close_display(Display *dpy);
+
+static inline GLuint
 xmesa_buffer_width(XMesaBuffer b)
 {
    return b->width;
 }
 
-static INLINE GLuint
+static inline GLuint
 xmesa_buffer_height(XMesaBuffer b)
 {
    return b->height;

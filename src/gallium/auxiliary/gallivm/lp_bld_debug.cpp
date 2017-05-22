@@ -26,39 +26,26 @@
  **************************************************************************/
 
 #include <stddef.h>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
 
 #include <llvm-c/Core.h>
-#include <llvm/Target/TargetMachine.h>
-#include <llvm/Target/TargetInstrInfo.h>
+#include <llvm-c/Disassembler.h>
 #include <llvm/Support/raw_ostream.h>
-#include <llvm/Support/MemoryObject.h>
-
-#if HAVE_LLVM >= 0x0300
-#include <llvm/Support/TargetRegistry.h>
-#else /* HAVE_LLVM < 0x0300 */
-#include <llvm/Target/TargetRegistry.h>
-#endif /* HAVE_LLVM < 0x0300 */
-
-#if HAVE_LLVM >= 0x0209
+#include <llvm/Support/Format.h>
 #include <llvm/Support/Host.h>
-#else /* HAVE_LLVM < 0x0209 */
-#include <llvm/System/Host.h>
-#endif /* HAVE_LLVM < 0x0209 */
-
-#if HAVE_LLVM >= 0x0207
-#include <llvm/MC/MCDisassembler.h>
-#include <llvm/MC/MCAsmInfo.h>
-#include <llvm/MC/MCInst.h>
-#include <llvm/MC/MCInstPrinter.h>
-#endif /* HAVE_LLVM >= 0x0207 */
-#if HAVE_LLVM >= 0x0301
-#include <llvm/MC/MCRegisterInfo.h>
-#endif /* HAVE_LLVM >= 0x0301 */
+#include <llvm/IR/Module.h>
 
 #include "util/u_math.h"
 #include "util/u_debug.h"
 
 #include "lp_bld_debug.h"
+
+#ifdef __linux__
+#include <sys/stat.h>
+#include <fcntl.h>
+#endif
 
 
 
@@ -78,93 +65,27 @@ lp_check_alignment(const void *ptr, unsigned alignment)
 }
 
 
-class raw_debug_ostream :
-   public llvm::raw_ostream
-{
-private:
-   uint64_t pos;
-
-public:
-   raw_debug_ostream() : pos(0) { }
-
-   void write_impl(const char *Ptr, size_t Size);
-
-#if HAVE_LLVM >= 0x207
-   uint64_t current_pos() const { return pos; }
-   size_t preferred_buffer_size() const { return 512; }
-#else
-   uint64_t current_pos() { return pos; }
-   size_t preferred_buffer_size() { return 512; }
-#endif
-};
-
-
-void
-raw_debug_ostream::write_impl(const char *Ptr, size_t Size)
-{
-   if (Size > 0) {
-      char *lastPtr = (char *)&Ptr[Size];
-      char last = *lastPtr;
-      *lastPtr = 0;
-      _debug_printf("%*s", Size, Ptr);
-      *lastPtr = last;
-      pos += Size;
-   }
-}
-
-
 /**
  * Same as LLVMDumpValue, but through our debugging channels.
  */
 extern "C" void
 lp_debug_dump_value(LLVMValueRef value)
 {
-#if (defined(PIPE_OS_WINDOWS) && !defined(PIPE_CC_MSVC)) || defined(PIPE_OS_EMBDDED)
-   raw_debug_ostream os;
+#if HAVE_LLVM >= 0x0304
+   char *str = LLVMPrintValueToString(value);
+   if (str) {
+      os_log_message(str);
+      LLVMDisposeMessage(str);
+   }
+#elif defined(PIPE_OS_WINDOWS) || defined(PIPE_OS_EMBEDDED)
+   std::string str;
+   llvm::raw_string_ostream os(str);
    llvm::unwrap(value)->print(os);
-   os.flush();
+   os_log_message(str.c_str());
 #else
    LLVMDumpValue(value);
 #endif
 }
-
-
-#if HAVE_LLVM >= 0x0207
-/*
- * MemoryObject wrapper around a buffer of memory, to be used by MC
- * disassembler.
- */
-class BufferMemoryObject:
-   public llvm::MemoryObject
-{
-private:
-   const uint8_t *Bytes;
-   uint64_t Length;
-public:
-   BufferMemoryObject(const uint8_t *bytes, uint64_t length) :
-      Bytes(bytes), Length(length)
-   {
-   }
-
-   uint64_t getBase() const
-   {
-      return 0;
-   }
-
-   uint64_t getExtent() const
-   {
-      return Length;
-   }
-
-   int readByte(uint64_t addr, uint8_t *byte) const
-   {
-      if (addr > getExtent())
-         return -1;
-      *byte = Bytes[addr];
-      return 0;
-   }
-};
-#endif /* HAVE_LLVM >= 0x0207 */
 
 
 /*
@@ -174,12 +95,9 @@ public:
  * - http://blog.llvm.org/2010/01/x86-disassembler.html
  * - http://blog.llvm.org/2010/04/intro-to-llvm-mc-project.html
  */
-extern "C" void
-lp_disassemble(const void* func)
+static size_t
+disassemble(const void* func, std::ostream &buffer)
 {
-#if HAVE_LLVM >= 0x0207
-   using namespace llvm;
-
    const uint8_t *bytes = (const uint8_t *)func;
 
    /*
@@ -187,130 +105,39 @@ lp_disassemble(const void* func)
     */
    const uint64_t extent = 96 * 1024;
 
-   uint64_t max_pc = 0;
-
    /*
     * Initialize all used objects.
     */
 
-#if HAVE_LLVM >= 0x0301
-   std::string Triple = sys::getDefaultTargetTriple();
-#else
-   std::string Triple = sys::getHostTriple();
-#endif
+   const char *triple = LLVM_HOST_TRIPLE;
+   LLVMDisasmContextRef D = LLVMCreateDisasm(triple, NULL, 0, NULL, NULL);
+   char outline[1024];
 
-   std::string Error;
-   const Target *T = TargetRegistry::lookupTarget(Triple, Error);
-
-#if HAVE_LLVM >= 0x0300
-   OwningPtr<const MCAsmInfo> AsmInfo(T->createMCAsmInfo(Triple));
-#else
-   OwningPtr<const MCAsmInfo> AsmInfo(T->createAsmInfo(Triple));
-#endif
-
-   if (!AsmInfo) {
-      debug_printf("error: no assembly info for target %s\n", Triple.c_str());
-      return;
+   if (!D) {
+      buffer << "error: could not create disassembler for triple "
+             << triple << '\n';
+      return 0;
    }
-
-#if HAVE_LLVM >= 0x0300
-   const MCSubtargetInfo *STI = T->createMCSubtargetInfo(Triple, sys::getHostCPUName(), "");
-   OwningPtr<const MCDisassembler> DisAsm(T->createMCDisassembler(*STI));
-#else 
-   OwningPtr<const MCDisassembler> DisAsm(T->createMCDisassembler());
-#endif 
-   if (!DisAsm) {
-      debug_printf("error: no disassembler for target %s\n", Triple.c_str());
-      return;
-   }
-
-   raw_debug_ostream Out;
-
-#if HAVE_LLVM >= 0x0300
-   unsigned int AsmPrinterVariant = AsmInfo->getAssemblerDialect();
-#else
-   int AsmPrinterVariant = AsmInfo->getAssemblerDialect();
-#endif
-
-#if HAVE_LLVM >= 0x0301
-   OwningPtr<const MCRegisterInfo> MRI(T->createMCRegInfo(Triple));
-   if (!MRI) {
-      debug_printf("error: no register info for target %s\n", Triple.c_str());
-      return;
-   }
-
-   OwningPtr<const MCInstrInfo> MII(T->createMCInstrInfo());
-   if (!MII) {
-      debug_printf("error: no instruction info for target %s\n", Triple.c_str());
-      return;
-   }
-#endif
-
-#if HAVE_LLVM >= 0x0301
-   OwningPtr<MCInstPrinter> Printer(
-         T->createMCInstPrinter(AsmPrinterVariant, *AsmInfo, *MII, *MRI, *STI));
-#elif HAVE_LLVM == 0x0300
-   OwningPtr<MCInstPrinter> Printer(
-         T->createMCInstPrinter(AsmPrinterVariant, *AsmInfo, *STI));
-#elif HAVE_LLVM >= 0x0208
-   OwningPtr<MCInstPrinter> Printer(
-         T->createMCInstPrinter(AsmPrinterVariant, *AsmInfo));
-#else
-   OwningPtr<MCInstPrinter> Printer(
-         T->createMCInstPrinter(AsmPrinterVariant, *AsmInfo, Out));
-#endif
-   if (!Printer) {
-      debug_printf("error: no instruction printer for target %s\n", Triple.c_str());
-      return;
-   }
-
-#if HAVE_LLVM >= 0x0301
-   TargetOptions options;
-#if defined(DEBUG)
-   options.JITEmitDebugInfo = true;
-#endif
-#if defined(PIPE_ARCH_X86)
-   options.StackAlignmentOverride = 4;
-#endif
-#if defined(DEBUG) || defined(PROFILE)
-   options.NoFramePointerElim = true;
-#endif
-   TargetMachine *TM = T->createTargetMachine(Triple, sys::getHostCPUName(), "", options);
-#elif HAVE_LLVM == 0x0300
-   TargetMachine *TM = T->createTargetMachine(Triple, sys::getHostCPUName(), "");
-#else
-   TargetMachine *TM = T->createTargetMachine(Triple, "");
-#endif
-
-   const TargetInstrInfo *TII = TM->getInstrInfo();
-
-   /*
-    * Wrap the data in a MemoryObject
-    */
-   BufferMemoryObject memoryObject((const uint8_t *)bytes, extent);
 
    uint64_t pc;
    pc = 0;
-   while (true) {
-      MCInst Inst;
-      uint64_t Size;
+   while (pc < extent) {
+      size_t Size;
 
       /*
        * Print address.  We use addresses relative to the start of the function,
        * so that between runs.
        */
 
-      debug_printf("%6lu:\t", (unsigned long)pc);
+      buffer << std::setw(6) << (unsigned long)pc << ":\t";
 
-      if (!DisAsm->getInstruction(Inst, Size, memoryObject,
-                                 pc,
-#if HAVE_LLVM >= 0x0300
-				  nulls(), nulls())) {
-#else
-				  nulls())) {
-#endif
-         debug_printf("invalid\n");
+      Size = LLVMDisasmInstruction(D, (uint8_t *)bytes + pc, extent - pc, 0, outline,
+                                   sizeof outline);
+
+      if (!Size) {
+         buffer << "invalid\n";
          pc += 1;
+         break;
       }
 
       /*
@@ -320,10 +147,11 @@ lp_disassemble(const void* func)
       if (0) {
          unsigned i;
          for (i = 0; i < Size; ++i) {
-            debug_printf("%02x ", ((const uint8_t*)bytes)[pc + i]);
+            buffer << std::hex << std::setfill('0') << std::setw(2)
+                   << static_cast<int> (bytes[pc + i]);
          }
          for (; i < 16; ++i) {
-            debug_printf("   ");
+            buffer << std::dec << "   ";
          }
       }
 
@@ -331,14 +159,20 @@ lp_disassemble(const void* func)
        * Print the instruction.
        */
 
-#if HAVE_LLVM >= 0x0300
-      Printer->printInst(&Inst, Out, "");
-#elif HAVE_LLVM >= 0x208
-      Printer->printInst(&Inst, Out);
-#else
-      Printer->printInst(&Inst);
+      buffer << std::setw(Size) << outline << '\n';
+
+      /*
+       * Stop disassembling on return statements, if there is no record of a
+       * jump to a successive address.
+       *
+       * XXX: This currently assumes x86
+       */
+
+#if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
+      if (Size == 1 && bytes[pc] == 0xc3) {
+         break;
+      }
 #endif
-      Out.flush();
 
       /*
        * Advance.
@@ -346,86 +180,87 @@ lp_disassemble(const void* func)
 
       pc += Size;
 
-#if HAVE_LLVM >= 0x0300
-      const MCInstrDesc &TID = TII->get(Inst.getOpcode());
-#else
-      const TargetInstrDesc &TID = TII->get(Inst.getOpcode());
-#endif
-
-      /*
-       * Keep track of forward jumps to a nearby address.
-       */
-
-      if (TID.isBranch()) {
-         for (unsigned i = 0; i < Inst.getNumOperands(); ++i) {
-            const MCOperand &operand = Inst.getOperand(i);
-            if (operand.isImm()) {
-               uint64_t jump;
-
-               /*
-                * FIXME: Handle both relative and absolute addresses correctly.
-                * EDInstInfo actually has this info, but operandTypes and
-                * operandFlags enums are not exposed in the public interface.
-                */
-
-               if (1) {
-                  /*
-                   * PC relative addr.
-                   */
-
-                  jump = pc + operand.getImm();
-               } else {
-                  /*
-                   * Absolute addr.
-                   */
-
-                  jump = (uint64_t)operand.getImm();
-               }
-
-               /*
-                * Output the address relative to the function start, given
-                * that MC will print the addresses relative the current pc.
-                */
-               debug_printf("\t\t; %lu", (unsigned long)jump);
-
-               /*
-                * Ignore far jumps given it could be actually a tail return to
-                * a random address.
-                */
-
-               if (jump > max_pc &&
-                   jump < extent) {
-                  max_pc = jump;
-               }
-            }
-         }
-      }
-
-      debug_printf("\n");
-
-      /*
-       * Stop disassembling on return statements, if there is no record of a
-       * jump to a successive address.
-       */
-
-      if (TID.isReturn()) {
-         if (pc > max_pc) {
-            break;
-         }
+      if (pc >= extent) {
+         buffer << "disassembly larger than " << extent << " bytes, aborting\n";
+         break;
       }
    }
+
+   buffer << '\n';
+
+   LLVMDisasmDispose(D);
 
    /*
     * Print GDB command, useful to verify output.
     */
-
    if (0) {
-      debug_printf("disassemble %p %p\n", bytes, bytes + pc);
+      buffer << "disassemble " << static_cast<const void*>(bytes) << ' '
+             << static_cast<const void*>(bytes + pc) << '\n';
    }
 
-   debug_printf("\n");
-#else /* HAVE_LLVM < 0x0207 */
-   (void)func;
-#endif /* HAVE_LLVM < 0x0207 */
+   return pc;
 }
+
+
+extern "C" void
+lp_disassemble(LLVMValueRef func, const void *code)
+{
+   std::ostringstream buffer;
+   std::string s;
+
+   buffer << LLVMGetValueName(func) << ":\n";
+   disassemble(code, buffer);
+   s = buffer.str();
+   os_log_message(s.c_str());
+   os_log_message("\n");
+}
+
+
+/*
+ * Linux perf profiler integration.
+ *
+ * See also:
+ * - http://penberg.blogspot.co.uk/2009/06/jato-has-profiler.html
+ * - https://github.com/penberg/jato/commit/73ad86847329d99d51b386f5aba692580d1f8fdc
+ * - http://git.kernel.org/?p=linux/kernel/git/torvalds/linux.git;a=commitdiff;h=80d496be89ed7dede5abee5c057634e80a31c82d
+ */
+extern "C" void
+lp_profile(LLVMValueRef func, const void *code)
+{
+#if defined(__linux__) && defined(PROFILE)
+   static std::ofstream perf_asm_file;
+   static boolean first_time = TRUE;
+   static FILE *perf_map_file = NULL;
+   if (first_time) {
+      /*
+       * We rely on the disassembler for determining a function's size, but
+       * the disassembly is a leaky and slow operation, so avoid running
+       * this except when running inside linux perf, which can be inferred
+       * by the PERF_BUILDID_DIR environment variable.
+       */
+      if (getenv("PERF_BUILDID_DIR")) {
+         pid_t pid = getpid();
+         char filename[256];
+         util_snprintf(filename, sizeof filename, "/tmp/perf-%llu.map", (unsigned long long)pid);
+         perf_map_file = fopen(filename, "wt");
+         util_snprintf(filename, sizeof filename, "/tmp/perf-%llu.map.asm", (unsigned long long)pid);
+         perf_asm_file.open(filename);
+      }
+      first_time = FALSE;
+   }
+   if (perf_map_file) {
+      const char *symbol = LLVMGetValueName(func);
+      unsigned long addr = (uintptr_t)code;
+      perf_asm_file << symbol << ":\n";
+      unsigned long size = disassemble(code, perf_asm_file);
+      perf_asm_file.flush();
+      fprintf(perf_map_file, "%lx %lx %s\n", addr, size, symbol);
+      fflush(perf_map_file);
+   }
+#else
+   (void)func;
+   (void)code;
+#endif
+}
+
 

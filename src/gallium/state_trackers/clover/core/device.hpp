@@ -14,95 +14,80 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-// THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 //
 
-#ifndef __CORE_DEVICE_HPP__
-#define __CORE_DEVICE_HPP__
+#ifndef CLOVER_CORE_DEVICE_HPP
+#define CLOVER_CORE_DEVICE_HPP
 
 #include <set>
 #include <vector>
 
-#include "core/base.hpp"
+#include "core/object.hpp"
 #include "core/format.hpp"
 #include "pipe-loader/pipe_loader.h"
 
 namespace clover {
-   typedef struct _cl_device_id device;
+   class platform;
    class root_resource;
    class hard_event;
-}
 
-struct _cl_device_id {
-public:
-   _cl_device_id(pipe_loader_device *ldev);
-   _cl_device_id(_cl_device_id &&dev);
-   _cl_device_id(const _cl_device_id &dev) = delete;
-   ~_cl_device_id();
-
-   cl_device_type type() const;
-   cl_uint vendor_id() const;
-   size_t max_images_read() const;
-   size_t max_images_write() const;
-   cl_uint max_image_levels_2d() const;
-   cl_uint max_image_levels_3d() const;
-   cl_uint max_samplers() const;
-   cl_ulong max_mem_global() const;
-   cl_ulong max_mem_local() const;
-   cl_ulong max_mem_input() const;
-   cl_ulong max_const_buffer_size() const;
-   cl_uint max_const_buffers() const;
-   size_t max_threads_per_block() const;
-
-   std::vector<size_t> max_block_size() const;
-   std::string device_name() const;
-   std::string vendor_name() const;
-   enum pipe_shader_ir ir_format() const;
-   std::string ir_target() const;
-
-   friend struct _cl_command_queue;
-   friend class clover::root_resource;
-   friend class clover::hard_event;
-   friend std::set<cl_image_format>
-   clover::supported_formats(cl_context, cl_mem_object_type);
-
-private:
-   pipe_screen *pipe;
-   pipe_loader_device *ldev;
-};
-
-namespace clover {
-   ///
-   /// Container of all the compute devices that are available in the
-   /// system.
-   ///
-   class device_registry {
+   class device : public ref_counter, public _cl_device_id {
    public:
-      typedef std::vector<device>::iterator iterator;
+      device(clover::platform &platform, pipe_loader_device *ldev);
+      ~device();
 
-      device_registry();
+      device(const device &dev) = delete;
+      device &
+      operator=(const device &dev) = delete;
 
-      iterator begin() {
-         return devs.begin();
-      }
+      bool
+      operator==(const device &dev) const;
 
-      iterator end() {
-         return devs.end();
-      }
+      cl_device_type type() const;
+      cl_uint vendor_id() const;
+      size_t max_images_read() const;
+      size_t max_images_write() const;
+      size_t max_image_buffer_size() const;
+      cl_uint max_image_levels_2d() const;
+      cl_uint max_image_levels_3d() const;
+      size_t max_image_array_number() const;
+      cl_uint max_samplers() const;
+      cl_ulong max_mem_global() const;
+      cl_ulong max_mem_local() const;
+      cl_ulong max_mem_input() const;
+      cl_ulong max_const_buffer_size() const;
+      cl_uint max_const_buffers() const;
+      size_t max_threads_per_block() const;
+      cl_ulong max_mem_alloc_size() const;
+      cl_uint max_clock_frequency() const;
+      cl_uint max_compute_units() const;
+      bool image_support() const;
+      bool has_doubles() const;
 
-      device &front() {
-         return devs.front();
-      }
+      std::vector<size_t> max_block_size() const;
+      cl_uint subgroup_size() const;
+      cl_uint address_bits() const;
+      std::string device_name() const;
+      std::string vendor_name() const;
+      enum pipe_shader_ir ir_format() const;
+      std::string ir_target() const;
+      enum pipe_endian endianness() const;
 
-      device &back() {
-         return devs.back();
-      }
+      friend class command_queue;
+      friend class root_resource;
+      friend class hard_event;
+      friend std::set<cl_image_format>
+      supported_formats(const context &, cl_mem_object_type);
 
-   protected:
-      std::vector<device> devs;
+      clover::platform &platform;
+
+   private:
+      pipe_screen *pipe;
+      pipe_loader_device *ldev;
    };
 }
 

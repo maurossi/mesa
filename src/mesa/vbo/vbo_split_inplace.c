@@ -1,7 +1,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -18,12 +17,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
@@ -42,7 +42,7 @@
  */
 struct split_context {
    struct gl_context *ctx;
-   const struct gl_client_array **array;
+   const struct gl_vertex_array **array;
    const struct _mesa_prim *prim;
    GLuint nr_prims;
    const struct _mesa_index_buffer *ib;
@@ -63,7 +63,7 @@ struct split_context {
 static void flush_vertex( struct split_context *split )
 {
    struct gl_context *ctx = split->ctx;
-   const struct gl_client_array **saved_arrays = ctx->Array._DrawArrays;
+   const struct gl_vertex_array **saved_arrays = ctx->Array._DrawArrays;
    struct _mesa_index_buffer ib;
    GLuint i;
 
@@ -94,7 +94,7 @@ static void flush_vertex( struct split_context *split )
 	       !split->ib,
 	       split->min_index,
 	       split->max_index,
-	       NULL);
+	       NULL, 0, NULL);
 
    ctx->Array._DrawArrays = saved_arrays;
    ctx->NewDriverState |= ctx->DriverFlags.NewArray;
@@ -262,7 +262,7 @@ static void split_prims( struct split_context *split)
 
 
 void vbo_split_inplace( struct gl_context *ctx,
-			const struct gl_client_array *arrays[],
+			const struct gl_vertex_array *arrays[],
 			const struct _mesa_prim *prim,
 			GLuint nr_prims,
 			const struct _mesa_index_buffer *ib,

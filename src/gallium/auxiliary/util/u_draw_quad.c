@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -42,6 +42,7 @@ void
 util_draw_vertex_buffer(struct pipe_context *pipe,
                         struct cso_context *cso,
                         struct pipe_resource *vbuf,
+                        uint vbuf_slot,
                         uint offset,
                         uint prim_type,
                         uint num_verts,
@@ -60,10 +61,10 @@ util_draw_vertex_buffer(struct pipe_context *pipe,
    /* note: vertex elements already set by caller */
 
    if (cso) {
-      cso_set_vertex_buffers(cso, 1, &vbuffer);
+      cso_set_vertex_buffers(cso, vbuf_slot, 1, &vbuffer);
       cso_draw_arrays(cso, prim_type, 0, num_verts);
    } else {
-      pipe->set_vertex_buffers(pipe, 1, &vbuffer);
+      pipe->set_vertex_buffers(pipe, vbuf_slot, 1, &vbuffer);
       util_draw_arrays(pipe, prim_type, 0, num_verts);
    }
 }
@@ -86,7 +87,7 @@ util_draw_user_vertex_buffer(struct cso_context *cso, void *buffer,
 
    /* note: vertex elements already set by caller */
 
-   cso_set_vertex_buffers(cso, 1, &vbuffer);
+   cso_set_vertex_buffers(cso, 0, 1, &vbuffer);
    cso_draw_arrays(cso, prim_type, 0, num_verts);
 }
 
@@ -97,6 +98,7 @@ util_draw_user_vertex_buffer(struct cso_context *cso, void *buffer,
  */
 void 
 util_draw_texquad(struct pipe_context *pipe, struct cso_context *cso,
+                  uint vbuf_slot,
                   float x0, float y0, float x1, float y1, float z)
 {
    uint numAttribs = 2, i, j;
@@ -105,7 +107,7 @@ util_draw_texquad(struct pipe_context *pipe, struct cso_context *cso,
    float *v = NULL;
 
    v = MALLOC(vertexBytes);
-   if (v == NULL)
+   if (!v)
       goto out;
 
    /*
@@ -145,12 +147,12 @@ util_draw_texquad(struct pipe_context *pipe, struct cso_context *cso,
       goto out;
    pipe_buffer_write(pipe, vbuf, 0, vertexBytes, v);
 
-   util_draw_vertex_buffer(pipe, cso, vbuf, 0, PIPE_PRIM_TRIANGLE_FAN, 4, 2);
+   util_draw_vertex_buffer(pipe, cso, vbuf, vbuf_slot, 0,
+                           PIPE_PRIM_TRIANGLE_FAN, 4, 2);
 
 out:
    if (vbuf)
       pipe_resource_reference(&vbuf, NULL);
    
-   if (v)
-      FREE(v);
+   FREE(v);
 }

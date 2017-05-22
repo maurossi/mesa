@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright 2009-2010 Chia-I Wu <olvaffe@gmail.com>
  * Copyright 2010-2011 LunarG, Inc.
  * All Rights Reserved.
@@ -30,13 +30,15 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include "c11/threads.h"
+
 #include "eglglobals.h"
 #include "egldisplay.h"
 #include "egldriver.h"
-#include "eglmutex.h"
 
 
-static _EGL_DECLARE_MUTEX(_eglGlobalMutex);
+static mtx_t _eglGlobalMutex = _MTX_INITIALIZER_NP;
+
 struct _egl_global _eglGlobal =
 {
    &_eglGlobalMutex,       /* Mutex */
@@ -47,6 +49,27 @@ struct _egl_global _eglGlobal =
       _eglUnloadDrivers, /* always called last */
       _eglFiniDisplay
    },
+
+   /* ClientExtensionString */
+   "EGL_EXT_client_extensions"
+   " EGL_EXT_platform_base"
+#ifdef HAVE_WAYLAND_PLATFORM
+   " EGL_EXT_platform_wayland"
+#endif
+#ifdef HAVE_X11_PLATFORM
+   " EGL_EXT_platform_x11"
+#endif
+#ifdef HAVE_DRM_PLATFORM
+   " EGL_MESA_platform_gbm"
+#endif
+#ifdef HAVE_SURFACELESS_PLATFORM
+   " EGL_MESA_platform_surfaceless"
+#endif
+   " EGL_KHR_client_get_all_proc_addresses"
+   " EGL_KHR_debug",
+
+   NULL, /* debugCallback */
+   _EGL_DEBUG_BIT_CRITICAL | _EGL_DEBUG_BIT_ERROR, /* debugTypesEnabled */
 };
 
 
@@ -65,7 +88,7 @@ _eglAddAtExitCall(void (*func)(void))
    if (func) {
       static EGLBoolean registered = EGL_FALSE;
 
-      _eglLockMutex(_eglGlobal.Mutex);
+      mtx_lock(_eglGlobal.Mutex);
 
       if (!registered) {
          atexit(_eglAtExit);
@@ -75,6 +98,6 @@ _eglAddAtExitCall(void (*func)(void))
       assert(_eglGlobal.NumAtExitCalls < ARRAY_SIZE(_eglGlobal.AtExitCalls));
       _eglGlobal.AtExitCalls[_eglGlobal.NumAtExitCalls++] = func;
 
-      _eglUnlockMutex(_eglGlobal.Mutex);
+      mtx_unlock(_eglGlobal.Mutex);
    }
 }

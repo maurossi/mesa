@@ -1,13 +1,12 @@
 /**
  * \file vtxfmt.h
  * 
- * \author Keith Whitwell <keith@tungstengraphics.com>
+ * \author Keith Whitwell <keithw@vmware.com>
  * \author Gareth Hughes
  */
 
 /*
  * Mesa 3-D graphics library
- * Version:  6.1
  *
  * Copyright (C) 1999-2004  Brian Paul   All Rights Reserved.
  *
@@ -24,36 +23,28 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef _VTXFMT_H_
 #define _VTXFMT_H_
 
-#include "compiler.h"
-#include "mfeatures.h"
 #include "mtypes.h"
 
-#if FEATURE_beginend
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 extern void _mesa_install_exec_vtxfmt( struct gl_context *ctx, const GLvertexformat *vfmt );
 extern void _mesa_install_save_vtxfmt( struct gl_context *ctx, const GLvertexformat *vfmt );
+extern void _mesa_initialize_vbo_vtxfmt(struct gl_context *ctx);
 
-#else /* FEATURE_beginend */
-
-static inline void
-_mesa_install_exec_vtxfmt( struct gl_context *ctx, const GLvertexformat *vfmt )
-{
-}
-
-static inline void
-_mesa_install_save_vtxfmt( struct gl_context *ctx, const GLvertexformat *vfmt )
-{
-}
-
-#endif /* FEATURE_beginend */
+#ifdef __cplusplus
+} // extern "C"
+#endif
 
 #endif /* _VTXFMT_H_ */

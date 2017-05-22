@@ -32,14 +32,6 @@
 #include <GL/internal/dri_interface.h>
 #include "main/context.h"
 
-struct dri_debug_control {
-    const char * string;
-    unsigned     flag;
-};
-
-extern unsigned driParseDebugString( const char * debug,
-    const struct dri_debug_control * control );
-
 extern unsigned driGetRendererString( char * buffer,
     const char * hardware_name, GLuint agp_mode );
 
@@ -48,12 +40,12 @@ struct __DRIconfigRec {
 };
 
 extern __DRIconfig **
-driCreateConfigs(GLenum fb_format, GLenum fb_type,
+driCreateConfigs(mesa_format format,
 		 const uint8_t * depth_bits, const uint8_t * stencil_bits,
 		 unsigned num_depth_stencil_bits,
 		 const GLenum * db_modes, unsigned num_db_modes,
 		 const uint8_t * msaa_samples, unsigned num_msaa_modes,
-		 GLboolean enable_accum);
+		 GLboolean enable_accum, GLboolean color_depth_match);
 
 __DRIconfig **driConcatConfigs(__DRIconfig **a,
 			       __DRIconfig **b);
@@ -64,5 +56,8 @@ driGetConfigAttrib(const __DRIconfig *config,
 int
 driIndexConfigAttrib(const __DRIconfig *config, int index,
 		     unsigned int *attrib, unsigned int *value);
+
+int
+driQueryRendererIntegerCommon(__DRIscreen *psp, int param, unsigned int *value);
 
 #endif /* DRI_DEBUG_H */

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  4.1
  *
  * Copyright (C) 1999-2002  Brian Paul   All Rights Reserved.
  *
@@ -17,12 +16,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef LOCALVARS
@@ -54,7 +54,7 @@ static void TAG(emit)( struct gl_context *ctx,
 
    union emit_union *v = (union emit_union *)dest;
 
-   radeon_print(RADEON_SWRENDER, RADEON_VERBOSE, "%s\n", __FUNCTION__);
+   radeon_print(RADEON_SWRENDER, RADEON_VERBOSE, "%s\n", __func__);
 
    coord = (GLuint (*)[4])VB->AttribPtr[_TNL_ATTRIB_POS]->data;
    coord_stride = VB->AttribPtr[_TNL_ATTRIB_POS]->stride;

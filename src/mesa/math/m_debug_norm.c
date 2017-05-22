@@ -1,7 +1,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  5.1
  *
  * Copyright (C) 1999-2003  Brian Paul   All Rights Reserved.
  *
@@ -18,14 +17,16 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
  *    Gareth Hughes
  */
 
+#include "c99_math.h"
 #include "main/glheader.h"
 #include "main/context.h"
 #include "main/macros.h"
@@ -165,13 +166,13 @@ static void ref_norm_transform_normalize( const GLmatrix *mat,
 	    /* Hmmm, don't know how we could test the precalculated
 	     * length case...
 	     */
-            scale = INV_SQRTF( len );
+            scale = 1.0f / sqrtf(len);
 	    SCALE_SCALAR_3V( out[i], scale, t );
          } else {
             out[i][0] = out[i][1] = out[i][2] = 0;
          }
       } else {
-         scale = lengths[i];;
+         scale = lengths[i];
 	 SCALE_SCALAR_3V( out[i], scale, t );
       }
 
@@ -208,7 +209,7 @@ static int test_norm_function( normal_func func, int mtype, long *cycles )
 
    (void) cycles;
 
-   mat->m = (GLfloat *) _mesa_align_malloc( 16 * sizeof(GLfloat), 16 );
+   mat->m = _mesa_align_malloc( 16 * sizeof(GLfloat), 16 );
    mat->inv = m = mat->m;
 
    init_matrix( m );
@@ -241,7 +242,7 @@ static int test_norm_function( normal_func func, int mtype, long *cycles )
       ASSIGN_3V( d2[i], 0.0, 0.0, 0.0 );
       for ( j = 0 ; j < 3 ; j++ )
          s[i][j] = rnd();
-      length[i] = INV_SQRTF( LEN_SQUARED_3FV( s[i] ) );
+      length[i] = 1.0f / sqrtf( LEN_SQUARED_3FV( s[i] ) );
    }
 
    source->data = (GLfloat(*)[4]) s;
@@ -339,7 +340,7 @@ void _math_test_all_normal_transform_functions( char *description )
 
    if ( first_time ) {
       first_time = 0;
-      mesa_profile = _mesa_getenv( "MESA_PROFILE" );
+      mesa_profile = getenv( "MESA_PROFILE" );
    }
 
 #ifdef RUN_DEBUG_BENCHMARK

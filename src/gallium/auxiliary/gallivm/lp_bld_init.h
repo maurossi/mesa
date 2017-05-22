@@ -35,30 +35,37 @@
 #include "lp_bld.h"
 #include <llvm-c/ExecutionEngine.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct gallivm_state
 {
+   char *module_name;
    LLVMModuleRef module;
    LLVMExecutionEngineRef engine;
-   LLVMModuleProviderRef provider;
    LLVMTargetDataRef target;
    LLVMPassManagerRef passmgr;
    LLVMContextRef context;
    LLVMBuilderRef builder;
+   LLVMMCJITMemoryManagerRef memorymgr;
+   struct lp_generated_code *code;
    unsigned compiled;
 };
 
 
-void
+boolean
 lp_build_init(void);
 
 
 struct gallivm_state *
-gallivm_create(void);
+gallivm_create(const char *name, LLVMContextRef context);
 
 void
 gallivm_destroy(struct gallivm_state *gallivm);
 
+void
+gallivm_free_ir(struct gallivm_state *gallivm);
 
 void
 gallivm_verify_function(struct gallivm_state *gallivm,
@@ -71,17 +78,8 @@ func_pointer
 gallivm_jit_function(struct gallivm_state *gallivm,
                      LLVMValueRef func);
 
-void
-gallivm_free_function(struct gallivm_state *gallivm,
-                      LLVMValueRef func,
-                      const void * code);
-
-void
-lp_set_load_alignment(LLVMValueRef Inst,
-                       unsigned Align);
-
-void
-lp_set_store_alignment(LLVMValueRef Inst,
-		       unsigned Align);
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* !LP_BLD_INIT_H */

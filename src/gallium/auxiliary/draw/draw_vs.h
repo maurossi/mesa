@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,14 +18,14 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * 
  **************************************************************************/
 
-/* Authors:  Keith Whitwell <keith@tungstengraphics.com>
+/* Authors:  Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef DRAW_VS_H
@@ -110,9 +110,10 @@ struct draw_vertex_shader {
 
    struct tgsi_shader_info info;
    unsigned position_output;
+   unsigned viewport_index_output;
    unsigned edgeflag_output;
    unsigned clipvertex_output;
-   unsigned clipdistance_output[2];
+   unsigned ccdistance_output[PIPE_MAX_CLIP_OR_CULL_DISTANCE_ELEMENT_COUNT];
    /* Extracted from shader:
     */
    const float (*immediates)[4];
@@ -159,11 +160,6 @@ struct draw_vertex_shader *
 draw_create_vs_exec(struct draw_context *draw,
 		    const struct pipe_shader_state *templ);
 
-struct draw_vertex_shader *
-draw_create_vs_ppc(struct draw_context *draw,
-		   const struct pipe_shader_state *templ);
-
-
 struct draw_vs_variant_key;
 struct draw_vertex_shader;
 
@@ -194,12 +190,12 @@ draw_vs_create_variant_generic( struct draw_vertex_shader *vs,
 
 
 
-static INLINE int draw_vs_variant_keysize( const struct draw_vs_variant_key *key )
+static inline int draw_vs_variant_keysize( const struct draw_vs_variant_key *key )
 {
    return 2 * sizeof(int) + key->nr_elements * sizeof(struct draw_variant_element);
 }
 
-static INLINE int draw_vs_variant_key_compare( const struct draw_vs_variant_key *a,
+static inline int draw_vs_variant_key_compare( const struct draw_vs_variant_key *a,
                                          const struct draw_vs_variant_key *b )
 {
    int keysize = draw_vs_variant_keysize(a);

@@ -39,6 +39,7 @@
 
 #include "lp_bld_type.h"
 #include "lp_bld_const.h"
+#include "lp_bld_swizzle.h"
 #include "lp_bld_init.h"
 #include "lp_bld_intr.h"
 #include "lp_bld_debug.h"
@@ -68,14 +69,17 @@
 /**
  * Build code to compare two values 'a' and 'b' of 'type' using the given func.
  * \param func  one of PIPE_FUNC_x
+ * If the ordered argument is true the function will use LLVM's ordered
+ * comparisons, otherwise unordered comparisons will be used.
  * The result values will be 0 for false or ~0 for true.
  */
-LLVMValueRef
-lp_build_compare(struct gallivm_state *gallivm,
-                 const struct lp_type type,
-                 unsigned func,
-                 LLVMValueRef a,
-                 LLVMValueRef b)
+static LLVMValueRef
+lp_build_compare_ext(struct gallivm_state *gallivm,
+                     const struct lp_type type,
+                     unsigned func,
+                     LLVMValueRef a,
+                     LLVMValueRef b,
+                     boolean ordered)
 {
    LLVMBuilderRef builder = gallivm->builder;
    LLVMTypeRef int_vec_type = lp_build_int_vec_type(gallivm, type);
@@ -84,8 +88,6 @@ lp_build_compare(struct gallivm_state *gallivm,
    LLVMValueRef cond;
    LLVMValueRef res;
 
-   assert(func >= PIPE_FUNC_NEVER);
-   assert(func <= PIPE_FUNC_ALWAYS);
    assert(lp_check_value(type, a));
    assert(lp_check_value(type, b));
 
@@ -94,216 +96,37 @@ lp_build_compare(struct gallivm_state *gallivm,
    if(func == PIPE_FUNC_ALWAYS)
       return ones;
 
-#if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
-   /*
-    * There are no unsigned integer comparison instructions in SSE.
-    */
-
-   if (!type.floating && !type.sign &&
-       type.width * type.length == 128 &&
-       util_cpu_caps.has_sse2 &&
-       (func == PIPE_FUNC_LESS ||
-        func == PIPE_FUNC_LEQUAL ||
-        func == PIPE_FUNC_GREATER ||
-        func == PIPE_FUNC_GEQUAL) &&
-       (gallivm_debug & GALLIVM_DEBUG_PERF)) {
-         debug_printf("%s: inefficient <%u x i%u> unsigned comparison\n",
-                      __FUNCTION__, type.length, type.width);
-   }
-#endif
-
-#if HAVE_LLVM < 0x0207
-#if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
-   if(type.width * type.length == 128) {
-      if(type.floating && util_cpu_caps.has_sse) {
-         /* float[4] comparison */
-         LLVMTypeRef vec_type = lp_build_vec_type(gallivm, type);
-         LLVMValueRef args[3];
-         unsigned cc;
-         boolean swap;
-
-         swap = FALSE;
-         switch(func) {
-         case PIPE_FUNC_EQUAL:
-            cc = 0;
-            break;
-         case PIPE_FUNC_NOTEQUAL:
-            cc = 4;
-            break;
-         case PIPE_FUNC_LESS:
-            cc = 1;
-            break;
-         case PIPE_FUNC_LEQUAL:
-            cc = 2;
-            break;
-         case PIPE_FUNC_GREATER:
-            cc = 1;
-            swap = TRUE;
-            break;
-         case PIPE_FUNC_GEQUAL:
-            cc = 2;
-            swap = TRUE;
-            break;
-         default:
-            assert(0);
-            return lp_build_undef(gallivm, type);
-         }
-
-         if(swap) {
-            args[0] = b;
-            args[1] = a;
-         }
-         else {
-            args[0] = a;
-            args[1] = b;
-         }
-
-         args[2] = LLVMConstInt(LLVMInt8TypeInContext(gallivm->context), cc, 0);
-         res = lp_build_intrinsic(builder,
-                                  "llvm.x86.sse.cmp.ps",
-                                  vec_type,
-                                  args, 3);
-         res = LLVMBuildBitCast(builder, res, int_vec_type, "");
-         return res;
-      }
-      else if(util_cpu_caps.has_sse2) {
-         /* int[4] comparison */
-         static const struct {
-            unsigned swap:1;
-            unsigned eq:1;
-            unsigned gt:1;
-            unsigned not:1;
-         } table[] = {
-            {0, 0, 0, 1}, /* PIPE_FUNC_NEVER */
-            {1, 0, 1, 0}, /* PIPE_FUNC_LESS */
-            {0, 1, 0, 0}, /* PIPE_FUNC_EQUAL */
-            {0, 0, 1, 1}, /* PIPE_FUNC_LEQUAL */
-            {0, 0, 1, 0}, /* PIPE_FUNC_GREATER */
-            {0, 1, 0, 1}, /* PIPE_FUNC_NOTEQUAL */
-            {1, 0, 1, 1}, /* PIPE_FUNC_GEQUAL */
-            {0, 0, 0, 0}  /* PIPE_FUNC_ALWAYS */
-         };
-         const char *pcmpeq;
-         const char *pcmpgt;
-         LLVMValueRef args[2];
-         LLVMValueRef res;
-         LLVMTypeRef vec_type = lp_build_vec_type(gallivm, type);
-
-         switch (type.width) {
-         case 8:
-            pcmpeq = "llvm.x86.sse2.pcmpeq.b";
-            pcmpgt = "llvm.x86.sse2.pcmpgt.b";
-            break;
-         case 16:
-            pcmpeq = "llvm.x86.sse2.pcmpeq.w";
-            pcmpgt = "llvm.x86.sse2.pcmpgt.w";
-            break;
-         case 32:
-            pcmpeq = "llvm.x86.sse2.pcmpeq.d";
-            pcmpgt = "llvm.x86.sse2.pcmpgt.d";
-            break;
-         default:
-            assert(0);
-            return lp_build_undef(gallivm, type);
-         }
-
-         /* There are no unsigned comparison instructions. So flip the sign bit
-          * so that the results match.
-          */
-         if (table[func].gt && !type.sign) {
-            LLVMValueRef msb = lp_build_const_int_vec(gallivm, type, (unsigned long long)1 << (type.width - 1));
-            a = LLVMBuildXor(builder, a, msb, "");
-            b = LLVMBuildXor(builder, b, msb, "");
-         }
-
-         if(table[func].swap) {
-            args[0] = b;
-            args[1] = a;
-         }
-         else {
-            args[0] = a;
-            args[1] = b;
-         }
-
-         if(table[func].eq)
-            res = lp_build_intrinsic(builder, pcmpeq, vec_type, args, 2);
-         else if (table[func].gt)
-            res = lp_build_intrinsic(builder, pcmpgt, vec_type, args, 2);
-         else
-            res = LLVMConstNull(vec_type);
-
-         if(table[func].not)
-            res = LLVMBuildNot(builder, res, "");
-
-         return res;
-      }
-   } /* if (type.width * type.length == 128) */
-#endif
-#endif /* HAVE_LLVM < 0x0207 */
-
-   /* XXX: It is not clear if we should use the ordered or unordered operators */
+   assert(func > PIPE_FUNC_NEVER);
+   assert(func < PIPE_FUNC_ALWAYS);
 
    if(type.floating) {
       LLVMRealPredicate op;
       switch(func) {
-      case PIPE_FUNC_NEVER:
-         op = LLVMRealPredicateFalse;
-         break;
-      case PIPE_FUNC_ALWAYS:
-         op = LLVMRealPredicateTrue;
-         break;
       case PIPE_FUNC_EQUAL:
-         op = LLVMRealUEQ;
+         op = ordered ? LLVMRealOEQ : LLVMRealUEQ;
          break;
       case PIPE_FUNC_NOTEQUAL:
-         op = LLVMRealUNE;
+         op = ordered ? LLVMRealONE : LLVMRealUNE;
          break;
       case PIPE_FUNC_LESS:
-         op = LLVMRealULT;
+         op = ordered ? LLVMRealOLT : LLVMRealULT;
          break;
       case PIPE_FUNC_LEQUAL:
-         op = LLVMRealULE;
+         op = ordered ? LLVMRealOLE : LLVMRealULE;
          break;
       case PIPE_FUNC_GREATER:
-         op = LLVMRealUGT;
+         op = ordered ? LLVMRealOGT : LLVMRealUGT;
          break;
       case PIPE_FUNC_GEQUAL:
-         op = LLVMRealUGE;
+         op = ordered ? LLVMRealOGE : LLVMRealUGE;
          break;
       default:
          assert(0);
          return lp_build_undef(gallivm, type);
       }
 
-#if HAVE_LLVM >= 0x0207
       cond = LLVMBuildFCmp(builder, op, a, b, "");
       res = LLVMBuildSExt(builder, cond, int_vec_type, "");
-#else
-      if (type.length == 1) {
-         cond = LLVMBuildFCmp(builder, op, a, b, "");
-         res = LLVMBuildSExt(builder, cond, int_vec_type, "");
-      }
-      else {
-         unsigned i;
-
-         res = LLVMGetUndef(int_vec_type);
-
-         debug_printf("%s: warning: using slow element-wise float"
-                      " vector comparison\n", __FUNCTION__);
-         for (i = 0; i < type.length; ++i) {
-            LLVMValueRef index = lp_build_const_int32(gallivm, i);
-            cond = LLVMBuildFCmp(builder, op,
-                                 LLVMBuildExtractElement(builder, a, index, ""),
-                                 LLVMBuildExtractElement(builder, b, index, ""),
-                                 "");
-            cond = LLVMBuildSelect(builder, cond,
-                                   LLVMConstExtractElement(ones, index),
-                                   LLVMConstExtractElement(zeros, index),
-                                   "");
-            res = LLVMBuildInsertElement(builder, res, cond, index, "");
-         }
-      }
-#endif
    }
    else {
       LLVMIntPredicate op;
@@ -331,48 +154,84 @@ lp_build_compare(struct gallivm_state *gallivm,
          return lp_build_undef(gallivm, type);
       }
 
-#if HAVE_LLVM >= 0x0207
       cond = LLVMBuildICmp(builder, op, a, b, "");
       res = LLVMBuildSExt(builder, cond, int_vec_type, "");
-#else
-      if (type.length == 1) {
-         cond = LLVMBuildICmp(builder, op, a, b, "");
-         res = LLVMBuildSExt(builder, cond, int_vec_type, "");
-      }
-      else {
-         unsigned i;
-
-         res = LLVMGetUndef(int_vec_type);
-
-         if (gallivm_debug & GALLIVM_DEBUG_PERF) {
-            debug_printf("%s: using slow element-wise int"
-                         " vector comparison\n", __FUNCTION__);
-         }
-
-         for(i = 0; i < type.length; ++i) {
-            LLVMValueRef index = lp_build_const_int32(gallivm, i);
-            cond = LLVMBuildICmp(builder, op,
-                                 LLVMBuildExtractElement(builder, a, index, ""),
-                                 LLVMBuildExtractElement(builder, b, index, ""),
-                                 "");
-            cond = LLVMBuildSelect(builder, cond,
-                                   LLVMConstExtractElement(ones, index),
-                                   LLVMConstExtractElement(zeros, index),
-                                   "");
-            res = LLVMBuildInsertElement(builder, res, cond, index, "");
-         }
-      }
-#endif
    }
 
    return res;
 }
 
+/**
+ * Build code to compare two values 'a' and 'b' of 'type' using the given func.
+ * \param func  one of PIPE_FUNC_x
+ * The result values will be 0 for false or ~0 for true.
+ */
+LLVMValueRef
+lp_build_compare(struct gallivm_state *gallivm,
+                 const struct lp_type type,
+                 unsigned func,
+                 LLVMValueRef a,
+                 LLVMValueRef b)
+{
+   LLVMTypeRef int_vec_type = lp_build_int_vec_type(gallivm, type);
+   LLVMValueRef zeros = LLVMConstNull(int_vec_type);
+   LLVMValueRef ones = LLVMConstAllOnes(int_vec_type);
 
+   assert(lp_check_value(type, a));
+   assert(lp_check_value(type, b));
+
+   if(func == PIPE_FUNC_NEVER)
+      return zeros;
+   if(func == PIPE_FUNC_ALWAYS)
+      return ones;
+
+   assert(func > PIPE_FUNC_NEVER);
+   assert(func < PIPE_FUNC_ALWAYS);
+
+#if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
+   /*
+    * There are no unsigned integer comparison instructions in SSE.
+    */
+
+   if (!type.floating && !type.sign &&
+       type.width * type.length == 128 &&
+       util_cpu_caps.has_sse2 &&
+       (func == PIPE_FUNC_LESS ||
+        func == PIPE_FUNC_LEQUAL ||
+        func == PIPE_FUNC_GREATER ||
+        func == PIPE_FUNC_GEQUAL) &&
+       (gallivm_debug & GALLIVM_DEBUG_PERF)) {
+         debug_printf("%s: inefficient <%u x i%u> unsigned comparison\n",
+                      __FUNCTION__, type.length, type.width);
+   }
+#endif
+
+   return lp_build_compare_ext(gallivm, type, func, a, b, FALSE);
+}
 
 /**
  * Build code to compare two values 'a' and 'b' using the given func.
  * \param func  one of PIPE_FUNC_x
+ * If the operands are floating point numbers, the function will use
+ * ordered comparison which means that it will return true if both
+ * operands are not a NaN and the specified condition evaluates to true.
+ * The result values will be 0 for false or ~0 for true.
+ */
+LLVMValueRef
+lp_build_cmp_ordered(struct lp_build_context *bld,
+                     unsigned func,
+                     LLVMValueRef a,
+                     LLVMValueRef b)
+{
+   return lp_build_compare_ext(bld->gallivm, bld->type, func, a, b, TRUE);
+}
+
+/**
+ * Build code to compare two values 'a' and 'b' using the given func.
+ * \param func  one of PIPE_FUNC_x
+ * If the operands are floating point numbers, the function will use
+ * unordered comparison which means that it will return true if either
+ * operand is a NaN or the specified condition evaluates to true.
  * The result values will be 0 for false or ~0 for true.
  */
 LLVMValueRef
@@ -458,37 +317,42 @@ lp_build_select(struct lp_build_context *bld,
       mask = LLVMBuildTrunc(builder, mask, LLVMInt1TypeInContext(lc), "");
       res = LLVMBuildSelect(builder, mask, a, b, "");
    }
-   else if (0) {
+   else if (!(HAVE_LLVM == 0x0307) &&
+            (LLVMIsConstant(mask) ||
+             LLVMGetInstructionOpcode(mask) == LLVMSExt)) {
       /* Generate a vector select.
        *
-       * XXX: Using vector selects would avoid emitting intrinsics, but they aren't
-       * properly supported yet.
-       *
-       * LLVM 3.0 includes experimental support provided the -promote-elements
-       * options is passed to LLVM's command line (e.g., via
-       * llvm::cl::ParseCommandLineOptions), but resulting code quality is much
-       * worse, probably because some optimization passes don't know how to
-       * handle vector selects.
-       *
-       * See also:
-       * - http://lists.cs.uiuc.edu/pipermail/llvmdev/2011-October/043659.html
+       * Using vector selects should avoid emitting intrinsics hence avoid
+       * hindering optimization passes, but vector selects weren't properly
+       * supported yet for a long time, and LLVM will generate poor code when
+       * the mask is not the result of a comparison.
+       * Also, llvm 3.7 may miscompile them (bug 94972).
+       * XXX: Even if the instruction was an SExt, this may still produce
+       * terrible code. Try piglit stencil-twoside.
        */
 
       /* Convert the mask to a vector of booleans.
-       * XXX: There are two ways to do this. Decide what's best.
+       *
+       * XXX: In x86 the mask is controlled by the MSB, so if we shifted the
+       * mask by `type.width - 1`, LLVM should realize the mask is ready.  Alas
+       * what really happens is that LLVM will emit two shifts back to back.
        */
-      if (1) {
-         LLVMTypeRef bool_vec_type = LLVMVectorType(LLVMInt1TypeInContext(lc), type.length);
-         mask = LLVMBuildTrunc(builder, mask, bool_vec_type, "");
-      } else {
-         mask = LLVMBuildICmp(builder, LLVMIntNE, mask, LLVMConstNull(bld->int_vec_type), "");
+      if (0) {
+         LLVMValueRef shift = LLVMConstInt(bld->int_elem_type, bld->type.width - 1, 0);
+         shift = lp_build_broadcast(bld->gallivm, bld->int_vec_type, shift);
+         mask = LLVMBuildLShr(builder, mask, shift, "");
       }
+      LLVMTypeRef bool_vec_type = LLVMVectorType(LLVMInt1TypeInContext(lc), type.length);
+      mask = LLVMBuildTrunc(builder, mask, bool_vec_type, "");
+
       res = LLVMBuildSelect(builder, mask, a, b, "");
    }
    else if (((util_cpu_caps.has_sse4_1 &&
               type.width * type.length == 128) ||
              (util_cpu_caps.has_avx &&
-              type.width * type.length == 256 && type.width >= 32)) &&
+              type.width * type.length == 256 && type.width >= 32) ||
+             (util_cpu_caps.has_avx2 &&
+              type.width * type.length == 256)) &&
             !LLVMIsConstant(a) &&
             !LLVMIsConstant(b) &&
             !LLVMIsConstant(mask)) {
@@ -505,9 +369,13 @@ lp_build_select(struct lp_build_context *bld,
            intrinsic = "llvm.x86.avx.blendv.pd.256";
            arg_type = LLVMVectorType(LLVMDoubleTypeInContext(lc), 4);
          }
-         else {
+         else if (type.width == 32) {
             intrinsic = "llvm.x86.avx.blendv.ps.256";
             arg_type = LLVMVectorType(LLVMFloatTypeInContext(lc), 8);
+         } else {
+            assert(util_cpu_caps.has_avx2);
+            intrinsic = "llvm.x86.avx2.pblendvb";
+            arg_type = LLVMVectorType(LLVMInt8TypeInContext(lc), 32);
          }
       }
       else if (type.floating &&
@@ -537,7 +405,7 @@ lp_build_select(struct lp_build_context *bld,
       args[2] = mask;
 
       res = lp_build_intrinsic(builder, intrinsic,
-                               arg_type, args, Elements(args));
+                               arg_type, args, ARRAY_SIZE(args), 0);
 
       if (arg_type != bld->vec_type) {
          res = LLVMBuildBitCast(builder, res, bld->vec_type, "");
@@ -560,7 +428,8 @@ LLVMValueRef
 lp_build_select_aos(struct lp_build_context *bld,
                     unsigned mask,
                     LLVMValueRef a,
-                    LLVMValueRef b)
+                    LLVMValueRef b,
+                    unsigned num_channels)
 {
    LLVMBuilderRef builder = bld->gallivm->builder;
    const struct lp_type type = bld->type;
@@ -594,8 +463,8 @@ lp_build_select_aos(struct lp_build_context *bld,
       LLVMTypeRef elem_type = LLVMInt32TypeInContext(bld->gallivm->context);
       LLVMValueRef shuffles[LP_MAX_VECTOR_LENGTH];
 
-      for(j = 0; j < n; j += 4)
-         for(i = 0; i < 4; ++i)
+      for(j = 0; j < n; j += num_channels)
+         for(i = 0; i < num_channels; ++i)
             shuffles[j + i] = LLVMConstInt(elem_type,
                                            (mask & (1 << i) ? 0 : n) + j + i,
                                            0);
@@ -603,7 +472,7 @@ lp_build_select_aos(struct lp_build_context *bld,
       return LLVMBuildShuffleVector(builder, a, b, LLVMConstVector(shuffles, n), "");
    }
    else {
-      LLVMValueRef mask_vec = lp_build_const_mask_aos(bld->gallivm, type, mask);
+      LLVMValueRef mask_vec = lp_build_const_mask_aos(bld->gallivm, type, mask, num_channels);
       return lp_build_select(bld, mask_vec, a, b);
    }
 }

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.3
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -33,8 +33,10 @@
  */
 
 
+#include <stdio.h>
 #include "main/glheader.h"
 #include "GL/osmesa.h"
+#include "main/api_exec.h"
 #include "main/context.h"
 #include "main/extensions.h"
 #include "main/formats.h"
@@ -44,6 +46,8 @@
 #include "main/mipmap.h"
 #include "main/mtypes.h"
 #include "main/renderbuffer.h"
+#include "main/version.h"
+#include "main/vtxfmt.h"
 #include "swrast/swrast.h"
 #include "swrast_setup/swrast_setup.h"
 #include "swrast/s_context.h"
@@ -80,7 +84,7 @@ struct osmesa_context
 };
 
 
-static INLINE OSMesaContext
+static inline OSMesaContext
 OSMESA_CONTEXT(struct gl_context *ctx)
 {
    /* Just cast, since we're using structure containment */
@@ -194,26 +198,39 @@ osmesa_choose_line_function( struct gl_context *ctx )
    const OSMesaContext osmesa = OSMESA_CONTEXT(ctx);
    const SWcontext *swrast = SWRAST_CONTEXT(ctx);
 
-   if (ctx->RenderMode != GL_RENDER)      return NULL;
-   if (ctx->Line.SmoothFlag)              return NULL;
-   if (ctx->Texture._EnabledUnits)        return NULL;
-   if (ctx->Light.ShadeModel != GL_FLAT)  return NULL;
-   if (ctx->Line.Width != 1.0F)           return NULL;
-   if (ctx->Line.StippleFlag)             return NULL;
-   if (ctx->Line.SmoothFlag)              return NULL;
+   if (ctx->DrawBuffer &&
+       ctx->DrawBuffer->Visual.redBits == 32) {
+      /* the special-case line functions in this file don't work
+       * for float color channels.
+       */
+      return NULL;
+   }
+
+   if (ctx->RenderMode != GL_RENDER ||
+       ctx->Line.SmoothFlag ||
+       ctx->Texture._MaxEnabledTexImageUnit == -1 ||
+       ctx->Light.ShadeModel != GL_FLAT ||
+       ctx->Line.Width != 1.0F ||
+       ctx->Line.StippleFlag ||
+       ctx->Line.SmoothFlag) {
+      return NULL;
+   }
+
    if (osmesa->format != OSMESA_RGBA &&
        osmesa->format != OSMESA_BGRA &&
-       osmesa->format != OSMESA_ARGB)     return NULL;
+       osmesa->format != OSMESA_ARGB) {
+      return NULL;
+   }
 
-   if (swrast->_RasterMask==DEPTH_BIT
-       && ctx->Depth.Func==GL_LESS
-       && ctx->Depth.Mask==GL_TRUE
+   if (swrast->_RasterMask == DEPTH_BIT
+       && ctx->Depth.Func == GL_LESS
+       && ctx->Depth.Mask == GL_TRUE
        && ctx->Visual.depthBits == DEFAULT_SOFTWARE_DEPTH_BITS) {
-      return (swrast_line_func) flat_rgba_z_line;
+      return flat_rgba_z_line;
    }
 
    if (swrast->_RasterMask == 0) {
-      return (swrast_line_func) flat_rgba_line;
+      return flat_rgba_line;
    }
 
    return (swrast_line_func) NULL;
@@ -295,29 +312,45 @@ osmesa_choose_triangle_function( struct gl_context *ctx )
    const OSMesaContext osmesa = OSMESA_CONTEXT(ctx);
    const SWcontext *swrast = SWRAST_CONTEXT(ctx);
 
-   if (ctx->RenderMode != GL_RENDER)    return (swrast_tri_func) NULL;
-   if (ctx->Polygon.SmoothFlag)         return (swrast_tri_func) NULL;
-   if (ctx->Polygon.StippleFlag)        return (swrast_tri_func) NULL;
-   if (ctx->Texture._EnabledUnits)      return (swrast_tri_func) NULL;
+   if (ctx->DrawBuffer &&
+       ctx->DrawBuffer->Visual.redBits == 32) {
+      /* the special-case triangle functions in this file don't work
+       * for float color channels.
+       */
+      return NULL;
+   }
+
+   if (ctx->RenderMode != GL_RENDER ||
+       ctx->Polygon.SmoothFlag ||
+       ctx->Polygon.StippleFlag ||
+       ctx->Texture._MaxEnabledTexImageUnit != -1) {
+      return NULL;
+   }
+
    if (osmesa->format != OSMESA_RGBA &&
        osmesa->format != OSMESA_BGRA &&
-       osmesa->format != OSMESA_ARGB)   return (swrast_tri_func) NULL;
-   if (ctx->Polygon.CullFlag && 
-       ctx->Polygon.CullFaceMode == GL_FRONT_AND_BACK)
-                                        return (swrast_tri_func) NULL;
+       osmesa->format != OSMESA_ARGB) {
+      return NULL;
+   }
+
+   if (ctx->Polygon.CullFlag &&
+       ctx->Polygon.CullFaceMode == GL_FRONT_AND_BACK) {
+      return NULL;
+   }
 
    if (swrast->_RasterMask == DEPTH_BIT &&
        ctx->Depth.Func == GL_LESS &&
        ctx->Depth.Mask == GL_TRUE &&
        ctx->Visual.depthBits == DEFAULT_SOFTWARE_DEPTH_BITS) {
       if (ctx->Light.ShadeModel == GL_SMOOTH) {
-         return (swrast_tri_func) smooth_rgba_z_triangle;
+         return smooth_rgba_z_triangle;
       }
       else {
-         return (swrast_tri_func) flat_rgba_z_triangle;
+         return flat_rgba_z_triangle;
       }
    }
-   return (swrast_tri_func) NULL;
+
+   return NULL;
 }
 
 
@@ -417,12 +450,12 @@ osmesa_renderbuffer_storage(struct gl_context *ctx, struct gl_renderbuffer *rb,
    if (osmesa->format == OSMESA_RGBA) {
       if (osmesa->DataType == GL_UNSIGNED_BYTE) {
          if (_mesa_little_endian())
-            rb->Format = MESA_FORMAT_RGBA8888_REV;
+            rb->Format = MESA_FORMAT_R8G8B8A8_UNORM;
          else
-            rb->Format = MESA_FORMAT_RGBA8888;
+            rb->Format = MESA_FORMAT_A8B8G8R8_UNORM;
       }
       else if (osmesa->DataType == GL_UNSIGNED_SHORT) {
-         rb->Format = MESA_FORMAT_RGBA_16;
+         rb->Format = MESA_FORMAT_RGBA_UNORM16;
       }
       else {
          rb->Format = MESA_FORMAT_RGBA_FLOAT32;
@@ -431,13 +464,13 @@ osmesa_renderbuffer_storage(struct gl_context *ctx, struct gl_renderbuffer *rb,
    else if (osmesa->format == OSMESA_BGRA) {
       if (osmesa->DataType == GL_UNSIGNED_BYTE) {
          if (_mesa_little_endian())
-            rb->Format = MESA_FORMAT_ARGB8888;
+            rb->Format = MESA_FORMAT_B8G8R8A8_UNORM;
          else
-            rb->Format = MESA_FORMAT_ARGB8888_REV;
+            rb->Format = MESA_FORMAT_A8R8G8B8_UNORM;
       }
       else if (osmesa->DataType == GL_UNSIGNED_SHORT) {
          _mesa_warning(ctx, "Unsupported OSMesa format BGRA/GLushort");
-         rb->Format = MESA_FORMAT_RGBA_16; /* not exactly right */
+         rb->Format = MESA_FORMAT_RGBA_UNORM16; /* not exactly right */
       }
       else {
          _mesa_warning(ctx, "Unsupported OSMesa format BGRA/GLfloat");
@@ -447,13 +480,13 @@ osmesa_renderbuffer_storage(struct gl_context *ctx, struct gl_renderbuffer *rb,
    else if (osmesa->format == OSMESA_ARGB) {
       if (osmesa->DataType == GL_UNSIGNED_BYTE) {
          if (_mesa_little_endian())
-            rb->Format = MESA_FORMAT_ARGB8888_REV;
+            rb->Format = MESA_FORMAT_A8R8G8B8_UNORM;
          else
-            rb->Format = MESA_FORMAT_ARGB8888;
+            rb->Format = MESA_FORMAT_B8G8R8A8_UNORM;
       }
       else if (osmesa->DataType == GL_UNSIGNED_SHORT) {
          _mesa_warning(ctx, "Unsupported OSMesa format ARGB/GLushort");
-         rb->Format = MESA_FORMAT_RGBA_16; /* not exactly right */
+         rb->Format = MESA_FORMAT_RGBA_UNORM16; /* not exactly right */
       }
       else {
          _mesa_warning(ctx, "Unsupported OSMesa format ARGB/GLfloat");
@@ -462,11 +495,11 @@ osmesa_renderbuffer_storage(struct gl_context *ctx, struct gl_renderbuffer *rb,
    }
    else if (osmesa->format == OSMESA_RGB) {
       if (osmesa->DataType == GL_UNSIGNED_BYTE) {
-         rb->Format = MESA_FORMAT_RGB888;
+         rb->Format = MESA_FORMAT_BGR_UNORM8;
       }
       else if (osmesa->DataType == GL_UNSIGNED_SHORT) {
          _mesa_warning(ctx, "Unsupported OSMesa format RGB/GLushort");
-         rb->Format = MESA_FORMAT_RGBA_16; /* not exactly right */
+         rb->Format = MESA_FORMAT_RGBA_UNORM16; /* not exactly right */
       }
       else {
          _mesa_warning(ctx, "Unsupported OSMesa format RGB/GLfloat");
@@ -475,11 +508,11 @@ osmesa_renderbuffer_storage(struct gl_context *ctx, struct gl_renderbuffer *rb,
    }
    else if (osmesa->format == OSMESA_BGR) {
       if (osmesa->DataType == GL_UNSIGNED_BYTE) {
-         rb->Format = MESA_FORMAT_BGR888;
+         rb->Format = MESA_FORMAT_RGB_UNORM8;
       }
       else if (osmesa->DataType == GL_UNSIGNED_SHORT) {
          _mesa_warning(ctx, "Unsupported OSMesa format BGR/GLushort");
-         rb->Format = MESA_FORMAT_RGBA_16; /* not exactly right */
+         rb->Format = MESA_FORMAT_RGBA_UNORM16; /* not exactly right */
       }
       else {
          _mesa_warning(ctx, "Unsupported OSMesa format BGR/GLfloat");
@@ -487,8 +520,8 @@ osmesa_renderbuffer_storage(struct gl_context *ctx, struct gl_renderbuffer *rb,
       }
    }
    else if (osmesa->format == OSMESA_RGB_565) {
-      ASSERT(osmesa->DataType == GL_UNSIGNED_BYTE);
-      rb->Format = MESA_FORMAT_RGB565;
+      assert(osmesa->DataType == GL_UNSIGNED_BYTE);
+      rb->Format = MESA_FORMAT_B5G6R5_UNORM;
    }
    else {
       _mesa_problem(ctx, "bad pixel format in osmesa renderbuffer_storage");
@@ -612,10 +645,100 @@ GLAPI OSMesaContext GLAPIENTRY
 OSMesaCreateContextExt( GLenum format, GLint depthBits, GLint stencilBits,
                         GLint accumBits, OSMesaContext sharelist )
 {
+   int attribs[100], n = 0;
+
+   attribs[n++] = OSMESA_FORMAT;
+   attribs[n++] = format;
+   attribs[n++] = OSMESA_DEPTH_BITS;
+   attribs[n++] = depthBits;
+   attribs[n++] = OSMESA_STENCIL_BITS;
+   attribs[n++] = stencilBits;
+   attribs[n++] = OSMESA_ACCUM_BITS;
+   attribs[n++] = accumBits;
+   attribs[n++] = 0;
+
+   return OSMesaCreateContextAttribs(attribs, sharelist);
+}
+
+
+/**
+ * New in Mesa 11.2
+ *
+ * Create context with attribute list.
+ */
+GLAPI OSMesaContext GLAPIENTRY
+OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
+{
    OSMesaContext osmesa;
    struct dd_function_table functions;
    GLint rind, gind, bind, aind;
    GLint redBits = 0, greenBits = 0, blueBits = 0, alphaBits =0;
+   GLenum format = OSMESA_RGBA;
+   GLint depthBits = 0, stencilBits = 0, accumBits = 0;
+   int profile = OSMESA_COMPAT_PROFILE, version_major = 1, version_minor = 0;
+   gl_api api_profile = API_OPENGL_COMPAT;
+   int i;
+
+   for (i = 0; attribList[i]; i += 2) {
+      switch (attribList[i]) {
+      case OSMESA_FORMAT:
+         format = attribList[i+1];
+         switch (format) {
+         case OSMESA_COLOR_INDEX:
+         case OSMESA_RGBA:
+         case OSMESA_BGRA:
+         case OSMESA_ARGB:
+         case OSMESA_RGB:
+         case OSMESA_BGR:
+         case OSMESA_RGB_565:
+            /* legal */
+            break;
+         default:
+            return NULL;
+         }
+         break;
+      case OSMESA_DEPTH_BITS:
+         depthBits = attribList[i+1];
+         if (depthBits < 0)
+            return NULL;
+         break;
+      case OSMESA_STENCIL_BITS:
+         stencilBits = attribList[i+1];
+         if (stencilBits < 0)
+            return NULL;
+         break;
+      case OSMESA_ACCUM_BITS:
+         accumBits = attribList[i+1];
+         if (accumBits < 0)
+            return NULL;
+         break;
+      case OSMESA_PROFILE:
+         profile = attribList[i+1];
+         if (profile == OSMESA_COMPAT_PROFILE)
+            api_profile = API_OPENGL_COMPAT;
+         else if (profile == OSMESA_CORE_PROFILE)
+            api_profile = API_OPENGL_CORE;
+         else
+            return NULL;
+         break;
+      case OSMESA_CONTEXT_MAJOR_VERSION:
+         version_major = attribList[i+1];
+         if (version_major < 1)
+            return NULL;
+         break;
+      case OSMESA_CONTEXT_MINOR_VERSION:
+         version_minor = attribList[i+1];
+         if (version_minor < 0)
+            return NULL;
+         break;
+      case 0:
+         /* end of list */
+         break;
+      default:
+         fprintf(stderr, "Bad attribute in OSMesaCreateContextAttribs()\n");
+         return NULL;
+      }
+   }
 
    rind = gind = bind = aind = 0;
    if (format==OSMESA_RGBA) {
@@ -707,25 +830,19 @@ OSMesaCreateContextExt( GLenum format, GLint depthBits, GLint stencilBits,
       /* override with our functions */
       functions.GetString = get_string;
       functions.UpdateState = osmesa_update_state;
-      functions.GetBufferSize = NULL;
 
       if (!_mesa_initialize_context(&osmesa->mesa,
-                                    API_OPENGL,
+                                    api_profile,
                                     osmesa->gl_visual,
                                     sharelist ? &sharelist->mesa
                                               : (struct gl_context *) NULL,
-                                    &functions, (void *) osmesa)) {
+                                    &functions)) {
          _mesa_destroy_visual( osmesa->gl_visual );
          free(osmesa);
          return NULL;
       }
 
       _mesa_enable_sw_extensions(&(osmesa->mesa));
-      _mesa_enable_1_3_extensions(&(osmesa->mesa));
-      _mesa_enable_1_4_extensions(&(osmesa->mesa));
-      _mesa_enable_1_5_extensions(&(osmesa->mesa));
-      _mesa_enable_2_0_extensions(&(osmesa->mesa));
-      _mesa_enable_2_1_extensions(&(osmesa->mesa));
 
       osmesa->gl_buffer = _mesa_create_framebuffer(osmesa->gl_visual);
       if (!osmesa->gl_buffer) {
@@ -789,6 +906,19 @@ OSMesaCreateContextExt( GLenum format, GLint depthBits, GLint stencilBits,
          swrast = SWRAST_CONTEXT( ctx );
          swrast->choose_line = osmesa_choose_line;
          swrast->choose_triangle = osmesa_choose_triangle;
+
+         _mesa_compute_version(ctx);
+
+         if (ctx->Version < version_major * 10 + version_minor) {
+            _mesa_destroy_visual(osmesa->gl_visual);
+            _mesa_free_context_data(ctx);
+            free(osmesa);
+            return NULL;
+         }
+
+         /* Exec table initialization requires the version to be computed */
+         _mesa_initialize_dispatch_tables(ctx);
+         _mesa_initialize_vbo_vtxfmt(ctx);
       }
    }
    return osmesa;
@@ -836,6 +966,9 @@ OSMesaDestroyContext( OSMesaContext osmesa )
  * If the context's viewport hasn't been initialized yet, it will now be
  * initialized to (0,0,width,height).
  *
+ * If both the context and the buffer are null, the current context will be
+ * unbound.
+ *
  * Input:  osmesa - the rendering context
  *         buffer - the image buffer memory
  *         type - data type for pixel components
@@ -853,6 +986,10 @@ GLAPI GLboolean GLAPIENTRY
 OSMesaMakeCurrent( OSMesaContext osmesa, void *buffer, GLenum type,
                    GLsizei width, GLsizei height )
 {
+   if (!osmesa && !buffer) {
+      return _mesa_make_current(NULL, NULL, NULL);
+   }
+
    if (!osmesa || !buffer ||
        width < 1 || height < 1 ||
        width > SWRAST_MAX_WIDTH || height > SWRAST_MAX_HEIGHT) {
@@ -908,7 +1045,6 @@ OSMesaMakeCurrent( OSMesaContext osmesa, void *buffer, GLenum type,
     * osmesa_renderbuffer_storage() function to get called.
     */
    _mesa_resize_framebuffer(&osmesa->mesa, osmesa->gl_buffer, width, height);
-   osmesa->gl_buffer->Initialized = GL_TRUE; /* XXX TEMPORARY? */
 
    _mesa_make_current( &osmesa->mesa, osmesa->gl_buffer, osmesa->gl_buffer );
 
@@ -1089,15 +1225,17 @@ struct name_function
 static struct name_function functions[] = {
    { "OSMesaCreateContext", (OSMESAproc) OSMesaCreateContext },
    { "OSMesaCreateContextExt", (OSMESAproc) OSMesaCreateContextExt },
+   { "OSMesaCreateContextAttribs", (OSMESAproc) OSMesaCreateContextAttribs },
    { "OSMesaDestroyContext", (OSMESAproc) OSMesaDestroyContext },
    { "OSMesaMakeCurrent", (OSMESAproc) OSMesaMakeCurrent },
    { "OSMesaGetCurrentContext", (OSMESAproc) OSMesaGetCurrentContext },
-   { "OSMesaPixelsStore", (OSMESAproc) OSMesaPixelStore },
+   { "OSMesaPixelStore", (OSMESAproc) OSMesaPixelStore },
    { "OSMesaGetIntegerv", (OSMESAproc) OSMesaGetIntegerv },
    { "OSMesaGetDepthBuffer", (OSMESAproc) OSMesaGetDepthBuffer },
    { "OSMesaGetColorBuffer", (OSMESAproc) OSMesaGetColorBuffer },
    { "OSMesaGetProcAddress", (OSMESAproc) OSMesaGetProcAddress },
    { "OSMesaColorClamp", (OSMESAproc) OSMesaColorClamp },
+   { "OSMesaPostprocess", (OSMESAproc) OSMesaPostprocess },
    { NULL, NULL }
 };
 
@@ -1126,6 +1264,16 @@ OSMesaColorClamp(GLboolean enable)
       osmesa->mesa.Color.ClampFragmentColor = GL_FIXED_ONLY_ARB;
    }
 }
+
+
+GLAPI void GLAPIENTRY
+OSMesaPostprocess(OSMesaContext osmesa, const char *filter,
+                  unsigned enable_value)
+{
+   fprintf(stderr,
+           "OSMesaPostProcess() is only available with gallium drivers\n");
+}
+
 
 
 /**

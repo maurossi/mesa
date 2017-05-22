@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -38,6 +38,16 @@
 struct pipe_resource;
 
 
+struct st_texture_image_transfer {
+   struct pipe_transfer *transfer;
+
+   /* For ETC fallback. */
+   GLubyte *temp_data; /**< Temporary ETC texture storage. */
+   unsigned temp_stride; /**< Stride of the ETC texture storage. */
+   GLubyte *map; /**< Saved map pointer of the uncompressed transfer. */
+};
+
+
 /**
  * Subclass of gl_texure_image.
  */
@@ -45,19 +55,22 @@ struct st_texture_image
 {
    struct gl_texture_image base;
 
-   /** Used to store texture data that doesn't fit in the parent
-    * object's mipmap buffer.
-    */
-   GLubyte *TexData;
-
    /* If stImage->pt != NULL, image data is stored here.
-    * Else if stImage->TexData != NULL, image is stored there.
     * Else there is no image data.
     */
    struct pipe_resource *pt;
 
-   struct pipe_transfer *transfer;
-};
+   /* List of transfers, allocated on demand.
+    * transfer[layer] is a mapping for that layer.
+    */
+   struct st_texture_image_transfer *transfer;
+   unsigned num_transfers;
+
+   /* For ETC images, keep track of the original data. This is necessary for
+    * mapping/unmapping, as well as image copies.
+    */
+   GLubyte *etc_data;
+ };
 
 
 /**
@@ -71,43 +84,72 @@ struct st_texture_object
     */
    GLuint lastLevel;
 
-   /** The size of the level=0 mipmap image.
-    * Note that the number of 1D array layers will be in height0 and the
-    * number of 2D array layers will be in depth0, as in GL.
-    */
-   GLuint width0, height0, depth0;
-
    /* On validation any active images held in main memory or in other
     * textures will be copied to this texture and the old storage freed.
     */
    struct pipe_resource *pt;
 
-   /* Default sampler view attached to this texture object. Created lazily
-    * on first binding.
-    */
-   struct pipe_sampler_view *sampler_view;
+   /* Number of views in sampler_views array */
+   GLuint num_sampler_views;
 
-   /* True if there is/was a surface bound to this texture object.  It helps
-    * track whether the texture object is surface based or not.
+   /* Array of sampler views (one per context) attached to this texture
+    * object. Created lazily on first binding in context.
+    */
+   struct pipe_sampler_view **sampler_views;
+
+   /* True if this texture comes from the window system. Such a texture
+    * cannot be reallocated and the format can only be changed with a sampler
+    * view or a surface.
     */
    GLboolean surface_based;
+
+   /* If surface_based is true, this format should be used for all sampler
+    * views and surfaces instead of pt->format.
+    */
+   enum pipe_format surface_format;
+
+   /* When non-zero, samplers should use this layer instead of the one
+    * specified by the GL state.
+    *
+    * This is used for VDPAU interop, where imported pipe_resources may be
+    * array textures (containing layers with different fields) even though the
+    * GL state describes one non-array texture per field.
+    */
+   uint layer_override;
+
+   /** The glsl version of the shader seen during the previous validation */
+   unsigned prev_glsl_version;
+   /** The value of the sampler's sRGBDecode state at the previous validation */
+   GLenum prev_sRGBDecode;
 };
 
 
-static INLINE struct st_texture_image *
+static inline struct st_texture_image *
 st_texture_image(struct gl_texture_image *img)
 {
    return (struct st_texture_image *) img;
 }
 
-static INLINE struct st_texture_object *
+static inline const struct st_texture_image *
+st_texture_image_const(const struct gl_texture_image *img)
+{
+   return (const struct st_texture_image *) img;
+}
+
+static inline struct st_texture_object *
 st_texture_object(struct gl_texture_object *obj)
 {
    return (struct st_texture_object *) obj;
 }
 
+static inline const struct st_texture_object *
+st_texture_object_const(const struct gl_texture_object *obj)
+{
+   return (const struct st_texture_object *) obj;
+}
 
-static INLINE struct pipe_resource *
+
+static inline struct pipe_resource *
 st_get_texobj_resource(struct gl_texture_object *texObj)
 {
    struct st_texture_object *stObj = st_texture_object(texObj);
@@ -115,33 +157,34 @@ st_get_texobj_resource(struct gl_texture_object *texObj)
 }
 
 
-static INLINE struct pipe_resource *
+static inline struct pipe_resource *
 st_get_stobj_resource(struct st_texture_object *stObj)
 {
    return stObj ? stObj->pt : NULL;
 }
 
 
-static INLINE struct pipe_sampler_view *
-st_create_texture_sampler_view_format(struct pipe_context *pipe,
-                                      struct pipe_resource *texture,
-                                      enum pipe_format format)
+static inline struct st_texture_object *
+st_get_texture_object(struct gl_context *ctx,
+                      const struct gl_program *prog,
+                      unsigned unit)
 {
-   struct pipe_sampler_view templ;
+   const GLuint texUnit = prog->SamplerUnits[unit];
+   struct gl_texture_object *texObj = ctx->Texture.Unit[texUnit]._Current;
 
-   u_sampler_view_default_template(&templ, texture, format);
+   if (!texObj)
+      return NULL;
 
-   return pipe->create_sampler_view(pipe, texture, &templ);
+   return st_texture_object(texObj);
 }
 
-static INLINE struct pipe_sampler_view *
-st_create_texture_sampler_view(struct pipe_context *pipe,
-                               struct pipe_resource *texture)
+static inline enum pipe_format
+st_get_view_format(struct st_texture_object *stObj)
 {
-   return st_create_texture_sampler_view_format(pipe, texture,
-                                                texture->format);
+   if (!stObj)
+      return PIPE_FORMAT_NONE;
+   return stObj->surface_based ? stObj->surface_format : stObj->pt->format;
 }
-
 
 
 extern struct pipe_resource *
@@ -153,6 +196,7 @@ st_texture_create(struct st_context *st,
                   GLuint height0,
                   GLuint depth0,
                   GLuint layers,
+                  GLuint nr_samples,
                   GLuint tex_usage );
 
 
@@ -169,23 +213,23 @@ st_gl_texture_dims_to_pipe_dims(GLenum texture,
 /* Check if an image fits into an existing texture object.
  */
 extern GLboolean
-st_texture_match_image(const struct pipe_resource *pt,
+st_texture_match_image(struct st_context *st,
+                       const struct pipe_resource *pt,
                        const struct gl_texture_image *image);
 
 /* Return a pointer to an image within a texture.  Return image stride as
  * well.
  */
 extern GLubyte *
-st_texture_image_map(struct st_context *st,
-                     struct st_texture_image *stImage,
-		     GLuint zoffset,
+st_texture_image_map(struct st_context *st, struct st_texture_image *stImage,
                      enum pipe_transfer_usage usage,
-                     unsigned x, unsigned y,
-                     unsigned w, unsigned h);
+                     GLuint x, GLuint y, GLuint z,
+                     GLuint w, GLuint h, GLuint d,
+                     struct pipe_transfer **transfer);
 
 extern void
 st_texture_image_unmap(struct st_context *st,
-                       struct st_texture_image *stImage);
+                       struct st_texture_image *stImage, unsigned slice);
 
 
 /* Return pointers to each 2d slice within an image.  Indexed by depth
@@ -193,16 +237,6 @@ st_texture_image_unmap(struct st_context *st,
  */
 extern const GLuint *
 st_texture_depth_offsets(struct pipe_resource *pt, GLuint level);
-
-
-/* Upload an image into a texture
- */
-extern void
-st_texture_image_data(struct st_context *st,
-                      struct pipe_resource *dst,
-                      GLuint face, GLuint level, void *src,
-                      GLuint src_row_pitch, GLuint src_image_pitch);
-
 
 /* Copy an image between two textures
  */
@@ -215,5 +249,9 @@ st_texture_image_copy(struct pipe_context *pipe,
 
 extern struct pipe_resource *
 st_create_color_map_texture(struct gl_context *ctx);
+
+
+bool
+st_etc_fallback(struct st_context *st, struct gl_texture_image *texImage);
 
 #endif

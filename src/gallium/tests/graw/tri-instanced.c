@@ -17,8 +17,8 @@
 
 
 enum pipe_format formats[] = {
-   PIPE_FORMAT_R8G8B8A8_UNORM,
-   PIPE_FORMAT_B8G8R8A8_UNORM,
+   PIPE_FORMAT_RGBA8888_UNORM,
+   PIPE_FORMAT_BGRA8888_UNORM,
    PIPE_FORMAT_NONE
 };
 
@@ -80,25 +80,23 @@ static ushort indices[3] = { 0, 2, 1 };
 
 static void set_viewport( float x, float y,
                           float width, float height,
-                          float near, float far)
+                          float zNear, float zFar)
 {
-   float z = far;
+   float z = zFar;
    float half_width = (float)width / 2.0f;
    float half_height = (float)height / 2.0f;
-   float half_depth = ((float)far - (float)near) / 2.0f;
+   float half_depth = ((float)zFar - (float)zNear) / 2.0f;
    struct pipe_viewport_state vp;
 
    vp.scale[0] = half_width;
    vp.scale[1] = half_height;
    vp.scale[2] = half_depth;
-   vp.scale[3] = 1.0f;
 
    vp.translate[0] = half_width + x;
    vp.translate[1] = half_height + y;
    vp.translate[2] = half_depth + z;
-   vp.translate[3] = 0.0f;
 
-   ctx->set_viewport_state( ctx, &vp );
+   ctx->set_viewport_states( ctx, 0, 1, &vp );
 }
 
 
@@ -130,13 +128,14 @@ static void set_vertices( void )
    handle = ctx->create_vertex_elements_state(ctx, 3, ve);
    ctx->bind_vertex_elements_state(ctx, handle);
 
+   memset(&vbuf, 0, sizeof vbuf);
 
    /* vertex data */
    vbuf[0].stride = sizeof( struct vertex );
    vbuf[0].buffer_offset = 0;
    vbuf[0].buffer = pipe_buffer_create_with_data(ctx,
                                                  PIPE_BIND_VERTEX_BUFFER,
-                                                 PIPE_USAGE_STATIC,
+                                                 PIPE_USAGE_DEFAULT,
                                                  sizeof(vertices),
                                                  vertices);
 
@@ -145,16 +144,16 @@ static void set_vertices( void )
    vbuf[1].buffer_offset = 0;
    vbuf[1].buffer = pipe_buffer_create_with_data(ctx,
                                                  PIPE_BIND_VERTEX_BUFFER,
-                                                 PIPE_USAGE_STATIC,
+                                                 PIPE_USAGE_DEFAULT,
                                                  sizeof(inst_data),
                                                  inst_data);
 
-   ctx->set_vertex_buffers(ctx, 2, vbuf);
+   ctx->set_vertex_buffers(ctx, 0, 2, vbuf);
 
    /* index data */
    ibuf.buffer = pipe_buffer_create_with_data(ctx,
                                               PIPE_BIND_INDEX_BUFFER,
-                                              PIPE_USAGE_STATIC,
+                                              PIPE_USAGE_DEFAULT,
                                               sizeof(indices),
                                               indices);
    ibuf.offset = 0;
@@ -214,11 +213,11 @@ static void draw( void )
 
    ctx->draw_vbo(ctx, &info);
 
-   ctx->flush(ctx, NULL);
+   ctx->flush(ctx, NULL, 0);
 
    graw_save_surface_to_file(ctx, surf, NULL);
 
-   screen->flush_frontbuffer(screen, tex, 0, 0, window);
+   screen->flush_frontbuffer(screen, tex, 0, 0, window, NULL);
 }
 
 
@@ -247,10 +246,11 @@ static void init( void )
       exit(1);
    }
    
-   ctx = screen->context_create(screen, NULL);
+   ctx = screen->context_create(screen, NULL, 0);
    if (ctx == NULL)
       exit(3);
 
+   memset(&templat, 0, sizeof(templat));
    templat.target = PIPE_TEXTURE_2D;
    templat.format = formats[i];
    templat.width0 = WIDTH;
@@ -268,7 +268,6 @@ static void init( void )
       exit(4);
 
    surf_tmpl.format = templat.format;
-   surf_tmpl.usage = PIPE_BIND_RENDER_TARGET;
    surf_tmpl.u.tex.level = 0;
    surf_tmpl.u.tex.first_layer = 0;
    surf_tmpl.u.tex.last_layer = 0;
@@ -306,7 +305,8 @@ static void init( void )
       void *handle;
       memset(&rasterizer, 0, sizeof rasterizer);
       rasterizer.cull_face = PIPE_FACE_NONE;
-      rasterizer.gl_rasterization_rules = 1;
+      rasterizer.half_pixel_center = 1;
+      rasterizer.bottom_edge_rule = 1;
       rasterizer.depth_clip = 1;
       handle = ctx->create_rasterizer_state(ctx, &rasterizer);
       ctx->bind_rasterizer_state(ctx, handle);

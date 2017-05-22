@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.1
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,19 +16,17 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef _M_TRANSLATE_H_
 #define _M_TRANSLATE_H_
 
-#include "main/compiler.h"
 #include "main/glheader.h"
-#include "main/mtypes.h"		/* hack for GLchan */
-#include "swrast/s_chan.h"
 
 /**
  * Array translation.
@@ -48,44 +45,36 @@
 
 
 extern void _math_trans_1f(GLfloat *to,
-			   CONST void *ptr,
+			   const void *ptr,
 			   GLuint stride,
 			   GLenum type,
 			   GLuint start,
 			   GLuint n );
 
 extern void _math_trans_1ui(GLuint *to,
-			    CONST void *ptr,
+			    const void *ptr,
 			    GLuint stride,
 			    GLenum type,
 			    GLuint start,
 			    GLuint n );
 
 extern void _math_trans_1ub(GLubyte *to,
-			    CONST void *ptr,
+			    const void *ptr,
 			    GLuint stride,
 			    GLenum type,
 			    GLuint start,
 			    GLuint n );
 
 extern void _math_trans_4ub(GLubyte (*to)[4],
-			    CONST void *ptr,
+			    const void *ptr,
 			    GLuint stride,
 			    GLenum type,
 			    GLuint size,
 			    GLuint start,
 			    GLuint n );
 
-extern void _math_trans_4chan( GLchan (*to)[4],
-			       CONST void *ptr,
-			       GLuint stride,
-			       GLenum type,
-			       GLuint size,
-			       GLuint start,
-			       GLuint n );
-
 extern void _math_trans_4us(GLushort (*to)[4],
-			    CONST void *ptr,
+			    const void *ptr,
 			    GLuint stride,
 			    GLenum type,
 			    GLuint size,
@@ -94,7 +83,7 @@ extern void _math_trans_4us(GLushort (*to)[4],
 
 /** Convert to floats w/out normalization (i.e. just cast) */
 extern void _math_trans_4f(GLfloat (*to)[4],
-			   CONST void *ptr,
+			   const void *ptr,
 			   GLuint stride,
 			   GLenum type,
 			   GLuint size,
@@ -103,7 +92,7 @@ extern void _math_trans_4f(GLfloat (*to)[4],
 
 /** Convert to normalized floats in [0,1] or [-1, 1] */
 extern void _math_trans_4fn(GLfloat (*to)[4],
-			    CONST void *ptr,
+			    const void *ptr,
 			    GLuint stride,
 			    GLenum type,
 			    GLuint size,
@@ -111,7 +100,7 @@ extern void _math_trans_4fn(GLfloat (*to)[4],
 			    GLuint n );
 
 extern void _math_trans_3fn(GLfloat (*to)[3],
-			   CONST void *ptr,
+			   const void *ptr,
 			   GLuint stride,
 			   GLenum type,
 			   GLuint start,

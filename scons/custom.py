@@ -5,7 +5,7 @@ Custom builders and methods.
 """
 
 #
-# Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+# Copyright 2008 VMware, Inc.
 # All Rights Reserved.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
@@ -23,18 +23,17 @@ Custom builders and methods.
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
 # OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
 # MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
-# IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+# IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
 # ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 # SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 
 
-import os
 import os.path
-import re
 import sys
 import subprocess
+import modulefinder
 
 import SCons.Action
 import SCons.Builder
@@ -43,6 +42,13 @@ import SCons.Scanner
 import fixes
 
 import source_list
+
+# the get_implicit_deps() method changed between 2.4 and 2.5: now it expects
+# a callable that takes a scanner as argument and returns a path, rather than
+# a path directly. We want to support both, so we need to detect the SCons version,
+# for which no API is provided by SCons 8-P
+
+scons_version = tuple(map(int, SCons.__version__.split('.')))
 
 def quietCommandLines(env):
     # Quiet command lines
@@ -93,26 +99,25 @@ def createConvenienceLibBuilder(env):
     return convenience_lib
 
 
-# TODO: handle import statements with multiple modules
-# TODO: handle from import statements
-import_re = re.compile(r'^import\s+(\S+)$', re.M)
-
 def python_scan(node, env, path):
     # http://www.scons.org/doc/0.98.5/HTML/scons-user/c2781.html#AEN2789
+    # https://docs.python.org/2/library/modulefinder.html
     contents = node.get_contents()
-    source_dir = node.get_dir()
-    imports = import_re.findall(contents)
+
+    # Tell ModuleFinder to search dependencies in the script dir, and the glapi
+    # dirs
+    source_dir = node.get_dir().abspath
+    GLAPI = env.Dir('#src/mapi/glapi/gen').abspath
+    path = [source_dir, GLAPI] + sys.path
+
+    finder = modulefinder.ModuleFinder(path=path)
+    finder.run_script(node.abspath)
     results = []
-    for imp in imports:
-        for dir in path:
-            file = os.path.join(str(dir), imp.replace('.', os.sep) + '.py')
-            if os.path.exists(file):
-                results.append(env.File(file))
-                break
-            file = os.path.join(str(dir), imp.replace('.', os.sep), '__init__.py')
-            if os.path.exists(file):
-                results.append(env.File(file))
-                break
+    for name, mod in finder.modules.iteritems():
+        if mod.__file__ is None:
+            continue
+        assert os.path.exists(mod.__file__)
+        results.append(env.File(mod.__file__))
     return results
 
 python_scanner = SCons.Scanner.Scanner(function = python_scan, skeys = ['.py'])
@@ -137,7 +142,7 @@ def code_generate(env, script, target, source, command):
 
     # Explicitly mark that the generated code depends on the generator,
     # and on implicitly imported python modules
-    path = (script_src.get_dir(),)
+    path = (script_src.get_dir(),) if scons_version < (2, 5, 0) else lambda x: script_src
     deps = [script_src]
     deps += script_src.get_implicit_deps(env, python_scanner, path)
     env.Depends(code, deps)
@@ -240,6 +245,11 @@ def parse_source_list(env, filename, names=None):
     top_srcdir = env.Dir('#').abspath
     top_builddir = os.path.join(top_srcdir, env['build_dir'])
 
+    # Normalize everything to / slashes
+    cur_srcdir = cur_srcdir.replace('\\', '/')
+    top_srcdir = top_srcdir.replace('\\', '/')
+    top_builddir = top_builddir.replace('\\', '/')
+
     # Populate the symbol table of the Makefile parser.
     parser.add_symbol('top_srcdir', top_srcdir)
     parser.add_symbol('top_builddir', top_builddir)
@@ -263,13 +273,16 @@ def parse_source_list(env, filename, names=None):
             if f:
                 # Process source paths
                 if f.startswith(top_builddir + '/src'):
-                    # Automake puts build output on a `src` subdirectory, bue
-                    # SCons does no, so strip it here.
+                    # Automake puts build output on a `src` subdirectory, but
+                    # SCons does not, so strip it here.
                     f = top_builddir + f[len(top_builddir + '/src'):]
                 if f.startswith(cur_srcdir + '/'):
                     # Prefer relative source paths, as absolute files tend to
                     # cause duplicate actions.
                     f = f[len(cur_srcdir + '/'):]
+                # do not include any headers
+                if f.endswith(tuple(['.h','.hpp'])):
+                    continue
                 srcs.append(f)
 
         src_lists[sym] = srcs

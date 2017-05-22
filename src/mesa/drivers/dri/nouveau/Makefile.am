@@ -23,37 +23,23 @@
 
 include Makefile.sources
 
-# Hack to make some of the non-automake variables work.
-TOP=$(top_builddir)
+EXTRA_DIST = \
+	nouveau_render_t.c \
+	nouveau_swtnl_t.c \
+	nouveau_vbo_t.c
 
 AM_CFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/src/ \
 	-I$(top_srcdir)/src/mapi \
 	-I$(top_srcdir)/src/mesa/ \
+	-I$(top_srcdir)/src/gallium/include \
+	-I$(top_srcdir)/src/gallium/auxiliary \
 	-I$(top_srcdir)/src/mesa/drivers/dri/common \
 	$(DEFINES) \
-	$(API_DEFINES) \
 	$(VISIBILITY_CFLAGS) \
-	$(NOUVEAU_CFLAGS)
+	$(NVVIEUX_CFLAGS)
 
-dridir = $(DRI_DRIVER_INSTALL_DIR)
-
-if HAVE_NOUVEAU_DRI
-dri_LTLIBRARIES = nouveau_vieux_dri.la
-endif
-
-nouveau_vieux_dri_la_SOURCES = \
-	$(NOUVEAU_C_FILES)
-
-nouveau_vieux_dri_la_LDFLAGS = -module -avoid-version -shared
-nouveau_vieux_dri_la_LIBADD = \
-	../common/libdricommon.la \
-	$(DRI_LIB_DEPS) \
-	$(NOUVEAU_LIBS)
-
-# Provide compatibility with scripts for the old Mesa build system for
-# a while by putting a link to the driver into /lib of the build tree.
-all-local: nouveau_vieux_dri.la
-	$(MKDIR_P) $(top_builddir)/$(LIB_DIR);
-	ln -f .libs/nouveau_vieux_dri.so $(top_builddir)/$(LIB_DIR)/nouveau_vieux_dri.so;
+noinst_LTLIBRARIES = libnouveau_dri.la
+libnouveau_dri_la_SOURCES = $(NOUVEAU_C_FILES)
+libnouveau_dri_la_LIBADD = $(NVVIEUX_LIBS)

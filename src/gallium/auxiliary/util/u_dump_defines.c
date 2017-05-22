@@ -67,9 +67,26 @@ util_dump_enum_continuous(unsigned value,
    util_dump_##_name(unsigned value, boolean shortened) \
    { \
       if(shortened) \
-         return util_dump_enum_continuous(value, Elements(util_dump_##_name##_short_names), util_dump_##_name##_short_names); \
+         return util_dump_enum_continuous(value, ARRAY_SIZE(util_dump_##_name##_short_names), util_dump_##_name##_short_names); \
       else \
-         return util_dump_enum_continuous(value, Elements(util_dump_##_name##_names), util_dump_##_name##_names); \
+         return util_dump_enum_continuous(value, ARRAY_SIZE(util_dump_##_name##_names), util_dump_##_name##_names); \
+   }
+
+
+/**
+ * Same as DEFINE_UTIL_DUMP_CONTINUOUS but with static assertions to detect
+ * failures to update lists.
+ */
+#define DEFINE_UTIL_DUMP_CONTINUOUS_COUNT(_name, _count) \
+   const char * \
+   util_dump_##_name(unsigned value, boolean shortened) \
+   { \
+      STATIC_ASSERT(ARRAY_SIZE(util_dump_##_name##_names) == _count); \
+      STATIC_ASSERT(ARRAY_SIZE(util_dump_##_name##_short_names) == _count); \
+      if(shortened) \
+         return util_dump_enum_continuous(value, ARRAY_SIZE(util_dump_##_name##_short_names), util_dump_##_name##_short_names); \
+      else \
+         return util_dump_enum_continuous(value, ARRAY_SIZE(util_dump_##_name##_names), util_dump_##_name##_names); \
    }
 
 
@@ -262,7 +279,11 @@ util_dump_tex_target_names[] = {
    "PIPE_TEXTURE_1D",
    "PIPE_TEXTURE_2D",
    "PIPE_TEXTURE_3D",
-   "PIPE_TEXTURE_CUBE"
+   "PIPE_TEXTURE_CUBE",
+   "PIPE_TEXTURE_RECT",
+   "PIPE_TEXTURE_1D_ARRAY",
+   "PIPE_TEXTURE_2D_ARRAY",
+   "PIPE_TEXTURE_CUBE_ARRAY",
 };
 
 static const char *
@@ -271,10 +292,14 @@ util_dump_tex_target_short_names[] = {
    "1d",
    "2d",
    "3d",
-   "cube"
+   "cube",
+   "rect",
+   "1d_array",
+   "2d_array",
+   "cube_array",
 };
 
-DEFINE_UTIL_DUMP_CONTINUOUS(tex_target)
+DEFINE_UTIL_DUMP_CONTINUOUS_COUNT(tex_target, PIPE_MAX_TEXTURE_TYPES)
 
 
 static const char *
@@ -334,3 +359,77 @@ util_dump_tex_filter_short_names[] = {
 };
 
 DEFINE_UTIL_DUMP_CONTINUOUS(tex_filter)
+
+
+static const char *
+util_dump_query_type_names[] = {
+   "PIPE_QUERY_OCCLUSION_COUNTER",
+   "PIPE_QUERY_OCCLUSION_PREDICATE",
+   "PIPE_QUERY_TIMESTAMP",
+   "PIPE_QUERY_TIMESTAMP_DISJOINT",
+   "PIPE_QUERY_TIME_ELAPSED",
+   "PIPE_QUERY_PRIMITIVES_GENERATED",
+   "PIPE_QUERY_PRIMITIVES_EMITTED",
+   "PIPE_QUERY_SO_STATISTICS",
+   "PIPE_QUERY_SO_OVERFLOW_PREDICATE",
+   "PIPE_QUERY_GPU_FINISHED",
+   "PIPE_QUERY_PIPELINE_STATISTICS",
+};
+
+static const char *
+util_dump_query_type_short_names[] = {
+   "occlusion_counter",
+   "occlusion_predicate",
+   "timestamp",
+   "timestamp_disjoint",
+   "time_elapsed",
+   "primitives_generated",
+   "primitives_emitted",
+   "so_statistics",
+   "so_overflow_predicate",
+   "gpu_finished",
+   "pipeline_statistics",
+};
+
+DEFINE_UTIL_DUMP_CONTINUOUS(query_type)
+
+
+static const char *
+util_dump_prim_mode_names[] = {
+   "PIPE_PRIM_POINTS",
+   "PIPE_PRIM_LINES",
+   "PIPE_PRIM_LINE_LOOP",
+   "PIPE_PRIM_LINE_STRIP",
+   "PIPE_PRIM_TRIANGLES",
+   "PIPE_PRIM_TRIANGLE_STRIP",
+   "PIPE_PRIM_TRIANGLE_FAN",
+   "PIPE_PRIM_QUADS",
+   "PIPE_PRIM_QUAD_STRIP",
+   "PIPE_PRIM_POLYGON",
+   "PIPE_PRIM_LINES_ADJACENCY",
+   "PIPE_PRIM_LINE_STRIP_ADJACENCY",
+   "PIPE_PRIM_TRIANGLES_ADJACENCY",
+   "PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY",
+   "PIPE_PRIM_PATCHES",
+};
+
+static const char *
+util_dump_prim_mode_short_names[] = {
+   "points",
+   "lines",
+   "line_loop",
+   "line_strip",
+   "triangles",
+   "triangle_strip",
+   "triangle_fan",
+   "quads",
+   "quad_strip",
+   "polygon",
+   "lines_adjacency",
+   "line_strip_adjacency",
+   "triangles_adjacency",
+   "triangle_strip_adjacency",
+   "patches",
+};
+
+DEFINE_UTIL_DUMP_CONTINUOUS(prim_mode)

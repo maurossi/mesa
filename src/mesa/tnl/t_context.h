@@ -1,6 +1,5 @@
 /*
  * mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -133,7 +133,7 @@ enum {
 	_TNL_ATTRIB_MAT_FRONT_INDEXES = 27,
 	_TNL_ATTRIB_MAT_BACK_INDEXES = 28,
 
-	/* This is really a VERT_RESULT, not an attrib.  Need to fix
+	/* This is really a VARYING_SLOT, not an attrib.  Need to fix
 	 * tnl to understand the difference.
 	 */
 	_TNL_ATTRIB_POINTSIZE = 16,
@@ -221,7 +221,7 @@ struct vertex_buffer
    GLuint      PrimitiveCount;	      
 
    /* Inputs to the vertex program stage */
-   GLvector4f *AttribPtr[_TNL_ATTRIB_MAX];      /* GL_NV_vertex_program */
+   GLvector4f *AttribPtr[_TNL_ATTRIB_MAX];
 };
 
 
@@ -514,6 +514,7 @@ typedef struct
    /* Clipspace/ndc/window vertex managment:
     */
    struct tnl_clipspace clipspace;
+   GLmatrix _WindowMap;
 
    /* Probably need a better configuration mechanism:
     */

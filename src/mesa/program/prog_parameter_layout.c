@@ -28,7 +28,7 @@
  * \author Ian Romanick <ian.d.romanick@intel.com>
  */
 
-#include "main/compiler.h"
+#include "main/imports.h"
 #include "main/mtypes.h"
 #include "prog_parameter.h"
 #include "prog_parameter_layout.h"
@@ -173,7 +173,7 @@ _mesa_layout_parameters(struct asm_parser_state *state)
 	    continue;
 	 }
 
-	 if ((inst->SrcReg[i].Base.File <= PROGRAM_VARYING )
+	 if ((inst->SrcReg[i].Base.File <= PROGRAM_OUTPUT)
 	     || (inst->SrcReg[i].Base.File >= PROGRAM_WRITE_ONLY)) {
 	    continue;
 	 }

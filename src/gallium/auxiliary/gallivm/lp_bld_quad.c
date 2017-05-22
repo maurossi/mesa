@@ -31,6 +31,7 @@
 #include "lp_bld_const.h"
 #include "lp_bld_swizzle.h"
 #include "lp_bld_quad.h"
+#include "lp_bld_pack.h"
 
 
 static const unsigned char
@@ -78,14 +79,10 @@ lp_build_ddy(struct lp_build_context *bld,
 }
 
 /*
- * To be able to handle multiple quads at once in texture sampling and
- * do lod calculations per quad, it is necessary to get the per-quad
- * derivatives into the lp_build_rho function.
- * For 8-wide vectors the packed derivative values for 3 coords would
- * look like this, this scales to a arbitrary (multiple of 4) vector size:
- * ds1dx ds1dy dt1dx dt1dy ds2dx ds2dy dt2dx dt2dy
- * dr1dx dr1dy _____ _____ dr2dx dr2dy _____ _____
- * The second vector will be unused for 1d and 2d textures.
+ * Helper for building packed ddx/ddy vector for one coord (scalar per quad
+ * values). The vector will look like this (8-wide):
+ * dr1dx _____ -dr1dy _____ dr2dx _____ -dr2dy _____
+ * This only requires one shuffle instead of two for more straightforward packing.
  */
 LLVMValueRef
 lp_build_packed_ddx_ddy_onecoord(struct lp_build_context *bld,
@@ -95,19 +92,15 @@ lp_build_packed_ddx_ddy_onecoord(struct lp_build_context *bld,
    LLVMBuilderRef builder = gallivm->builder;
    LLVMValueRef vec1, vec2;
 
-   /* same packing as _twocoord, but can use aos swizzle helper */
+   /* use aos swizzle helper */
 
-   /*
-    * XXX could make swizzle1 a noop swizzle by using right top/bottom
-    * pair for ddy
-    */
-   static const unsigned char swizzle1[] = {
-      LP_BLD_QUAD_TOP_LEFT, LP_BLD_QUAD_TOP_LEFT,
-      LP_BLD_SWIZZLE_DONTCARE, LP_BLD_SWIZZLE_DONTCARE
+   static const unsigned char swizzle1[] = { /* no-op swizzle */
+      LP_BLD_QUAD_TOP_LEFT, LP_BLD_SWIZZLE_DONTCARE,
+      LP_BLD_QUAD_BOTTOM_LEFT, LP_BLD_SWIZZLE_DONTCARE
    };
    static const unsigned char swizzle2[] = {
-      LP_BLD_QUAD_TOP_RIGHT, LP_BLD_QUAD_BOTTOM_LEFT,
-      LP_BLD_SWIZZLE_DONTCARE, LP_BLD_SWIZZLE_DONTCARE
+      LP_BLD_QUAD_TOP_RIGHT, LP_BLD_SWIZZLE_DONTCARE,
+      LP_BLD_QUAD_TOP_LEFT, LP_BLD_SWIZZLE_DONTCARE
    };
 
    vec1 = lp_build_swizzle_aos(bld, a, swizzle1);
@@ -120,6 +113,12 @@ lp_build_packed_ddx_ddy_onecoord(struct lp_build_context *bld,
 }
 
 
+/*
+ * Helper for building packed ddx/ddy vector for one coord (scalar per quad
+ * values). The vector will look like this (8-wide):
+ * ds1dx ds1dy dt1dx dt1dy ds2dx ds2dy dt2dx dt2dy
+ * This only needs 2 (v)shufps.
+ */
 LLVMValueRef
 lp_build_packed_ddx_ddy_twocoord(struct lp_build_context *bld,
                                  LLVMValueRef a, LLVMValueRef b)
@@ -156,3 +155,52 @@ lp_build_packed_ddx_ddy_twocoord(struct lp_build_context *bld,
       return LLVMBuildSub(builder, vec2, vec1, "ddxddyddxddy");
 }
 
+
+/**
+ * Twiddle from quad format to row format
+ *
+ *   src0      src1
+ * ######### #########      #################
+ * # 0 | 1 # # 4 | 5 #      # 0 | 1 | 4 | 5 # src0
+ * #---+---# #---+---#  ->  #################
+ * # 2 | 3 # # 6 | 7 #      # 2 | 3 | 6 | 7 # src1
+ * ######### #########      #################
+ *
+ */
+void
+lp_bld_quad_twiddle(struct gallivm_state *gallivm,
+                    struct lp_type lp_dst_type,
+                    const LLVMValueRef* src,
+                    unsigned src_count,
+                    LLVMValueRef* dst)
+{
+   LLVMBuilderRef builder = gallivm->builder;
+   LLVMTypeRef dst_type_ref;
+   LLVMTypeRef type2_ref;
+   struct lp_type type2;
+   unsigned i;
+
+   assert((src_count % 2) == 0);
+
+   /* Create a type with only 2 elements */
+   type2 = lp_dst_type;
+   type2.width = (lp_dst_type.width * lp_dst_type.length) / 2;
+   type2.length = 2;
+   type2.floating = 0;
+
+   type2_ref = lp_build_vec_type(gallivm, type2);
+   dst_type_ref = lp_build_vec_type(gallivm, lp_dst_type);
+
+   for (i = 0; i < src_count; i += 2) {
+      LLVMValueRef src0, src1;
+
+      src0 = LLVMBuildBitCast(builder, src[i + 0], type2_ref, "");
+      src1 = LLVMBuildBitCast(builder, src[i + 1], type2_ref, "");
+
+      dst[i + 0] = lp_build_interleave2(gallivm, type2, src0, src1, 0);
+      dst[i + 1] = lp_build_interleave2(gallivm, type2, src0, src1, 1);
+
+      dst[i + 0] = LLVMBuildBitCast(builder, dst[i + 0], dst_type_ref, "");
+      dst[i + 1] = LLVMBuildBitCast(builder, dst[i + 1], dst_type_ref, "");
+   }
+}

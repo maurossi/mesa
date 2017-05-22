@@ -14,10 +14,10 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-// THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 //
 
 #include "core/event.hpp"
@@ -25,137 +25,221 @@
 
 using namespace clover;
 
-_cl_event::_cl_event(clover::context &ctx,
-                     std::vector<clover::event *> deps,
-                     action action_ok, action action_fail) :
-   ctx(ctx), __status(0), wait_count(1),
+event::event(clover::context &ctx, const ref_vector<event> &deps,
+             action action_ok, action action_fail) :
+   context(ctx), wait_count(1), _status(0),
    action_ok(action_ok), action_fail(action_fail) {
-   for (auto ev : deps)
-      ev->chain(this);
+   for (auto &ev : deps)
+      ev.chain(*this);
 }
 
-_cl_event::~_cl_event() {
+event::~event() {
+}
+
+std::vector<intrusive_ref<event>>
+event::trigger_self() {
+   std::lock_guard<std::mutex> lock(mutex);
+   std::vector<intrusive_ref<event>> evs;
+
+   if (!--wait_count)
+      std::swap(_chain, evs);
+
+   return evs;
 }
 
 void
-_cl_event::trigger() {
-   if (!--wait_count) {
+event::trigger() {
+   auto evs = trigger_self();
+
+   if (signalled()) {
       action_ok(*this);
-
-      while (!__chain.empty()) {
-         __chain.back()->trigger();
-         __chain.pop_back();
-      }
+      cv.notify_all();
    }
+
+   for (event &ev : evs)
+      ev.trigger();
+}
+
+std::vector<intrusive_ref<event>>
+event::abort_self(cl_int status) {
+   std::lock_guard<std::mutex> lock(mutex);
+   std::vector<intrusive_ref<event>> evs;
+
+   _status = status;
+   std::swap(_chain, evs);
+
+   return evs;
 }
 
 void
-_cl_event::abort(cl_int status) {
-   __status = status;
+event::abort(cl_int status) {
+   auto evs = abort_self(status);
+
    action_fail(*this);
 
-   while (!__chain.empty()) {
-      __chain.back()->abort(status);
-      __chain.pop_back();
-   }
+   for (event &ev : evs)
+      ev.abort(status);
 }
 
 bool
-_cl_event::signalled() const {
+event::signalled() const {
+   std::lock_guard<std::mutex> lock(mutex);
    return !wait_count;
 }
 
-void
-_cl_event::chain(clover::event *ev) {
-   if (wait_count) {
-      ev->wait_count++;
-      __chain.push_back(ev);
-      ev->deps.push_back(this);
-   }
+cl_int
+event::status() const {
+   std::lock_guard<std::mutex> lock(mutex);
+   return _status;
 }
 
-hard_event::hard_event(clover::command_queue &q, cl_command_type command,
-                       std::vector<clover::event *> deps, action action) :
-   _cl_event(q.ctx, deps, action, [](event &ev){}),
-   __queue(q), __command(command), __fence(NULL) {
-   q.sequence(this);
+void
+event::chain(event &ev) {
+   std::unique_lock<std::mutex> lock(mutex, std::defer_lock);
+   std::unique_lock<std::mutex> lock_ev(ev.mutex, std::defer_lock);
+   std::lock(lock, lock_ev);
+
+   if (wait_count) {
+      ev.wait_count++;
+      _chain.push_back(ev);
+   }
+   ev.deps.push_back(*this);
+}
+
+void
+event::wait() const {
+   for (event &ev : deps)
+      ev.wait();
+
+   std::unique_lock<std::mutex> lock(mutex);
+   cv.wait(lock, [=]{ return !wait_count; });
+}
+
+hard_event::hard_event(command_queue &q, cl_command_type command,
+                       const ref_vector<event> &deps, action action) :
+   event(q.context(), deps, profile(q, action), [](event &ev){}),
+   _queue(q), _command(command), _fence(NULL) {
+   if (q.profiling_enabled())
+      _time_queued = timestamp::current(q);
+
+   q.sequence(*this);
    trigger();
 }
 
 hard_event::~hard_event() {
-   pipe_screen *screen = queue()->dev.pipe;
-   screen->fence_reference(screen, &__fence, NULL);
+   pipe_screen *screen = queue()->device().pipe;
+   screen->fence_reference(screen, &_fence, NULL);
 }
 
 cl_int
 hard_event::status() const {
-   pipe_screen *screen = queue()->dev.pipe;
+   pipe_screen *screen = queue()->device().pipe;
 
-   if (__status < 0)
-      return __status;
+   if (event::status() < 0)
+      return event::status();
 
-   else if (!__fence)
+   else if (!_fence)
       return CL_QUEUED;
 
-   else if (!screen->fence_signalled(screen, __fence))
+   else if (!screen->fence_finish(screen, NULL, _fence, 0))
       return CL_SUBMITTED;
 
    else
       return CL_COMPLETE;
 }
 
-cl_command_queue
+command_queue *
 hard_event::queue() const {
-   return &__queue;
+   return &_queue();
 }
 
 cl_command_type
 hard_event::command() const {
-   return __command;
+   return _command;
 }
 
 void
 hard_event::wait() const {
-   pipe_screen *screen = queue()->dev.pipe;
+   pipe_screen *screen = queue()->device().pipe;
+
+   event::wait();
 
    if (status() == CL_QUEUED)
       queue()->flush();
 
-   if (!__fence ||
-       !screen->fence_finish(screen, __fence, PIPE_TIMEOUT_INFINITE))
+   if (!_fence ||
+       !screen->fence_finish(screen, NULL, _fence, PIPE_TIMEOUT_INFINITE))
       throw error(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);
+}
+
+const lazy<cl_ulong> &
+hard_event::time_queued() const {
+   return _time_queued;
+}
+
+const lazy<cl_ulong> &
+hard_event::time_submit() const {
+   return _time_submit;
+}
+
+const lazy<cl_ulong> &
+hard_event::time_start() const {
+   return _time_start;
+}
+
+const lazy<cl_ulong> &
+hard_event::time_end() const {
+   return _time_end;
 }
 
 void
 hard_event::fence(pipe_fence_handle *fence) {
-   pipe_screen *screen = queue()->dev.pipe;
-   screen->fence_reference(screen, &__fence, fence);
+   pipe_screen *screen = queue()->device().pipe;
+   screen->fence_reference(screen, &_fence, fence);
 }
 
-soft_event::soft_event(clover::context &ctx,
-                       std::vector<clover::event *> deps,
-                       bool __trigger, action action) :
-   _cl_event(ctx, deps, action, action) {
-   if (__trigger)
+event::action
+hard_event::profile(command_queue &q, const action &action) const {
+   if (q.profiling_enabled()) {
+      return [&q, action] (event &ev) {
+         auto &hev = static_cast<hard_event &>(ev);
+
+         hev._time_submit = timestamp::current(q);
+         hev._time_start = timestamp::query(q);
+
+         action(ev);
+
+         hev._time_end = timestamp::query(q);
+      };
+
+   } else {
+      return action;
+   }
+}
+
+soft_event::soft_event(clover::context &ctx, const ref_vector<event> &deps,
+                       bool _trigger, action action) :
+   event(ctx, deps, action, action) {
+   if (_trigger)
       trigger();
 }
 
 cl_int
 soft_event::status() const {
-   if (__status < 0)
-      return __status;
+   if (event::status() < 0)
+      return event::status();
 
    else if (!signalled() ||
-            any_of([](const ref_ptr<event> &ev) {
-                  return ev->status() != CL_COMPLETE;
-               }, deps.begin(), deps.end()))
+            any_of([](const event &ev) {
+                  return ev.status() != CL_COMPLETE;
+               }, deps))
       return CL_SUBMITTED;
 
    else
       return CL_COMPLETE;
 }
 
-cl_command_queue
+command_queue *
 soft_event::queue() const {
    return NULL;
 }
@@ -167,8 +251,7 @@ soft_event::command() const {
 
 void
 soft_event::wait() const {
-   for (auto ev : deps)
-      ev->wait();
+   event::wait();
 
    if (status() != CL_COMPLETE)
       throw error(CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST);

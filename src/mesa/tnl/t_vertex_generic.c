@@ -1,6 +1,6 @@
 
 /*
- * Copyright 2003 Tungsten Graphics, inc.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -17,26 +17,25 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.  IN NO EVENT SHALL
- * TUNGSTEN GRAPHICS AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
+ * VMWARE AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
  * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keithw@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #include "main/glheader.h"
 #include "main/context.h"
-#include "main/colormac.h"
-#include "main/simple_list.h"
+#include "main/macros.h"
 #include "swrast/s_chan.h"
 #include "t_context.h"
 #include "t_vertex.h"
 
 
 #if 0
-#define DEBUG_INSERT printf("%s\n", __FUNCTION__)
+#define DEBUG_INSERT printf("%s\n", __func__)
 #else
 #define DEBUG_INSERT
 #endif
@@ -1026,7 +1025,7 @@ void _tnl_generic_interp( struct gl_context *ctx,
 
    if (tnl->NeedNdcCoords) {
       const GLfloat *dstclip = VB->ClipPtr->data[edst];
-      if (dstclip[3] != 0.0) {
+      if (dstclip[3] != 0.0f) {
 	 const GLfloat w = 1.0f / dstclip[3];
 	 GLfloat pos[4];
 

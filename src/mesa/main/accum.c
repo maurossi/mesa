@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2005  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 #include "glheader.h"
@@ -30,13 +30,9 @@
 #include "format_pack.h"
 #include "imports.h"
 #include "macros.h"
-#include "mfeatures.h"
 #include "state.h"
 #include "mtypes.h"
 #include "main/dispatch.h"
-
-
-#if FEATURE_accum
 
 
 void GLAPIENTRY
@@ -44,7 +40,6 @@ _mesa_ClearAccum( GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha )
 {
    GLfloat tmp[4];
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    tmp[0] = CLAMP( red,   -1.0F, 1.0F );
    tmp[1] = CLAMP( green, -1.0F, 1.0F );
@@ -58,11 +53,11 @@ _mesa_ClearAccum( GLfloat red, GLfloat green, GLfloat blue, GLfloat alpha )
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_Accum( GLenum op, GLfloat value )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+   FLUSH_VERTICES(ctx, 0);
 
    switch (op) {
    case GL_ADD:
@@ -109,14 +104,6 @@ _mesa_Accum( GLenum op, GLfloat value )
 }
 
 
-void
-_mesa_init_accum_dispatch(struct _glapi_table *disp)
-{
-   SET_Accum(disp, _mesa_Accum);
-   SET_ClearAccum(disp, _mesa_ClearAccum);
-}
-
-
 /**
  * Clear the accumulation buffer by mapping the renderbuffer and
  * writing the clear color to it.  Called by the driver's implementation
@@ -151,7 +138,7 @@ _mesa_clear_accum_buffer(struct gl_context *ctx)
       return;
    }
 
-   if (accRb->Format == MESA_FORMAT_SIGNED_RGBA_16) {
+   if (accRb->Format == MESA_FORMAT_RGBA_SNORM16) {
       const GLshort clearR = FLOAT_TO_SHORT(ctx->Accum.ClearColor[0]);
       const GLshort clearG = FLOAT_TO_SHORT(ctx->Accum.ClearColor[1]);
       const GLshort clearB = FLOAT_TO_SHORT(ctx->Accum.ClearColor[2]);
@@ -206,9 +193,9 @@ accum_scale_or_bias(struct gl_context *ctx, GLfloat value,
       return;
    }
 
-   if (accRb->Format == MESA_FORMAT_SIGNED_RGBA_16) {
+   if (accRb->Format == MESA_FORMAT_RGBA_SNORM16) {
       const GLshort incr = (GLshort) (value * 32767.0f);
-      GLuint i, j;
+      GLint i, j;
       if (bias) {
          for (j = 0; j < height; j++) {
             GLshort *acc = (GLshort *) accMap;
@@ -284,12 +271,12 @@ accum_or_load(struct gl_context *ctx, GLfloat value,
       return;
    }
 
-   if (accRb->Format == MESA_FORMAT_SIGNED_RGBA_16) {
+   if (accRb->Format == MESA_FORMAT_RGBA_SNORM16) {
       const GLfloat scale = value * 32767.0f;
-      GLuint i, j;
+      GLint i, j;
       GLfloat (*rgba)[4];
 
-      rgba = (GLfloat (*)[4]) malloc(width * 4 * sizeof(GLfloat));
+      rgba = malloc(width * 4 * sizeof(GLfloat));
       if (rgba) {
          for (j = 0; j < height; j++) {
             GLshort *acc = (GLshort *) accMap;
@@ -376,13 +363,13 @@ accum_return(struct gl_context *ctx, GLfloat value,
          continue;
       }
 
-      if (accRb->Format == MESA_FORMAT_SIGNED_RGBA_16) {
+      if (accRb->Format == MESA_FORMAT_RGBA_SNORM16) {
          const GLfloat scale = value / 32767.0f;
          GLint i, j;
          GLfloat (*rgba)[4], (*dest)[4];
 
-         rgba = (GLfloat (*)[4]) malloc(width * 4 * sizeof(GLfloat));
-         dest = (GLfloat (*)[4]) malloc(width * 4 * sizeof(GLfloat));
+         rgba = malloc(width * 4 * sizeof(GLfloat));
+         dest = malloc(width * 4 * sizeof(GLfloat));
 
          if (rgba && dest) {
             for (j = 0; j < height; j++) {
@@ -494,9 +481,6 @@ _mesa_accum(struct gl_context *ctx, GLenum op, GLfloat value)
       break;
    }
 }
-
-
-#endif /* FEATURE_accum */
 
 
 void 

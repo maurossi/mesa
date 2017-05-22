@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,6 +29,7 @@
 
 #include "util/u_memory.h"
 #include "util/u_debug.h"
+#include "util/u_format.h"
 #include "util/u_sampler.h"
 
 #include "vdpau_private.h"
@@ -41,6 +42,8 @@ vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device,
                           VdpGetProcAddress **get_proc_address)
 {
    struct pipe_screen *pscreen;
+   struct pipe_resource *res, res_tmpl;
+   struct pipe_sampler_view sv_tmpl;
    vlVdpDevice *dev = NULL;
    VdpStatus ret;
 
@@ -58,17 +61,65 @@ vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device,
       goto no_dev;
    }
 
-   dev->vscreen = vl_screen_create(display, screen);
+   pipe_reference_init(&dev->reference, 1);
+
+#if defined(HAVE_DRI3)
+   dev->vscreen = vl_dri3_screen_create(display, screen);
+#endif
+   if (!dev->vscreen)
+      dev->vscreen = vl_dri2_screen_create(display, screen);
    if (!dev->vscreen) {
       ret = VDP_STATUS_RESOURCES;
       goto no_vscreen;
    }
 
    pscreen = dev->vscreen->pscreen;
-   dev->context = pscreen->context_create(pscreen, dev->vscreen);
+   dev->context = pscreen->context_create(pscreen, dev->vscreen, 0);
    if (!dev->context) {
       ret = VDP_STATUS_RESOURCES;
       goto no_context;
+   }
+
+   if (!pscreen->get_param(pscreen, PIPE_CAP_NPOT_TEXTURES)) {
+      ret = VDP_STATUS_NO_IMPLEMENTATION;
+      goto no_context;
+   }
+
+   memset(&res_tmpl, 0, sizeof(res_tmpl));
+
+   res_tmpl.target = PIPE_TEXTURE_2D;
+   res_tmpl.format = PIPE_FORMAT_R8G8B8A8_UNORM;
+   res_tmpl.width0 = 1;
+   res_tmpl.height0 = 1;
+   res_tmpl.depth0 = 1;
+   res_tmpl.array_size = 1;
+   res_tmpl.bind = PIPE_BIND_SAMPLER_VIEW;
+   res_tmpl.usage = PIPE_USAGE_DEFAULT;
+
+   if (!CheckSurfaceParams(pscreen, &res_tmpl)) {
+      ret = VDP_STATUS_NO_IMPLEMENTATION;
+      goto no_resource;
+   }
+
+   res = pscreen->resource_create(pscreen, &res_tmpl);
+   if (!res) {
+      ret = VDP_STATUS_RESOURCES;
+      goto no_resource;
+   }
+
+   memset(&sv_tmpl, 0, sizeof(sv_tmpl));
+   u_sampler_view_default_template(&sv_tmpl, res, res->format);
+
+   sv_tmpl.swizzle_r = PIPE_SWIZZLE_1;
+   sv_tmpl.swizzle_g = PIPE_SWIZZLE_1;
+   sv_tmpl.swizzle_b = PIPE_SWIZZLE_1;
+   sv_tmpl.swizzle_a = PIPE_SWIZZLE_1;
+
+   dev->dummy_sv = dev->context->create_sampler_view(dev->context, res, &sv_tmpl);
+   pipe_resource_reference(&res, NULL);
+   if (!dev->dummy_sv) {
+      ret = VDP_STATUS_RESOURCES;
+      goto no_resource;
    }
 
    *device = vlAddDataHTAB(dev);
@@ -77,17 +128,25 @@ vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device,
       goto no_handle;
    }
 
-   vl_compositor_init(&dev->compositor, dev->context);
+   if (!vl_compositor_init(&dev->compositor, dev->context)) {
+       ret = VDP_STATUS_ERROR;
+       goto no_compositor;
+   }
+
    pipe_mutex_init(dev->mutex);
 
    *get_proc_address = &vlVdpGetProcAddress;
 
    return VDP_STATUS_OK;
 
+no_compositor:
+   vlRemoveDataHTAB(*device);
 no_handle:
-   /* Destroy vscreen */
+   pipe_sampler_view_reference(&dev->dummy_sv, NULL);
+no_resource:
+   dev->context->destroy(dev->context);
 no_context:
-   vl_screen_destroy(dev->vscreen);
+   dev->vscreen->destroy(dev->vscreen);
 no_vscreen:
    FREE(dev);
 no_dev:
@@ -99,7 +158,7 @@ no_htab:
 /**
  * Create a VdpPresentationQueueTarget for use with X11.
  */
-PUBLIC VdpStatus
+VdpStatus
 vlVdpPresentationQueueTargetCreateX11(VdpDevice device, Drawable drawable,
                                       VdpPresentationQueueTarget *target)
 {
@@ -117,7 +176,7 @@ vlVdpPresentationQueueTargetCreateX11(VdpDevice device, Drawable drawable,
    if (!pqt)
       return VDP_STATUS_RESOURCES;
 
-   pqt->device = dev;
+   DeviceReference(&pqt->device, dev);
    pqt->drawable = drawable;
 
    *target = vlAddDataHTAB(pqt);
@@ -146,6 +205,7 @@ vlVdpPresentationQueueTargetDestroy(VdpPresentationQueueTarget presentation_queu
       return VDP_STATUS_INVALID_HANDLE;
 
    vlRemoveDataHTAB(presentation_queue_target);
+   DeviceReference(&pqt->device, NULL);
    FREE(pqt);
 
    return VDP_STATUS_OK;
@@ -161,15 +221,25 @@ vlVdpDeviceDestroy(VdpDevice device)
    if (!dev)
       return VDP_STATUS_INVALID_HANDLE;
 
-   pipe_mutex_destroy(dev->mutex);
-   vl_compositor_cleanup(&dev->compositor);
-   dev->context->destroy(dev->context);
-   vl_screen_destroy(dev->vscreen);
-
-   FREE(dev);
-   vlDestroyHTAB();
+   vlRemoveDataHTAB(device);
+   DeviceReference(&dev, NULL);
 
    return VDP_STATUS_OK;
+}
+
+/**
+ * Free a VdpDevice.
+ */
+void
+vlVdpDeviceFree(vlVdpDevice *dev)
+{
+   pipe_mutex_destroy(dev->mutex);
+   vl_compositor_cleanup(&dev->compositor);
+   pipe_sampler_view_reference(&dev->dummy_sv, NULL);
+   dev->context->destroy(dev->context);
+   dev->vscreen->destroy(dev->vscreen);
+   FREE(dev);
+   vlDestroyHTAB();
 }
 
 /**
@@ -188,7 +258,7 @@ vlVdpGetProcAddress(VdpDevice device, VdpFuncId function_id, void **function_poi
    if (!vlGetFuncFTAB(function_id, function_pointer))
       return VDP_STATUS_INVALID_FUNC_ID;
 
-   VDPAU_MSG(VDPAU_TRACE, "[VDPAU] Got proc adress %p for id %d\n", *function_pointer, function_id);
+   VDPAU_MSG(VDPAU_TRACE, "[VDPAU] Got proc address %p for id %d\n", *function_pointer, function_id);
 
    return VDP_STATUS_OK;
 }
@@ -248,62 +318,12 @@ vlVdpDefaultSamplerViewTemplate(struct pipe_sampler_view *templ, struct pipe_res
    u_sampler_view_default_template(templ, res, res->format);
 
    desc = util_format_description(res->format);
-   if (desc->swizzle[0] == UTIL_FORMAT_SWIZZLE_0)
-      templ->swizzle_r = PIPE_SWIZZLE_ONE;
-   if (desc->swizzle[1] == UTIL_FORMAT_SWIZZLE_0)
-      templ->swizzle_g = PIPE_SWIZZLE_ONE;
-   if (desc->swizzle[2] == UTIL_FORMAT_SWIZZLE_0)
-      templ->swizzle_b = PIPE_SWIZZLE_ONE;
-   if (desc->swizzle[3] == UTIL_FORMAT_SWIZZLE_0)
-      templ->swizzle_a = PIPE_SWIZZLE_ONE;
-}
-
-void
-vlVdpResolveDelayedRendering(vlVdpDevice *dev, struct pipe_surface *surface, struct u_rect *dirty_area)
-{
-   struct vl_compositor_state *cstate;
-   vlVdpOutputSurface *vlsurface;
-
-   assert(dev);
-
-   cstate = dev->delayed_rendering.cstate;
-   if (!cstate)
-      return;
-
-   vlsurface = vlGetDataHTAB(dev->delayed_rendering.surface);
-   if (!vlsurface)
-      return;
-
-   if (!surface) {
-      surface = vlsurface->surface;
-      dirty_area = &vlsurface->dirty_area;
-   }
-
-   vl_compositor_render(cstate, &dev->compositor, surface, dirty_area);
-
-   dev->delayed_rendering.surface = VDP_INVALID_HANDLE;
-   dev->delayed_rendering.cstate = NULL;
-
-   /* test if we need to create a new sampler for the just filled texture */
-   if (surface->texture != vlsurface->sampler_view->texture) {
-      struct pipe_resource *res = surface->texture;
-      struct pipe_sampler_view sv_templ;
-
-      vlVdpDefaultSamplerViewTemplate(&sv_templ, res);
-      pipe_sampler_view_reference(&vlsurface->sampler_view, NULL);
-      vlsurface->sampler_view = dev->context->create_sampler_view(dev->context, res, &sv_templ);
-   }
-
-   return;
-}
-
-void
-vlVdpSave4DelayedRendering(vlVdpDevice *dev, VdpOutputSurface surface, struct vl_compositor_state *cstate)
-{
-   assert(dev);
-
-   vlVdpResolveDelayedRendering(dev, NULL, NULL);
-
-   dev->delayed_rendering.surface = surface;
-   dev->delayed_rendering.cstate = cstate;
+   if (desc->swizzle[0] == PIPE_SWIZZLE_0)
+      templ->swizzle_r = PIPE_SWIZZLE_1;
+   if (desc->swizzle[1] == PIPE_SWIZZLE_0)
+      templ->swizzle_g = PIPE_SWIZZLE_1;
+   if (desc->swizzle[2] == PIPE_SWIZZLE_0)
+      templ->swizzle_b = PIPE_SWIZZLE_1;
+   if (desc->swizzle[3] == PIPE_SWIZZLE_0)
+      templ->swizzle_a = PIPE_SWIZZLE_1;
 }

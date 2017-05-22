@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -31,13 +31,14 @@
 #include <X11/extensions/XvMClib.h>
 
 #include "pipe/p_screen.h"
-#include "pipe/p_video_decoder.h"
+#include "pipe/p_video_codec.h"
 #include "pipe/p_state.h"
 
 #include "util/u_memory.h"
 #include "util/u_math.h"
 #include "util/u_format.h"
 #include "util/u_sampler.h"
+#include "util/u_surface.h"
 #include "util/u_rect.h"
 #include "vl/vl_winsys.h"
 
@@ -54,10 +55,10 @@ static enum pipe_format XvIDToPipe(int xvimage_id)
          return PIPE_FORMAT_B8G8R8X8_UNORM;
 
       case FOURCC_AI44:
-         return PIPE_FORMAT_A4R4_UNORM;
+         return PIPE_FORMAT_R4A4_UNORM;
 
       case FOURCC_IA44:
-         return PIPE_FORMAT_R4A4_UNORM;
+         return PIPE_FORMAT_A4R4_UNORM;
 
       default:
          XVMC_MSG(XVMC_ERR, "[XvMC] Unrecognized Xv image ID 0x%08X.\n", xvimage_id);
@@ -89,8 +90,8 @@ static int PipeToComponentOrder(enum pipe_format format, char *component_order)
       case PIPE_FORMAT_B8G8R8X8_UNORM:
          return 0;
 
-      case PIPE_FORMAT_R4A4_UNORM:
       case PIPE_FORMAT_A4R4_UNORM:
+      case PIPE_FORMAT_R4A4_UNORM:
          component_order[0] = 'Y';
          component_order[1] = 'U';
          component_order[2] = 'V';
@@ -111,12 +112,11 @@ static Status Validate(Display *dpy, XvPortID port, int surface_type_id, int xvi
 {
    XvImageFormatValues *subpictures;
    int num_subpics;
-   unsigned int i;
+   int i;
 
    subpictures = XvMCListSubpictureTypes(dpy, port, surface_type_id, &num_subpics);
    if (num_subpics < 1) {
-      if (subpictures)
-         XFree(subpictures);
+      free(subpictures);
       return BadMatch;
    }
    if (!subpictures)
@@ -161,7 +161,7 @@ static Status Validate(Display *dpy, XvPortID port, int surface_type_id, int xvi
       }
    }
 
-   XFree(subpictures);
+   free(subpictures);
 
    return i < num_subpics ? Success : BadMatch;
 }
@@ -174,20 +174,16 @@ upload_sampler(struct pipe_context *pipe, struct pipe_sampler_view *dst,
    struct pipe_transfer *transfer;
    void *map;
 
-   transfer = pipe->get_transfer(pipe, dst->texture, 0, PIPE_TRANSFER_WRITE, dst_box);
-   if (!transfer)
+   map = pipe->transfer_map(pipe, dst->texture, 0, PIPE_TRANSFER_WRITE,
+                            dst_box, &transfer);
+   if (!map)
       return;
 
-   map = pipe->transfer_map(pipe, transfer);
-   if (map) {
-      util_copy_rect(map, dst->texture->format, transfer->stride, 0, 0,
-                     dst_box->width, dst_box->height,
-                     src, src_stride, src_x, src_y);
+   util_copy_rect(map, dst->texture->format, transfer->stride, 0, 0,
+                  dst_box->width, dst_box->height,
+                  src, src_stride, src_x, src_y);
 
-      pipe->transfer_unmap(pipe, transfer);
-   }
-
-   pipe->transfer_destroy(pipe, transfer);
+   pipe->transfer_unmap(pipe, transfer);
 }
 
 PUBLIC
@@ -232,6 +228,7 @@ Status XvMCCreateSubpicture(Display *dpy, XvMCContext *context, XvMCSubpicture *
    tex_templ.last_level = 0;
    if (pipe->screen->get_video_param(pipe->screen,
                                      PIPE_VIDEO_PROFILE_UNKNOWN,
+                                     PIPE_VIDEO_ENTRYPOINT_UNKNOWN,
                                      PIPE_VIDEO_CAP_NPOT_TEXTURES)) {
       tex_templ.width0 = width;
       tex_templ.height0 = height;
@@ -273,13 +270,13 @@ Status XvMCCreateSubpicture(Display *dpy, XvMCContext *context, XvMCSubpicture *
       tex_templ.format = PIPE_FORMAT_R8G8B8X8_UNORM;
       tex_templ.width0 = subpicture->num_palette_entries;
       tex_templ.height0 = 1;
-      tex_templ.usage = PIPE_USAGE_STATIC;
+      tex_templ.usage = PIPE_USAGE_DEFAULT;
 
       tex = pipe->screen->resource_create(pipe->screen, &tex_templ);
 
       memset(&sampler_templ, 0, sizeof(sampler_templ));
       u_sampler_view_default_template(&sampler_templ, tex, tex->format);
-      sampler_templ.swizzle_a = PIPE_SWIZZLE_ONE;
+      sampler_templ.swizzle_a = PIPE_SWIZZLE_1;
       subpicture_priv->palette = pipe->create_sampler_view(pipe, tex, &sampler_templ);
       pipe_resource_reference(&tex, NULL);
       if (!subpicture_priv->sampler) {
@@ -324,20 +321,15 @@ Status XvMCClearSubpicture(Display *dpy, XvMCSubpicture *subpicture, short x, sh
    dst = subpicture_priv->sampler;
 
    /* TODO: Assert clear rect is within bounds? Or clip? */
-   transfer = pipe->get_transfer(pipe, dst->texture, 0, PIPE_TRANSFER_WRITE, &dst_box);
-   if (!transfer)
+   map = pipe->transfer_map(pipe, dst->texture, 0, PIPE_TRANSFER_WRITE,
+                            &dst_box, &transfer);
+   if (!map)
       return XvMCBadSubpicture;
 
-   map = pipe->transfer_map(pipe, transfer);
-   if (map) {
-      util_fill_rect(map, dst->texture->format, transfer->stride, 0, 0,
-                     dst_box.width, dst_box.height, &uc);
+   util_fill_rect(map, dst->texture->format, transfer->stride, 0, 0,
+                  dst_box.width, dst_box.height, &uc);
 
-      pipe->transfer_unmap(pipe, transfer);
-   }
-
-   pipe->transfer_destroy(pipe, transfer);
-
+   pipe->transfer_unmap(pipe, transfer);
    return Success;
 }
 

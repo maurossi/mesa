@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   *   Brian Paul
   */
 
@@ -63,14 +63,16 @@ vs_exec_prepare( struct draw_vertex_shader *shader,
 {
    struct exec_vertex_shader *evs = exec_vertex_shader(shader);
 
+   debug_assert(!draw->llvm);
    /* Specify the vertex program to interpret/execute.
     * Avoid rebinding when possible.
     */
    if (evs->machine->Tokens != shader->state.tokens) {
       tgsi_exec_machine_bind_shader(evs->machine,
                                     shader->state.tokens,
-                                    draw->vs.tgsi.num_samplers,
-                                    draw->vs.tgsi.samplers);
+                                    draw->vs.tgsi.sampler,
+                                    draw->vs.tgsi.image,
+                                    draw->vs.tgsi.buffer);
    }
 }
 
@@ -97,14 +99,15 @@ vs_exec_run_linear( struct draw_vertex_shader *shader,
    unsigned slot;
    boolean clamp_vertex_color = shader->draw->rasterizer->clamp_vertex_color;
 
+   debug_assert(!shader->draw->llvm);
    tgsi_exec_set_constant_buffers(machine, PIPE_MAX_CONSTANT_BUFFERS,
                                   constants, const_size);
 
    if (shader->info.uses_instanceid) {
       unsigned i = machine->SysSemanticToIndex[TGSI_SEMANTIC_INSTANCEID];
-      assert(i < Elements(machine->SystemValue));
+      assert(i < ARRAY_SIZE(machine->SystemValue));
       for (j = 0; j < TGSI_QUAD_SIZE; j++)
-         machine->SystemValue[i].i[j] = shader->draw->instance_id;
+         machine->SystemValue[i].xyzw[0].i[j] = shader->draw->instance_id;
    }
 
    for (i = 0; i < count; i += MAX_TGSI_VERTICES) {
@@ -126,8 +129,20 @@ vs_exec_run_linear( struct draw_vertex_shader *shader,
 
          if (shader->info.uses_vertexid) {
             unsigned vid = machine->SysSemanticToIndex[TGSI_SEMANTIC_VERTEXID];
-            assert(vid < Elements(machine->SystemValue));
-            machine->SystemValue[vid].i[j] = i + j;
+            assert(vid < ARRAY_SIZE(machine->SystemValue));
+            machine->SystemValue[vid].xyzw[0].i[j] = i + j;
+            /* XXX this should include base vertex. Where to get it??? */
+         }
+         if (shader->info.uses_basevertex) {
+            unsigned vid = machine->SysSemanticToIndex[TGSI_SEMANTIC_BASEVERTEX];
+            assert(vid < ARRAY_SIZE(machine->SystemValue));
+            machine->SystemValue[vid].xyzw[0].i[j] = 0;
+            /* XXX Where to get it??? */
+         }
+         if (shader->info.uses_vertexid_nobase) {
+            unsigned vid = machine->SysSemanticToIndex[TGSI_SEMANTIC_VERTEXID_NOBASE];
+            assert(vid < ARRAY_SIZE(machine->SystemValue));
+            machine->SystemValue[vid].xyzw[0].i[j] = i + j;
          }
 
          for (slot = 0; slot < shader->info.num_inputs; slot++) {
@@ -143,17 +158,12 @@ vs_exec_run_linear( struct draw_vertex_shader *shader,
             machine->Inputs[slot].xyzw[3].f[j] = input[slot][3];
          }
 
-	 input = (const float (*)[4])((const char *)input + input_stride);
+         input = (const float (*)[4])((const char *)input + input_stride);
       } 
 
-      tgsi_set_exec_mask(machine,
-                         1,
-                         max_vertices > 1,
-                         max_vertices > 2,
-                         max_vertices > 3);
-
+      machine->NonHelperMask = (1 << max_vertices) - 1;
       /* run interpreter */
-      tgsi_exec_machine_run( machine );
+      tgsi_exec_machine_run( machine, 0 );
 
       /* Unswizzle all output results.  
        */
@@ -168,12 +178,7 @@ vs_exec_run_linear( struct draw_vertex_shader *shader,
                output[slot][2] = CLAMP(machine->Outputs[slot].xyzw[2].f[j], 0.0f, 1.0f);
                output[slot][3] = CLAMP(machine->Outputs[slot].xyzw[3].f[j], 0.0f, 1.0f);
             }
-            else if (name == TGSI_SEMANTIC_FOG) {
-               output[slot][0] = machine->Outputs[slot].xyzw[0].f[j];
-               output[slot][1] = 0;
-               output[slot][2] = 0;
-               output[slot][3] = 1;
-	    } else
+            else
             {
                output[slot][0] = machine->Outputs[slot].xyzw[0].f[j];
                output[slot][1] = machine->Outputs[slot].xyzw[1].f[j];
@@ -217,7 +222,7 @@ draw_create_vs_exec(struct draw_context *draw,
 {
    struct exec_vertex_shader *vs = CALLOC_STRUCT( exec_vertex_shader );
 
-   if (vs == NULL) 
+   if (!vs)
       return NULL;
 
    /* we make a private copy of the tokens */

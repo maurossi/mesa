@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -52,7 +52,7 @@ struct sp_exec_fragment_shader
 
 
 /** cast wrapper */
-static INLINE struct sp_exec_fragment_shader *
+static inline struct sp_exec_fragment_shader *
 sp_exec_fragment_shader(const struct sp_fragment_shader_variant *var)
 {
    return (struct sp_exec_fragment_shader *) var;
@@ -61,16 +61,17 @@ sp_exec_fragment_shader(const struct sp_fragment_shader_variant *var)
 
 static void
 exec_prepare( const struct sp_fragment_shader_variant *var,
-	      struct tgsi_exec_machine *machine,
-	      struct tgsi_sampler **samplers )
+              struct tgsi_exec_machine *machine,
+              struct tgsi_sampler *sampler,
+              struct tgsi_image *image,
+              struct tgsi_buffer *buffer )
 {
    /*
     * Bind tokens/shader to the interpreter's machine state.
     */
    tgsi_exec_machine_bind_shader(machine,
                                  var->tokens,
-                                 PIPE_MAX_SAMPLERS,
-                                 samplers);
+                                 sampler, image, buffer);
 }
 
 
@@ -117,7 +118,8 @@ setup_pos_vector(const struct tgsi_interp_coef *coef,
 static unsigned 
 exec_run( const struct sp_fragment_shader_variant *var,
 	  struct tgsi_exec_machine *machine,
-	  struct quad_header *quad )
+	  struct quad_header *quad,
+	  bool early_depth_test )
 {
    /* Compute X, Y, Z, W vals for this quad */
    setup_pos_vector(quad->posCoef, 
@@ -127,7 +129,8 @@ exec_run( const struct sp_fragment_shader_variant *var,
    /* convert 0 to 1.0 and 1 to -1.0 */
    machine->Face = (float) (quad->input.facing * -2 + 1);
 
-   quad->inout.mask &= tgsi_exec_machine_run( machine );
+   machine->NonHelperMask = quad->inout.mask;
+   quad->inout.mask &= tgsi_exec_machine_run( machine, 0 );
    if (quad->inout.mask == 0)
       return FALSE;
 
@@ -156,16 +159,19 @@ exec_run( const struct sp_fragment_shader_variant *var,
             {
                uint j;
 
-               for (j = 0; j < 4; j++)
-                  quad->output.depth[j] = machine->Outputs[i].xyzw[2].f[j];
+               if (!early_depth_test) {
+                  for (j = 0; j < 4; j++)
+                     quad->output.depth[j] = machine->Outputs[i].xyzw[2].f[j];
+               }
             }
             break;
          case TGSI_SEMANTIC_STENCIL:
             {
                uint j;
-
-               for (j = 0; j < 4; j++)
-                  quad->output.stencil[j] = (unsigned)machine->Outputs[i].xyzw[1].f[j];
+               if (!early_depth_test) {
+                  for (j = 0; j < 4; j++)
+                     quad->output.stencil[j] = (unsigned)machine->Outputs[i].xyzw[1].u[j];
+               }
             }
             break;
          }
@@ -181,7 +187,7 @@ exec_delete(struct sp_fragment_shader_variant *var,
             struct tgsi_exec_machine *machine)
 {
    if (machine->Tokens == var->tokens) {
-      tgsi_exec_machine_bind_shader(machine, NULL, 0, NULL);
+      tgsi_exec_machine_bind_shader(machine, NULL, NULL, NULL, NULL);
    }
 
    FREE( (void *) var->tokens );
@@ -190,8 +196,7 @@ exec_delete(struct sp_fragment_shader_variant *var,
 
 
 struct sp_fragment_shader_variant *
-softpipe_create_fs_variant_exec(struct softpipe_context *softpipe,
-                                const struct pipe_shader_state *templ)
+softpipe_create_fs_variant_exec(struct softpipe_context *softpipe)
 {
    struct sp_exec_fragment_shader *shader;
 

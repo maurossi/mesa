@@ -18,16 +18,18 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  **************************************************************************/
 
+/* Force assertions, even on release builds. */
+#undef NDEBUG
 #include <assert.h>
-#include <error.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "testlib.h"
 
 static void PrintGUID(const char *guid)
@@ -35,7 +37,7 @@ static void PrintGUID(const char *guid)
 	int i;
 	printf("\tguid: ");
 	for (i = 0; i < 4; ++i)
-		printf("%C,", guid[i] == 0 ? '0' : guid[i]);
+		printf("%c,", guid[i] == 0 ? '0' : guid[i]);
 	for (; i < 15; ++i)
 		printf("%x,", (unsigned char)guid[i]);
 	printf("%x\n", (unsigned int)guid[15]);
@@ -46,7 +48,7 @@ static void PrintComponentOrder(const char *co)
 	int i;
 	printf("\tcomponent_order:\n\t   ");
 	for (i = 0; i < 4; ++i)
-		printf("%C,", co[i] == 0 ? '0' : co[i]);
+		printf("%c,", co[i] == 0 ? '0' : co[i]);
 	for (; i < 31; ++i)
 		printf("%x,", (unsigned int)co[i]);
 	printf("%x\n", (unsigned int)co[31]);
@@ -86,7 +88,8 @@ int main(int argc, char **argv)
 	))
 	{
 		XCloseDisplay(display);
-		error(1, 0, "Error, unable to find a good port.\n");
+		fprintf(stderr, "Error, unable to find a good port.\n");
+		exit(1);
 	}
 
 	if (is_overlay)
@@ -164,8 +167,12 @@ int main(int argc, char **argv)
 		assert(subpicture.xvimage_id == subpics[i].id);
 		/* Test width & height assigned and correct */
 		assert(subpicture.width == width && subpicture.height == height);
-		/* Test no palette support */
-		assert(subpicture.num_palette_entries == 0 && subpicture.entry_bytes == 0);
+		if (subpics[i].type == XvRGB)
+			/* Test no palette support */
+			assert(subpicture.num_palette_entries == 0 && subpicture.entry_bytes == 0);
+		else
+			/* Test palette support */
+			assert(subpicture.num_palette_entries == 16 && subpicture.entry_bytes == 4);
 		/* Test valid params */
 		assert(XvMCDestroySubpicture(display, &subpicture) == Success);
 	}
@@ -174,7 +181,7 @@ int main(int argc, char **argv)
 
 	assert(XvMCDestroyContext(display, &context) == Success);
 
-	XFree(subpics);
+	free(subpics);
 	XvUngrabPort(display, port_num, CurrentTime);
 	XCloseDisplay(display);
 

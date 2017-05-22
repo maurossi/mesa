@@ -42,9 +42,11 @@ struct r300_shader_semantics {
     int generic[ATTR_GENERIC_COUNT];
     int fog;
     int wpos;
+
+    int num_generic;
 };
 
-static INLINE void r300_shader_semantics_reset(
+static inline void r300_shader_semantics_reset(
     struct r300_shader_semantics* info)
 {
     int i;
@@ -63,6 +65,8 @@ static INLINE void r300_shader_semantics_reset(
     for (i = 0; i < ATTR_GENERIC_COUNT; i++) {
         info->generic[i] = ATTR_UNUSED;
     }
+
+    info->num_generic = 0;
 }
 
 #endif

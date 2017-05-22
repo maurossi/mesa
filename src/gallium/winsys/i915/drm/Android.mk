@@ -30,11 +30,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_C_INCLUDES := \
-	$(DRM_TOP) \
-	$(DRM_TOP)/include/drm \
-	$(DRM_TOP)/intel
-
+LOCAL_SHARED_LIBRARIES := libdrm_intel
 LOCAL_MODULE := libmesa_winsys_i915
 
 include $(GALLIUM_COMMON_MK)

@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,7 +29,7 @@
  * \file
  * Allocate buffers from two alternative buffer providers.
  * 
- * \author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * \author Jose Fonseca <jfonseca@vmware.com>
  */
 
 
@@ -50,7 +50,7 @@ struct pb_alt_manager
 };
 
 
-static INLINE struct pb_alt_manager *
+static inline struct pb_alt_manager *
 pb_alt_manager(struct pb_manager *mgr)
 {
    assert(mgr);
@@ -67,7 +67,7 @@ pb_alt_manager_create_buffer(struct pb_manager *_mgr,
    struct pb_buffer *buf;
    
    buf = mgr->provider1->create_buffer(mgr->provider1, size, desc);
-   if(buf)
+   if (buf)
       return buf;
    
    buf = mgr->provider2->create_buffer(mgr->provider2, size, desc);

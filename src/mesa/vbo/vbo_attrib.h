@@ -1,6 +1,6 @@
 /*
  Copyright (C) Intel Corp.  2006.  All Rights Reserved.
- Intel funded Tungsten Graphics (http://www.tungstengraphics.com) to
+ Intel funded Tungsten Graphics to
  develop this 3D driver.
  
  Permission is hereby granted, free of charge, to any person obtaining
@@ -26,7 +26,7 @@
  **********************************************************************/
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
 
 #ifndef VBO_ATTRIB_H
@@ -79,7 +79,7 @@ enum {
 	VBO_ATTRIB_GENERIC14 = 31,
 	VBO_ATTRIB_GENERIC15 = 32,
 
-	/* XXX: in the vertex program InputsRead flag, we alias
+	/* XXX: in the vertex program inputs_read flag, we alias
 	 * materials and generics and use knowledge about the program
 	 * (whether it is a fixed-function emulation) to
 	 * differentiate.  Here we must keep them apart instead.

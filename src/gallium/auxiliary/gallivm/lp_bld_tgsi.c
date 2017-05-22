@@ -3,7 +3,7 @@
  * Copyright 2011-2012 Advanced Micro Devices, Inc.
  * Copyright 2010 VMware, Inc.
  * Copyright 2009 VMware, Inc.
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -54,7 +54,7 @@ unsigned lp_bld_tgsi_list_init(struct lp_build_tgsi_context * bld_base)
 
 unsigned lp_bld_tgsi_add_instruction(
    struct lp_build_tgsi_context * bld_base,
-   struct tgsi_full_instruction *inst_to_add)
+   const struct tgsi_full_instruction *inst_to_add)
 {
 
    if (bld_base->num_instructions == bld_base->max_instructions) {
@@ -104,7 +104,7 @@ lp_build_tgsi_intrinsic(
    struct lp_build_context * base = &bld_base->base;
    emit_data->output[emit_data->chan] = lp_build_intrinsic(
                base->gallivm->builder, action->intr_name,
-               emit_data->dst_type, emit_data->args, emit_data->arg_count);
+               emit_data->dst_type, emit_data->args, emit_data->arg_count, 0);
 }
 
 LLVMValueRef
@@ -129,7 +129,8 @@ lp_build_emit_llvm_unary(
    unsigned tgsi_opcode,
    LLVMValueRef arg0)
 {
-   struct lp_build_emit_data emit_data;
+   struct lp_build_emit_data emit_data = {{0}};
+   emit_data.info = tgsi_get_opcode_info(tgsi_opcode);
    emit_data.arg_count = 1;
    emit_data.args[0] = arg0;
    return lp_build_emit_llvm(bld_base, tgsi_opcode, &emit_data);
@@ -142,7 +143,8 @@ lp_build_emit_llvm_binary(
    LLVMValueRef arg0,
    LLVMValueRef arg1)
 {
-   struct lp_build_emit_data emit_data;
+   struct lp_build_emit_data emit_data = {{0}};
+   emit_data.info = tgsi_get_opcode_info(tgsi_opcode);
    emit_data.arg_count = 2;
    emit_data.args[0] = arg0;
    emit_data.args[1] = arg1;
@@ -157,7 +159,8 @@ lp_build_emit_llvm_ternary(
    LLVMValueRef arg1,
    LLVMValueRef arg2)
 {
-   struct lp_build_emit_data emit_data;
+   struct lp_build_emit_data emit_data = {{0}};
+   emit_data.info = tgsi_get_opcode_info(tgsi_opcode);
    emit_data.arg_count = 3;
    emit_data.args[0] = arg0;
    emit_data.args[1] = arg1;
@@ -175,11 +178,50 @@ void lp_build_fetch_args(
    unsigned src;
    for (src = 0; src < emit_data->info->num_src; src++) {
       emit_data->args[src] = lp_build_emit_fetch(bld_base, emit_data->inst, src,
-                                               emit_data->chan);
+                                                 emit_data->src_chan);
    }
    emit_data->arg_count = emit_data->info->num_src;
    lp_build_action_set_dst_type(emit_data, bld_base,
 		emit_data->inst->Instruction.Opcode);
+}
+
+/**
+ * with 64-bit src and dst channels aren't 1:1.
+ * check the src/dst types for the opcode,
+ * 1. if neither is 64-bit then src == dst;
+ * 2. if dest is 64-bit
+ *     - don't store to y or w
+ *     - if src is 64-bit then src == dst.
+ *     - else for f2d, d.xy = s.x
+ *     - else for f2d, d.zw = s.y
+ * 3. if dst is single, src is 64-bit
+ *    - map dst x,z to src xy;
+ *    - map dst y,w to src zw;
+ */
+static int get_src_chan_idx(unsigned opcode,
+                            int dst_chan_index)
+{
+   enum tgsi_opcode_type dtype = tgsi_opcode_infer_dst_type(opcode);
+   enum tgsi_opcode_type stype = tgsi_opcode_infer_src_type(opcode);
+
+   if (!tgsi_type_is_64bit(dtype) && !tgsi_type_is_64bit(stype))
+      return dst_chan_index;
+   if (tgsi_type_is_64bit(dtype)) {
+      if (dst_chan_index == 1 || dst_chan_index == 3)
+         return -1;
+      if (tgsi_type_is_64bit(stype))
+         return dst_chan_index;
+      if (dst_chan_index == 0)
+         return 0;
+      if (dst_chan_index == 2)
+         return 1;
+   } else {
+      if (dst_chan_index == 0 || dst_chan_index == 2)
+         return 0;
+      if (dst_chan_index == 1 || dst_chan_index == 3)
+         return 2;
+   }
+   return -1;
 }
 
 /* XXX: COMMENT
@@ -197,21 +239,18 @@ lp_build_tgsi_inst_llvm(
    struct lp_build_emit_data emit_data;
    unsigned chan_index;
    LLVMValueRef val;
-
    bld_base->pc++;
+
+   if (bld_base->emit_debug) {
+      bld_base->emit_debug(bld_base, inst, info);
+   }
 
    /* Ignore deprecated instructions */
    switch (inst->Instruction.Opcode) {
 
-   case TGSI_OPCODE_RCC:
-   case TGSI_OPCODE_UP2H:
    case TGSI_OPCODE_UP2US:
    case TGSI_OPCODE_UP4B:
    case TGSI_OPCODE_UP4UB:
-   case TGSI_OPCODE_X2D:
-   case TGSI_OPCODE_ARA:
-   case TGSI_OPCODE_BRA:
-   case TGSI_OPCODE_DIV:
    case TGSI_OPCODE_PUSHA:
    case TGSI_OPCODE_POPA:
    case TGSI_OPCODE_SAD:
@@ -241,7 +280,12 @@ lp_build_tgsi_inst_llvm(
    /* Emit the instructions */
    if (info->output_mode == TGSI_OUTPUT_COMPONENTWISE && bld_base->soa) {
       TGSI_FOR_EACH_DST0_ENABLED_CHANNEL(inst, chan_index) {
+         int src_index = get_src_chan_idx(inst->Instruction.Opcode, chan_index);
+         /* ignore channels 1/3 in double dst */
+         if (src_index == -1)
+            continue;
          emit_data.chan = chan_index;
+         emit_data.src_chan = src_index;
          if (!action->fetch_args) {
             lp_build_fetch_args(bld_base, &emit_data);
          } else {
@@ -271,7 +315,7 @@ lp_build_tgsi_inst_llvm(
       }
    }
 
-   if (info->num_dst > 0) {
+   if (info->num_dst > 0 && info->opcode != TGSI_OPCODE_STORE) {
       bld_base->emit_store(bld_base, inst, info, emit_data.output);
    }
    return TRUE;
@@ -291,7 +335,7 @@ lp_build_emit_fetch(
    enum tgsi_opcode_type stype = tgsi_opcode_infer_src_type(inst->Instruction.Opcode);
 
    if (chan_index == LP_CHAN_ALL) {
-      swizzle = ~0;
+      swizzle = ~0u;
    } else {
       swizzle = tgsi_util_get_full_src_register_swizzle(reg, chan_index);
       if (swizzle > 3) {
@@ -311,18 +355,56 @@ lp_build_emit_fetch(
    }
 
    if (reg->Register.Absolute) {
-      res = lp_build_emit_llvm_unary(bld_base, TGSI_OPCODE_ABS, res);
+      switch (stype) {
+      case TGSI_TYPE_FLOAT:
+      case TGSI_TYPE_DOUBLE:
+      case TGSI_TYPE_UNTYPED:
+          /* modifiers on movs assume data is float */
+         res = lp_build_abs(&bld_base->base, res);
+         break;
+      case TGSI_TYPE_UNSIGNED:
+      case TGSI_TYPE_SIGNED:
+      case TGSI_TYPE_UNSIGNED64:
+      case TGSI_TYPE_SIGNED64:
+      case TGSI_TYPE_VOID:
+      default:
+         /* abs modifier is only legal on floating point types */
+         assert(0);
+         break;
+      }
    }
 
    if (reg->Register.Negate) {
-      res = lp_build_negate( &bld_base->base, res );
+      switch (stype) {
+      case TGSI_TYPE_FLOAT:
+      case TGSI_TYPE_UNTYPED:
+         /* modifiers on movs assume data is float */
+         res = lp_build_negate( &bld_base->base, res );
+         break;
+      case TGSI_TYPE_DOUBLE:
+         /* no double build context */
+         assert(0);
+         break;
+      case TGSI_TYPE_SIGNED:
+      case TGSI_TYPE_UNSIGNED:
+         res = lp_build_negate( &bld_base->int_bld, res );
+         break;
+      case TGSI_TYPE_SIGNED64:
+      case TGSI_TYPE_UNSIGNED64:
+         res = lp_build_negate( &bld_base->int64_bld, res );
+         break;
+      case TGSI_TYPE_VOID:
+      default:
+         assert(0);
+         break;
+      }
    }
 
    /*
     * Swizzle the argument
     */
 
-   if (swizzle == ~0) {
+   if (swizzle == ~0u) {
       res = bld_base->emit_swizzle(bld_base, res,
                      reg->Register.SwizzleX,
                      reg->Register.SwizzleY,
@@ -333,6 +415,63 @@ lp_build_emit_fetch(
    return res;
 
 }
+
+
+LLVMValueRef
+lp_build_emit_fetch_texoffset(
+   struct lp_build_tgsi_context *bld_base,
+   const struct tgsi_full_instruction *inst,
+   unsigned tex_off_op,
+   const unsigned chan_index)
+{
+   const struct tgsi_texture_offset *off = &inst->TexOffsets[tex_off_op];
+   struct tgsi_full_src_register reg;
+   unsigned swizzle;
+   LLVMValueRef res;
+   enum tgsi_opcode_type stype = TGSI_TYPE_SIGNED;
+
+   /* convert offset "register" to ordinary register so can use normal emit funcs */
+   memset(&reg, 0, sizeof(reg));
+   reg.Register.File = off->File;
+   reg.Register.Index = off->Index;
+   reg.Register.SwizzleX = off->SwizzleX;
+   reg.Register.SwizzleY = off->SwizzleY;
+   reg.Register.SwizzleZ = off->SwizzleZ;
+
+   if (chan_index == LP_CHAN_ALL) {
+      swizzle = ~0;
+   } else {
+      assert(chan_index < TGSI_SWIZZLE_W);
+      swizzle = tgsi_util_get_src_register_swizzle(&reg.Register, chan_index);
+   }
+
+   assert(off->Index <= bld_base->info->file_max[off->File]);
+
+   if (bld_base->emit_fetch_funcs[off->File]) {
+      res = bld_base->emit_fetch_funcs[off->File](bld_base, &reg, stype,
+                                                           swizzle);
+   } else {
+      assert(0 && "invalid src register in emit_fetch_texoffset()");
+      return bld_base->base.undef;
+   }
+
+   /*
+    * Swizzle the argument
+    */
+
+   if (swizzle == ~0u) {
+      res = bld_base->emit_swizzle(bld_base, res,
+                                   off->SwizzleX,
+                                   off->SwizzleY,
+                                   off->SwizzleZ,
+                                   /* there's no 4th channel */
+                                   off->SwizzleX);
+   }
+
+   return res;
+
+}
+
 
 boolean
 lp_build_tgsi_llvm(
@@ -377,8 +516,8 @@ lp_build_tgsi_llvm(
    }
 
    while (bld_base->pc != -1) {
-      struct tgsi_full_instruction *instr = bld_base->instructions +
-							bld_base->pc;
+      const struct tgsi_full_instruction *instr =
+         bld_base->instructions + bld_base->pc;
       const struct tgsi_opcode_info *opcode_info =
          tgsi_get_opcode_info(instr->Instruction.Opcode);
       if (!lp_build_tgsi_inst_llvm(bld_base, instr)) {

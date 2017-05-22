@@ -191,7 +191,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #	define R300_VAP_TCL_BYPASS		(1 << 8)
 /* Read only flag if TCL engine is busy. */
 #	define R300_VAP_PVS_BUSY                (1 << 11)
-/* TODO: gap for MAX_MPS */
 /* Read only flag if the vertex store is busy. */
 #	define R300_VAP_VS_BUSY                 (1 << 24)
 /* Read only flag if the reciprocal engine is busy. */
@@ -921,9 +920,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  * The line width is given in multiples of 6.
  * In default mode lines are classified as vertical lines.
- * HO: horizontal
- * VE: vertical or horizontal
- * HO & VE: no classification
  */
 #define R300_GA_LINE_CNTL                             0x4234
 #       define R300_GA_LINE_CNTL_WIDTH_SHIFT       0
@@ -934,12 +930,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #	define R300_GA_LINE_CNTL_END_TYPE_COMP     (3 << 16) /* Computed (perpendicular to slope) */
 #	define R500_GA_LINE_CNTL_SORT_NO           (0 << 18)
 #	define R500_GA_LINE_CNTL_SORT_MINX_MINY    (1 << 18)
-/** TODO: looks wrong */
-#       define R300_LINESIZE_MAX              (R300_GA_LINE_CNTL_WIDTH_MASK / 6)
-/** TODO: looks wrong */
-#       define R300_LINE_CNT_HO               (1 << 16)
-/** TODO: looks wrong */
-#       define R300_LINE_CNT_VE               (1 << 17)
 
 /* Line Stipple configuration information. */
 #define R300_GA_LINE_STIPPLE_CONFIG                   0x4238
@@ -1189,7 +1179,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define R300_GA_SOFT_RESET                    0x429c
 
 /* Not sure why there are duplicate of factor and constant values.
- * My best guess so far is that there are seperate zbiases for test and write.
+ * My best guess so far is that there are separate zbiases for test and write.
  * Ordering might be wrong.
  * Some of the tests indicate that fgl has a fallback implementation of zbias
  * via pixel shaders.
@@ -1278,8 +1268,6 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define R300_RS_IP_1				        0x4314
 #define R300_RS_IP_2				        0x4318
 #define R300_RS_IP_3				        0x431C
-#       define R300_RS_INTERP_SRC_SHIFT          2 /* TODO: check for removal */
-#       define R300_RS_INTERP_SRC_MASK           (7 << 2) /* TODO: check for removal */
 #	define R300_RS_TEX_PTR(x)		        (x << 0)
 #	define R300_RS_COL_PTR(x)		        ((x) << 6)
 #	define R300_RS_COL_FMT(x)		        ((x) << 9)
@@ -1712,10 +1700,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define R300_TX_OFFSET_6                    0x4558
 #define R300_TX_OFFSET_7                    0x455C
 
-#       define R300_TXO_ENDIAN_NO_SWAP           (0 << 0)
-#       define R300_TXO_ENDIAN_BYTE_SWAP         (1 << 0)
-#       define R300_TXO_ENDIAN_WORD_SWAP         (2 << 0)
-#       define R300_TXO_ENDIAN_HALFDW_SWAP       (3 << 0)
+#       define R300_TXO_ENDIAN(x)                ((x) << 0)
 #       define R300_TXO_MACRO_TILE_LINEAR        (0 << 2)
 #       define R300_TXO_MACRO_TILE_TILED         (1 << 2)
 #       define R300_TXO_MACRO_TILE(x)            ((x) << 2)
@@ -2390,7 +2375,10 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
  * Program this register with a 32-bit value in ARGB8888 or ARGB2101010
  * formats, ignoring the fields.
  */
-#define RB3D_COLOR_CLEAR_VALUE                   0x4e14
+#define R300_RB3D_COLOR_CLEAR_VALUE                   0x4E14
+/* For FP16 AA. */
+#define R500_RB3D_COLOR_CLEAR_VALUE_AR                0x46C0
+#define R500_RB3D_COLOR_CLEAR_VALUE_GB                0x46C4
 
 /* gap */
 
@@ -2427,10 +2415,7 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #       define R300_COLOR_MICROTILE_ENABLE        (1 << 17)
 #       define R300_COLOR_MICROTILE_ENABLE_SQUARE (2 << 17) /* Only available in 16-bit */
 #       define R300_COLOR_MICROTILE(x)            ((x) << 17)
-#       define R300_COLOR_ENDIAN_NO_SWAP          (0 << 19)
-#       define R300_COLOR_ENDIAN_WORD_SWAP        (1 << 19)
-#       define R300_COLOR_ENDIAN_DWORD_SWAP       (2 << 19)
-#       define R300_COLOR_ENDIAN_HALF_DWORD_SWAP  (3 << 19)
+#       define R300_COLOR_ENDIAN(x)               ((x) << 19)
 #	define R500_COLOR_FORMAT_ARGB10101010     (0 << 21)
 #	define R500_COLOR_FORMAT_UV1010           (1 << 21)
 #	define R500_COLOR_FORMAT_CI8              (2 << 21) /* 2D only */
@@ -2484,6 +2469,18 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #	define R300_RB3D_DITHER_CTL_ALPHA_DITHER_MODE_ROUND      (1 << 2)
 #	define R300_RB3D_DITHER_CTL_ALPHA_DITHER_MODE_LUT        (2 << 2)
 /* reserved */
+
+#define R300_RB3D_CMASK_OFFSET0 0x4E54
+#define R300_RB3D_CMASK_OFFSET1 0x4E58
+#define R300_RB3D_CMASK_OFFSET2 0x4E5C
+#define R300_RB3D_CMASK_OFFSET3 0x4E60
+#define R300_RB3D_CMASK_PITCH0  0x4E64
+#define R300_RB3D_CMASK_PITCH1  0x4E68
+#define R300_RB3D_CMASK_PITCH2  0x4E6C
+#define R300_RB3D_CMASK_PITCH3  0x4E70
+#define R300_RB3D_CMASK_WRINDEX 0x4E74
+#define R300_RB3D_CMASK_DWORD   0x4E78
+#define R300_RB3D_CMASK_RDINDEX 0x4E7C
 
 /* Resolve buffer destination address. The cache must be empty before changing
  * this register if the cb is in resolve mode. Unpipelined
@@ -2690,10 +2687,12 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #       define R300_DEPTHMICROTILE_TILED        (1 << 17)
 #       define R300_DEPTHMICROTILE_TILED_SQUARE (2 << 17)
 #       define R300_DEPTHMICROTILE(x)           ((x) << 17)
-#       define R300_DEPTHENDIAN_NO_SWAP         (0 << 18)
-#       define R300_DEPTHENDIAN_WORD_SWAP       (1 << 18)
-#       define R300_DEPTHENDIAN_DWORD_SWAP      (2 << 18)
-#       define R300_DEPTHENDIAN_HALF_DWORD_SWAP (3 << 18)
+#       define R300_DEPTHENDIAN(x)              ((x) << 19)
+
+#define R300_SURF_NO_SWAP         0
+#define R300_SURF_WORD_SWAP       1
+#define R300_SURF_DWORD_SWAP      2
+#define R300_SURF_HALF_DWORD_SWAP 3
 
 /* Z Buffer Clear Value */
 #define R300_ZB_DEPTHCLEARVALUE                  0x4f28
@@ -2945,13 +2944,15 @@ enum {
 
 /*\}*/
 
-#define PVS_OP_DST_OPERAND(opcode, math_inst, macro_inst, reg_index, reg_writemask, reg_class)	\
+#define PVS_OP_DST_OPERAND(opcode, math_inst, macro_inst, reg_index, reg_writemask, reg_class, saturate)	\
 	 (((opcode & PVS_DST_OPCODE_MASK) << PVS_DST_OPCODE_SHIFT)	\
 	 | ((math_inst & PVS_DST_MATH_INST_MASK) << PVS_DST_MATH_INST_SHIFT)	\
 	 | ((macro_inst & PVS_DST_MACRO_INST_MASK) << PVS_DST_MACRO_INST_SHIFT)	\
 	 | ((reg_index & PVS_DST_OFFSET_MASK) << PVS_DST_OFFSET_SHIFT)	\
 	 | ((reg_writemask & 0xf) << PVS_DST_WE_X_SHIFT)	/* X Y Z W */	\
-	 | ((reg_class & PVS_DST_REG_TYPE_MASK) << PVS_DST_REG_TYPE_SHIFT))
+	 | ((reg_class & PVS_DST_REG_TYPE_MASK) << PVS_DST_REG_TYPE_SHIFT)) \
+         | ((math_inst) ? (((saturate) & PVS_DST_ME_SAT_MASK) << PVS_DST_ME_SAT_SHIFT) : \
+                          (((saturate) & PVS_DST_VE_SAT_MASK) << PVS_DST_VE_SAT_SHIFT))
 
 #define PVS_SRC_OPERAND(in_reg_index, comp_x, comp_y, comp_z, comp_w, reg_class, negate)	\
 	(((in_reg_index & PVS_SRC_OFFSET_MASK) << PVS_SRC_OFFSET_SHIFT)				\
@@ -3283,7 +3284,7 @@ enum {
 #   define R500_INST_ALPHA_PRED_SEL_GGGG		(3 << 25)
 #   define R500_INST_ALPHA_PRED_SEL_BBBB		(4 << 25)
 #   define R500_INST_ALPHA_PRED_SEL_AAAA		(5 << 25)
-/* XXX next four are kind of guessed */
+/* Next four are guessed, documentation doesn't mention order. */
 #   define R500_INST_STAT_WE_R				(1 << 28)
 #   define R500_INST_STAT_WE_G				(1 << 29)
 #   define R500_INST_STAT_WE_B				(1 << 30)
@@ -3504,6 +3505,7 @@ enum {
  * 2. CLEAR_VALUE: Value to write into HIZ RAM.
  */
 #define R300_PACKET3_3D_CLEAR_HIZ           0x00003700
+#define R300_PACKET3_3D_CLEAR_CMASK         0x00003800
 
 /* Draws a set of primitives using vertex buffers pointed by the state data.
  * At least 2 Parameters:
@@ -3528,19 +3530,13 @@ enum {
 /*
  * CP type-3 packets
  */
-#define R300_CP_CMD_BITBLT_MULTI	0xC0009B00
-
-/* XXX Corbin's stuff from radeon and r200 */
-
 #define RADEON_WAIT_UNTIL                   0x1720
 #       define RADEON_WAIT_CRTC_PFLIP       (1 << 0)
 #       define RADEON_WAIT_2D_IDLECLEAN     (1 << 16)
 #       define RADEON_WAIT_3D_IDLECLEAN     (1 << 17)
 #       define RADEON_WAIT_HOST_IDLECLEAN   (1 << 18)
 
-#define R200_3D_DRAW_IMMD_2      0xC0003500
-
-#define RADEON_CP_PACKET0 0x0 /* XXX stolen from radeon_reg.h */
+#define RADEON_CP_PACKET0                           0x00000000
 #define RADEON_CP_PACKET3                           0xC0000000
 
 #define RADEON_ONE_REG_WR        (1 << 15)

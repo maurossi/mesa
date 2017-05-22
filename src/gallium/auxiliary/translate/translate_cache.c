@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -40,7 +40,7 @@ struct translate_cache {
 struct translate_cache * translate_cache_create( void )
 {
    struct translate_cache *cache = MALLOC_STRUCT(translate_cache);
-   if (cache == NULL) {
+   if (!cache) {
       return NULL;
    }
 
@@ -49,7 +49,7 @@ struct translate_cache * translate_cache_create( void )
 }
 
 
-static INLINE void delete_translates(struct translate_cache *cache)
+static inline void delete_translates(struct translate_cache *cache)
 {
    struct cso_hash *hash = cache->hash;
    struct cso_hash_iter iter = cso_hash_first_node(hash);
@@ -70,14 +70,14 @@ void translate_cache_destroy(struct translate_cache *cache)
 }
 
 
-static INLINE unsigned translate_hash_key_size(struct translate_key *key)
+static inline unsigned translate_hash_key_size(struct translate_key *key)
 {
    unsigned size = sizeof(struct translate_key) -
-                   sizeof(struct translate_element) * (PIPE_MAX_ATTRIBS - key->nr_elements);
+                   sizeof(struct translate_element) * (TRANSLATE_MAX_ATTRIBS - key->nr_elements);
    return size;
 }
 
-static INLINE unsigned create_key(struct translate_key *key)
+static inline unsigned create_key(struct translate_key *key)
 {
    unsigned hash_key;
    unsigned size = translate_hash_key_size(key);
