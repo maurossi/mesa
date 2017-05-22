@@ -19,21 +19,35 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
+SUBDIRS = xmlpool
+
+include Makefile.sources
+
+EXTRA_DIST = drirc xmlpool.h SConscript
+
 AM_CFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/src/ \
 	-I$(top_srcdir)/src/mapi \
 	-I$(top_srcdir)/src/mesa/ \
-	$(DEFINES) \
-	$(API_DEFINES) \
+	-I$(top_srcdir)/src/gallium/include \
+	-I$(top_srcdir)/src/gallium/auxiliary \
 	$(LIBDRM_CFLAGS) \
+	$(DEFINES) \
+	-DSYSCONFDIR=\"$(sysconfdir)\" \
 	$(VISIBILITY_CFLAGS)
 
-noinst_LTLIBRARIES = libdricommon.la
+noinst_LTLIBRARIES = \
+	libdricommon.la \
+	libxmlconfig.la \
+	libmegadriver_stub.la
 
-libdricommon_la_SOURCES = \
-	utils.c \
-	dri_util.c \
-	xmlconfig.c
+libdricommon_la_SOURCES = $(DRI_COMMON_FILES)
+
+libxmlconfig_la_SOURCES = $(XMLCONFIG_FILES)
+libxmlconfig_la_CFLAGS = $(AM_CFLAGS) $(EXPAT_CFLAGS)
+libxmlconfig_la_LIBADD = $(EXPAT_LIBS) -lm
+
+libmegadriver_stub_la_SOURCES = $(megadriver_stub_FILES)
 
 sysconf_DATA = drirc

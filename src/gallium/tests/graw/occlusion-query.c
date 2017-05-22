@@ -96,11 +96,11 @@ set_vertices(struct vertex *vertices, unsigned bytes)
    vbuf.buffer_offset = 0;
    vbuf.buffer = pipe_buffer_create_with_data(info.ctx,
                                               PIPE_BIND_VERTEX_BUFFER,
-                                              PIPE_USAGE_STATIC,
+                                              PIPE_USAGE_DEFAULT,
                                               bytes,
                                               vertices);
 
-   info.ctx->set_vertex_buffers(info.ctx, 1, &vbuf);
+   info.ctx->set_vertex_buffers(info.ctx, 0, 1, &vbuf);
 }
 
 
@@ -158,7 +158,7 @@ draw(void)
    union pipe_color_union clear_color;
 
    struct pipe_query *q1, *q2;
-   uint64_t res1, res2;
+   union pipe_query_result res1, res2;
 
    clear_color.f[0] = 0.25;
    clear_color.f[1] = 0.25;
@@ -169,8 +169,8 @@ draw(void)
                    PIPE_CLEAR_COLOR | PIPE_CLEAR_DEPTHSTENCIL,
                    &clear_color, 1.0, 0);
 
-   q1 = info.ctx->create_query(info.ctx, PIPE_QUERY_OCCLUSION_COUNTER);
-   q2 = info.ctx->create_query(info.ctx, PIPE_QUERY_OCCLUSION_COUNTER);
+   q1 = info.ctx->create_query(info.ctx, PIPE_QUERY_OCCLUSION_COUNTER, 0);
+   q2 = info.ctx->create_query(info.ctx, PIPE_QUERY_OCCLUSION_COUNTER, 0);
 
    /* draw first, large object */
    set_vertices(obj1_vertices, sizeof(obj1_vertices));
@@ -187,13 +187,13 @@ draw(void)
    info.ctx->get_query_result(info.ctx, q1, TRUE, &res1);
    info.ctx->get_query_result(info.ctx, q2, TRUE, &res2);
 
-   printf("result1 = %lu  result2 = %lu\n", res1, res2);
-   if (res1 < expected1_min || res1 > expected1_max)
+   printf("result1 = %lu  result2 = %lu\n", res1.u64, res2.u64);
+   if (res1.u64 < expected1_min || res1.u64 > expected1_max)
       printf("  Failure: result1 should be near %d\n", expected1);
-   if (res2 < expected2_min || res2 > expected2_max)
+   if (res2.u64 < expected2_min || res2.u64 > expected2_max)
       printf("  Failure: result2 should be near %d\n", expected2);
 
-   info.ctx->flush(info.ctx, NULL);
+   info.ctx->flush(info.ctx, NULL, 0);
 
    graw_util_flush_front(&info);
 

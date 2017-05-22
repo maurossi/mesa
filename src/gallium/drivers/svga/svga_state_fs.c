@@ -33,62 +33,42 @@
 #include "svga_context.h"
 #include "svga_state.h"
 #include "svga_cmd.h"
+#include "svga_shader.h"
+#include "svga_resource_texture.h"
 #include "svga_tgsi.h"
+#include "svga_format.h"
 
 #include "svga_hw_reg.h"
 
 
 
-static INLINE int compare_fs_keys( const struct svga_fs_compile_key *a,
-                                   const struct svga_fs_compile_key *b )
-{
-   unsigned keysize_a = svga_fs_key_size( a );
-   unsigned keysize_b = svga_fs_key_size( b );
-
-   if (keysize_a != keysize_b) {
-      return (int)(keysize_a - keysize_b);
-   }
-   return memcmp( a, b, keysize_a );
-}
-
-
-static struct svga_shader_result *search_fs_key( struct svga_fragment_shader *fs,
-                                                 const struct svga_fs_compile_key *key )
-{
-   struct svga_shader_result *result = fs->base.results;
-
-   assert(key);
-
-   for ( ; result; result = result->next) {
-      if (compare_fs_keys( key, &result->key.fkey ) == 0)
-         return result;
-   }
-   
-   return NULL;
-}
-
-
 /**
  * If we fail to compile a fragment shader (because it uses too many
  * registers, for example) we'll use a dummy/fallback shader that
- * simply emits a constant color.
+ * simply emits a constant color (red for debug, black for release).
+ * We hit this with the Unigine/Heaven demo when Shaders = High.
+ * With black, the demo still looks good.
  */
 static const struct tgsi_token *
 get_dummy_fragment_shader(void)
 {
-   static const float red[4] = { 1.0, 0.0, 0.0, 0.0 };
+#ifdef DEBUG
+   static const float color[4] = { 1.0, 0.0, 0.0, 0.0 }; /* red */
+#else
+   static const float color[4] = { 0.0, 0.0, 0.0, 0.0 }; /* black */
+#endif
    struct ureg_program *ureg;
    const struct tgsi_token *tokens;
    struct ureg_src src;
    struct ureg_dst dst;
    unsigned num_tokens;
 
-   ureg = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   ureg = ureg_create(PIPE_SHADER_FRAGMENT);
    if (!ureg)
       return NULL;
 
    dst = ureg_DECL_output(ureg, TGSI_SEMANTIC_COLOR, 0);
-   src = ureg_DECL_immediate(ureg, red, 4);
+   src = ureg_DECL_immediate(ureg, color, 4);
    ureg_MOV(ureg, dst, src);
    ureg_END(ureg);
 
@@ -100,58 +80,93 @@ get_dummy_fragment_shader(void)
 }
 
 
-static enum pipe_error compile_fs( struct svga_context *svga,
-                                   struct svga_fragment_shader *fs,
-                                   const struct svga_fs_compile_key *key,
-                                   struct svga_shader_result **out_result )
+static struct svga_shader_variant *
+translate_fragment_program(struct svga_context *svga,
+                           const struct svga_fragment_shader *fs,
+                           const struct svga_compile_key *key)
 {
-   struct svga_shader_result *result;
+   if (svga_have_vgpu10(svga)) {
+      return svga_tgsi_vgpu10_translate(svga, &fs->base, key,
+                                        PIPE_SHADER_FRAGMENT);
+   }
+   else {
+      return svga_tgsi_vgpu9_translate(svga, &fs->base, key,
+                                       PIPE_SHADER_FRAGMENT);
+   }
+}
+
+
+/**
+ * Replace the given shader's instruction with a simple constant-color
+ * shader.  We use this when normal shader translation fails.
+ */
+static struct svga_shader_variant *
+get_compiled_dummy_shader(struct svga_context *svga,
+                          struct svga_fragment_shader *fs,
+                          const struct svga_compile_key *key)
+{
+   const struct tgsi_token *dummy = get_dummy_fragment_shader();
+   struct svga_shader_variant *variant;
+
+   if (!dummy) {
+      return NULL;
+   }
+
+   FREE((void *) fs->base.tokens);
+   fs->base.tokens = dummy;
+
+   variant = translate_fragment_program(svga, fs, key);
+   return variant;
+}
+
+
+/**
+ * Translate TGSI shader into an svga shader variant.
+ */
+static enum pipe_error
+compile_fs(struct svga_context *svga,
+           struct svga_fragment_shader *fs,
+           const struct svga_compile_key *key,
+           struct svga_shader_variant **out_variant)
+{
+   struct svga_shader_variant *variant;
    enum pipe_error ret = PIPE_ERROR;
 
-   result = svga_translate_fragment_program( fs, key );
-   if (result == NULL) {
-      /* some problem during translation, try the dummy shader */
-      const struct tgsi_token *dummy = get_dummy_fragment_shader();
-      if (!dummy) {
-         ret = PIPE_ERROR_OUT_OF_MEMORY;
-         goto fail;
-      }
-      debug_printf("Failed to compile fragment shader, using dummy shader instead.\n");
-      FREE((void *) fs->base.tokens);
-      fs->base.tokens = dummy;
-      result = svga_translate_fragment_program(fs, key);
-      if (result == NULL) {
-         ret = PIPE_ERROR;
-         goto fail;
-      }
+   variant = translate_fragment_program(svga, fs, key);
+   if (variant == NULL) {
+      debug_printf("Failed to compile fragment shader,"
+                   " using dummy shader instead.\n");
+      variant = get_compiled_dummy_shader(svga, fs, key);
+   }
+   else if (svga_shader_too_large(svga, variant)) {
+      /* too big, use dummy shader */
+      debug_printf("Shader too large (%u bytes),"
+                   " using dummy shader instead.\n",
+                   (unsigned) (variant->nr_tokens
+                               * sizeof(variant->tokens[0])));
+      /* Free the too-large variant */
+      svga_destroy_shader_variant(svga, SVGA3D_SHADERTYPE_PS, variant);
+      /* Use simple pass-through shader instead */
+      variant = get_compiled_dummy_shader(svga, fs, key);
    }
 
-   result->id = util_bitmask_add(svga->fs_bm);
-   if(result->id == UTIL_BITMASK_INVALID_INDEX) {
-      ret = PIPE_ERROR_OUT_OF_MEMORY;
-      goto fail;
+   if (!variant) {
+      return PIPE_ERROR;
    }
 
-   ret = SVGA3D_DefineShader(svga->swc, 
-                             result->id,
-                             SVGA3D_SHADERTYPE_PS,
-                             result->tokens, 
-                             result->nr_tokens * sizeof result->tokens[0]);
-   if (ret != PIPE_OK)
-      goto fail;
+   ret = svga_define_shader(svga, SVGA3D_SHADERTYPE_PS, variant);
+   if (ret != PIPE_OK) {
+      svga_destroy_shader_variant(svga, SVGA3D_SHADERTYPE_PS, variant);
+      return ret;
+   }
 
-   *out_result = result;
-   result->next = fs->base.results;
-   fs->base.results = result;
+   *out_variant = variant;
+
+   /* insert variant at head of linked list */
+   variant->next = fs->base.variants;
+   fs->base.variants = variant;
+
    return PIPE_OK;
-
-fail:
-   if (result) {
-      if (result->id != UTIL_BITMASK_INVALID_INDEX)
-         util_bitmask_clear( svga->fs_bm, result->id );
-      svga_destroy_shader_result( result );
-   }
-   return ret;
 }
 
 
@@ -163,12 +178,23 @@ fail:
 static enum pipe_error
 make_fs_key(const struct svga_context *svga,
             struct svga_fragment_shader *fs,
-            struct svga_fs_compile_key *key)
+            struct svga_compile_key *key)
 {
-   int i;
-   int idx = 0;
+   const enum pipe_shader_type shader = PIPE_SHADER_FRAGMENT;
+   unsigned i;
 
    memset(key, 0, sizeof *key);
+
+   memcpy(key->generic_remap_table, fs->generic_remap_table,
+          sizeof(fs->generic_remap_table));
+
+   /* SVGA_NEW_GS, SVGA_NEW_VS
+    */
+   if (svga->curr.gs) {
+      key->fs.gs_generic_outputs = svga->curr.gs->generic_outputs;
+   } else {
+      key->fs.vs_generic_outputs = svga->curr.vs->generic_outputs;
+   }
 
    /* Only need fragment shader fixup for twoside lighting if doing
     * hwtnl.  Otherwise the draw module does the whole job for us.
@@ -176,10 +202,21 @@ make_fs_key(const struct svga_context *svga,
     * SVGA_NEW_SWTNL
     */
    if (!svga->state.sw.need_swtnl) {
-      /* SVGA_NEW_RAST
+      /* SVGA_NEW_RAST, SVGA_NEW_REDUCED_PRIMITIVE
        */
-      key->light_twoside = svga->curr.rast->templ.light_twoside;
-      key->front_ccw = svga->curr.rast->templ.front_ccw;
+      key->fs.light_twoside = svga->curr.rast->templ.light_twoside;
+      key->fs.front_ccw = svga->curr.rast->templ.front_ccw;
+      key->fs.pstipple = (svga->curr.rast->templ.poly_stipple_enable &&
+                          svga->curr.reduced_prim == PIPE_PRIM_TRIANGLES);
+      key->fs.aa_point = (svga->curr.rast->templ.point_smooth &&
+                          svga->curr.reduced_prim == PIPE_PRIM_POINTS &&
+                          (svga->curr.rast->pointsize > 1.0 ||
+                           svga->curr.vs->base.info.writes_psize));
+      if (key->fs.aa_point) {
+         assert(svga->curr.gs != NULL);
+         assert(svga->curr.gs->aa_point_coord_index != -1);
+         key->fs.aa_point_coord_index = svga->curr.gs->aa_point_coord_index;
+      }
    }
 
    /* The blend workaround for simulating logicop xor behaviour
@@ -197,43 +234,100 @@ make_fs_key(const struct svga_context *svga,
     * SVGA_NEW_BLEND
     */
    if (svga->curr.blend->need_white_fragments) {
-      key->white_fragments = 1;
+      key->fs.white_fragments = 1;
    }
-   
+
+#ifdef DEBUG
+   /*
+    * We expect a consistent set of samplers and sampler views.
+    * Do some debug checks/warnings here.
+    */
+   {
+      static boolean warned = FALSE;
+      unsigned i, n = MAX2(svga->curr.num_sampler_views[shader],
+                           svga->curr.num_samplers[shader]);
+      /* Only warn once to prevent too much debug output */
+      if (!warned) {
+         if (svga->curr.num_sampler_views[shader] !=
+             svga->curr.num_samplers[shader]) {
+            debug_printf("svga: mismatched number of sampler views (%u) "
+                         "vs. samplers (%u)\n",
+                         svga->curr.num_sampler_views[shader],
+                         svga->curr.num_samplers[shader]);
+         }
+         for (i = 0; i < n; i++) {
+            if ((svga->curr.sampler_views[shader][i] == NULL) !=
+                (svga->curr.sampler[shader][i] == NULL))
+               debug_printf("sampler_view[%u] = %p but sampler[%u] = %p\n",
+                            i, svga->curr.sampler_views[shader][i],
+                            i, svga->curr.sampler[shader][i]);
+         }
+         warned = TRUE;
+      }
+   }
+#endif
+
    /* XXX: want to limit this to the textures that the shader actually
     * refers to.
     *
     * SVGA_NEW_TEXTURE_BINDING | SVGA_NEW_SAMPLER
     */
-   for (i = 0; i < svga->curr.num_sampler_views; i++) {
-      if (svga->curr.sampler_views[i]) {
-         assert(svga->curr.sampler[i]);
-         assert(svga->curr.sampler_views[i]->texture);
-         key->tex[i].texture_target = svga->curr.sampler_views[i]->texture->target;
-         if (!svga->curr.sampler[i]->normalized_coords) {
-            key->tex[i].width_height_idx = idx++;
-            key->tex[i].unnormalized = TRUE;
-            ++key->num_unnormalized_coords;
+   svga_init_shader_key_common(svga, shader, key);
+
+   for (i = 0; i < svga->curr.num_samplers[shader]; ++i) {
+      struct pipe_sampler_view *view = svga->curr.sampler_views[shader][i];
+      const struct svga_sampler_state *sampler = svga->curr.sampler[shader][i];
+      if (view) {
+         struct pipe_resource *tex = view->texture;
+         if (tex->target != PIPE_BUFFER) {
+            struct svga_texture *stex = svga_texture(tex);
+            SVGA3dSurfaceFormat format = stex->key.format;
+
+            if (!svga_have_vgpu10(svga) &&
+                (format == SVGA3D_Z_D16 ||
+                 format == SVGA3D_Z_D24X8 ||
+                 format == SVGA3D_Z_D24S8)) {
+               /* If we're sampling from a SVGA3D_Z_D16, SVGA3D_Z_D24X8,
+                * or SVGA3D_Z_D24S8 surface, we'll automatically get
+                * shadow comparison.  But we only get LEQUAL mode.
+                * Set TEX_COMPARE_NONE here so we don't emit the extra FS
+                * code for shadow comparison.
+                */
+               key->tex[i].compare_mode = PIPE_TEX_COMPARE_NONE;
+               key->tex[i].compare_func = PIPE_FUNC_NEVER;
+               /* These depth formats _only_ support comparison mode and
+                * not ordinary sampling so warn if the later is expected.
+                */
+               if (sampler->compare_mode != PIPE_TEX_COMPARE_R_TO_TEXTURE) {
+                  debug_warn_once("Unsupported shadow compare mode");
+               }
+               /* The shader translation code can emit code to
+                * handle ALWAYS and NEVER compare functions
+                */
+               else if (sampler->compare_func == PIPE_FUNC_ALWAYS ||
+                        sampler->compare_func == PIPE_FUNC_NEVER) {
+                  key->tex[i].compare_mode = sampler->compare_mode;
+                  key->tex[i].compare_func = sampler->compare_func;
+               }
+               else if (sampler->compare_func != PIPE_FUNC_LEQUAL) {
+                  debug_warn_once("Unsupported shadow compare function");
+               }
+            }
+            else {
+               /* For other texture formats, just use the compare func/mode
+                * as-is.  Should be no-ops for color textures.  For depth
+                * textures, we do not get automatic depth compare.  We have
+                * to do it ourselves in the shader.  And we don't get PCF.
+                */
+               key->tex[i].compare_mode = sampler->compare_mode;
+               key->tex[i].compare_func = sampler->compare_func;
+            }
          }
-
-         key->tex[i].swizzle_r = svga->curr.sampler_views[i]->swizzle_r;
-         key->tex[i].swizzle_g = svga->curr.sampler_views[i]->swizzle_g;
-         key->tex[i].swizzle_b = svga->curr.sampler_views[i]->swizzle_b;
-         key->tex[i].swizzle_a = svga->curr.sampler_views[i]->swizzle_a;
-      }
-   }
-   key->num_textures = svga->curr.num_sampler_views;
-
-   idx = 0;
-   for (i = 0; i < svga->curr.num_samplers; ++i) {
-      if (svga->curr.sampler[i]) {
-         key->tex[i].compare_mode = svga->curr.sampler[i]->compare_mode;
-         key->tex[i].compare_func = svga->curr.sampler[i]->compare_func;
       }
    }
 
    /* sprite coord gen state */
-   for (i = 0; i < svga->curr.num_samplers; ++i) {
+   for (i = 0; i < svga->curr.num_samplers[shader]; ++i) {
       key->tex[i].sprite_texgen =
          svga->curr.rast->templ.sprite_coord_enable & (1 << i);
    }
@@ -241,6 +335,65 @@ make_fs_key(const struct svga_context *svga,
    key->sprite_origin_lower_left = (svga->curr.rast->templ.sprite_coord_mode
                                     == PIPE_SPRITE_COORD_LOWER_LEFT);
 
+   key->fs.flatshade = svga->curr.rast->templ.flatshade;
+
+   /* SVGA_NEW_DEPTH_STENCIL_ALPHA */
+   if (svga_have_vgpu10(svga)) {
+      /* Alpha testing is not supported in integer-valued render targets. */
+      if (svga_has_any_integer_cbufs(svga)) {
+         key->fs.alpha_func = SVGA3D_CMP_ALWAYS;
+         key->fs.alpha_ref = 0;
+      }
+      else {
+         key->fs.alpha_func = svga->curr.depth->alphafunc;
+         key->fs.alpha_ref = svga->curr.depth->alpharef;
+      }
+   }
+
+   /* SVGA_NEW_FRAME_BUFFER */
+   if (fs->base.info.properties[TGSI_PROPERTY_FS_COLOR0_WRITES_ALL_CBUFS]) {
+      /* Replicate color0 output to N colorbuffers */
+      key->fs.write_color0_to_n_cbufs = svga->curr.framebuffer.nr_cbufs;
+   }
+
+   return PIPE_OK;
+}
+
+
+/**
+ * svga_reemit_fs_bindings - Reemit the fragment shader bindings
+ */
+enum pipe_error
+svga_reemit_fs_bindings(struct svga_context *svga)
+{
+   enum pipe_error ret;
+
+   assert(svga->rebind.flags.fs);
+   assert(svga_have_gb_objects(svga));
+
+   if (!svga->state.hw_draw.fs)
+      return PIPE_OK;
+
+   if (!svga_need_to_rebind_resources(svga)) {
+      ret =  svga->swc->resource_rebind(svga->swc, NULL,
+                                        svga->state.hw_draw.fs->gb_shader,
+                                        SVGA_RELOC_READ);
+      goto out;
+   }
+
+   if (svga_have_vgpu10(svga))
+      ret = SVGA3D_vgpu10_SetShader(svga->swc, SVGA3D_SHADERTYPE_PS,
+                                    svga->state.hw_draw.fs->gb_shader,
+                                    svga->state.hw_draw.fs->id);
+   else
+      ret = SVGA3D_SetGBShader(svga->swc, SVGA3D_SHADERTYPE_PS,
+                               svga->state.hw_draw.fs->gb_shader);
+
+ out:
+   if (ret != PIPE_OK)
+      return ret;
+
+   svga->rebind.flags.fs = FALSE;
    return PIPE_OK;
 }
 
@@ -249,57 +402,65 @@ make_fs_key(const struct svga_context *svga,
 static enum pipe_error
 emit_hw_fs(struct svga_context *svga, unsigned dirty)
 {
-   struct svga_shader_result *result = NULL;
-   unsigned id = SVGA3D_INVALID_ID;
+   struct svga_shader_variant *variant = NULL;
    enum pipe_error ret = PIPE_OK;
-
    struct svga_fragment_shader *fs = svga->curr.fs;
-   struct svga_fs_compile_key key;
+   struct svga_compile_key key;
+
+   SVGA_STATS_TIME_PUSH(svga_sws(svga), SVGA_STATS_TIME_EMITFS);
 
    /* SVGA_NEW_BLEND
     * SVGA_NEW_TEXTURE_BINDING
     * SVGA_NEW_RAST
     * SVGA_NEW_NEED_SWTNL
     * SVGA_NEW_SAMPLER
+    * SVGA_NEW_FRAME_BUFFER
+    * SVGA_NEW_DEPTH_STENCIL_ALPHA
+    * SVGA_NEW_VS
     */
-   ret = make_fs_key( svga, fs, &key );
+   ret = make_fs_key(svga, fs, &key);
    if (ret != PIPE_OK)
-      return ret;
+      goto done;
 
-   result = search_fs_key( fs, &key );
-   if (!result) {
-      ret = compile_fs( svga, fs, &key, &result );
+   variant = svga_search_shader_key(&fs->base, &key);
+   if (!variant) {
+      ret = compile_fs(svga, fs, &key, &variant);
       if (ret != PIPE_OK)
-         return ret;
+         goto done;
    }
 
-   assert (result);
-   id = result->id;
+   assert(variant);
 
-   assert(id != SVGA3D_INVALID_ID);
-
-   if (result != svga->state.hw_draw.fs) {
-      ret = SVGA3D_SetShader(svga->swc,
-                             SVGA3D_SHADERTYPE_PS,
-                             id );
+   if (variant != svga->state.hw_draw.fs) {
+      ret = svga_set_shader(svga, SVGA3D_SHADERTYPE_PS, variant);
       if (ret != PIPE_OK)
-         return ret;
+         goto done;
 
-      svga->dirty |= SVGA_NEW_FS_RESULT;
-      svga->state.hw_draw.fs = result;      
+      svga->rebind.flags.fs = FALSE;
+
+      svga->dirty |= SVGA_NEW_FS_VARIANT;
+      svga->state.hw_draw.fs = variant;
    }
 
-   return PIPE_OK;
+done:
+   SVGA_STATS_TIME_POP(svga_sws(svga));
+   return ret;
 }
 
 struct svga_tracked_state svga_hw_fs = 
 {
    "fragment shader (hwtnl)",
    (SVGA_NEW_FS |
+    SVGA_NEW_GS |
+    SVGA_NEW_VS |
     SVGA_NEW_TEXTURE_BINDING |
     SVGA_NEW_NEED_SWTNL |
     SVGA_NEW_RAST |
+    SVGA_NEW_STIPPLE |
+    SVGA_NEW_REDUCED_PRIMITIVE |
     SVGA_NEW_SAMPLER |
+    SVGA_NEW_FRAME_BUFFER |
+    SVGA_NEW_DEPTH_STENCIL_ALPHA |
     SVGA_NEW_BLEND),
    emit_hw_fs
 };

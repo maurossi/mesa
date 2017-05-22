@@ -21,42 +21,43 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 # IN THE SOFTWARE.
 
+EXTRA_DIST = osmesa.def SConscript
+
 AM_CPPFLAGS = \
 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/src \
+	-I$(top_srcdir)/src/gallium/include \
+	-I$(top_srcdir)/src/gallium/auxiliary \
+	-I$(top_builddir)/src/mapi \
 	-I$(top_srcdir)/src/mapi \
 	-I$(top_srcdir)/src/mesa/ \
-	$(DEFINES) \
-	$(API_DEFINES)
+	$(DEFINES)
 AM_CFLAGS = $(PTHREAD_CFLAGS) \
 	$(VISIBILITY_CFLAGS)
-AM_CXXFLAGS = $(PTHREAD_CFLAGS) \
-	$(VISIBILITY_CXXFLAGS)
 
 lib_LTLIBRARIES = lib@OSMESA_LIB@.la
 
 nodist_EXTRA_lib@OSMESA_LIB@_la_SOURCES = dummy.cpp
 lib@OSMESA_LIB@_la_SOURCES = osmesa.c
 
-lib@OSMESA_LIB@_la_LDFLAGS = -module -version-number @OSMESA_VERSION@ -no-undefined
+lib@OSMESA_LIB@_la_LDFLAGS = \
+	-no-undefined \
+	-version-number @OSMESA_VERSION@ \
+	$(GC_SECTIONS) \
+	$(LD_NO_UNDEFINED)
+
 
 if HAVE_SHARED_GLAPI
-GLAPI_LIB = $(top_builddir)/src/mapi/shared-glapi/libglapi.la
-else
-GLAPI_LIB = $(top_builddir)/src/mapi/glapi/libglapi.la
+SHARED_GLAPI_LIB = $(top_builddir)/src/mapi/shared-glapi/libglapi.la
 endif
+
 lib@OSMESA_LIB@_la_LIBADD = \
 	$(top_builddir)/src/mesa/libmesa.la \
-	$(GLAPI_LIB) \
+	$(top_builddir)/src/mapi/glapi/libglapi.la \
+	$(SHARED_GLAPI_LIB) \
 	$(OSMESA_LIB_DEPS)
 
-if BUILD_SHARED
-# Provide compatibility with scripts for the old Mesa build system for
-# a while by putting a link to the driver into /lib of the build tree.
-all-local: lib@OSMESA_LIB@.la
-	$(MKDIR_P) $(top_builddir)/$(LIB_DIR);
-	ln -f .libs/lib@OSMESA_LIB@.so $(top_builddir)/$(LIB_DIR)/lib@OSMESA_LIB@.so;
-	ln -f .libs/lib@OSMESA_LIB@.so.@OSMESA_VERSION@ $(top_builddir)/$(LIB_DIR)/lib@OSMESA_LIB@.so.@OSMESA_VERSION@;
-endif
+include $(top_srcdir)/install-lib-links.mk
 
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = osmesa.pc

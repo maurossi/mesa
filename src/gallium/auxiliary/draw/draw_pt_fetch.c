@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -71,12 +71,10 @@ draw_pt_fetch_prepare(struct pt_fetch *fetch,
 
    fetch->vertex_size = vertex_size;
 
-   /* Leave the clipmask/edgeflags/pad/vertex_id untouched
+   /* Leave the clipmask/edgeflags/pad/vertex_id,
+    * clip[] and whatever else in the header untouched.
     */
-   dst_offset += 1 * sizeof(float);
-   /* Just leave the clip[] and pre_clip_pos[] array untouched.
-    */
-   dst_offset += 8 * sizeof(float);
+   dst_offset = offsetof(struct vertex_header, data);
 
    if (instance_id_index != ~0) {
       num_extra_inputs++;
@@ -159,7 +157,7 @@ draw_pt_fetch_run(struct pt_fetch *fetch,
    for (i = 0; i < draw->pt.nr_vertex_buffers; i++) {
       translate->set_buffer(translate,
 			    i,
-			    ((char *)draw->pt.user.vbuffer[i] +
+			    ((char *)draw->pt.user.vbuffer[i].map +
 			     draw->pt.vertex_buffer[i].buffer_offset),
 			    draw->pt.vertex_buffer[i].stride,
 			    draw->pt.max_index);
@@ -168,6 +166,7 @@ draw_pt_fetch_run(struct pt_fetch *fetch,
    translate->run_elts( translate,
 			elts,
 			count,
+                        draw->start_instance,
                         draw->instance_id,
 			verts );
 }
@@ -186,7 +185,7 @@ draw_pt_fetch_run_linear(struct pt_fetch *fetch,
    for (i = 0; i < draw->pt.nr_vertex_buffers; i++) {
       translate->set_buffer(translate,
 			    i,
-			    ((char *)draw->pt.user.vbuffer[i] +
+			    ((char *)draw->pt.user.vbuffer[i].map +
 			     draw->pt.vertex_buffer[i].buffer_offset),
 			    draw->pt.vertex_buffer[i].stride,
 			    draw->pt.max_index);
@@ -195,6 +194,7 @@ draw_pt_fetch_run_linear(struct pt_fetch *fetch,
    translate->run( translate,
                    start,
                    count,
+                   draw->start_instance,
                    draw->instance_id,
                    verts );
 }

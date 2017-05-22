@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -44,13 +44,14 @@ vlVdpDecoderCreate(VdpDevice device,
                    uint32_t max_references,
                    VdpDecoder *decoder)
 {
-   enum pipe_video_profile p_profile;
+   struct pipe_video_codec templat = {};
    struct pipe_context *pipe;
    struct pipe_screen *screen;
    vlVdpDevice *dev;
    vlVdpDecoder *vldecoder;
    VdpStatus ret;
    bool supported;
+   uint32_t maxwidth, maxheight;
 
    if (!decoder)
       return VDP_STATUS_INVALID_POINTER;
@@ -59,8 +60,8 @@ vlVdpDecoderCreate(VdpDevice device,
    if (!(width && height))
       return VDP_STATUS_INVALID_VALUE;
 
-   p_profile = ProfileToPipe(profile);
-   if (p_profile == PIPE_VIDEO_PROFILE_UNKNOWN)
+   templat.profile = ProfileToPipe(profile);
+   if (templat.profile == PIPE_VIDEO_PROFILE_UNKNOWN)
       return VDP_STATUS_INVALID_DECODER_PROFILE;
 
    dev = vlGetDataHTAB(device);
@@ -75,12 +76,32 @@ vlVdpDecoderCreate(VdpDevice device,
    supported = screen->get_video_param
    (
       screen,
-      p_profile,
+      templat.profile,
+      PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
       PIPE_VIDEO_CAP_SUPPORTED
    );
    if (!supported) {
       pipe_mutex_unlock(dev->mutex);
       return VDP_STATUS_INVALID_DECODER_PROFILE;
+   }
+
+   maxwidth = screen->get_video_param
+   (
+      screen,
+      templat.profile,
+      PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
+      PIPE_VIDEO_CAP_MAX_WIDTH
+   );
+   maxheight = screen->get_video_param
+   (
+      screen,
+      templat.profile,
+      PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
+      PIPE_VIDEO_CAP_MAX_HEIGHT
+   );
+   if (width > maxwidth || height > maxheight) {
+      pipe_mutex_unlock(dev->mutex);
+      return VDP_STATUS_INVALID_SIZE;
    }
 
    vldecoder = CALLOC(1,sizeof(vlVdpDecoder));
@@ -89,16 +110,20 @@ vlVdpDecoderCreate(VdpDevice device,
       return VDP_STATUS_RESOURCES;
    }
 
-   vldecoder->device = dev;
+   DeviceReference(&vldecoder->device, dev);
 
-   vldecoder->decoder = pipe->create_video_decoder
-   (
-      pipe, p_profile,
-      PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
-      PIPE_VIDEO_CHROMA_FORMAT_420,
-      width, height, max_references,
-      false
-   );
+   templat.entrypoint = PIPE_VIDEO_ENTRYPOINT_BITSTREAM;
+   templat.chroma_format = PIPE_VIDEO_CHROMA_FORMAT_420;
+   templat.width = width;
+   templat.height = height;
+   templat.max_references = max_references;
+
+   if (u_reduce_video_profile(templat.profile) ==
+       PIPE_VIDEO_FORMAT_MPEG4_AVC)
+      templat.level = u_get_h264_level(templat.width, templat.height,
+                            &templat.max_references);
+
+   vldecoder->decoder = pipe->create_video_codec(pipe, &templat);
 
    if (!vldecoder->decoder) {
       ret = VDP_STATUS_ERROR;
@@ -110,6 +135,8 @@ vlVdpDecoderCreate(VdpDevice device,
       ret = VDP_STATUS_ERROR;
       goto error_handle;
    }
+
+   pipe_mutex_init(vldecoder->mutex);
    pipe_mutex_unlock(dev->mutex);
 
    return VDP_STATUS_OK;
@@ -119,6 +146,7 @@ error_handle:
 
 error_decoder:
    pipe_mutex_unlock(dev->mutex);
+   DeviceReference(&vldecoder->device, NULL);
    FREE(vldecoder);
    return ret;
 }
@@ -135,17 +163,20 @@ vlVdpDecoderDestroy(VdpDecoder decoder)
    if (!vldecoder)
       return VDP_STATUS_INVALID_HANDLE;
 
-   pipe_mutex_lock(vldecoder->device->mutex);
+   pipe_mutex_lock(vldecoder->mutex);
    vldecoder->decoder->destroy(vldecoder->decoder);
-   pipe_mutex_unlock(vldecoder->device->mutex);
+   pipe_mutex_unlock(vldecoder->mutex);
+   pipe_mutex_destroy(vldecoder->mutex);
 
+   vlRemoveDataHTAB(decoder);
+   DeviceReference(&vldecoder->device, NULL);
    FREE(vldecoder);
 
    return VDP_STATUS_OK;
 }
 
 /**
- * Retrieve the parameters used to create a VdpBitmapSurface.
+ * Retrieve the parameters used to create a VdpDecoder.
  */
 VdpStatus
 vlVdpDecoderGetParameters(VdpDecoder decoder,
@@ -328,6 +359,28 @@ vlVdpDecoderRenderH264(struct pipe_h264_picture_desc *picture,
 
    VDPAU_MSG(VDPAU_TRACE, "[VDPAU] Decoding H264\n");
 
+   picture->pps->sps->mb_adaptive_frame_field_flag = picture_info->mb_adaptive_frame_field_flag;
+   picture->pps->sps->frame_mbs_only_flag = picture_info->frame_mbs_only_flag;
+   picture->pps->sps->log2_max_frame_num_minus4 = picture_info->log2_max_frame_num_minus4;
+   picture->pps->sps->pic_order_cnt_type = picture_info->pic_order_cnt_type;
+   picture->pps->sps->log2_max_pic_order_cnt_lsb_minus4 = picture_info->log2_max_pic_order_cnt_lsb_minus4;
+   picture->pps->sps->delta_pic_order_always_zero_flag = picture_info->delta_pic_order_always_zero_flag;
+   picture->pps->sps->direct_8x8_inference_flag = picture_info->direct_8x8_inference_flag;
+
+   picture->pps->transform_8x8_mode_flag = picture_info->transform_8x8_mode_flag;
+   picture->pps->chroma_qp_index_offset = picture_info->chroma_qp_index_offset;
+   picture->pps->second_chroma_qp_index_offset = picture_info->second_chroma_qp_index_offset;
+   picture->pps->pic_init_qp_minus26 = picture_info->pic_init_qp_minus26;
+   picture->pps->entropy_coding_mode_flag = picture_info->entropy_coding_mode_flag;
+   picture->pps->deblocking_filter_control_present_flag = picture_info->deblocking_filter_control_present_flag;
+   picture->pps->redundant_pic_cnt_present_flag = picture_info->redundant_pic_cnt_present_flag;
+   picture->pps->constrained_intra_pred_flag = picture_info->constrained_intra_pred_flag;
+   picture->pps->weighted_pred_flag = picture_info->weighted_pred_flag;
+   picture->pps->weighted_bipred_idc = picture_info->weighted_bipred_idc;
+   picture->pps->bottom_field_pic_order_in_frame_present_flag = picture_info->pic_order_present_flag;
+   memcpy(picture->pps->ScalingList4x4, picture_info->scaling_lists_4x4, 6*16);
+   memcpy(picture->pps->ScalingList8x8, picture_info->scaling_lists_8x8, 2*64);
+
    picture->slice_count = picture_info->slice_count;
    picture->field_order_cnt[0] = picture_info->field_order_cnt[0];
    picture->field_order_cnt[1] = picture_info->field_order_cnt[1];
@@ -336,29 +389,9 @@ vlVdpDecoderRenderH264(struct pipe_h264_picture_desc *picture,
    picture->field_pic_flag = picture_info->field_pic_flag;
    picture->bottom_field_flag = picture_info->bottom_field_flag;
    picture->num_ref_frames = picture_info->num_ref_frames;
-   picture->mb_adaptive_frame_field_flag = picture_info->mb_adaptive_frame_field_flag;
-   picture->constrained_intra_pred_flag = picture_info->constrained_intra_pred_flag;
-   picture->weighted_pred_flag = picture_info->weighted_pred_flag;
-   picture->weighted_bipred_idc = picture_info->weighted_bipred_idc;
-   picture->frame_mbs_only_flag = picture_info->frame_mbs_only_flag;
-   picture->transform_8x8_mode_flag = picture_info->transform_8x8_mode_flag;
-   picture->chroma_qp_index_offset = picture_info->chroma_qp_index_offset;
-   picture->second_chroma_qp_index_offset = picture_info->second_chroma_qp_index_offset;
-   picture->pic_init_qp_minus26 = picture_info->pic_init_qp_minus26;
+
    picture->num_ref_idx_l0_active_minus1 = picture_info->num_ref_idx_l0_active_minus1;
    picture->num_ref_idx_l1_active_minus1 = picture_info->num_ref_idx_l1_active_minus1;
-   picture->log2_max_frame_num_minus4 = picture_info->log2_max_frame_num_minus4;
-   picture->pic_order_cnt_type = picture_info->pic_order_cnt_type;
-   picture->log2_max_pic_order_cnt_lsb_minus4 = picture_info->log2_max_pic_order_cnt_lsb_minus4;
-   picture->delta_pic_order_always_zero_flag = picture_info->delta_pic_order_always_zero_flag;
-   picture->direct_8x8_inference_flag = picture_info->direct_8x8_inference_flag;
-   picture->entropy_coding_mode_flag = picture_info->entropy_coding_mode_flag;
-   picture->pic_order_present_flag = picture_info->pic_order_present_flag;
-   picture->deblocking_filter_control_present_flag = picture_info->deblocking_filter_control_present_flag;
-   picture->redundant_pic_cnt_present_flag = picture_info->redundant_pic_cnt_present_flag;
-
-   memcpy(picture->scaling_lists_4x4, picture_info->scaling_lists_4x4, 6*16);
-   memcpy(picture->scaling_lists_8x8, picture_info->scaling_lists_8x8, 2*64);
 
    for (i = 0; i < 16; ++i) {
       VdpStatus ret = vlVdpGetReferenceFrame
@@ -380,6 +413,116 @@ vlVdpDecoderRenderH264(struct pipe_h264_picture_desc *picture,
    return VDP_STATUS_OK;
 }
 
+static VdpStatus
+vlVdpDecoderRenderH265(struct pipe_h265_picture_desc *picture,
+                       VdpPictureInfoHEVC *picture_info)
+{
+   unsigned i;
+
+   picture->pps->sps->chroma_format_idc = picture_info->chroma_format_idc;
+   picture->pps->sps->separate_colour_plane_flag = picture_info->separate_colour_plane_flag;
+   picture->pps->sps->pic_width_in_luma_samples = picture_info->pic_width_in_luma_samples;
+   picture->pps->sps->pic_height_in_luma_samples = picture_info->pic_height_in_luma_samples;
+   picture->pps->sps->bit_depth_luma_minus8 = picture_info->bit_depth_luma_minus8;
+   picture->pps->sps->bit_depth_chroma_minus8 = picture_info->bit_depth_chroma_minus8;
+   picture->pps->sps->log2_max_pic_order_cnt_lsb_minus4 = picture_info->log2_max_pic_order_cnt_lsb_minus4;
+   picture->pps->sps->sps_max_dec_pic_buffering_minus1 = picture_info->sps_max_dec_pic_buffering_minus1;
+   picture->pps->sps->log2_min_luma_coding_block_size_minus3 = picture_info->log2_min_luma_coding_block_size_minus3;
+   picture->pps->sps->log2_diff_max_min_luma_coding_block_size = picture_info->log2_diff_max_min_luma_coding_block_size;
+   picture->pps->sps->log2_min_transform_block_size_minus2 = picture_info->log2_min_transform_block_size_minus2;
+   picture->pps->sps->log2_diff_max_min_transform_block_size = picture_info->log2_diff_max_min_transform_block_size;
+   picture->pps->sps->max_transform_hierarchy_depth_inter = picture_info->max_transform_hierarchy_depth_inter;
+   picture->pps->sps->max_transform_hierarchy_depth_intra = picture_info->max_transform_hierarchy_depth_intra;
+   picture->pps->sps->scaling_list_enabled_flag = picture_info->scaling_list_enabled_flag;
+   memcpy(picture->pps->sps->ScalingList4x4, picture_info->ScalingList4x4, 6*16);
+   memcpy(picture->pps->sps->ScalingList8x8, picture_info->ScalingList8x8, 6*64);
+   memcpy(picture->pps->sps->ScalingList16x16, picture_info->ScalingList16x16, 6*64);
+   memcpy(picture->pps->sps->ScalingList32x32, picture_info->ScalingList32x32, 2*64);
+   memcpy(picture->pps->sps->ScalingListDCCoeff16x16, picture_info->ScalingListDCCoeff16x16, 6);
+   memcpy(picture->pps->sps->ScalingListDCCoeff32x32, picture_info->ScalingListDCCoeff32x32, 2);
+   picture->pps->sps->amp_enabled_flag = picture_info->amp_enabled_flag;
+   picture->pps->sps->sample_adaptive_offset_enabled_flag = picture_info->sample_adaptive_offset_enabled_flag;
+   picture->pps->sps->pcm_enabled_flag = picture_info->pcm_enabled_flag;
+   picture->pps->sps->pcm_sample_bit_depth_luma_minus1 = picture_info->pcm_sample_bit_depth_luma_minus1;
+   picture->pps->sps->pcm_sample_bit_depth_chroma_minus1 = picture_info->pcm_sample_bit_depth_chroma_minus1;
+   picture->pps->sps->log2_min_pcm_luma_coding_block_size_minus3 = picture_info->log2_min_pcm_luma_coding_block_size_minus3;
+   picture->pps->sps->log2_diff_max_min_pcm_luma_coding_block_size = picture_info->log2_diff_max_min_pcm_luma_coding_block_size;
+   picture->pps->sps->pcm_loop_filter_disabled_flag = picture_info->pcm_loop_filter_disabled_flag;
+   picture->pps->sps->num_short_term_ref_pic_sets = picture_info->num_short_term_ref_pic_sets;
+   picture->pps->sps->long_term_ref_pics_present_flag = picture_info->long_term_ref_pics_present_flag;
+   picture->pps->sps->num_long_term_ref_pics_sps = picture_info->num_long_term_ref_pics_sps;
+   picture->pps->sps->sps_temporal_mvp_enabled_flag = picture_info->sps_temporal_mvp_enabled_flag;
+   picture->pps->sps->strong_intra_smoothing_enabled_flag = picture_info->strong_intra_smoothing_enabled_flag;
+
+   picture->pps->dependent_slice_segments_enabled_flag = picture_info->dependent_slice_segments_enabled_flag;
+   picture->pps->output_flag_present_flag = picture_info->output_flag_present_flag;
+   picture->pps->num_extra_slice_header_bits = picture_info->num_extra_slice_header_bits;
+   picture->pps->sign_data_hiding_enabled_flag = picture_info->sign_data_hiding_enabled_flag;
+   picture->pps->cabac_init_present_flag = picture_info->cabac_init_present_flag;
+   picture->pps->num_ref_idx_l0_default_active_minus1 = picture_info->num_ref_idx_l0_default_active_minus1;
+   picture->pps->num_ref_idx_l1_default_active_minus1 = picture_info->num_ref_idx_l1_default_active_minus1;
+   picture->pps->init_qp_minus26 = picture_info->init_qp_minus26;
+   picture->pps->constrained_intra_pred_flag = picture_info->constrained_intra_pred_flag;
+   picture->pps->transform_skip_enabled_flag = picture_info->transform_skip_enabled_flag;
+   picture->pps->cu_qp_delta_enabled_flag = picture_info->cu_qp_delta_enabled_flag;
+   picture->pps->diff_cu_qp_delta_depth = picture_info->diff_cu_qp_delta_depth;
+   picture->pps->pps_cb_qp_offset = picture_info->pps_cb_qp_offset;
+   picture->pps->pps_cr_qp_offset = picture_info->pps_cr_qp_offset;
+   picture->pps->pps_slice_chroma_qp_offsets_present_flag = picture_info->pps_slice_chroma_qp_offsets_present_flag;
+   picture->pps->weighted_pred_flag = picture_info->weighted_pred_flag;
+   picture->pps->weighted_bipred_flag = picture_info->weighted_bipred_flag;
+   picture->pps->transquant_bypass_enabled_flag = picture_info->transquant_bypass_enabled_flag;
+   picture->pps->tiles_enabled_flag = picture_info->tiles_enabled_flag;
+   picture->pps->entropy_coding_sync_enabled_flag = picture_info->entropy_coding_sync_enabled_flag;
+   picture->pps->num_tile_columns_minus1 = picture_info->num_tile_columns_minus1;
+   picture->pps->num_tile_rows_minus1 = picture_info->num_tile_rows_minus1;
+   picture->pps->uniform_spacing_flag = picture_info->uniform_spacing_flag;
+   memcpy(picture->pps->column_width_minus1, picture_info->column_width_minus1, 20 * 2);
+   memcpy(picture->pps->row_height_minus1, picture_info->row_height_minus1, 22 * 2);
+   picture->pps->loop_filter_across_tiles_enabled_flag = picture_info->loop_filter_across_tiles_enabled_flag;
+   picture->pps->pps_loop_filter_across_slices_enabled_flag = picture_info->pps_loop_filter_across_slices_enabled_flag;
+   picture->pps->deblocking_filter_control_present_flag = picture_info->deblocking_filter_control_present_flag;
+   picture->pps->deblocking_filter_override_enabled_flag = picture_info->deblocking_filter_override_enabled_flag;
+   picture->pps->pps_deblocking_filter_disabled_flag = picture_info->pps_deblocking_filter_disabled_flag;
+   picture->pps->pps_beta_offset_div2 = picture_info->pps_beta_offset_div2;
+   picture->pps->pps_tc_offset_div2 = picture_info->pps_tc_offset_div2;
+   picture->pps->lists_modification_present_flag = picture_info->lists_modification_present_flag;
+   picture->pps->log2_parallel_merge_level_minus2 = picture_info->log2_parallel_merge_level_minus2;
+   picture->pps->slice_segment_header_extension_present_flag = picture_info->slice_segment_header_extension_present_flag;
+
+   picture->IDRPicFlag = picture_info->IDRPicFlag;
+   picture->RAPPicFlag = picture_info->RAPPicFlag;
+   picture->CurrRpsIdx = picture_info->CurrRpsIdx;
+   picture->NumPocTotalCurr = picture_info->NumPocTotalCurr;
+   picture->NumDeltaPocsOfRefRpsIdx = picture_info->NumDeltaPocsOfRefRpsIdx;
+   picture->NumShortTermPictureSliceHeaderBits = picture_info->NumShortTermPictureSliceHeaderBits;
+   picture->NumLongTermPictureSliceHeaderBits = picture_info->NumLongTermPictureSliceHeaderBits;
+   picture->CurrPicOrderCntVal = picture_info->CurrPicOrderCntVal;
+
+   for (i = 0; i < 16; ++i) {
+      VdpStatus ret = vlVdpGetReferenceFrame
+      (
+         picture_info->RefPics[i],
+         &picture->ref[i]
+      );
+      if (ret != VDP_STATUS_OK)
+         return ret;
+
+      picture->PicOrderCntVal[i] = picture_info->PicOrderCntVal[i];
+      picture->IsLongTerm[i] = picture_info->IsLongTerm[i];
+   }
+
+   picture->NumPocStCurrBefore = picture_info->NumPocStCurrBefore;
+   picture->NumPocStCurrAfter = picture_info->NumPocStCurrAfter;
+   picture->NumPocLtCurr = picture_info->NumPocLtCurr;
+   memcpy(picture->RefPicSetStCurrBefore, picture_info->RefPicSetStCurrBefore, 8);
+   memcpy(picture->RefPicSetStCurrAfter, picture_info->RefPicSetStCurrAfter, 8);
+   memcpy(picture->RefPicSetLtCurr, picture_info->RefPicSetLtCurr, 8);
+   picture->UseRefPicList = false;
+
+   return VDP_STATUS_OK;
+}
+
 static void
 vlVdpDecoderFixVC1Startcode(uint32_t *num_buffers, const void *buffers[], unsigned sizes[])
 {
@@ -389,14 +532,13 @@ vlVdpDecoderFixVC1Startcode(uint32_t *num_buffers, const void *buffers[], unsign
 
    /* search the first 64 bytes for a startcode */
    vl_vlc_init(&vlc, *num_buffers, buffers, sizes);
-   for (i = 0; i < 64 && vl_vlc_bits_left(&vlc) >= 32; ++i) {
+   while (vl_vlc_search_byte(&vlc, 64*8, 0x00) && vl_vlc_bits_left(&vlc) >= 32) {
       uint32_t value = vl_vlc_peekbits(&vlc, 32);
       if (value == 0x0000010D ||
           value == 0x0000010C ||
           value == 0x0000010B)
          return;
       vl_vlc_eatbits(&vlc, 8);
-      vl_vlc_fillbits(&vlc);
    }
 
    /* none found, ok add one manually */
@@ -426,15 +568,20 @@ vlVdpDecoderRender(VdpDecoder decoder,
    vlVdpSurface *vlsurf;
    VdpStatus ret;
    struct pipe_screen *screen;
-   struct pipe_video_decoder *dec;
+   struct pipe_video_codec *dec;
    bool buffer_support[2];
    unsigned i;
+   struct pipe_h264_sps sps_h264 = {};
+   struct pipe_h264_pps pps_h264 = { &sps_h264 };
+   struct pipe_h265_sps sps_h265 = {};
+   struct pipe_h265_pps pps_h265 = { &sps_h265 };
    union {
       struct pipe_picture_desc base;
       struct pipe_mpeg12_picture_desc mpeg12;
       struct pipe_mpeg4_picture_desc mpeg4;
       struct pipe_vc1_picture_desc vc1;
       struct pipe_h264_picture_desc h264;
+      struct pipe_h265_picture_desc h265;
    } desc;
 
    if (!(picture_info && bitstream_buffers))
@@ -457,24 +604,29 @@ vlVdpDecoderRender(VdpDecoder decoder,
       // TODO: Recreate decoder with correct chroma
       return VDP_STATUS_INVALID_CHROMA_TYPE;
 
-   pipe_mutex_lock(vlsurf->device->mutex);
-
-   buffer_support[0] = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_CAP_SUPPORTS_PROGRESSIVE);
-   buffer_support[1] = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_CAP_SUPPORTS_INTERLACED);
+   buffer_support[0] = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
+                                               PIPE_VIDEO_CAP_SUPPORTS_PROGRESSIVE);
+   buffer_support[1] = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
+                                               PIPE_VIDEO_CAP_SUPPORTS_INTERLACED);
 
    if (vlsurf->video_buffer == NULL ||
-       !screen->is_video_format_supported(screen, vlsurf->video_buffer->buffer_format, dec->profile) ||
+       !screen->is_video_format_supported(screen, vlsurf->video_buffer->buffer_format,
+                                          dec->profile, PIPE_VIDEO_ENTRYPOINT_BITSTREAM) ||
        !buffer_support[vlsurf->video_buffer->interlaced]) {
+
+      pipe_mutex_lock(vlsurf->device->mutex);
 
       /* destroy the old one */
       if (vlsurf->video_buffer)
          vlsurf->video_buffer->destroy(vlsurf->video_buffer);
 
       /* set the buffer format to the prefered one */
-      vlsurf->templat.buffer_format = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_CAP_PREFERED_FORMAT);
+      vlsurf->templat.buffer_format = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
+                                                              PIPE_VIDEO_CAP_PREFERED_FORMAT);
 
       /* also set interlacing to decoders preferences */
-      vlsurf->templat.interlaced = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_CAP_PREFERS_INTERLACED);
+      vlsurf->templat.interlaced = screen->get_video_param(screen, dec->profile, PIPE_VIDEO_ENTRYPOINT_BITSTREAM,
+                                                           PIPE_VIDEO_CAP_PREFERS_INTERLACED);
 
       /* and recreate the video buffer */
       vlsurf->video_buffer = dec->context->create_video_buffer(dec->context, &vlsurf->templat);
@@ -485,6 +637,7 @@ vlVdpDecoderRender(VdpDecoder decoder,
          return VDP_STATUS_NO_IMPLEMENTATION;
       }
       vlVdpVideoSurfaceClear(vlsurf);
+      pipe_mutex_unlock(vlsurf->device->mutex);
    }
 
    for (i = 0; i < bitstream_buffer_count; ++i) {
@@ -495,33 +648,36 @@ vlVdpDecoderRender(VdpDecoder decoder,
    memset(&desc, 0, sizeof(desc));
    desc.base.profile = dec->profile;
    switch (u_reduce_video_profile(dec->profile)) {
-   case PIPE_VIDEO_CODEC_MPEG12:
+   case PIPE_VIDEO_FORMAT_MPEG12:
       ret = vlVdpDecoderRenderMpeg12(&desc.mpeg12, (VdpPictureInfoMPEG1Or2 *)picture_info);
       break;
-   case PIPE_VIDEO_CODEC_MPEG4:
+   case PIPE_VIDEO_FORMAT_MPEG4:
       ret = vlVdpDecoderRenderMpeg4(&desc.mpeg4, (VdpPictureInfoMPEG4Part2 *)picture_info);
       break;
-   case PIPE_VIDEO_CODEC_VC1:
+   case PIPE_VIDEO_FORMAT_VC1:
       if (dec->profile == PIPE_VIDEO_PROFILE_VC1_ADVANCED)
          vlVdpDecoderFixVC1Startcode(&bitstream_buffer_count, buffers, sizes);
       ret = vlVdpDecoderRenderVC1(&desc.vc1, (VdpPictureInfoVC1 *)picture_info);
       break;
-   case PIPE_VIDEO_CODEC_MPEG4_AVC:
+   case PIPE_VIDEO_FORMAT_MPEG4_AVC:
+      desc.h264.pps = &pps_h264;
       ret = vlVdpDecoderRenderH264(&desc.h264, (VdpPictureInfoH264 *)picture_info);
       break;
+   case PIPE_VIDEO_FORMAT_HEVC:
+      desc.h265.pps = &pps_h265;
+      ret = vlVdpDecoderRenderH265(&desc.h265, (VdpPictureInfoHEVC *)picture_info);
+      break;
    default:
-      pipe_mutex_unlock(vlsurf->device->mutex);
       return VDP_STATUS_INVALID_DECODER_PROFILE;
    }
 
-   if (ret != VDP_STATUS_OK) {
-      pipe_mutex_unlock(vlsurf->device->mutex);
+   if (ret != VDP_STATUS_OK)
       return ret;
-   }
 
+   pipe_mutex_lock(vldecoder->mutex);
    dec->begin_frame(dec, vlsurf->video_buffer, &desc.base);
    dec->decode_bitstream(dec, vlsurf->video_buffer, &desc.base, bitstream_buffer_count, buffers, sizes);
    dec->end_frame(dec, vlsurf->video_buffer, &desc.base);
-   pipe_mutex_unlock(vlsurf->device->mutex);
+   pipe_mutex_unlock(vldecoder->mutex);
    return ret;
 }

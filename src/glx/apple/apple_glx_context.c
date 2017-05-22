@@ -142,6 +142,7 @@ apple_glx_create_context(void **ptr, Display * dpy, int screen,
    if (sharedac && !is_context_valid(sharedac)) {
       *errorptr = GLXBadContext;
       *x11errorptr = false;
+      free(ac);
       return true;
    }
 
@@ -277,7 +278,7 @@ apple_glx_destroy_context(void **ptr, Display * dpy)
 }
 
 
-/* Return true if an error occured. */
+/* Return true if an error occurred. */
 bool
 apple_glx_make_current_context(Display * dpy, void *oldptr, void *ptr,
                                GLXDrawable drawable)

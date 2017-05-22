@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,14 +18,14 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * 
  **************************************************************************/
 
-/* Authors:  Keith Whitwell <keith@tungstengraphics.com>
+/* Authors:  Keith Whitwell <keithw@vmware.com>
  */
 
 /* Implement line stipple by cutting lines up into smaller lines.
@@ -53,7 +53,7 @@ struct stipple_stage {
 };
 
 
-static INLINE struct stipple_stage *
+static inline struct stipple_stage *
 stipple_stage(struct draw_stage *stage)
 {
    return (struct stipple_stage *) stage;
@@ -73,7 +73,7 @@ screen_interp( struct draw_context *draw,
                const struct vertex_header *v1 )
 {
    uint attr;
-   int num_outputs = draw_current_shader_outputs(draw);
+   uint num_outputs = draw_current_shader_outputs(draw);
    for (attr = 0; attr < num_outputs; attr++) {
       const float *val0 = v0->data[attr];
       const float *val1 = v1->data[attr];
@@ -108,11 +108,11 @@ emit_segment(struct draw_stage *stage, struct prim_header *header,
 }
 
 
-static INLINE unsigned
+static inline bool
 stipple_test(int counter, ushort pattern, int factor)
 {
    int b = (counter / factor) & 0xf;
-   return (1 << b) & pattern;
+   return !!((1 << b) & pattern);
 }
 
 
@@ -126,7 +126,7 @@ stipple_line(struct draw_stage *stage, struct prim_header *header)
    const float *pos0 = v0->data[pos];
    const float *pos1 = v1->data[pos];
    float start = 0;
-   int state = 0;
+   bool state = 0;
 
    float x0 = pos0[0];
    float x1 = pos1[0];
@@ -143,29 +143,29 @@ stipple_line(struct draw_stage *stage, struct prim_header *header)
       stipple->counter = 0;
 
 
-   /* XXX ToDo: intead of iterating pixel-by-pixel, use a look-up table.
+   /* XXX ToDo: instead of iterating pixel-by-pixel, use a look-up table.
     */
    for (i = 0; i < length; i++) {
-      int result = stipple_test( (int) stipple->counter+i,
-                                 (ushort) stipple->pattern, stipple->factor );
+      bool result = stipple_test((int)stipple->counter + i,
+                                 (ushort)stipple->pattern, stipple->factor);
       if (result != state) {
          /* changing from "off" to "on" or vice versa */
-	 if (state) {
-	    if (start != i) {
+         if (state) {
+            if (start != i) {
                /* finishing an "on" segment */
-	       emit_segment( stage, header, start / length, i / length );
+               emit_segment(stage, header, start / length, i / length);
             }
-	 }
-	 else {
+         }
+         else {
             /* starting an "on" segment */
-	    start = (float) i;
-	 }
-	 state = result;	   
+            start = (float)i;
+         }
+         state = result;
       }
    }
 
    if (state && start < length)
-      emit_segment( stage, header, start / length, 1.0 );
+      emit_segment(stage, header, start / length, 1.0);
 
    stipple->counter += length;
 }
@@ -235,7 +235,7 @@ stipple_destroy( struct draw_stage *stage )
 struct draw_stage *draw_stipple_stage( struct draw_context *draw )
 {
    struct stipple_stage *stipple = CALLOC_STRUCT(stipple_stage);
-   if (stipple == NULL)
+   if (!stipple)
       goto fail;
 
    stipple->stage.draw = draw;

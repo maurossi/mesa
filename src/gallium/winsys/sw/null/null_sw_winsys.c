@@ -84,6 +84,7 @@ null_sw_displaytarget_create(struct sw_winsys *winsys,
                              enum pipe_format format,
                              unsigned width, unsigned height,
                              unsigned alignment,
+                             const void *front_private,
                              unsigned *stride)
 {
    fprintf(stderr, "null_sw_displaytarget_create() returning NULL\n");
@@ -93,7 +94,7 @@ null_sw_displaytarget_create(struct sw_winsys *winsys,
 
 static struct sw_displaytarget *
 null_sw_displaytarget_from_handle(struct sw_winsys *winsys,
-                                  const struct pipe_resource *templet,
+                                  const struct pipe_resource *templat,
                                   struct winsys_handle *whandle,
                                   unsigned *stride)
 {
@@ -114,7 +115,8 @@ null_sw_displaytarget_get_handle(struct sw_winsys *winsys,
 static void
 null_sw_displaytarget_display(struct sw_winsys *winsys,
                               struct sw_displaytarget *dt,
-                              void *context_private)
+                              void *context_private,
+                              struct pipe_box *box)
 {
    assert(0);
 }

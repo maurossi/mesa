@@ -31,7 +31,6 @@
 #include <errno.h>
 #include <unistd.h>
 
-#include "main/simple_list.h"
 #include "main/teximage.h"
 #include "main/texobj.h"
 #include "main/enums.h"
@@ -39,7 +38,7 @@
 #include "radeon_tile.h"
 
 static unsigned get_aligned_compressed_row_stride(
-		gl_format format,
+		mesa_format format,
 		unsigned width,
 		unsigned minStride)
 {
@@ -71,7 +70,7 @@ static unsigned get_aligned_compressed_row_stride(
 }
 
 unsigned get_texture_image_size(
-		gl_format format,
+		mesa_format format,
 		unsigned rowStride,
 		unsigned height,
 		unsigned depth,
@@ -96,7 +95,7 @@ unsigned get_texture_image_size(
 	return rowStride * height * depth;
 }
 
-unsigned get_texture_image_row_stride(radeonContextPtr rmesa, gl_format format, unsigned width, unsigned tiling, GLuint target)
+unsigned get_texture_image_row_stride(radeonContextPtr rmesa, mesa_format format, unsigned width, unsigned tiling, GLuint target)
 {
 	if (_mesa_is_format_compressed(format)) {
 		return get_aligned_compressed_row_stride(format, width, rmesa->texture_compressed_row_align);
@@ -147,20 +146,11 @@ static void compute_tex_image_offset(radeonContextPtr rmesa, radeon_mipmap_tree 
 			lvl->rowstride, lvl->width, height, lvl->faces[face].offset);
 }
 
-static GLuint minify(GLuint size, GLuint levels)
-{
-	size = size >> levels;
-	if (size < 1)
-		size = 1;
-	return size;
-}
-
-
 static void calculate_miptree_layout(radeonContextPtr rmesa, radeon_mipmap_tree *mt)
 {
 	GLuint curOffset, i, face, level;
 
-	assert(mt->numLevels <= rmesa->glCtx->Const.MaxTextureLevels);
+	assert(mt->numLevels <= rmesa->glCtx.Const.MaxTextureLevels);
 
 	curOffset = 0;
 	for(face = 0; face < mt->faces; face++) {
@@ -186,7 +176,7 @@ static void calculate_miptree_layout(radeonContextPtr rmesa, radeon_mipmap_tree 
  * Create a new mipmap tree, calculate its layout and allocate memory.
  */
 radeon_mipmap_tree* radeon_miptree_create(radeonContextPtr rmesa,
-					  GLenum target, gl_format mesaFormat, GLuint baseLevel, GLuint numLevels,
+					  GLenum target, mesa_format mesaFormat, GLuint baseLevel, GLuint numLevels,
 					  GLuint width0, GLuint height0, GLuint depth0, GLuint tilebits)
 {
 	radeon_mipmap_tree *mt = CALLOC_STRUCT(_radeon_mipmap_tree);
@@ -285,7 +275,7 @@ static void calculate_min_max_lod(struct gl_sampler_object *samp, struct gl_text
 	radeon_print(RADEON_TEXTURE, RADEON_TRACE,
 			"%s(%p) target %s, min %d, max %d.\n",
 			__func__, tObj,
-			_mesa_lookup_enum_by_nr(tObj->Target),
+			_mesa_enum_to_string(tObj->Target),
 			minLod, maxLod);
 
 	/* save these values */
@@ -440,27 +430,6 @@ static void migrate_image_to_miptree(radeon_mipmap_tree *mt,
 		radeon_bo_unmap(image->mt->bo);
 
 		radeon_miptree_unreference(&image->mt);
-	} else if (image->base.Map) {
-		/* This condition should be removed, it's here to workaround
-		 * a segfault when mapping textures during software fallbacks.
-		 */
-		radeon_print(RADEON_FALLBACKS, RADEON_IMPORTANT,
-				"%s Trying to map texture in software fallback.\n",
-				__func__);
-		const uint32_t srcrowstride = _mesa_format_row_stride(image->base.Base.TexFormat, image->base.Base.Width);
-		uint32_t rows = image->base.Base.Height * image->base.Base.Depth;
-
-		if (_mesa_is_format_compressed(image->base.Base.TexFormat)) {
-			uint32_t blockWidth, blockHeight;
-			_mesa_get_format_block_size(image->base.Base.TexFormat, &blockWidth, &blockHeight);
-			rows = (rows + blockHeight - 1) / blockHeight;
-		}
-
-		copy_rows(dest, dstlvl->rowstride, image->base.Map, srcrowstride,
-				  rows, srcrowstride);
-
-		_mesa_align_free(image->base.Map);
-		image->base.Map = 0;
 	}
 
 	radeon_bo_unmap(mt->bo);
@@ -552,7 +521,7 @@ int radeon_validate_texture_miptree(struct gl_context * ctx,
 
 	radeon_print(RADEON_TEXTURE, RADEON_NORMAL,
 			"%s: Validating texture %p now, minLod = %d, maxLod = %d\n",
-			__FUNCTION__, texObj ,t->minLod, t->maxLod);
+			__func__, texObj ,t->minLod, t->maxLod);
 
 	dst_miptree = get_biggest_matching_miptree(t, t->base.BaseLevel, t->base._MaxLevel);
 
@@ -561,12 +530,12 @@ int radeon_validate_texture_miptree(struct gl_context * ctx,
 		radeon_try_alloc_miptree(rmesa, t);
 		radeon_print(RADEON_TEXTURE, RADEON_NORMAL,
 			"%s: No matching miptree found, allocated new one %p\n",
-			__FUNCTION__, t->mt);
+			__func__, t->mt);
 
 	} else {
 		radeon_miptree_reference(dst_miptree, &t->mt);
 		radeon_print(RADEON_TEXTURE, RADEON_NORMAL,
-			"%s: Using miptree %p\n", __FUNCTION__, t->mt);
+			"%s: Using miptree %p\n", __func__, t->mt);
 	}
 
 	const unsigned faces = _mesa_num_tex_faces(texObj->Target);

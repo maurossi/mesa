@@ -18,17 +18,19 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  **************************************************************************/
 
+/* Force assertions, even on release builds. */
+#undef NDEBUG
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include <error.h>
+#include <stdlib.h>
 #include "testlib.h"
 
 #define BLOCK_WIDTH			8
@@ -50,9 +52,7 @@
 #define DEFAULT_OUTPUT_HEIGHT		INPUT_HEIGHT
 #define DEFAULT_ACCEPTABLE_ERR		0.01
 
-void ParseArgs(int argc, char **argv, unsigned int *output_width, unsigned int *output_height, double *acceptable_error, int *prompt);
-
-void ParseArgs(int argc, char **argv, unsigned int *output_width, unsigned int *output_height, double *acceptable_error, int *prompt)
+static void ParseArgs(int argc, char **argv, unsigned int *output_width, unsigned int *output_height, double *acceptable_error, int *prompt)
 {
 	int fail = 0;
 	int i;
@@ -60,7 +60,7 @@ void ParseArgs(int argc, char **argv, unsigned int *output_width, unsigned int *
 	*output_width = DEFAULT_OUTPUT_WIDTH;
 	*output_height = DEFAULT_OUTPUT_HEIGHT;
 	*acceptable_error = DEFAULT_ACCEPTABLE_ERR;
-	*prompt = 1;
+	*prompt = 0;
 
 	for (i = 1; i < argc && !fail; ++i)
 	{
@@ -79,25 +79,27 @@ void ParseArgs(int argc, char **argv, unsigned int *output_width, unsigned int *
 			if (sscanf(argv[++i], "%lf", acceptable_error) != 1)
 				fail = 1;
 		}
-		else if (strcmp(argv[i], "-n"))
-			*prompt = 0;
+		else if (!strcmp(argv[i], "-p"))
+			*prompt = 1;
 		else
 			fail = 1;
 	}
 
 	if (fail)
-		error
-		(
-			1, 0,
+	{
+		fprintf(
+			stderr,
 			"Bad argument.\n"
 			"\n"
 			"Usage: %s [options]\n"
 			"\t-w <width>\tOutput width\n"
 			"\t-h <height>\tOutput height\n"
 			"\t-e <error>\tAcceptable margin of error per pixel, from 0 to 1\n"
-			"\t-n\tDon't prompt for quit\n",
+			"\t-p\tPrompt for quit\n",
 			argv[0]
 		);
+		exit(1);
+	}
 }
 
 static void Gradient(short *block, unsigned int start, unsigned int stop, int horizontal, unsigned int intra_unsigned)
@@ -168,7 +170,8 @@ int main(int argc, char **argv)
 	))
 	{
 		XCloseDisplay(display);
-		error(1, 0, "Error, unable to find a good port.\n");
+		fprintf(stderr, "Error, unable to find a good port.\n");
+		exit(1);
 	}
 
 	if (is_overlay)

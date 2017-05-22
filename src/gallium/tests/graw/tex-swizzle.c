@@ -51,16 +51,17 @@ static void set_vertices(void)
    handle = info.ctx->create_vertex_elements_state(info.ctx, 2, ve);
    info.ctx->bind_vertex_elements_state(info.ctx, handle);
 
+   memset(&vbuf, 0, sizeof vbuf);
 
    vbuf.stride = sizeof(struct vertex);
    vbuf.buffer_offset = 0;
    vbuf.buffer = pipe_buffer_create_with_data(info.ctx,
                                               PIPE_BIND_VERTEX_BUFFER,
-                                              PIPE_USAGE_STATIC,
+                                              PIPE_USAGE_DEFAULT,
                                               sizeof(vertices),
                                               vertices);
 
-   info.ctx->set_vertex_buffers(info.ctx, 1, &vbuf);
+   info.ctx->set_vertex_buffers(info.ctx, 0, 1, &vbuf);
 }
 
 static void set_vertex_shader(void)
@@ -88,6 +89,7 @@ static void set_fragment_shader(void)
       "DCL IN[0], GENERIC[0], PERSPECTIVE\n"
       "DCL OUT[0], COLOR\n"
       "DCL SAMP[0]\n"
+      "DCL SVIEW[0], 2D, FLOAT\n"
       "  0: TXP OUT[0], IN[0], SAMP[0], 2D\n"
       "  2: END\n";
 
@@ -107,7 +109,7 @@ static void draw(void)
 
    info.ctx->clear(info.ctx, PIPE_CLEAR_COLOR, &clear_color, 0, 0);
    util_draw_arrays(info.ctx, PIPE_PRIM_QUADS, 0, 4);
-   info.ctx->flush(info.ctx, NULL);
+   info.ctx->flush(info.ctx, NULL, 0);
 
    graw_util_flush_front(&info);
 }
@@ -145,13 +147,14 @@ init_tex(const unsigned swizzle[4])
    if (sv == NULL)
       exit(5);
 
-   info.ctx->set_fragment_sampler_views(info.ctx, 1, &sv);
+   info.ctx->set_sampler_views(info.ctx, PIPE_SHADER_FRAGMENT, 0, 1, &sv);
 
    sampler = graw_util_create_simple_sampler(&info,
                                              PIPE_TEX_WRAP_REPEAT,
                                              PIPE_TEX_FILTER_NEAREST);
 
-   info.ctx->bind_fragment_sampler_states(info.ctx, 1, &sampler);
+   info.ctx->bind_sampler_states(info.ctx, PIPE_SHADER_FRAGMENT,
+                                 0, 1, &sampler);
 #undef SIZE
 }
 
@@ -179,19 +182,19 @@ char_to_swizzle(char c)
 {
    switch (c) {
    case 'r':
-      return PIPE_SWIZZLE_RED;
+      return PIPE_SWIZZLE_X;
    case 'g':
-      return PIPE_SWIZZLE_GREEN;
+      return PIPE_SWIZZLE_Y;
    case 'b':
-      return PIPE_SWIZZLE_BLUE;
+      return PIPE_SWIZZLE_Z;
    case 'a':
-      return PIPE_SWIZZLE_ALPHA;
+      return PIPE_SWIZZLE_W;
    case '0':
-      return PIPE_SWIZZLE_ZERO;
+      return PIPE_SWIZZLE_0;
    case '1':
-      return PIPE_SWIZZLE_ONE;
+      return PIPE_SWIZZLE_1;
    default:
-      return PIPE_SWIZZLE_RED;
+      return PIPE_SWIZZLE_X;
    }
 }
 
@@ -202,10 +205,10 @@ int main(int argc, char *argv[])
    uint swizzle[4];
    int i;
 
-   swizzle[0] = PIPE_SWIZZLE_RED;
-   swizzle[1] = PIPE_SWIZZLE_GREEN;
-   swizzle[2] = PIPE_SWIZZLE_BLUE;
-   swizzle[3] = PIPE_SWIZZLE_ALPHA;
+   swizzle[0] = PIPE_SWIZZLE_X;
+   swizzle[1] = PIPE_SWIZZLE_Y;
+   swizzle[2] = PIPE_SWIZZLE_Z;
+   swizzle[3] = PIPE_SWIZZLE_W;
 
    for (i = 1; i < argc; i++) {
       swizzle[i-1] = char_to_swizzle(argv[i][0]);

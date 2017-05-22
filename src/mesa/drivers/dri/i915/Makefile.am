@@ -23,41 +23,20 @@
 
 include Makefile.sources
 
-# Hack to make some of the non-automake variables work.
-TOP=$(top_builddir)
-
 AM_CFLAGS = \
-	-DI915 \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/src/ \
 	-I$(top_srcdir)/src/mapi \
 	-I$(top_srcdir)/src/mesa/ \
+	-I$(top_srcdir)/src/gallium/include \
+	-I$(top_srcdir)/src/gallium/auxiliary \
+	-I$(top_builddir)/src/mesa/drivers/dri/common \
 	-I$(top_srcdir)/src/mesa/drivers/dri/common \
-	-I$(top_srcdir)/src/mesa/drivers/dri/intel \
 	-I$(top_srcdir)/src/mesa/drivers/dri/intel/server \
 	$(DEFINES) \
-	$(API_DEFINES) \
 	$(VISIBILITY_CFLAGS) \
 	$(INTEL_CFLAGS)
 
-dridir = $(DRI_DRIVER_INSTALL_DIR)
-
-if HAVE_I915_DRI
-dri_LTLIBRARIES = i915_dri.la
-endif
-
-i915_dri_la_SOURCES = \
-	$(i915_C_FILES) \
-	$(i915_CXX_FILES)
-
-i915_dri_la_LDFLAGS = -module -avoid-version -shared
-i915_dri_la_LIBADD = \
-	../common/libdricommon.la \
-	$(DRI_LIB_DEPS) \
-	$(INTEL_LIBS)
-
-# Provide compatibility with scripts for the old Mesa build system for
-# a while by putting a link to the driver into /lib of the build tree.
-all-local: i915_dri.la
-	$(MKDIR_P) $(top_builddir)/$(LIB_DIR);
-	ln -f .libs/i915_dri.so $(top_builddir)/$(LIB_DIR)/i915_dri.so;
+noinst_LTLIBRARIES = libi915_dri.la
+libi915_dri_la_SOURCES = $(i915_FILES)
+libi915_dri_la_LIBADD = $(INTEL_LIBS)

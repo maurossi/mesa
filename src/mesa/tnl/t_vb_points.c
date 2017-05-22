@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.0
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,14 +16,16 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
  *    Brian Paul
  */
 
+#include "c99_math.h"
 #include "main/glheader.h"
 #include "main/mtypes.h"
 #include "main/dd.h"
@@ -62,9 +63,9 @@ run_point_stage(struct gl_context *ctx, struct tnl_pipeline_stage *stage)
       GLuint i;
 
       for (i = 0; i < VB->Count; i++) {
-         const GLfloat dist = FABSF(*eyeCoord);
+         const GLfloat dist = fabsf(*eyeCoord);
          const GLfloat q = p0 + dist * (p1 + dist * p2);
-         const GLfloat atten = (q != 0.0F) ? INV_SQRTF(q) : 1.0F;
+         const GLfloat atten = (q != 0.0F) ? (1.0f / sqrtf(q)) : 1.0F;
          size[i][0] = pointSize * atten; /* clamping done in rasterization */
          eyeCoord += eyeCoordStride;
       }

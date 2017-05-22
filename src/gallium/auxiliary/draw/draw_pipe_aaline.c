@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -51,7 +51,7 @@
 
 
 /** Approx number of new tokens for instructions in aa_transform_inst() */
-#define NUM_NEW_TOKENS 50
+#define NUM_NEW_TOKENS 53
 
 
 /**
@@ -107,7 +107,7 @@ struct aaline_stage
    struct aaline_fragment_shader *fs;
    struct {
       void *sampler[PIPE_MAX_SAMPLERS];
-      struct pipe_sampler_view *sampler_views[PIPE_MAX_SAMPLERS];
+      struct pipe_sampler_view *sampler_views[PIPE_MAX_SHADER_SAMPLER_VIEWS];
    } state;
 
    /*
@@ -118,11 +118,13 @@ struct aaline_stage
    void (*driver_bind_fs_state)(struct pipe_context *, void *);
    void (*driver_delete_fs_state)(struct pipe_context *, void *);
 
-   void (*driver_bind_sampler_states)(struct pipe_context *, unsigned,
-                                      void **);
+   void (*driver_bind_sampler_states)(struct pipe_context *,
+                                      enum pipe_shader_type, unsigned,
+                                      unsigned, void **);
 
    void (*driver_set_sampler_views)(struct pipe_context *,
-                                    unsigned,
+                                    enum pipe_shader_type shader,
+                                    unsigned start, unsigned count,
                                     struct pipe_sampler_view **);
 };
 
@@ -137,10 +139,10 @@ struct aa_transform_context {
    uint tempsUsed;  /**< bitmask */
    int colorOutput; /**< which output is the primary color */
    uint samplersUsed;  /**< bitfield of samplers used */
+   bool hasSview;
    int freeSampler;  /** an available sampler for the pstipple */
    int maxInput, maxGeneric;  /**< max input index found */
    int colorTemp, texTemp;  /**< temp registers */
-   boolean firstInstruction;
 };
 
 
@@ -163,8 +165,11 @@ aa_transform_decl(struct tgsi_transform_context *ctx,
       uint i;
       for (i = decl->Range.First;
            i <= decl->Range.Last; i++) {
-         aactx->samplersUsed |= 1 << i;
+         aactx->samplersUsed |= 1u << i;
       }
+   }
+   else if (decl->Declaration.File == TGSI_FILE_SAMPLER_VIEW) {
+      aactx->hasSview = true;
    }
    else if (decl->Declaration.File == TGSI_FILE_INPUT) {
       if ((int) decl->Range.Last > aactx->maxInput)
@@ -197,148 +202,118 @@ free_bit(uint bitfield)
 
 
 /**
+ * TGSI transform prolog callback.
+ */
+static void
+aa_transform_prolog(struct tgsi_transform_context *ctx)
+{
+   struct aa_transform_context *aactx = (struct aa_transform_context *) ctx;
+   uint i;
+
+   STATIC_ASSERT(sizeof(aactx->samplersUsed) * 8 >= PIPE_MAX_SAMPLERS);
+
+   /* find free sampler */
+   aactx->freeSampler = free_bit(aactx->samplersUsed);
+   if (aactx->freeSampler < 0 || aactx->freeSampler >= PIPE_MAX_SAMPLERS)
+      aactx->freeSampler = PIPE_MAX_SAMPLERS - 1;
+
+   /* find two free temp regs */
+   for (i = 0; i < 32; i++) {
+      if ((aactx->tempsUsed & (1 << i)) == 0) {
+      /* found a free temp */
+      if (aactx->colorTemp < 0)
+         aactx->colorTemp  = i;
+      else if (aactx->texTemp < 0)
+         aactx->texTemp  = i;
+      else
+         break;
+      }
+   }
+   assert(aactx->colorTemp >= 0);
+   assert(aactx->texTemp >= 0);
+
+   /* declare new generic input/texcoord */
+   tgsi_transform_input_decl(ctx, aactx->maxInput + 1,
+                             TGSI_SEMANTIC_GENERIC, aactx->maxGeneric + 1,
+                             TGSI_INTERPOLATE_LINEAR);
+
+   /* declare new sampler */
+   tgsi_transform_sampler_decl(ctx, aactx->freeSampler);
+
+   /* if the src shader has SVIEW decl's for each SAMP decl, we
+    * need to continue the trend and ensure there is a matching
+    * SVIEW for the new SAMP we just created
+    */
+   if (aactx->hasSview) {
+      tgsi_transform_sampler_view_decl(ctx,
+                                       aactx->freeSampler,
+                                       TGSI_TEXTURE_2D,
+                                       TGSI_RETURN_TYPE_FLOAT);
+   }
+
+   /* declare new temp regs */
+   tgsi_transform_temp_decl(ctx, aactx->texTemp);
+   tgsi_transform_temp_decl(ctx, aactx->colorTemp);
+}
+
+
+/**
+ * TGSI transform epilog callback.
+ */
+static void
+aa_transform_epilog(struct tgsi_transform_context *ctx)
+{
+   struct aa_transform_context *aactx = (struct aa_transform_context *) ctx;
+
+   if (aactx->colorOutput != -1) {
+      /* insert texture sampling code for antialiasing. */
+
+      /* TEX texTemp, input_coord, sampler, 2D */
+      tgsi_transform_tex_inst(ctx,
+                              TGSI_FILE_TEMPORARY, aactx->texTemp,
+                              TGSI_FILE_INPUT, aactx->maxInput + 1,
+                              TGSI_TEXTURE_2D, aactx->freeSampler);
+
+      /* MOV rgb */
+      tgsi_transform_op1_inst(ctx, TGSI_OPCODE_MOV,
+                              TGSI_FILE_OUTPUT, aactx->colorOutput,
+                              TGSI_WRITEMASK_XYZ,
+                              TGSI_FILE_TEMPORARY, aactx->colorTemp);
+
+      /* MUL alpha */
+      tgsi_transform_op2_inst(ctx, TGSI_OPCODE_MUL,
+                              TGSI_FILE_OUTPUT, aactx->colorOutput,
+                              TGSI_WRITEMASK_W,
+                              TGSI_FILE_TEMPORARY, aactx->colorTemp,
+                              TGSI_FILE_TEMPORARY, aactx->texTemp, false);
+   }
+}
+
+
+/**
  * TGSI instruction transform callback.
  * Replace writes to result.color w/ a temp reg.
- * Upon END instruction, insert texture sampling code for antialiasing.
  */
 static void
 aa_transform_inst(struct tgsi_transform_context *ctx,
                   struct tgsi_full_instruction *inst)
 {
    struct aa_transform_context *aactx = (struct aa_transform_context *) ctx;
+   uint i;
 
-   if (aactx->firstInstruction) {
-      /* emit our new declarations before the first instruction */
-
-      struct tgsi_full_declaration decl;
-      uint i;
-
-      /* find free sampler */
-      aactx->freeSampler = free_bit(aactx->samplersUsed);
-      if (aactx->freeSampler >= PIPE_MAX_SAMPLERS)
-         aactx->freeSampler = PIPE_MAX_SAMPLERS - 1;
-
-      /* find two free temp regs */
-      for (i = 0; i < 32; i++) {
-         if ((aactx->tempsUsed & (1 << i)) == 0) {
-            /* found a free temp */
-            if (aactx->colorTemp < 0)
-               aactx->colorTemp  = i;
-            else if (aactx->texTemp < 0)
-               aactx->texTemp  = i;
-            else
-               break;
-         }
+   /*
+    * Look for writes to result.color and replace with colorTemp reg.
+    */
+   for (i = 0; i < inst->Instruction.NumDstRegs; i++) {
+      struct tgsi_full_dst_register *dst = &inst->Dst[i];
+      if (dst->Register.File == TGSI_FILE_OUTPUT &&
+          dst->Register.Index == aactx->colorOutput) {
+         dst->Register.File = TGSI_FILE_TEMPORARY;
+         dst->Register.Index = aactx->colorTemp;
       }
-      assert(aactx->colorTemp >= 0);
-      assert(aactx->texTemp >= 0);
-
-      /* declare new generic input/texcoord */
-      decl = tgsi_default_full_declaration();
-      decl.Declaration.File = TGSI_FILE_INPUT;
-      /* XXX this could be linear... */
-      decl.Declaration.Interpolate = 1;
-      decl.Declaration.Semantic = 1;
-      decl.Semantic.Name = TGSI_SEMANTIC_GENERIC;
-      decl.Semantic.Index = aactx->maxGeneric + 1;
-      decl.Range.First = 
-      decl.Range.Last = aactx->maxInput + 1;
-      decl.Interp.Interpolate = TGSI_INTERPOLATE_PERSPECTIVE;
-      ctx->emit_declaration(ctx, &decl);
-
-      /* declare new sampler */
-      decl = tgsi_default_full_declaration();
-      decl.Declaration.File = TGSI_FILE_SAMPLER;
-      decl.Range.First = 
-      decl.Range.Last = aactx->freeSampler;
-      ctx->emit_declaration(ctx, &decl);
-
-      /* declare new temp regs */
-      decl = tgsi_default_full_declaration();
-      decl.Declaration.File = TGSI_FILE_TEMPORARY;
-      decl.Range.First = 
-      decl.Range.Last = aactx->texTemp;
-      ctx->emit_declaration(ctx, &decl);
-
-      decl = tgsi_default_full_declaration();
-      decl.Declaration.File = TGSI_FILE_TEMPORARY;
-      decl.Range.First = 
-      decl.Range.Last = aactx->colorTemp;
-      ctx->emit_declaration(ctx, &decl);
-
-      aactx->firstInstruction = FALSE;
    }
 
-   if (inst->Instruction.Opcode == TGSI_OPCODE_END &&
-       aactx->colorOutput != -1) {
-      struct tgsi_full_instruction newInst;
-
-      /* TEX */
-      newInst = tgsi_default_full_instruction();
-      newInst.Instruction.Opcode = TGSI_OPCODE_TEX;
-      newInst.Instruction.NumDstRegs = 1;
-      newInst.Dst[0].Register.File = TGSI_FILE_TEMPORARY;
-      newInst.Dst[0].Register.Index = aactx->texTemp;
-      newInst.Instruction.NumSrcRegs = 2;
-      newInst.Instruction.Texture = TRUE;
-      newInst.Texture.Texture = TGSI_TEXTURE_2D;
-      newInst.Src[0].Register.File = TGSI_FILE_INPUT;
-      newInst.Src[0].Register.Index = aactx->maxInput + 1;
-      newInst.Src[1].Register.File = TGSI_FILE_SAMPLER;
-      newInst.Src[1].Register.Index = aactx->freeSampler;
-
-      ctx->emit_instruction(ctx, &newInst);
-
-      /* MOV rgb */
-      newInst = tgsi_default_full_instruction();
-      newInst.Instruction.Opcode = TGSI_OPCODE_MOV;
-      newInst.Instruction.NumDstRegs = 1;
-      newInst.Dst[0].Register.File = TGSI_FILE_OUTPUT;
-      newInst.Dst[0].Register.Index = aactx->colorOutput;
-      newInst.Dst[0].Register.WriteMask = TGSI_WRITEMASK_XYZ;
-      newInst.Instruction.NumSrcRegs = 1;
-      newInst.Src[0].Register.File = TGSI_FILE_TEMPORARY;
-      newInst.Src[0].Register.Index = aactx->colorTemp;
-      ctx->emit_instruction(ctx, &newInst);
-
-      /* MUL alpha */
-      newInst = tgsi_default_full_instruction();
-      newInst.Instruction.Opcode = TGSI_OPCODE_MUL;
-      newInst.Instruction.NumDstRegs = 1;
-      newInst.Dst[0].Register.File = TGSI_FILE_OUTPUT;
-      newInst.Dst[0].Register.Index = aactx->colorOutput;
-      newInst.Dst[0].Register.WriteMask = TGSI_WRITEMASK_W;
-      newInst.Instruction.NumSrcRegs = 2;
-      newInst.Src[0].Register.File = TGSI_FILE_TEMPORARY;
-      newInst.Src[0].Register.Index = aactx->colorTemp;
-      newInst.Src[1].Register.File = TGSI_FILE_TEMPORARY;
-      newInst.Src[1].Register.Index = aactx->texTemp;
-      ctx->emit_instruction(ctx, &newInst);
-
-      /* END */
-      newInst = tgsi_default_full_instruction();
-      newInst.Instruction.Opcode = TGSI_OPCODE_END;
-      newInst.Instruction.NumDstRegs = 0;
-      newInst.Instruction.NumSrcRegs = 0;
-      ctx->emit_instruction(ctx, &newInst);
-   }
-   else {
-      /* Not an END instruction.
-       * Look for writes to result.color and replace with colorTemp reg.
-       */
-      uint i;
-
-      for (i = 0; i < inst->Instruction.NumDstRegs; i++) {
-         struct tgsi_full_dst_register *dst = &inst->Dst[i];
-         if (dst->Register.File == TGSI_FILE_OUTPUT &&
-             dst->Register.Index == aactx->colorOutput) {
-            dst->Register.File = TGSI_FILE_TEMPORARY;
-            dst->Register.Index = aactx->colorTemp;
-         }
-      }
-
-      ctx->emit_instruction(ctx, inst);
-   }
+   ctx->emit_instruction(ctx, inst);
 }
 
 
@@ -366,7 +341,8 @@ generate_aaline_fs(struct aaline_stage *aaline)
    transform.maxGeneric = -1;
    transform.colorTemp = -1;
    transform.texTemp = -1;
-   transform.firstInstruction = TRUE;
+   transform.base.prolog = aa_transform_prolog;
+   transform.base.epilog = aa_transform_epilog;
    transform.base.transform_instruction = aa_transform_inst;
    transform.base.transform_declaration = aa_transform_decl;
 
@@ -451,14 +427,13 @@ aaline_create_texture(struct aaline_stage *aaline)
 
       /* This texture is new, no need to flush. 
        */
-      transfer = pipe->get_transfer(pipe,
-                                    aaline->texture,
-                                    level,
-                                    PIPE_TRANSFER_WRITE,
-                                    &box);
+      data = pipe->transfer_map(pipe,
+                                aaline->texture,
+                                level,
+                                PIPE_TRANSFER_WRITE,
+                                &box, &transfer);
 
-      data = pipe->transfer_map(pipe, transfer);
-      if (data == NULL)
+      if (!data)
          return FALSE;
 
       for (i = 0; i < size; i++) {
@@ -482,7 +457,6 @@ aaline_create_texture(struct aaline_stage *aaline)
 
       /* unmap */
       pipe->transfer_unmap(pipe, transfer);
-      pipe->transfer_destroy(pipe, transfer);
    }
    return TRUE;
 }
@@ -541,7 +515,7 @@ bind_aaline_fragment_shader(struct aaline_stage *aaline)
 
 
 
-static INLINE struct aaline_stage *
+static inline struct aaline_stage *
 aaline_stage( struct draw_stage *stage )
 {
    return (struct aaline_stage *) stage;
@@ -676,6 +650,7 @@ aaline_first_line(struct draw_stage *stage, struct prim_header *header)
    struct pipe_context *pipe = draw->pipe;
    const struct pipe_rasterizer_state *rast = draw->rasterizer;
    uint num_samplers;
+   uint num_sampler_views;
    void *r;
 
    assert(draw->rasterizer->line_smooth);
@@ -694,26 +669,24 @@ aaline_first_line(struct draw_stage *stage, struct prim_header *header)
       return;
    }
 
-   /* update vertex attrib info */
-   aaline->pos_slot = draw_current_shader_position_output(draw);;
-
-   /* allocate the extra post-transformed vertex attribute */
-   aaline->tex_slot = draw_alloc_extra_vertex_attrib(draw,
-                                                     TGSI_SEMANTIC_GENERIC,
-                                                     aaline->fs->generic_attrib);
+   draw_aaline_prepare_outputs(draw, draw->pipeline.aaline);
 
    /* how many samplers? */
-   /* we'll use sampler/texture[pstip->sampler_unit] for the stipple */
-   num_samplers = MAX2(aaline->num_sampler_views, aaline->num_samplers);
-   num_samplers = MAX2(num_samplers, aaline->fs->sampler_unit + 1);
+   /* we'll use sampler/texture[aaline->sampler_unit] for the alpha texture */
+   num_samplers = MAX2(aaline->num_samplers, aaline->fs->sampler_unit + 1);
+   num_sampler_views = MAX2(num_samplers, aaline->num_sampler_views);
 
    aaline->state.sampler[aaline->fs->sampler_unit] = aaline->sampler_cso;
    pipe_sampler_view_reference(&aaline->state.sampler_views[aaline->fs->sampler_unit],
                                aaline->sampler_view);
 
    draw->suspend_flushing = TRUE;
-   aaline->driver_bind_sampler_states(pipe, num_samplers, aaline->state.sampler);
-   aaline->driver_set_sampler_views(pipe, num_samplers, aaline->state.sampler_views);
+
+   aaline->driver_bind_sampler_states(pipe, PIPE_SHADER_FRAGMENT, 0,
+                                      num_samplers, aaline->state.sampler);
+
+   aaline->driver_set_sampler_views(pipe, PIPE_SHADER_FRAGMENT, 0,
+                                    num_sampler_views, aaline->state.sampler_views);
 
    /* Disable triangle culling, stippling, unfilled mode etc. */
    r = draw_get_rasterizer_no_cull(draw, rast->scissor, rast->flatshade);
@@ -740,10 +713,13 @@ aaline_flush(struct draw_stage *stage, unsigned flags)
    /* restore original frag shader, texture, sampler state */
    draw->suspend_flushing = TRUE;
    aaline->driver_bind_fs_state(pipe, aaline->fs ? aaline->fs->driver_fs : NULL);
-   aaline->driver_bind_sampler_states(pipe, aaline->num_samplers,
+
+   aaline->driver_bind_sampler_states(pipe, PIPE_SHADER_FRAGMENT, 0,
+                                      aaline->num_samplers,
                                       aaline->state.sampler);
-   aaline->driver_set_sampler_views(pipe,
-                                    aaline->num_sampler_views,
+
+   aaline->driver_set_sampler_views(pipe, PIPE_SHADER_FRAGMENT, 0,
+                                    aaline->num_samplers,
                                     aaline->state.sampler_views);
 
    /* restore original rasterizer state */
@@ -771,7 +747,7 @@ aaline_destroy(struct draw_stage *stage)
    struct pipe_context *pipe = stage->draw->pipe;
    uint i;
 
-   for (i = 0; i < PIPE_MAX_SAMPLERS; i++) {
+   for (i = 0; i < PIPE_MAX_SHADER_SAMPLER_VIEWS; i++) {
       pipe_sampler_view_reference(&aaline->state.sampler_views[i], NULL);
    }
 
@@ -792,8 +768,8 @@ aaline_destroy(struct draw_stage *stage)
    pipe->bind_fs_state = aaline->driver_bind_fs_state;
    pipe->delete_fs_state = aaline->driver_delete_fs_state;
 
-   pipe->bind_fragment_sampler_states = aaline->driver_bind_sampler_states;
-   pipe->set_fragment_sampler_views = aaline->driver_set_sampler_views;
+   pipe->bind_sampler_states = aaline->driver_bind_sampler_states;
+   pipe->set_sampler_views = aaline->driver_set_sampler_views;
 
    FREE( stage );
 }
@@ -803,7 +779,7 @@ static struct aaline_stage *
 draw_aaline_stage(struct draw_context *draw)
 {
    struct aaline_stage *aaline = CALLOC_STRUCT(aaline_stage);
-   if (aaline == NULL)
+   if (!aaline)
       return NULL;
 
    aaline->stage.draw = draw;
@@ -822,8 +798,7 @@ draw_aaline_stage(struct draw_context *draw)
    return aaline;
 
  fail:
-   if (aaline)
-      aaline->stage.destroy(&aaline->stage);
+   aaline->stage.destroy(&aaline->stage);
 
    return NULL;
 }
@@ -833,7 +808,12 @@ static struct aaline_stage *
 aaline_stage_from_pipe(struct pipe_context *pipe)
 {
    struct draw_context *draw = (struct draw_context *) pipe->draw;
-   return aaline_stage(draw->pipeline.aaline);
+
+   if (draw) {
+      return aaline_stage(draw->pipeline.aaline);
+   } else {
+      return NULL;
+   }
 }
 
 
@@ -846,9 +826,14 @@ aaline_create_fs_state(struct pipe_context *pipe,
                        const struct pipe_shader_state *fs)
 {
    struct aaline_stage *aaline = aaline_stage_from_pipe(pipe);
-   struct aaline_fragment_shader *aafs = CALLOC_STRUCT(aaline_fragment_shader);
+   struct aaline_fragment_shader *aafs = NULL;
 
-   if (aafs == NULL)
+   if (!aaline)
+      return NULL;
+
+   aafs = CALLOC_STRUCT(aaline_fragment_shader);
+
+   if (!aafs)
       return NULL;
 
    aafs->state.tokens = tgsi_dup_tokens(fs->tokens);
@@ -866,6 +851,10 @@ aaline_bind_fs_state(struct pipe_context *pipe, void *fs)
    struct aaline_stage *aaline = aaline_stage_from_pipe(pipe);
    struct aaline_fragment_shader *aafs = (struct aaline_fragment_shader *) fs;
 
+   if (!aaline) {
+      return;
+   }
+
    /* save current */
    aaline->fs = aafs;
    /* pass-through */
@@ -879,54 +868,92 @@ aaline_delete_fs_state(struct pipe_context *pipe, void *fs)
    struct aaline_stage *aaline = aaline_stage_from_pipe(pipe);
    struct aaline_fragment_shader *aafs = (struct aaline_fragment_shader *) fs;
 
-   /* pass-through */
-   aaline->driver_delete_fs_state(pipe, aafs->driver_fs);
+   if (!aafs) {
+      return;
+   }
 
-   if (aafs->aaline_fs)
-      aaline->driver_delete_fs_state(pipe, aafs->aaline_fs);
+   if (aaline) {
+      /* pass-through */
+      aaline->driver_delete_fs_state(pipe, aafs->driver_fs);
+
+      if (aafs->aaline_fs)
+         aaline->driver_delete_fs_state(pipe, aafs->aaline_fs);
+   }
 
    FREE((void*)aafs->state.tokens);
-
    FREE(aafs);
 }
 
 
 static void
 aaline_bind_sampler_states(struct pipe_context *pipe,
-                           unsigned num, void **sampler)
+                           enum pipe_shader_type shader,
+                           unsigned start, unsigned num, void **sampler)
 {
    struct aaline_stage *aaline = aaline_stage_from_pipe(pipe);
 
-   /* save current */
-   memcpy(aaline->state.sampler, sampler, num * sizeof(void *));
-   aaline->num_samplers = num;
+   assert(start == 0);
+
+   if (!aaline) {
+      return;
+   }
+
+   if (shader == PIPE_SHADER_FRAGMENT) {
+      /* save current */
+      memcpy(aaline->state.sampler, sampler, num * sizeof(void *));
+      aaline->num_samplers = num;
+   }
 
    /* pass-through */
-   aaline->driver_bind_sampler_states(pipe, num, sampler);
+   aaline->driver_bind_sampler_states(pipe, shader, start, num, sampler);
 }
 
 
 static void
 aaline_set_sampler_views(struct pipe_context *pipe,
-                         unsigned num,
+                         enum pipe_shader_type shader,
+                         unsigned start, unsigned num,
                          struct pipe_sampler_view **views)
 {
    struct aaline_stage *aaline = aaline_stage_from_pipe(pipe);
    uint i;
 
-   /* save current */
-   for (i = 0; i < num; i++) {
-      pipe_sampler_view_reference(&aaline->state.sampler_views[i], views[i]);
+   if (!aaline) {
+      return;
    }
-   for ( ; i < PIPE_MAX_SAMPLERS; i++) {
-      pipe_sampler_view_reference(&aaline->state.sampler_views[i], NULL);
+
+   if (shader == PIPE_SHADER_FRAGMENT) {
+      /* save current */
+      for (i = 0; i < num; i++) {
+         pipe_sampler_view_reference(&aaline->state.sampler_views[start + i],
+                                     views[i]);
+      }
+      aaline->num_sampler_views = num;
    }
-   aaline->num_sampler_views = num;
 
    /* pass-through */
-   aaline->driver_set_sampler_views(pipe, num, views);
+   aaline->driver_set_sampler_views(pipe, shader, start, num, views);
 }
 
+
+void
+draw_aaline_prepare_outputs(struct draw_context *draw,
+                            struct draw_stage *stage)
+{
+   struct aaline_stage *aaline = aaline_stage(stage);
+   const struct pipe_rasterizer_state *rast = draw->rasterizer;
+
+   /* update vertex attrib info */
+   aaline->pos_slot = draw_current_shader_position_output(draw);
+
+   if (!rast->line_smooth)
+      return;
+
+   /* allocate the extra post-transformed vertex attribute */
+   aaline->tex_slot = draw_alloc_extra_vertex_attrib(draw,
+                                                     TGSI_SEMANTIC_GENERIC,
+                                                     aaline->fs->generic_attrib);
+}
 
 /**
  * Called by drivers that want to install this AA line prim stage
@@ -947,6 +974,14 @@ draw_install_aaline_stage(struct draw_context *draw, struct pipe_context *pipe)
    if (!aaline)
       goto fail;
 
+   /* save original driver functions */
+   aaline->driver_create_fs_state = pipe->create_fs_state;
+   aaline->driver_bind_fs_state = pipe->bind_fs_state;
+   aaline->driver_delete_fs_state = pipe->delete_fs_state;
+
+   aaline->driver_bind_sampler_states = pipe->bind_sampler_states;
+   aaline->driver_set_sampler_views = pipe->set_sampler_views;
+
    /* create special texture, sampler state */
    if (!aaline_create_texture(aaline))
       goto fail;
@@ -954,21 +989,13 @@ draw_install_aaline_stage(struct draw_context *draw, struct pipe_context *pipe)
    if (!aaline_create_sampler(aaline))
       goto fail;
 
-   /* save original driver functions */
-   aaline->driver_create_fs_state = pipe->create_fs_state;
-   aaline->driver_bind_fs_state = pipe->bind_fs_state;
-   aaline->driver_delete_fs_state = pipe->delete_fs_state;
-
-   aaline->driver_bind_sampler_states = pipe->bind_fragment_sampler_states;
-   aaline->driver_set_sampler_views = pipe->set_fragment_sampler_views;
-
    /* override the driver's functions */
    pipe->create_fs_state = aaline_create_fs_state;
    pipe->bind_fs_state = aaline_bind_fs_state;
    pipe->delete_fs_state = aaline_delete_fs_state;
 
-   pipe->bind_fragment_sampler_states = aaline_bind_sampler_states;
-   pipe->set_fragment_sampler_views = aaline_set_sampler_views;
+   pipe->bind_sampler_states = aaline_bind_sampler_states;
+   pipe->set_sampler_views = aaline_set_sampler_views;
    
    /* Install once everything is known to be OK:
     */

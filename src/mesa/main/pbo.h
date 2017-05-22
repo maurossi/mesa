@@ -17,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -81,7 +82,8 @@ _mesa_validate_pbo_teximage(struct gl_context *ctx, GLuint dimensions,
 
 extern const GLvoid *
 _mesa_validate_pbo_compressed_teximage(struct gl_context *ctx,
-                                    GLsizei imageSize, const GLvoid *pixels,
+                                    GLuint dimensions, GLsizei imageSize,
+                                    const GLvoid *pixels,
                                     const struct gl_pixelstore_attrib *packing,
                                     const char *funcName);
 
@@ -89,5 +91,19 @@ extern void
 _mesa_unmap_teximage_pbo(struct gl_context *ctx,
                          const struct gl_pixelstore_attrib *unpack);
 
+
+extern bool
+_mesa_validate_pbo_source(struct gl_context *ctx, GLuint dimensions,
+                          const struct gl_pixelstore_attrib *unpack,
+                          GLsizei width, GLsizei height, GLsizei depth,
+                          GLenum format, GLenum type,
+                          GLsizei clientMemSize,
+                          const GLvoid *ptr, const char *where);
+
+extern bool
+_mesa_validate_pbo_source_compressed(struct gl_context *ctx, GLuint dimensions,
+                                     const struct gl_pixelstore_attrib *unpack,
+                                     GLsizei imageSize, const GLvoid *ptr,
+                                     const char *where);
 
 #endif

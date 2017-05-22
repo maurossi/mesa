@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,22 +16,24 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
-
+#include "c99_math.h"
 #include "main/glheader.h"
-#include "main/colormac.h"
 #include "main/light.h"
 #include "main/macros.h"
 #include "main/imports.h"
-#include "main/simple_list.h"
+#include "util/simple_list.h"
 #include "main/mtypes.h"
 
 #include "math/m_translate.h"
+
+#include "util/bitscan.h"
 
 #include "t_context.h"
 #include "t_pipeline.h"
@@ -123,7 +124,7 @@ validate_shine_table( struct gl_context *ctx, GLuint side, GLfloat shininess )
    struct tnl_shine_tab *list = tnl->_ShineTabList;
    struct tnl_shine_tab *s;
 
-   ASSERT(side < 2);
+   assert(side < 2);
 
    foreach(s, list)
       if ( s->shininess == shininess )
@@ -138,23 +139,23 @@ validate_shine_table( struct gl_context *ctx, GLuint side, GLfloat shininess )
 	    break;
 
       m = s->tab;
-      m[0] = 0.0;
-      if (shininess == 0.0) {
+      m[0] = 0.0F;
+      if (shininess == 0.0F) {
 	 for (j = 1 ; j <= SHINE_TABLE_SIZE ; j++)
-	    m[j] = 1.0;
+	    m[j] = 1.0F;
       }
       else {
 	 for (j = 1 ; j < SHINE_TABLE_SIZE ; j++) {
-            GLdouble t, x = j / (GLfloat) (SHINE_TABLE_SIZE - 1);
-            if (x < 0.005) /* underflow check */
-               x = 0.005;
-            t = pow(x, shininess);
-	    if (t > 1e-20)
-	       m[j] = (GLfloat) t;
+            GLfloat t, x = j / (GLfloat) (SHINE_TABLE_SIZE - 1);
+            if (x < 0.005F) /* underflow check */
+               x = 0.005F;
+            t = powf(x, shininess);
+	    if (t > 1e-20F)
+	       m[j] = t;
 	    else
-	       m[j] = 0.0;
+	       m[j] = 0.0F;
 	 }
-	 m[SHINE_TABLE_SIZE] = 1.0;
+	 m[SHINE_TABLE_SIZE] = 1.0F;
       }
 
       s->shininess = shininess;
@@ -232,10 +233,12 @@ prepare_materials(struct gl_context *ctx,
     * with the color pointer for each one.
     */
    if (ctx->Light.ColorMaterialEnabled) {
-      const GLuint bitmask = ctx->Light._ColorMaterialBitmask;
-      for (i = 0 ; i < MAT_ATTRIB_MAX ; i++)
-	 if (bitmask & (1<<i))
-	    VB->AttribPtr[_TNL_ATTRIB_MAT_FRONT_AMBIENT + i] = VB->AttribPtr[_TNL_ATTRIB_COLOR0];
+      GLbitfield bitmask = ctx->Light._ColorMaterialBitmask;
+      while (bitmask) {
+         const int i = u_bit_scan(&bitmask);
+         VB->AttribPtr[_TNL_ATTRIB_MAT_FRONT_AMBIENT + i] =
+            VB->AttribPtr[_TNL_ATTRIB_COLOR0];
+      }
    }
 
    /* Now, for each material attribute that's tracking vertex color, save
@@ -395,7 +398,8 @@ static void validate_lighting( struct gl_context *ctx,
 	 tab = _tnl_light_tab;
    }
    else {
-      if (ctx->Light.EnabledList.next == ctx->Light.EnabledList.prev)
+      /* Power of two means only a single active light. */
+      if (_mesa_is_pow_two(ctx->Light._EnabledLights))
 	 tab = _tnl_light_fast_single_tab;
       else
 	 tab = _tnl_light_fast_tab;
@@ -421,7 +425,7 @@ static GLboolean init_lighting( struct gl_context *ctx,
    struct light_stage_data *store;
    GLuint size = tnl->vb.Size;
 
-   stage->privatePtr = MALLOC(sizeof(*store));
+   stage->privatePtr = malloc(sizeof(*store));
    store = LIGHT_STAGE_DATA(stage);
    if (!store)
       return GL_FALSE;
@@ -457,7 +461,7 @@ static void dtr( struct tnl_pipeline_stage *stage )
       _mesa_vector4f_free( &store->LitColor[1] );
       _mesa_vector4f_free( &store->LitSecondary[0] );
       _mesa_vector4f_free( &store->LitSecondary[1] );
-      FREE( store );
+      free( store );
       stage->privatePtr = NULL;
    }
 }

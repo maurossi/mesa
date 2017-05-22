@@ -31,7 +31,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * Authors:
  *   Kevin E. Martin <martin@valinux.com>
  *   Gareth Hughes <gareth@valinux.com>
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #include <sched.h>
@@ -43,13 +43,11 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "main/glheader.h"
 #include "main/imports.h"
-#include "main/simple_list.h"
+#include "util/simple_list.h"
 
 #include "radeon_context.h"
 #include "radeon_common.h"
 #include "radeon_ioctl.h"
-
-#define STANDALONE_MMIO
 
 #define RADEON_TIMEOUT             512
 #define RADEON_IDLE_RETRY           16
@@ -64,7 +62,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 void radeonSetUpAtomList( r100ContextPtr rmesa )
 {
-   int i, mtu = rmesa->radeon.glCtx->Const.MaxTextureUnits;
+   int i, mtu = rmesa->radeon.glCtx.Const.MaxTextureUnits;
 
    make_empty_list(&rmesa->radeon.hw.atomlist);
    rmesa->radeon.hw.atomlist.name = "atom-list";
@@ -175,7 +173,7 @@ void radeonFlushElts( struct gl_context *ctx )
    int dwords = (rmesa->radeon.cmdbuf.cs->section_ndw - rmesa->radeon.cmdbuf.cs->section_cdw);
 
    if (RADEON_DEBUG & RADEON_IOCTL)
-      fprintf(stderr, "%s\n", __FUNCTION__);
+      fprintf(stderr, "%s\n", __func__);
 
    assert( rmesa->radeon.dma.flush == radeonFlushElts );
    rmesa->radeon.dma.flush = NULL;
@@ -207,8 +205,8 @@ void radeonFlushElts( struct gl_context *ctx )
    END_BATCH();
 
    if (RADEON_DEBUG & RADEON_SYNC) {
-      fprintf(stderr, "%s: Syncing\n", __FUNCTION__);
-      radeonFinish( rmesa->radeon.glCtx );
+      fprintf(stderr, "%s: Syncing\n", __func__);
+      radeonFinish( &rmesa->radeon.glCtx );
    }
 
 }
@@ -223,7 +221,7 @@ GLushort *radeonAllocEltsOpenEnded( r100ContextPtr rmesa,
    BATCH_LOCALS(&rmesa->radeon);
 
    if (RADEON_DEBUG & RADEON_IOCTL)
-      fprintf(stderr, "%s %d prim %x\n", __FUNCTION__, min_nr, primitive);
+      fprintf(stderr, "%s %d prim %x\n", __func__, min_nr, primitive);
 
    assert((primitive & RADEON_CP_VC_CNTL_PRIM_WALK_IND));
 
@@ -236,7 +234,7 @@ GLushort *radeonAllocEltsOpenEnded( r100ContextPtr rmesa,
    align_min_nr = (min_nr + 1) & ~1;
 
 #if RADEON_OLD_PACKETS
-   BEGIN_BATCH_NO_AUTOSTATE(2+ELTS_BUFSZ(align_min_nr)/4);
+   BEGIN_BATCH(2+ELTS_BUFSZ(align_min_nr)/4);
    OUT_BATCH_PACKET3_CLIP(RADEON_CP_PACKET3_3D_RNDR_GEN_INDX_PRIM, 0);
    OUT_BATCH(rmesa->ioctl.vertex_offset);
    OUT_BATCH(rmesa->ioctl.vertex_max);
@@ -246,7 +244,7 @@ GLushort *radeonAllocEltsOpenEnded( r100ContextPtr rmesa,
 	     RADEON_CP_VC_CNTL_COLOR_ORDER_RGBA |
 	     RADEON_CP_VC_CNTL_VTX_FMT_RADEON_MODE);
 #else
-   BEGIN_BATCH_NO_AUTOSTATE(ELTS_BUFSZ(align_min_nr)/4);
+   BEGIN_BATCH(ELTS_BUFSZ(align_min_nr)/4);
    OUT_BATCH_PACKET3_CLIP(RADEON_CP_PACKET3_DRAW_INDX, 0);
    OUT_BATCH(vertex_format);
    OUT_BATCH(primitive |
@@ -264,10 +262,10 @@ GLushort *radeonAllocEltsOpenEnded( r100ContextPtr rmesa,
 
    if (RADEON_DEBUG & RADEON_RENDER)
       fprintf(stderr, "%s: header prim %x \n",
-	      __FUNCTION__, primitive);
+	      __func__, primitive);
 
    assert(!rmesa->radeon.dma.flush);
-   rmesa->radeon.glCtx->Driver.NeedFlush |= FLUSH_STORED_VERTICES;
+   rmesa->radeon.glCtx.Driver.NeedFlush |= FLUSH_STORED_VERTICES;
    rmesa->radeon.dma.flush = radeonFlushElts;
 
    return retval;
@@ -284,9 +282,9 @@ void radeonEmitVertexAOS( r100ContextPtr rmesa,
 #else
    BATCH_LOCALS(&rmesa->radeon);
 
-   if (RADEON_DEBUG & (RADEON_PRIMS|DEBUG_IOCTL))
+   if (RADEON_DEBUG & (RADEON_PRIMS|RADEON_IOCTL))
       fprintf(stderr, "%s:  vertex_size 0x%x offset 0x%x \n",
-	      __FUNCTION__, vertex_size, offset);
+	      __func__, vertex_size, offset);
 
    BEGIN_BATCH(7);
    OUT_BATCH_PACKET3(RADEON_CP_PACKET3_3D_LOAD_VBPNTR, 2);
@@ -317,7 +315,7 @@ void radeonEmitAOS( r100ContextPtr rmesa,
    int i;
 
    if (RADEON_DEBUG & RADEON_IOCTL)
-      fprintf(stderr, "%s\n", __FUNCTION__);
+      fprintf(stderr, "%s\n", __func__);
 
    BEGIN_BATCH(sz+2+(nr * 2));
    OUT_BATCH_PACKET3(RADEON_CP_PACKET3_3D_LOAD_VBPNTR, sz - 1);
@@ -401,7 +399,7 @@ static void radeonClear( struct gl_context *ctx, GLbitfield mask )
 
    if ( swmask ) {
       if (RADEON_DEBUG & RADEON_FALLBACKS)
-	 fprintf(stderr, "%s: swrast clear, mask: %x\n", __FUNCTION__, swmask);
+	 fprintf(stderr, "%s: swrast clear, mask: %x\n", __func__, swmask);
       _swrast_Clear( ctx, swmask );
    }
 

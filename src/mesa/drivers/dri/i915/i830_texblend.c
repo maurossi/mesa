@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -28,7 +28,6 @@
 #include "main/glheader.h"
 #include "main/macros.h"
 #include "main/mtypes.h"
-#include "main/simple_list.h"
 #include "main/enums.h"
 #include "main/mm.h"
 
@@ -93,7 +92,7 @@ emit_factor(GLuint blendUnit, GLuint * state, GLuint count,
 }
 
 
-static INLINE GLuint
+static inline GLuint
 GetTexelOp(GLint unit)
 {
    switch (unit) {
@@ -136,7 +135,7 @@ i830SetTexEnvCombine(struct i830_context * i830,
                      GLuint texel_op, GLuint * state, const GLfloat * factor)
 {
    const GLuint numColorArgs = combine->_NumArgsRGB;
-   const GLuint numAlphaArgs = combine->_NumArgsA;
+   GLuint numAlphaArgs = combine->_NumArgsA;
 
    GLuint blendop;
    GLuint ablendop;
@@ -159,7 +158,7 @@ i830SetTexEnvCombine(struct i830_context * i830,
    };
 
    if (INTEL_DEBUG & DEBUG_TEXTURE)
-      fprintf(stderr, "%s\n", __FUNCTION__);
+      fprintf(stderr, "%s\n", __func__);
 
 
    /* The EXT version of the DOT3 extension does not support the
@@ -209,7 +208,7 @@ i830SetTexEnvCombine(struct i830_context * i830,
       break;
    case GL_DOT3_RGBA_EXT:
    case GL_DOT3_RGBA:
-      blendop = TEXBLENDOP_DOT3;
+      blendop = TEXBLENDOP_DOT4;
       break;
    default:
       return pass_through(state, blendUnit);
@@ -273,6 +272,7 @@ i830SetTexEnvCombine(struct i830_context * i830,
    if (combine->ModeRGB == GL_DOT3_RGBA_EXT ||
        combine->ModeRGB == GL_DOT3_RGBA) {
       ablendop = TEXBLENDOP_DOT4;
+      numAlphaArgs = 2;
       args_A[0] = TEXBLENDARG_FACTOR;   /* the global factor */
       args_A[1] = TEXBLENDARG_FACTOR;
       args_A[2] = TEXBLENDARG_FACTOR;
@@ -394,7 +394,7 @@ emit_texblend(struct i830_context *i830, GLuint unit, GLuint blendUnit,
 
 
    if (0)
-      fprintf(stderr, "%s unit %d\n", __FUNCTION__, unit);
+      fprintf(stderr, "%s unit %d\n", __func__, unit);
 
    /* Update i830->state.TexBlend
     */
@@ -440,20 +440,16 @@ void
 i830EmitTextureBlend(struct i830_context *i830)
 {
    struct gl_context *ctx = &i830->intel.ctx;
-   GLuint unit, last_stage = 0, blendunit = 0;
+   GLuint unit, blendunit = 0;
 
    I830_ACTIVESTATE(i830, I830_UPLOAD_TEXBLEND_ALL, false);
 
-   if (ctx->Texture._EnabledUnits) {
-      for (unit = 0; unit < ctx->Const.MaxTextureUnits; unit++)
-         if (ctx->Texture.Unit[unit]._ReallyEnabled)
-            last_stage = unit;
-
-      for (unit = 0; unit < ctx->Const.MaxTextureUnits; unit++)
-         if (ctx->Texture.Unit[unit]._ReallyEnabled)
-            emit_texblend(i830, unit, blendunit++, last_stage == unit);
-   }
-   else {
+   if (ctx->Texture._MaxEnabledTexImageUnit != -1) {
+      for (unit = 0; unit <= ctx->Texture._MaxEnabledTexImageUnit; unit++)
+         if (ctx->Texture.Unit[unit]._Current)
+            emit_texblend(i830, unit, blendunit++,
+                          unit == ctx->Texture._MaxEnabledTexImageUnit);
+   } else {
       emit_passthrough(i830);
    }
 }

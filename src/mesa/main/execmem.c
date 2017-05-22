@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2005  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -31,12 +31,12 @@
  */
 
 
+#include <stdio.h>
 #include "imports.h"
-#include "glapi/glthread.h"
 
 
 
-#if defined(__linux__) || defined(__OpenBSD__) || defined(_NetBSD__) || defined(__sun)
+#if defined(__linux__) || defined(__OpenBSD__) || defined(_NetBSD__) || defined(__sun) || defined(__HAIKU__)
 
 /*
  * Allocate a large block of memory which can hold code then dole it out
@@ -59,7 +59,7 @@
 
 #define EXEC_HEAP_SIZE (10*1024*1024)
 
-_glthread_DECLARE_STATIC_MUTEX(exec_mutex);
+static mtx_t exec_mutex = _MTX_INITIALIZER_NP;
 
 static struct mem_block *exec_heap = NULL;
 static unsigned char *exec_mem = NULL;
@@ -93,7 +93,7 @@ _mesa_exec_malloc(GLuint size)
    struct mem_block *block = NULL;
    void *addr = NULL;
 
-   _glthread_LOCK_MUTEX(exec_mutex);
+   mtx_lock(&exec_mutex);
 
    if (!init_heap())
       goto bail;
@@ -109,7 +109,7 @@ _mesa_exec_malloc(GLuint size)
       printf("_mesa_exec_malloc failed\n");
 
 bail:
-   _glthread_UNLOCK_MUTEX(exec_mutex);
+   mtx_unlock(&exec_mutex);
    
    return addr;
 }
@@ -118,7 +118,7 @@ bail:
 void 
 _mesa_exec_free(void *addr)
 {
-   _glthread_LOCK_MUTEX(exec_mutex);
+   mtx_lock(&exec_mutex);
 
    if (exec_heap) {
       struct mem_block *block = mmFindBlock(exec_heap, (unsigned char *)addr - exec_mem);
@@ -127,7 +127,7 @@ _mesa_exec_free(void *addr)
 	 mmFreeMem(block);
    }
 
-   _glthread_UNLOCK_MUTEX(exec_mutex);
+   mtx_unlock(&exec_mutex);
 }
 
 

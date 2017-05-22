@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2005 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2005 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -33,6 +33,7 @@
 
 struct dd_function_table;
 struct pipe_resource;
+struct pipe_screen;
 struct st_context;
 
 /**
@@ -43,12 +44,12 @@ struct st_buffer_object
 {
    struct gl_buffer_object Base;
    struct pipe_resource *buffer;     /* GPU storage */
-   struct pipe_transfer *transfer; /* In-progress map information */
+   struct pipe_transfer *transfer[MAP_COUNT];
 };
 
 
 /** cast wrapper */
-static INLINE struct st_buffer_object *
+static inline struct st_buffer_object *
 st_buffer_object(struct gl_buffer_object *obj)
 {
    return (struct st_buffer_object *) obj;
@@ -62,7 +63,8 @@ st_bufferobj_validate_usage(struct st_context *st,
 
 
 extern void
-st_init_bufferobject_functions(struct dd_function_table *functions);
+st_init_bufferobject_functions(struct pipe_screen *screen,
+                               struct dd_function_table *functions);
 
 
 #endif

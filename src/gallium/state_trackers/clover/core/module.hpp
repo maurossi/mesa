@@ -14,30 +14,28 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-// THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 //
 
-#ifndef __CORE_MODULE_HPP__
-#define __CORE_MODULE_HPP__
+#ifndef CLOVER_CORE_MODULE_HPP
+#define CLOVER_CORE_MODULE_HPP
 
-#include "core/compat.hpp"
+#include <vector>
+#include <string>
 
 namespace clover {
    struct module {
-      class noent_error {
-      public:
-         virtual ~noent_error() {}
-      };
-
       typedef uint32_t resource_id;
       typedef uint32_t size_t;
 
       struct section {
          enum type {
-            text,
+            text_intermediate,
+            text_library,
+            text_executable,
             data_constant,
             data_global,
             data_local,
@@ -45,14 +43,14 @@ namespace clover {
          };
 
          section(resource_id id, enum type type, size_t size,
-                 const clover::compat::vector<char> &data) :
+                 const std::vector<char> &data) :
                  id(id), type(type), size(size), data(data) { }
-         section() : id(0), type(text), size(0), data() { }
+         section() : id(0), type(text_intermediate), size(0), data() { }
 
          resource_id id;
          type type;
          size_t size;
-         clover::compat::vector<char> data;
+         std::vector<char> data;
       };
 
       struct argument {
@@ -68,38 +66,62 @@ namespace clover {
             sampler
          };
 
-         argument(enum type type, size_t size) : type(type), size(size) { }
-         argument() : type(scalar), size(0) { }
+         enum ext_type {
+            zero_ext,
+            sign_ext
+         };
+
+         enum semantic {
+            general,
+            grid_dimension,
+            grid_offset,
+            image_size,
+            image_format
+         };
+
+         argument(enum type type, size_t size,
+                  size_t target_size, size_t target_align,
+                  enum ext_type ext_type,
+                  enum semantic semantic = general) :
+            type(type), size(size),
+            target_size(target_size), target_align(target_align),
+            ext_type(ext_type), semantic(semantic) { }
+
+         argument(enum type type, size_t size) :
+            type(type), size(size),
+            target_size(size), target_align(1),
+            ext_type(zero_ext), semantic(general) { }
+
+         argument() : type(scalar), size(0),
+                      target_size(0), target_align(1),
+                      ext_type(zero_ext), semantic(general) { }
 
          type type;
          size_t size;
+         size_t target_size;
+         size_t target_align;
+         ext_type ext_type;
+         semantic semantic;
       };
 
       struct symbol {
-         symbol(const clover::compat::vector<char> &name, resource_id section,
-                size_t offset, const clover::compat::vector<argument> &args) :
+         symbol(const std::string &name, resource_id section,
+                size_t offset, const std::vector<argument> &args) :
                 name(name), section(section), offset(offset), args(args) { }
          symbol() : name(), section(0), offset(0), args() { }
 
-         clover::compat::vector<char> name;
+         std::string name;
          resource_id section;
          size_t offset;
-         clover::compat::vector<argument> args;
+         std::vector<argument> args;
       };
 
-      void serialize(compat::ostream &os) const;
-      static module deserialize(compat::istream &is);
+      void serialize(std::ostream &os) const;
+      static module deserialize(std::istream &is);
+      size_t size() const;
 
-      /// Look up a symbol by name.  Throws module::noent_error if not
-      /// found.
-      const symbol &sym(compat::string name) const;
-
-      /// Look up a section by type.  Throws module::noent_error if not
-      /// found.
-      const section &sec(typename section::type type) const;
-
-      clover::compat::vector<symbol> syms;
-      clover::compat::vector<section> secs;
+      std::vector<symbol> syms;
+      std::vector<section> secs;
    };
 }
 

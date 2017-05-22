@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.9
  *
  * Copyright (C) 2010 LunarG Inc.
  *
@@ -26,7 +25,6 @@
  *    Chia-I Wu <olv@lunarg.com>
  */
 
-#include "main/mfeatures.h"
 #include "main/texobj.h"
 #include "main/teximage.h"
 #include "util/u_inlines.h"
@@ -37,8 +35,8 @@
 #include "st_texture.h"
 #include "st_format.h"
 #include "st_manager.h"
+#include "st_sampler_view.h"
 
-#if FEATURE_OES_EGL_image
 
 /**
  * Return the base format just like _mesa_base_fbo_format does.
@@ -78,10 +76,8 @@ st_egl_image_target_renderbuffer_storage(struct gl_context *ctx,
    struct st_context *st = st_context(ctx);
    struct st_renderbuffer *strb = st_renderbuffer(rb);
    struct pipe_surface *ps;
-   unsigned usage;
 
-   usage = PIPE_BIND_RENDER_TARGET;
-   ps = st_manager_get_egl_image_surface(st, (void *) image_handle, usage);
+   ps = st_manager_get_egl_image_surface(st, (void *) image_handle);
    if (ps) {
       strb->Base.Width = ps->width;
       strb->Base.Height = ps->height;
@@ -102,10 +98,11 @@ st_bind_surface(struct gl_context *ctx, GLenum target,
                 struct gl_texture_image *texImage,
                 struct pipe_surface *ps)
 {
+   struct st_context *st = st_context(ctx);
    struct st_texture_object *stObj;
    struct st_texture_image *stImage;
    GLenum internalFormat;
-   gl_format texFormat;
+   mesa_format texFormat;
 
    /* map pipe format to base format */
    if (util_format_get_component_bits(ps->format, UTIL_FORMAT_COLORSPACE_RGB, 3) > 0)
@@ -124,20 +121,36 @@ st_bind_surface(struct gl_context *ctx, GLenum target,
 
    texFormat = st_pipe_format_to_mesa_format(ps->format);
 
+   /* TODO RequiredTextureImageUnits should probably be reset back
+    * to 1 somewhere if different texture is bound??
+    */
+   if (texFormat == MESA_FORMAT_NONE) {
+      switch (ps->format) {
+      case PIPE_FORMAT_NV12:
+         texFormat = MESA_FORMAT_R_UNORM8;
+         texObj->RequiredTextureImageUnits = 2;
+         break;
+      case PIPE_FORMAT_IYUV:
+         texFormat = MESA_FORMAT_R_UNORM8;
+         texObj->RequiredTextureImageUnits = 3;
+         break;
+      default:
+         unreachable("bad YUV format!");
+      }
+   }
+
    _mesa_init_teximage_fields(ctx, texImage,
                               ps->width, ps->height, 1, 0, internalFormat,
                               texFormat);
 
    /* FIXME create a non-default sampler view from the pipe_surface? */
    pipe_resource_reference(&stObj->pt, ps->texture);
-   pipe_sampler_view_reference(&stObj->sampler_view, NULL);
+   st_texture_release_all_sampler_views(st, stObj);
    pipe_resource_reference(&stImage->pt, stObj->pt);
 
-   stObj->width0 = ps->width;
-   stObj->height0 = ps->height;
-   stObj->depth0 = 1;
+   stObj->surface_format = ps->format;
 
-   _mesa_dirty_texobj(ctx, texObj, GL_TRUE);
+   _mesa_dirty_texobj(ctx, texObj);
 }
 
 static void
@@ -148,10 +161,8 @@ st_egl_image_target_texture_2d(struct gl_context *ctx, GLenum target,
 {
    struct st_context *st = st_context(ctx);
    struct pipe_surface *ps;
-   unsigned usage;
 
-   usage = PIPE_BIND_SAMPLER_VIEW;
-   ps = st_manager_get_egl_image_surface(st, (void *) image_handle, usage);
+   ps = st_manager_get_egl_image_surface(st, (void *) image_handle);
    if (ps) {
       st_bind_surface(ctx, target, texObj, texImage, ps);
       pipe_surface_reference(&ps, NULL);
@@ -164,5 +175,3 @@ st_init_eglimage_functions(struct dd_function_table *functions)
    functions->EGLImageTargetTexture2D = st_egl_image_target_texture_2d;
    functions->EGLImageTargetRenderbufferStorage = st_egl_image_target_renderbuffer_storage;
 }
-
-#endif /* FEATURE_OES_EGL_image */

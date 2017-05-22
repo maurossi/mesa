@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -74,6 +74,7 @@ struct tgsi_opcode_info
    unsigned num_dst:3;
    unsigned num_src:3;
    unsigned is_tex:1;
+   unsigned is_store:1;
    unsigned is_branch:1;
    int pre_dedent:2;
    int post_indent:2;
@@ -97,8 +98,18 @@ enum tgsi_opcode_type {
    TGSI_TYPE_UNSIGNED,
    TGSI_TYPE_SIGNED,
    TGSI_TYPE_FLOAT,
-   TGSI_TYPE_DOUBLE
+   TGSI_TYPE_DOUBLE,
+   TGSI_TYPE_UNSIGNED64,
+   TGSI_TYPE_SIGNED64,
 };
+
+static inline bool tgsi_type_is_64bit(enum tgsi_opcode_type type)
+{
+   if (type == TGSI_TYPE_DOUBLE || type == TGSI_TYPE_UNSIGNED64 ||
+       type == TGSI_TYPE_SIGNED64)
+      return true;
+   return false;
+}
 
 enum tgsi_opcode_type
 tgsi_opcode_infer_src_type( uint opcode );

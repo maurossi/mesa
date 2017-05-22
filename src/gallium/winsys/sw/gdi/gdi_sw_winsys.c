@@ -62,7 +62,7 @@ struct gdi_sw_displaytarget
 
 
 /** Cast wrapper */
-static INLINE struct gdi_sw_displaytarget *
+static inline struct gdi_sw_displaytarget *
 gdi_sw_displaytarget( struct sw_displaytarget *buf )
 {
    return (struct gdi_sw_displaytarget *)buf;
@@ -124,6 +124,7 @@ gdi_sw_displaytarget_create(struct sw_winsys *winsys,
                                   enum pipe_format format,
                                   unsigned width, unsigned height,
                                   unsigned alignment,
+                                  const void *front_private,
                                   unsigned *stride)
 {
    struct gdi_sw_displaytarget *gdt;
@@ -207,7 +208,8 @@ gdi_sw_display( struct sw_winsys *winsys,
 static void
 gdi_sw_displaytarget_display(struct sw_winsys *winsys, 
                              struct sw_displaytarget *dt,
-                             void *context_private)
+                             void *context_private,
+                             struct pipe_box *box)
 {
     /* nasty:
      */

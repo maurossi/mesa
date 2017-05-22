@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.2
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -46,8 +46,8 @@ _swrast_mask_rgba_span(struct gl_context *ctx, struct gl_renderbuffer *rb,
    const GLuint n = span->end;
    void *rbPixels;
 
-   ASSERT(n < SWRAST_MAX_WIDTH);
-   ASSERT(span->arrayMask & SPAN_RGBA);
+   assert(n < SWRAST_MAX_WIDTH);
+   assert(span->arrayMask & SPAN_RGBA);
 
    rbPixels = _swrast_get_dest_rgba(ctx, rb, span);
 
@@ -56,8 +56,8 @@ _swrast_mask_rgba_span(struct gl_context *ctx, struct gl_renderbuffer *rb,
     * Note that we're not using span->array->mask[] here.  We could...
     */
    if (span->array->ChanType == GL_UNSIGNED_BYTE) {
-      /* treat 4xGLubyte as 1xGLuint */
-      const GLuint srcMask = *((GLuint *) ctx->Color.ColorMask[buf]);
+      GLuint srcMask;
+      memcpy(&srcMask, ctx->Color.ColorMask[buf], sizeof(srcMask));
       const GLuint dstMask = ~srcMask;
       const GLuint *dst = (const GLuint *) rbPixels;
       GLuint *src = (GLuint *) span->array->rgba8;
@@ -90,7 +90,7 @@ _swrast_mask_rgba_span(struct gl_context *ctx, struct gl_renderbuffer *rb,
       const GLuint bMask = ctx->Color.ColorMask[buf][BCOMP] ? ~0x0 : 0x0;
       const GLuint aMask = ctx->Color.ColorMask[buf][ACOMP] ? ~0x0 : 0x0;
       const GLuint (*dst)[4] = (const GLuint (*)[4]) rbPixels;
-      GLuint (*src)[4] = (GLuint (*)[4]) span->array->attribs[FRAG_ATTRIB_COL0];
+      GLuint (*src)[4] = (GLuint (*)[4]) span->array->attribs[VARYING_SLOT_COL0];
       GLuint i;
       for (i = 0; i < n; i++) {
          src[i][RCOMP] = (src[i][RCOMP] & rMask) | (dst[i][RCOMP] & ~rMask);

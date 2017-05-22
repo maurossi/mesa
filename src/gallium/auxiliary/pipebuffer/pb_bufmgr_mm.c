@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2006 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2006 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,7 +29,7 @@
  * \file
  * Buffer manager using the old texture memory manager.
  * 
- * \author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * \author Jose Fonseca <jfonseca@vmware.com>
  */
 
 
@@ -37,7 +37,7 @@
 #include "util/u_debug.h"
 #include "os/os_thread.h"
 #include "util/u_memory.h"
-#include "util/u_double_list.h"
+#include "util/list.h"
 #include "util/u_mm.h"
 #include "pb_buffer.h"
 #include "pb_bufmgr.h"
@@ -65,7 +65,7 @@ struct mm_pb_manager
 };
 
 
-static INLINE struct mm_pb_manager *
+static inline struct mm_pb_manager *
 mm_pb_manager(struct pb_manager *mgr)
 {
    assert(mgr);
@@ -83,7 +83,7 @@ struct mm_buffer
 };
 
 
-static INLINE struct mm_buffer *
+static inline struct mm_buffer *
 mm_buffer(struct pb_buffer *buf)
 {
    assert(buf);
@@ -252,7 +252,7 @@ mm_bufmgr_create_from_buffer(struct pb_buffer *buffer,
 {
    struct mm_pb_manager *mm;
 
-   if(!buffer)
+   if (!buffer)
       return NULL;
    
    mm = CALLOC_STRUCT(mm_pb_manager);
@@ -283,12 +283,11 @@ mm_bufmgr_create_from_buffer(struct pb_buffer *buffer,
    return SUPER(mm);
    
 failure:
-if(mm->heap)
-   u_mmDestroy(mm->heap);
+   if(mm->heap)
+      u_mmDestroy(mm->heap);
    if(mm->map)
       pb_unmap(mm->buffer);
-   if(mm)
-      FREE(mm);
+   FREE(mm);
    return NULL;
 }
 
@@ -301,7 +300,7 @@ mm_bufmgr_create(struct pb_manager *provider,
    struct pb_manager *mgr;
    struct pb_desc desc;
 
-   if(!provider)
+   if (!provider)
       return NULL;
    
    memset(&desc, 0, sizeof(desc));

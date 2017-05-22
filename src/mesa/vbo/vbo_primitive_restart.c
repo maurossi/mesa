@@ -1,5 +1,5 @@
 /*
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Copyright © 2012 Intel Corporation
@@ -31,6 +31,7 @@
 #include "main/imports.h"
 #include "main/bufferobj.h"
 #include "main/macros.h"
+#include "main/varray.h"
 
 #include "vbo.h"
 #include "vbo_context.h"
@@ -40,8 +41,8 @@
 
 /*
  * Notes on primitive restart:
- * The code below is used when the driver does not support primitive
- * restart itself. (ctx->Const.PrimitiveRestartInSoftware == GL_TRUE)
+ * The code below is used when the driver does not fully support primitive
+ * restart (for example, if it only does restart index of ~0).
  *
  * We map the index buffer, find the restart indexes, unmap
  * the index buffer then draw the sub-primitives delineated by the restarts.
@@ -86,7 +87,7 @@ find_sub_primitives(const void *elements, unsigned element_size,
    GLuint scan_index;
    unsigned scan_num;
 
-   sub_prims = (struct sub_primitive *)
+   sub_prims =
       malloc(max_prims * sizeof(struct sub_primitive));
 
    if (!sub_prims) {
@@ -162,38 +163,75 @@ void
 vbo_sw_primitive_restart(struct gl_context *ctx,
                          const struct _mesa_prim *prims,
                          GLuint nr_prims,
-                         const struct _mesa_index_buffer *ib)
+                         const struct _mesa_index_buffer *ib,
+                         struct gl_buffer_object *indirect)
 {
    GLuint prim_num;
+   struct _mesa_prim new_prim;
+   struct _mesa_index_buffer new_ib;
    struct sub_primitive *sub_prims;
    struct sub_primitive *sub_prim;
    GLuint num_sub_prims;
    GLuint sub_prim_num;
    GLuint end_index;
    GLuint sub_end_index;
-   GLuint restart_index = ctx->Array.RestartIndex;
+   GLuint restart_index = _mesa_primitive_restart_index(ctx, ib->type);
    struct _mesa_prim temp_prim;
    struct vbo_context *vbo = vbo_context(ctx);
    vbo_draw_func draw_prims_func = vbo->draw_prims;
-   GLboolean map_ib = ib->obj->Name && !ib->obj->Pointer;
+   GLboolean map_ib = ib->obj->Name && !ib->obj->Mappings[MAP_INTERNAL].Pointer;
    void *ptr;
+
+   /* If there is an indirect buffer, map it and extract the draw params */
+   if (indirect && prims[0].is_indirect) {
+      const uint32_t *indirect_params;
+      if (!ctx->Driver.MapBufferRange(ctx, 0, indirect->Size, GL_MAP_READ_BIT,
+                                      indirect, MAP_INTERNAL)) {
+
+         /* something went wrong with mapping, give up */
+         _mesa_error(ctx, GL_OUT_OF_MEMORY,
+                     "failed to map indirect buffer for sw primitive restart");
+         return;
+      }
+
+      assert(nr_prims == 1);
+      new_prim = prims[0];
+      indirect_params = (const uint32_t *)
+                        ADD_POINTERS(indirect->Mappings[MAP_INTERNAL].Pointer,
+                                     new_prim.indirect_offset);
+
+      new_prim.is_indirect = 0;
+      new_prim.count = indirect_params[0];
+      new_prim.num_instances = indirect_params[1];
+      new_prim.start = indirect_params[2];
+      new_prim.basevertex = indirect_params[3];
+      new_prim.base_instance = indirect_params[4];
+
+      new_ib = *ib;
+      new_ib.count = new_prim.count;
+
+      prims = &new_prim;
+      ib = &new_ib;
+
+      ctx->Driver.UnmapBuffer(ctx, indirect, MAP_INTERNAL);
+   }
 
    /* Find the sub-primitives. These are regions in the index buffer which
     * are split based on the primitive restart index value.
     */
    if (map_ib) {
       ctx->Driver.MapBufferRange(ctx, 0, ib->obj->Size, GL_MAP_READ_BIT,
-                                 ib->obj);
+                                 ib->obj, MAP_INTERNAL);
    }
 
-   ptr = ADD_POINTERS(ib->obj->Pointer, ib->ptr);
+   ptr = ADD_POINTERS(ib->obj->Mappings[MAP_INTERNAL].Pointer, ib->ptr);
 
    sub_prims = find_sub_primitives(ptr, vbo_sizeof_ib_type(ib->type),
                                    0, ib->count, restart_index,
                                    &num_sub_prims);
 
    if (map_ib) {
-      ctx->Driver.UnmapBuffer(ctx, ib->obj);
+      ctx->Driver.UnmapBuffer(ctx, ib->obj, MAP_INTERNAL);
    }
 
    /* Loop over the primitives, and use the located sub-primitives to draw
@@ -213,11 +251,11 @@ vbo_sw_primitive_restart(struct gl_context *ctx,
                 (temp_prim.count == sub_prim->count)) {
                draw_prims_func(ctx, &temp_prim, 1, ib,
                                GL_TRUE, sub_prim->min_index, sub_prim->max_index,
-                               NULL);
+                               NULL, 0, NULL);
             } else {
                draw_prims_func(ctx, &temp_prim, 1, ib,
                                GL_FALSE, -1, -1,
-                               NULL);
+                               NULL, 0, NULL);
             }
          }
          if (sub_end_index >= end_index) {
@@ -226,8 +264,6 @@ vbo_sw_primitive_restart(struct gl_context *ctx,
       }
    }
 
-   if (sub_prims) {
-      free(sub_prims);
-   }
+   free(sub_prims);
 }
 

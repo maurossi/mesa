@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,7 +29,7 @@
 #define vl_compositor_h
 
 #include "pipe/p_state.h"
-#include "pipe/p_video_decoder.h"
+#include "pipe/p_video_codec.h"
 #include "pipe/p_video_state.h"
 
 #include "util/u_rect.h"
@@ -53,6 +53,15 @@ enum vl_compositor_deinterlace
    VL_COMPOSITOR_BOB_BOTTOM
 };
 
+/* clockwise degree */
+enum vl_compositor_rotation
+{
+   VL_COMPOSITOR_ROTATE_0,
+   VL_COMPOSITOR_ROTATE_90,
+   VL_COMPOSITOR_ROTATE_180,
+   VL_COMPOSITOR_ROTATE_270
+};
+
 struct vl_compositor_layer
 {
    bool clearing;
@@ -70,6 +79,7 @@ struct vl_compositor_layer
    } src, dst;
    struct vertex2f zw;
    struct vertex4f colors[4];
+   enum vl_compositor_rotation rotate;
 };
 
 struct vl_compositor_state
@@ -89,6 +99,7 @@ struct vl_compositor_state
 struct vl_compositor
 {
    struct pipe_context *pipe;
+   struct u_upload_mgr *upload;
 
    struct pipe_framebuffer_state fb_state;
    struct pipe_vertex_buffer vertex_buf;
@@ -102,8 +113,13 @@ struct vl_compositor
 
    void *vs;
    void *fs_video_buffer;
-   void *fs_weave;
+   void *fs_weave_rgb;
    void *fs_rgba;
+
+   struct {
+      void *y;
+      void *uv;
+   } fs_weave_yuv;
 
    struct {
       void *rgb;
@@ -126,8 +142,10 @@ vl_compositor_init_state(struct vl_compositor_state *state, struct pipe_context 
 /**
  * set yuv -> rgba conversion matrix
  */
-void
-vl_compositor_set_csc_matrix(struct vl_compositor_state *settings, const vl_csc_matrix *matrix);
+bool
+vl_compositor_set_csc_matrix(struct vl_compositor_state *settings,
+                             const vl_csc_matrix *matrix,
+                             float luma_min, float luma_max);
 
 /**
  * reset dirty area, so it's cleared with the clear colour
@@ -215,6 +233,26 @@ vl_compositor_set_rgba_layer(struct vl_compositor_state *state,
                              struct u_rect *dst_rect,
                              struct vertex4f *colors);
 
+/**
+ * set the layer rotation
+ */
+void
+vl_compositor_set_layer_rotation(struct vl_compositor_state *state,
+                                 unsigned layer,
+                                 enum vl_compositor_rotation rotate);
+
+/**
+ * set a layer of y or uv to render
+ */
+void
+vl_compositor_set_yuv_layer(struct vl_compositor_state *s,
+                            struct vl_compositor *c,
+                            unsigned layer,
+                            struct pipe_video_buffer *buffer,
+                            struct u_rect *src_rect,
+                            struct u_rect *dst_rect,
+                            bool y);
+
 /*@}*/
 
 /**
@@ -224,7 +262,8 @@ void
 vl_compositor_render(struct vl_compositor_state *state,
                      struct vl_compositor       *compositor,
                      struct pipe_surface        *dst_surface,
-                     struct u_rect              *dirty_area);
+                     struct u_rect              *dirty_area,
+                     bool                        clear_dirty);
 
 /**
  * destroy this compositor

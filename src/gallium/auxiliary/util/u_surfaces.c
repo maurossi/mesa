@@ -32,7 +32,7 @@
 boolean
 util_surfaces_do_get(struct util_surfaces *us, unsigned surface_struct_size,
                      struct pipe_context *ctx, struct pipe_resource *pt,
-                     unsigned level, unsigned layer, unsigned flags,
+                     unsigned level, unsigned layer,
                      struct pipe_surface **res)
 {
    struct pipe_surface *ps;
@@ -59,13 +59,13 @@ util_surfaces_do_get(struct util_surfaces *us, unsigned surface_struct_size,
    }
 
    ps = (struct pipe_surface *)CALLOC(1, surface_struct_size);
-   if(!ps)
+   if (!ps)
    {
       *res = NULL;
       return FALSE;
    }
 
-   pipe_surface_init(ctx, ps, pt, level, layer, flags);
+   pipe_surface_init(ctx, ps, pt, level, layer);
 
    if(pt->target == PIPE_TEXTURE_3D || pt->target == PIPE_TEXTURE_CUBE)
       cso_hash_insert(us->u.hash, (layer << 8) | level, ps);
@@ -114,7 +114,7 @@ util_surfaces_destroy(struct util_surfaces *us, struct pipe_resource *pt, void (
          for(i = 0; i <= pt->last_level; ++i)
          {
             struct pipe_surface *ps = us->u.array[i];
-            if(ps)
+            if (ps)
                destroy_surface(ps);
          }
          FREE(us->u.array);

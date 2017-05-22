@@ -1,34 +1,31 @@
 include Makefile.sources
-
-noinst_LIBRARIES = libr300.a
-check_PROGRAMS = r300_compiler_tests
-testdir = compiler/tests
-TESTS = r300_compiler_tests
+include $(top_srcdir)/src/gallium/Automake.inc
 
 AM_CFLAGS = \
-	-I$(top_srcdir)/src/gallium/include \
-	-I$(top_srcdir)/src/gallium/auxiliary \
-	-I$(top_srcdir)/src/gallium/drivers \
-	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/src \
+	-I$(top_srcdir)/src/mesa/program \
 	-I$(top_srcdir)/src/mesa \
 	-I$(top_srcdir)/src/glsl \
 	-I$(top_srcdir)/src/mapi \
-	$(VISIBILITY_CFLAGS) \
+	$(GALLIUM_DRIVER_CFLAGS) \
 	$(LLVM_CFLAGS) \
-	$(RADEON_CFLAGS) \
-	$(DEFINES) \
-	$(PIC_FLAGS)
+	$(RADEON_CFLAGS)
 
-libr300_a_SOURCES = \
-	$(C_SOURCES) \
-	$(top_srcdir)/src/glsl/ralloc.c \
-	$(top_srcdir)/src/mesa/program/register_allocate.c
+noinst_LTLIBRARIES = libr300.la
+check_PROGRAMS = r300_compiler_tests
+TESTS = r300_compiler_tests
 
-r300_compiler_tests_LDADD = libr300.a
+r300_compiler_tests_LDADD = libr300.la \
+	$(top_builddir)/src/gallium/auxiliary/libgallium.la \
+	$(top_builddir)/src/util/libmesautil.la \
+	$(GALLIUM_COMMON_LIB_DEPS)
 r300_compiler_tests_CPPFLAGS = \
+	-DTEST_PATH=\"$(top_srcdir)/src/gallium/drivers/r300/compiler/tests\" \
 	-I$(top_srcdir)/src/gallium/drivers/r300/compiler
-r300_compiler_tests_SOURCES = \
-	$(testdir)/r300_compiler_tests.c \
-	$(testdir)/radeon_compiler_util_tests.c \
-	$(testdir)/rc_test_helpers.c \
-	$(testdir)/unit_test.c
+r300_compiler_tests_SOURCES = $(COMPILER_TESTS_SOURCES)
+
+libr300_la_SOURCES = $(C_SOURCES)
+
+EXTRA_DIST = \
+	compiler/tests/omod_two_writers.test \
+	compiler/tests/regalloc_tex_1d_swizzle.test

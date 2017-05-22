@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * Copyright (c) 2010 VMware, Inc.
  * All Rights Reserved.
  * 
@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -36,47 +36,51 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_format.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct gl_context;
 struct pipe_screen;
 
 
 extern enum pipe_format
-st_mesa_format_to_pipe_format(gl_format mesaFormat);
+st_mesa_format_to_pipe_format(struct st_context *st, mesa_format mesaFormat);
 
-extern gl_format
+extern mesa_format
 st_pipe_format_to_mesa_format(enum pipe_format pipeFormat);
 
 
 extern enum pipe_format
-st_choose_format(struct pipe_screen *screen, GLenum internalFormat,
+st_choose_format(struct st_context *st, GLenum internalFormat,
                  GLenum format, GLenum type,
                  enum pipe_texture_target target, unsigned sample_count,
-                 unsigned bindings);
+                 unsigned bindings, boolean allow_dxt);
 
 extern enum pipe_format
-st_choose_renderbuffer_format(struct pipe_screen *screen,
+st_choose_renderbuffer_format(struct st_context *st,
                               GLenum internalFormat, unsigned sample_count);
 
+extern enum pipe_format
+st_choose_matching_format(struct st_context *st, unsigned bind,
+			  GLenum format, GLenum type, GLboolean swapBytes);
 
-gl_format
-st_ChooseTextureFormat_renderable(struct gl_context *ctx, GLint internalFormat,
-				  GLenum format, GLenum type, GLboolean renderable);
-
-extern gl_format
+extern mesa_format
 st_ChooseTextureFormat(struct gl_context * ctx, GLenum target,
                        GLint internalFormat,
                        GLenum format, GLenum type);
 
-
-/* can we use a sampler view to translate these formats
-   only used to make TFP so far */
-extern GLboolean
-st_sampler_compat_formats(enum pipe_format format1, enum pipe_format format2);
-
+void
+st_QueryInternalFormat(struct gl_context *ctx, GLenum target,
+                       GLenum internalFormat, GLenum pname, GLint *params);
 
 extern void
-st_translate_color(union gl_color_union *colorIn,
+st_translate_color(const union gl_color_union *colorIn,
                    union pipe_color_union *colorOut,
                    GLenum baseFormat, GLboolean is_integer);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* ST_FORMAT_H */

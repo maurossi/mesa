@@ -255,7 +255,7 @@
 #endif /* ACK_ASSEMBLER */
 
 
-#if defined(__QNX__) || defined(Lynx) || (defined(SYSV) || defined(SVR4)) && !defined(ACK_ASSEMBLER) || defined(__ELF__) || defined(__GNU__) || defined(__GNUC__) && !defined(__DJGPP__) && !defined(__MINGW32__)
+#if defined(__QNX__) || defined(Lynx) || (defined(SYSV) || defined(SVR4)) && !defined(ACK_ASSEMBLER) || defined(__ELF__) || defined(__GNU__) || defined(__GNUC__) && !defined(__MINGW32__)
 #define GLNAME(a)	a
 #else
 #define GLNAME(a)	CONCAT(_,a)
@@ -920,17 +920,9 @@
 #define D_BYTE		db
 /* #define SPACE */
 /* #define COMM */
-#if defined(__WATCOMC__)
-SECTION _TEXT public align=16 class=CODE use32 flat
-SECTION _DATA public align=16 class=DATA use32 flat
-#define SEG_TEXT	SECTION _TEXT
-#define SEG_DATA	SECTION _DATA
-#define SEG_BSS		SECTION .bss
-#else
 #define SEG_DATA	SECTION .data
 #define SEG_TEXT	SECTION .text
 #define SEG_BSS		SECTION .bss
-#endif
 
 #define D_SPACE(n)	db n REP 0
 
@@ -1735,9 +1727,9 @@ SECTION _DATA public align=16 class=DATA use32 flat
  * If we build with gcc's -fvisibility=hidden flag, we'll need to change
  * the symbol visibility mode to 'default'.
  */
-#if defined(GNU_ASSEMBLER) && !defined(__DJGPP__) && !defined(__MINGW32__) && !defined(__APPLE__)
+#if defined(GNU_ASSEMBLER) && !defined(__MINGW32__) && !defined(__APPLE__)
 #  define HIDDEN(x) .hidden x
-#elif defined(__GNUC__) && !defined(__DJGPP__) && !defined(__MINGW32__) && !defined(__APPLE__)
+#elif defined(__GNUC__) && !defined(__MINGW32__) && !defined(__APPLE__)
 #  pragma GCC visibility push(default)
 #  define HIDDEN(x) .hidden x
 #else

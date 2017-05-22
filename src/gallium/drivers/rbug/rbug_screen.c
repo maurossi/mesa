@@ -30,7 +30,7 @@
 #include "pipe/p_state.h"
 #include "util/u_memory.h"
 #include "util/u_debug.h"
-#include "util/u_simple_list.h"
+#include "util/simple_list.h"
 
 #include "rbug_public.h"
 #include "rbug_screen.h"
@@ -66,6 +66,15 @@ rbug_screen_get_vendor(struct pipe_screen *_screen)
    struct pipe_screen *screen = rb_screen->screen;
 
    return screen->get_vendor(screen);
+}
+
+static const char *
+rbug_screen_get_device_vendor(struct pipe_screen *_screen)
+{
+   struct rbug_screen *rb_screen = rbug_screen(_screen);
+   struct pipe_screen *screen = rb_screen->screen;
+
+   return screen->get_device_vendor(screen);
 }
 
 static int
@@ -120,13 +129,13 @@ rbug_screen_is_format_supported(struct pipe_screen *_screen,
 
 static struct pipe_context *
 rbug_screen_context_create(struct pipe_screen *_screen,
-                           void *priv)
+                           void *priv, unsigned flags)
 {
    struct rbug_screen *rb_screen = rbug_screen(_screen);
    struct pipe_screen *screen = rb_screen->screen;
    struct pipe_context *result;
 
-   result = screen->context_create(screen, priv);
+   result = screen->context_create(screen, priv, flags);
    if (result)
       return rbug_context_create(_screen, result);
    return NULL;
@@ -151,13 +160,14 @@ rbug_screen_resource_create(struct pipe_screen *_screen,
 static struct pipe_resource *
 rbug_screen_resource_from_handle(struct pipe_screen *_screen,
                                  const struct pipe_resource *templ,
-                                 struct winsys_handle *handle)
+                                 struct winsys_handle *handle,
+                                 unsigned usage)
 {
    struct rbug_screen *rb_screen = rbug_screen(_screen);
    struct pipe_screen *screen = rb_screen->screen;
    struct pipe_resource *result;
 
-   result = screen->resource_from_handle(screen, templ, handle);
+   result = screen->resource_from_handle(screen, templ, handle, usage);
 
    result = rbug_resource_create(rbug_screen(_screen), result);
 
@@ -166,15 +176,19 @@ rbug_screen_resource_from_handle(struct pipe_screen *_screen,
 
 static boolean
 rbug_screen_resource_get_handle(struct pipe_screen *_screen,
+                                struct pipe_context *_pipe,
                                 struct pipe_resource *_resource,
-                                struct winsys_handle *handle)
+                                struct winsys_handle *handle,
+                                unsigned usage)
 {
    struct rbug_screen *rb_screen = rbug_screen(_screen);
+   struct rbug_context *rb_pipe = rbug_context(_pipe);
    struct rbug_resource *rb_resource = rbug_resource(_resource);
    struct pipe_screen *screen = rb_screen->screen;
    struct pipe_resource *resource = rb_resource->resource;
 
-   return screen->resource_get_handle(screen, resource, handle);
+   return screen->resource_get_handle(screen, rb_pipe ? rb_pipe->pipe : NULL,
+                                      resource, handle, usage);
 }
 
 
@@ -190,7 +204,7 @@ static void
 rbug_screen_flush_frontbuffer(struct pipe_screen *_screen,
                               struct pipe_resource *_resource,
                               unsigned level, unsigned layer,
-                              void *context_private)
+                              void *context_private, struct pipe_box *sub_box)
 {
    struct rbug_screen *rb_screen = rbug_screen(_screen);
    struct rbug_resource *rb_resource = rbug_resource(_resource);
@@ -200,7 +214,7 @@ rbug_screen_flush_frontbuffer(struct pipe_screen *_screen,
    screen->flush_frontbuffer(screen,
                              resource,
                              level, layer,
-                             context_private);
+                             context_private, sub_box);
 }
 
 static void
@@ -217,27 +231,16 @@ rbug_screen_fence_reference(struct pipe_screen *_screen,
 }
 
 static boolean
-rbug_screen_fence_signalled(struct pipe_screen *_screen,
-                            struct pipe_fence_handle *fence)
-{
-   struct rbug_screen *rb_screen = rbug_screen(_screen);
-   struct pipe_screen *screen = rb_screen->screen;
-
-   return screen->fence_signalled(screen,
-                                  fence);
-}
-
-static boolean
 rbug_screen_fence_finish(struct pipe_screen *_screen,
+                         struct pipe_context *_ctx,
                          struct pipe_fence_handle *fence,
                          uint64_t timeout)
 {
    struct rbug_screen *rb_screen = rbug_screen(_screen);
    struct pipe_screen *screen = rb_screen->screen;
+   struct pipe_context *ctx = _ctx ? rbug_context(_ctx)->pipe : NULL;
 
-   return screen->fence_finish(screen,
-                               fence,
-                               timeout);
+   return screen->fence_finish(screen, ctx, fence, timeout);
 }
 
 boolean
@@ -267,6 +270,7 @@ rbug_screen_create(struct pipe_screen *screen)
    rb_screen->base.destroy = rbug_screen_destroy;
    rb_screen->base.get_name = rbug_screen_get_name;
    rb_screen->base.get_vendor = rbug_screen_get_vendor;
+   rb_screen->base.get_device_vendor = rbug_screen_get_device_vendor;
    rb_screen->base.get_param = rbug_screen_get_param;
    rb_screen->base.get_shader_param = rbug_screen_get_shader_param;
    rb_screen->base.get_paramf = rbug_screen_get_paramf;
@@ -278,12 +282,11 @@ rbug_screen_create(struct pipe_screen *screen)
    rb_screen->base.resource_destroy = rbug_screen_resource_destroy;
    rb_screen->base.flush_frontbuffer = rbug_screen_flush_frontbuffer;
    rb_screen->base.fence_reference = rbug_screen_fence_reference;
-   rb_screen->base.fence_signalled = rbug_screen_fence_signalled;
    rb_screen->base.fence_finish = rbug_screen_fence_finish;
 
    rb_screen->screen = screen;
 
-   rb_screen->private_context = screen->context_create(screen, NULL);
+   rb_screen->private_context = screen->context_create(screen, NULL, 0);
    if (!rb_screen->private_context)
       goto err_free;
 

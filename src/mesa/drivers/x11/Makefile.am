@@ -23,18 +23,26 @@
 # GLX extension.  All rendering is converted to Xlib calls.  No hardware
 # acceleration.
 
+EXTRA_DIST = SConscript
+
+if HAVE_SHARED_GLAPI
+SHARED_GLAPI_CFLAGS = -DGLX_SHARED_GLAPI
+SHARED_GLAPI_LIB = $(top_builddir)/src/mapi/shared-glapi/libglapi.la
+endif
+
 AM_CPPFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/src/mapi \
 	-I$(top_srcdir)/src/mesa \
+	-I$(top_srcdir)/src \
+	-I$(top_srcdir)/src/gallium/include \
+	-I$(top_srcdir)/src/gallium/auxiliary \
 	-I$(top_srcdir)/src/mesa/main \
 	$(X11_INCLUDES) \
-	$(API_DEFINES) \
+	$(SHARED_GLAPI_CFLAGS) \
 	$(DEFINES)
 
-if HAVE_X11_DRIVER
 lib_LTLIBRARIES = lib@GL_LIB@.la
-endif
 
 lib@GL_LIB@_la_SOURCES = \
 	glxapi.h \
@@ -47,6 +55,8 @@ lib@GL_LIB@_la_SOURCES = \
 	xm_api.c \
 	xm_buffer.c \
 	xm_dd.c \
+	xmesa.h \
+	xmesa_x.h \
 	xm_line.c \
 	xm_tri.c
 
@@ -59,17 +69,14 @@ GL_PATCH = 0
 
 lib@GL_LIB@_la_LIBADD = \
 	$(top_builddir)/src/mesa/libmesa.la \
-	$(top_builddir)/src/mapi/glapi/libglapi.la
-lib@GL_LIB@_la_LDFLAGS = \
-	-version-number $(GL_MAJOR):$(GL_MINOR):$(GL_PATCH) \
-	-no-undefined \
+	$(top_builddir)/src/mapi/glapi/libglapi.la \
+	$(SHARED_GLAPI_LIB) \
 	$(GL_LIB_DEPS)
 
-if BUILD_SHARED
-# Provide compatibility with scripts for the old Mesa build system for
-# a while by putting a link to the driver into /lib of the build tree.
-all-local: lib@GL_LIB@.la
-	$(MKDIR_P) $(top_builddir)/$(LIB_DIR);
-	ln -f .libs/lib@GL_LIB@.so.$(GL_MAJOR).$(GL_MINOR).$(GL_PATCH) $(top_builddir)/$(LIB_DIR)/lib@GL_LIB@.so.$(GL_MAJOR)
-	ln -sf lib@GL_LIB@.so.$(GL_MAJOR) $(top_builddir)/$(LIB_DIR)/lib@GL_LIB@.so
-endif
+lib@GL_LIB@_la_LDFLAGS = \
+	-no-undefined \
+	-version-number $(GL_MAJOR):$(GL_MINOR):$(GL_PATCH) \
+	$(GC_SECTIONS) \
+	$(LD_NO_UNDEFINED)
+
+include $(top_srcdir)/install-lib-links.mk

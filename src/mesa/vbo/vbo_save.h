@@ -1,6 +1,6 @@
 /**************************************************************************
 
-Copyright 2002 Tungsten Graphics Inc., Cedar Park, Texas.
+Copyright 2002 VMware, Inc.
 
 All Rights Reserved.
 
@@ -18,7 +18,7 @@ Software.
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL
-TUNGSTEN GRAPHICS AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
+VMWARE AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
 DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
 USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,21 +27,20 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  *
  */
 
 #ifndef VBO_SAVE_H
 #define VBO_SAVE_H
 
-#include "main/mfeatures.h"
 #include "main/mtypes.h"
 #include "vbo.h"
 #include "vbo_attrib.h"
 
 
 struct vbo_save_copied_vtx {
-   GLfloat buffer[VBO_ATTRIB_MAX * 4 * VBO_MAX_COPIED_VERTS];
+   fi_type buffer[VBO_ATTRIB_MAX * 4 * VBO_MAX_COPIED_VERTS];
    GLuint nr;
 };
 
@@ -62,15 +61,16 @@ struct vbo_save_copied_vtx {
  * compiled using the fallback opcode mechanism provided by dlist.c.
  */
 struct vbo_save_vertex_list {
+   GLbitfield64 enabled; /**< mask of enabled vbo arrays. */
    GLubyte attrsz[VBO_ATTRIB_MAX];
    GLenum attrtype[VBO_ATTRIB_MAX];
-   GLuint vertex_size;
+   GLuint vertex_size;  /**< size in GLfloats */
 
    /* Copy of the final vertex from node->vertex_store->bufferobj.
     * Keep this in regular (non-VBO) memory to avoid repeated
     * map/unmap of the VBO when updating GL current data.
     */
-   GLfloat *current_data;
+   fi_type *current_data;
    GLuint current_size;
 
    GLuint buffer_offset;
@@ -96,7 +96,7 @@ struct vbo_save_vertex_list {
  * likelyhood as it occurs.  No reason we couldn't change usage
  * internally even though this probably isn't allowed for client VBOs?
  */
-#define VBO_SAVE_BUFFER_SIZE (8*1024) /* dwords */
+#define VBO_SAVE_BUFFER_SIZE (256*1024) /* dwords */
 #define VBO_SAVE_PRIM_SIZE   128
 #define VBO_SAVE_PRIM_MODE_MASK         0x3f
 #define VBO_SAVE_PRIM_WEAK              0x40
@@ -108,7 +108,7 @@ struct vbo_save_vertex_list {
  */
 struct vbo_save_vertex_store {
    struct gl_buffer_object *bufferobj;
-   GLfloat *buffer;
+   fi_type *buffer;
    GLuint used;
    GLuint refcount;
 };
@@ -124,17 +124,18 @@ struct vbo_save_context {
    struct gl_context *ctx;
    GLvertexformat vtxfmt;
    GLvertexformat vtxfmt_noop;  /**< Used if out_of_memory is true */
-   struct gl_client_array arrays[VBO_ATTRIB_MAX];
-   const struct gl_client_array *inputs[VBO_ATTRIB_MAX];
+   struct gl_vertex_array arrays[VBO_ATTRIB_MAX];
+   const struct gl_vertex_array *inputs[VBO_ATTRIB_MAX];
 
-   GLubyte attrsz[VBO_ATTRIB_MAX];
-   GLenum attrtype[VBO_ATTRIB_MAX];
-   GLubyte active_sz[VBO_ATTRIB_MAX];
-   GLuint vertex_size;
+   GLbitfield64 enabled; /**< mask of enabled vbo arrays. */
+   GLubyte attrsz[VBO_ATTRIB_MAX];  /**< 1, 2, 3 or 4 */
+   GLenum attrtype[VBO_ATTRIB_MAX];  /**< GL_FLOAT, GL_INT, etc */
+   GLubyte active_sz[VBO_ATTRIB_MAX];  /**< 1, 2, 3 or 4 */
+   GLuint vertex_size;  /**< size in GLfloats */
 
    GLboolean out_of_memory;  /**< True if last VBO allocation failed */
 
-   GLfloat *buffer;
+   fi_type *buffer;
    GLuint count;
    GLuint wrap_count;
    GLuint replay_flags;
@@ -145,9 +146,9 @@ struct vbo_save_context {
    struct vbo_save_vertex_store *vertex_store;
    struct vbo_save_primitive_store *prim_store;
 
-   GLfloat *buffer_ptr;		   /* cursor, points into buffer */
-   GLfloat vertex[VBO_ATTRIB_MAX*4];	   /* current values */
-   GLfloat *attrptr[VBO_ATTRIB_MAX];
+   fi_type *buffer_ptr;		   /* cursor, points into buffer */
+   fi_type vertex[VBO_ATTRIB_MAX*4];	   /* current values */
+   fi_type *attrptr[VBO_ATTRIB_MAX];
    GLuint vert_count;
    GLuint max_vert;
    GLboolean dangling_attr_ref;
@@ -156,11 +157,9 @@ struct vbo_save_context {
 
    struct vbo_save_copied_vtx copied;
    
-   GLfloat *current[VBO_ATTRIB_MAX]; /* points into ctx->ListState */
+   fi_type *current[VBO_ATTRIB_MAX]; /* points into ctx->ListState */
    GLubyte *currentsz[VBO_ATTRIB_MAX];
 };
-
-#if FEATURE_dlist
 
 void vbo_save_init( struct gl_context *ctx );
 void vbo_save_destroy( struct gl_context *ctx );
@@ -178,37 +177,16 @@ void vbo_loopback_vertex_list( struct gl_context *ctx,
 
 /* Callbacks:
  */
-void vbo_save_EndList( struct gl_context *ctx );
-void vbo_save_NewList( struct gl_context *ctx, GLuint list, GLenum mode );
-void vbo_save_EndCallList( struct gl_context *ctx );
-void vbo_save_BeginCallList( struct gl_context *ctx, struct gl_display_list *list );
-void vbo_save_SaveFlushVertices( struct gl_context *ctx );
-GLboolean vbo_save_NotifyBegin( struct gl_context *ctx, GLenum mode );
-
 void vbo_save_playback_vertex_list( struct gl_context *ctx, void *data );
 
 void vbo_save_api_init( struct vbo_save_context *save );
 
-GLfloat *
+fi_type *
 vbo_save_map_vertex_store(struct gl_context *ctx,
                           struct vbo_save_vertex_store *vertex_store);
 
 void
 vbo_save_unmap_vertex_store(struct gl_context *ctx,
                             struct vbo_save_vertex_store *vertex_store);
-
-#else /* FEATURE_dlist */
-
-static inline void
-vbo_save_init( struct gl_context *ctx )
-{
-}
-
-static inline void
-vbo_save_destroy( struct gl_context *ctx )
-{
-}
-
-#endif /* FEATURE_dlist */
 
 #endif /* VBO_SAVE_H */

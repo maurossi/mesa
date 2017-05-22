@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -33,6 +33,8 @@
 #include "main/fbobject.h"
 #include "main/dd.h"
 #include "main/state.h"
+#include "main/stencil.h"
+#include "main/viewport.h"
 #include "tnl/tnl.h"
 #include "tnl/t_context.h"
 
@@ -63,14 +65,14 @@ i915_update_stencil(struct gl_context * ctx)
     */
    /* _NEW_POLYGON | _NEW_STENCIL */
    if (ctx->Polygon.FrontFace == GL_CW) {
-      front_ref = ctx->Stencil.Ref[0];
+      front_ref = _mesa_get_stencil_ref(ctx, 0);
       front_mask = ctx->Stencil.ValueMask[0];
       front_writemask = ctx->Stencil.WriteMask[0];
       front_func = ctx->Stencil.Function[0];
       front_fail = ctx->Stencil.FailFunc[0];
       front_pass_z_fail = ctx->Stencil.ZFailFunc[0];
       front_pass_z_pass = ctx->Stencil.ZPassFunc[0];
-      back_ref = ctx->Stencil.Ref[ctx->Stencil._BackFace];
+      back_ref = _mesa_get_stencil_ref(ctx, ctx->Stencil._BackFace);
       back_mask = ctx->Stencil.ValueMask[ctx->Stencil._BackFace];
       back_writemask = ctx->Stencil.WriteMask[ctx->Stencil._BackFace];
       back_func = ctx->Stencil.Function[ctx->Stencil._BackFace];
@@ -78,14 +80,14 @@ i915_update_stencil(struct gl_context * ctx)
       back_pass_z_fail = ctx->Stencil.ZFailFunc[ctx->Stencil._BackFace];
       back_pass_z_pass = ctx->Stencil.ZPassFunc[ctx->Stencil._BackFace];
    } else {
-      front_ref = ctx->Stencil.Ref[ctx->Stencil._BackFace];
+      front_ref = _mesa_get_stencil_ref(ctx, ctx->Stencil._BackFace);
       front_mask = ctx->Stencil.ValueMask[ctx->Stencil._BackFace];
       front_writemask = ctx->Stencil.WriteMask[ctx->Stencil._BackFace];
       front_func = ctx->Stencil.Function[ctx->Stencil._BackFace];
       front_fail = ctx->Stencil.FailFunc[ctx->Stencil._BackFace];
       front_pass_z_fail = ctx->Stencil.ZFailFunc[ctx->Stencil._BackFace];
       front_pass_z_pass = ctx->Stencil.ZPassFunc[ctx->Stencil._BackFace];
-      back_ref = ctx->Stencil.Ref[0];
+      back_ref = _mesa_get_stencil_ref(ctx, 0);
       back_mask = ctx->Stencil.ValueMask[0];
       back_writemask = ctx->Stencil.WriteMask[0];
       back_func = ctx->Stencil.Function[0];
@@ -195,9 +197,9 @@ i915AlphaFunc(struct gl_context * ctx, GLenum func, GLfloat ref)
 }
 
 /* This function makes sure that the proper enables are
- * set for LogicOp, Independant Alpha Blend, and Blending.
+ * set for LogicOp, Independent Alpha Blend, and Blending.
  * It needs to be called from numerous places where we
- * could change the LogicOp or Independant Alpha Blend without subsequent
+ * could change the LogicOp or Independent Alpha Blend without subsequent
  * calls to glEnable.
  */
 static void
@@ -239,7 +241,7 @@ i915BlendColor(struct gl_context * ctx, const GLfloat color[4])
    GLubyte r, g, b, a;
    GLuint dw;
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    UNCLAMPED_FLOAT_TO_UBYTE(r, color[RCOMP]);
    UNCLAMPED_FLOAT_TO_UBYTE(g, color[GCOMP]);
@@ -355,7 +357,7 @@ i915DepthFunc(struct gl_context * ctx, GLenum func)
    int test = intel_translate_compare_func(func);
    GLuint dw;
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    dw = i915->state.Ctx[I915_CTXREG_LIS6];
    dw &= ~S6_DEPTH_TEST_FUNC_MASK;
@@ -372,7 +374,7 @@ i915DepthMask(struct gl_context * ctx, GLboolean flag)
    struct i915_context *i915 = I915_CONTEXT(ctx);
    GLuint dw;
 
-   DBG("%s flag (%d)\n", __FUNCTION__, flag);
+   DBG("%s flag (%d)\n", __func__, flag);
 
    if (!ctx->DrawBuffer || !ctx->DrawBuffer->Visual.depthBits)
       flag = false;
@@ -400,41 +402,23 @@ void
 intelCalcViewport(struct gl_context * ctx)
 {
    struct intel_context *intel = intel_context(ctx);
+   float scale[3], translate[3];
+
+   _mesa_get_viewport_xform(ctx, 0, scale, translate);
 
    if (_mesa_is_winsys_fbo(ctx->DrawBuffer)) {
-      _math_matrix_viewport(&intel->ViewportMatrix,
-			    ctx->Viewport.X,
-			    ctx->DrawBuffer->Height - ctx->Viewport.Y,
-			    ctx->Viewport.Width,
-			    -ctx->Viewport.Height,
-			    ctx->Viewport.Near,
-			    ctx->Viewport.Far,
-			    1.0);
-   } else {
-      _math_matrix_viewport(&intel->ViewportMatrix,
-			    ctx->Viewport.X,
-			    ctx->Viewport.Y,
-			    ctx->Viewport.Width,
-			    ctx->Viewport.Height,
-			    ctx->Viewport.Near,
-			    ctx->Viewport.Far,
-			    1.0);
+      scale[1] = -scale[1];
+      translate[1] = ctx->DrawBuffer->Height - translate[1];
    }
-}
 
-
-/** Called from ctx->Driver.Viewport() */
-static void
-i915Viewport(struct gl_context * ctx,
-              GLint x, GLint y, GLsizei width, GLsizei height)
-{
-   intelCalcViewport(ctx);
+   _math_matrix_viewport(&intel->ViewportMatrix,
+                         scale, translate, 1.0);
 }
 
 
 /** Called from ctx->Driver.DepthRange() */
 static void
-i915DepthRange(struct gl_context * ctx, GLclampd nearval, GLclampd farval)
+i915DepthRange(struct gl_context *ctx)
 {
    intelCalcViewport(ctx);
 }
@@ -509,7 +493,7 @@ i915PolygonStipple(struct gl_context * ctx, const GLubyte * mask)
  * Hardware clipping
  */
 static void
-i915Scissor(struct gl_context * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
+i915Scissor(struct gl_context * ctx)
 {
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int x1, y1, x2, y2;
@@ -517,23 +501,29 @@ i915Scissor(struct gl_context * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
    if (!ctx->DrawBuffer)
       return;
 
-   DBG("%s %d,%d %dx%d\n", __FUNCTION__, x, y, w, h);
+   DBG("%s %d,%d %dx%d\n", __func__,
+       ctx->Scissor.ScissorArray[0].X,     ctx->Scissor.ScissorArray[0].Y,
+       ctx->Scissor.ScissorArray[0].Width, ctx->Scissor.ScissorArray[0].Height);
 
    if (_mesa_is_winsys_fbo(ctx->DrawBuffer)) {
-      x1 = x;
-      y1 = ctx->DrawBuffer->Height - (y + h);
-      x2 = x + w - 1;
-      y2 = y1 + h - 1;
-      DBG("%s %d..%d,%d..%d (inverted)\n", __FUNCTION__, x1, x2, y1, y2);
+      x1 = ctx->Scissor.ScissorArray[0].X;
+      y1 = ctx->DrawBuffer->Height - (ctx->Scissor.ScissorArray[0].Y
+                                      + ctx->Scissor.ScissorArray[0].Height);
+      x2 = ctx->Scissor.ScissorArray[0].X
+         + ctx->Scissor.ScissorArray[0].Width - 1;
+      y2 = y1 + ctx->Scissor.ScissorArray[0].Height - 1;
+      DBG("%s %d..%d,%d..%d (inverted)\n", __func__, x1, x2, y1, y2);
    }
    else {
       /* FBO - not inverted
        */
-      x1 = x;
-      y1 = y;
-      x2 = x + w - 1;
-      y2 = y + h - 1;
-      DBG("%s %d..%d,%d..%d (not inverted)\n", __FUNCTION__, x1, x2, y1, y2);
+      x1 = ctx->Scissor.ScissorArray[0].X;
+      y1 = ctx->Scissor.ScissorArray[0].Y;
+      x2 = ctx->Scissor.ScissorArray[0].X
+         + ctx->Scissor.ScissorArray[0].Width - 1;
+      y2 = ctx->Scissor.ScissorArray[0].Y
+         + ctx->Scissor.ScissorArray[0].Height - 1;
+      DBG("%s %d..%d,%d..%d (not inverted)\n", __func__, x1, x2, y1, y2);
    }
    
    x1 = CLAMP(x1, 0, ctx->DrawBuffer->Width - 1);
@@ -541,7 +531,7 @@ i915Scissor(struct gl_context * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
    x2 = CLAMP(x2, 0, ctx->DrawBuffer->Width - 1);
    y2 = CLAMP(y2, 0, ctx->DrawBuffer->Height - 1);
    
-   DBG("%s %d..%d,%d..%d (clamped)\n", __FUNCTION__, x1, x2, y1, y2);
+   DBG("%s %d..%d,%d..%d (clamped)\n", __func__, x1, x2, y1, y2);
 
    I915_STATECHANGE(i915, I915_UPLOAD_BUFFERS);
    i915->state.Buffer[I915_DESTREG_SR1] = (y1 << 16) | (x1 & 0xffff);
@@ -554,7 +544,7 @@ i915LogicOp(struct gl_context * ctx, GLenum opcode)
    struct i915_context *i915 = I915_CONTEXT(ctx);
    int tmp = intel_translate_logic_op(opcode);
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    I915_STATECHANGE(i915, I915_UPLOAD_CTX);
    i915->state.Ctx[I915_CTXREG_STATE4] &= ~LOGICOP_MASK;
@@ -569,7 +559,7 @@ i915CullFaceFrontFace(struct gl_context * ctx, GLenum unused)
    struct i915_context *i915 = I915_CONTEXT(ctx);
    GLuint mode, dw;
 
-   DBG("%s %d\n", __FUNCTION__,
+   DBG("%s %d\n", __func__,
        ctx->DrawBuffer ? ctx->DrawBuffer->Name : 0);
 
    if (!ctx->Polygon.CullFlag) {
@@ -605,7 +595,7 @@ i915LineWidth(struct gl_context * ctx, GLfloat widthf)
    int lis4 = i915->state.Ctx[I915_CTXREG_LIS4] & ~S4_LINE_WIDTH_MASK;
    int width;
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    width = (int) (widthf * 2);
    width = CLAMP(width, 1, 0xf);
@@ -624,7 +614,7 @@ i915PointSize(struct gl_context * ctx, GLfloat size)
    int lis4 = i915->state.Ctx[I915_CTXREG_LIS4] & ~S4_POINT_WIDTH_MASK;
    GLint point_size = (int) round(size);
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    point_size = CLAMP(point_size, 1, 255);
    lis4 |= point_size << S4_POINT_WIDTH_SHIFT;
@@ -660,20 +650,17 @@ i915_update_sprite_point_enable(struct gl_context *ctx)
    /* _NEW_PROGRAM */
    struct i915_fragment_program *p =
       (struct i915_fragment_program *) ctx->FragmentProgram._Current;
-   const GLbitfield64 inputsRead = p->FragProg.Base.InputsRead;
+   const GLbitfield64 inputsRead = p->FragProg.info.inputs_read;
    struct i915_context *i915 = i915_context(ctx);
    GLuint s4 = i915->state.Ctx[I915_CTXREG_LIS4] & ~S4_VFMT_MASK;
-   int i;
    GLuint coord_replace_bits = 0x0;
-   GLuint tex_coord_unit_bits = 0x0;
 
-   for (i = 0; i < ctx->Const.MaxTextureCoordUnits; i++) {
-      /* _NEW_POINT */
-      if (ctx->Point.CoordReplace[i] && ctx->Point.PointSprite)
-         coord_replace_bits |= (1 << i);
-      if (inputsRead & FRAG_BIT_TEX(i))
-         tex_coord_unit_bits |= (1 << i);
-   }
+   /* _NEW_POINT */
+   if (ctx->Point.PointSprite)
+      coord_replace_bits = ctx->Point.CoordReplace;
+
+   GLuint tex_coord_unit_bits =
+      (GLuint)((inputsRead & VARYING_BITS_TEX_ANY) >> VARYING_SLOT_TEX0);
 
    /*
     * Here we can't enable the SPRITE_POINT_ENABLE bit when the mis-match
@@ -707,7 +694,7 @@ i915ColorMask(struct gl_context * ctx,
    struct i915_context *i915 = I915_CONTEXT(ctx);
    GLuint tmp = i915->state.Ctx[I915_CTXREG_LIS5] & ~S5_WRITEDISABLE_MASK;
 
-   DBG("%s r(%d) g(%d) b(%d) a(%d)\n", __FUNCTION__, r, g, b,
+   DBG("%s r(%d) g(%d) b(%d) a(%d)\n", __func__, r, g, b,
        a);
 
    if (!r)
@@ -736,7 +723,7 @@ update_specular(struct gl_context * ctx)
 static void
 i915LightModelfv(struct gl_context * ctx, GLenum pname, const GLfloat * param)
 {
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    if (pname == GL_LIGHT_MODEL_COLOR_CONTROL) {
       update_specular(ctx);
@@ -990,11 +977,11 @@ i915_init_packets(struct i915_context *i915)
       i915->state.Buffer[I915_DESTREG_DV0] = _3DSTATE_DST_BUF_VARS_CMD;
 
       /* scissor */
-      i915->state.Buffer[I915_DESTREG_SENABLE] =
-         (_3DSTATE_SCISSOR_ENABLE_CMD | DISABLE_SCISSOR_RECT);
       i915->state.Buffer[I915_DESTREG_SR0] = _3DSTATE_SCISSOR_RECT_0_CMD;
       i915->state.Buffer[I915_DESTREG_SR1] = 0;
       i915->state.Buffer[I915_DESTREG_SR2] = 0;
+      i915->state.Buffer[I915_DESTREG_SENABLE] =
+         (_3DSTATE_SCISSOR_ENABLE_CMD | DISABLE_SCISSOR_RECT);
    }
 
    i915->state.RasterRules[I915_RASTER_RULES] = _3DSTATE_RASTER_RULES_CMD |
@@ -1090,7 +1077,6 @@ i915InitStateFunctions(struct dd_function_table *functions)
    functions->StencilMaskSeparate = i915StencilMaskSeparate;
    functions->StencilOpSeparate = i915StencilOpSeparate;
    functions->DepthRange = i915DepthRange;
-   functions->Viewport = i915Viewport;
 }
 
 

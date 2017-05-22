@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.3
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -30,7 +30,6 @@
 
 #include "main/glheader.h"
 #include "main/context.h"
-#include "main/colormac.h"
 #include "main/macros.h"
 #include "main/imports.h"
 #include "main/state.h"
@@ -102,27 +101,13 @@ do {					\
 static inline GLfloat
 solve_plane(GLfloat x, GLfloat y, const GLfloat plane[4])
 {
-   ASSERT(plane[2] != 0.0F);
+   assert(plane[2] != 0.0F);
    return (plane[3] + plane[0] * x + plane[1] * y) / -plane[2];
 }
 
 
 #define SOLVE_PLANE(X, Y, PLANE) \
    ((PLANE[3] + PLANE[0] * (X) + PLANE[1] * (Y)) / -PLANE[2])
-
-
-/*
- * Return 1 / solve_plane().
- */
-static inline GLfloat
-solve_plane_recip(GLfloat x, GLfloat y, const GLfloat plane[4])
-{
-   const GLfloat denom = plane[3] + plane[0] * x + plane[1] * y;
-   if (denom == 0.0F)
-      return 0.0F;
-   else
-      return -plane[2] / denom;
-}
 
 
 /*
@@ -215,7 +200,7 @@ compute_coveragef(const GLfloat v0[3], const GLfloat v1[3],
    GLint stop = 4, i;
    GLfloat insideCount = 16.0F;
 
-   ASSERT(dx0 * dy1 - dx1 * dy0 >= 0.0); /* area >= 0.0 */
+   assert(dx0 * dy1 - dx1 * dy0 >= 0.0); /* area >= 0.0 */
 
    for (i = 0; i < stop; i++) {
       const GLfloat sx = x + samples[i][0];
@@ -296,7 +281,7 @@ _swrast_set_aa_triangle_function(struct gl_context *ctx)
 {
    SWcontext *swrast = SWRAST_CONTEXT(ctx);
 
-   ASSERT(ctx->Polygon.SmoothFlag);
+   assert(ctx->Polygon.SmoothFlag);
 
    if (ctx->Texture._EnabledCoordUnits != 0
        || _swrast_use_fragment_program(ctx)
@@ -308,5 +293,5 @@ _swrast_set_aa_triangle_function(struct gl_context *ctx)
       SWRAST_CONTEXT(ctx)->Triangle = rgba_aa_tri;
    }
 
-   ASSERT(SWRAST_CONTEXT(ctx)->Triangle);
+   assert(SWRAST_CONTEXT(ctx)->Triangle);
 }

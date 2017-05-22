@@ -434,11 +434,12 @@ nv20_context_destroy(struct gl_context *ctx)
 	nouveau_object_del(&nctx->hw.eng3d);
 
 	nouveau_context_deinit(ctx);
-	FREE(ctx);
+	free(ctx);
 }
 
 static struct gl_context *
-nv20_context_create(struct nouveau_screen *screen, const struct gl_config *visual,
+nv20_context_create(struct nouveau_screen *screen, gl_api api,
+		    const struct gl_config *visual,
 		    struct gl_context *share_ctx)
 {
 	struct nouveau_context *nctx;
@@ -452,22 +453,23 @@ nv20_context_create(struct nouveau_screen *screen, const struct gl_config *visua
 
 	ctx = &nctx->base;
 
-	if (!nouveau_context_init(ctx, screen, visual, share_ctx))
+	if (!nouveau_context_init(ctx, api, screen, visual, share_ctx))
 		goto fail;
 
 	ctx->Extensions.ARB_texture_env_crossbar = true;
 	ctx->Extensions.ARB_texture_env_combine = true;
 	ctx->Extensions.ARB_texture_env_dot3 = true;
+	ctx->Extensions.EXT_texture_env_dot3 = true;
 	ctx->Extensions.NV_fog_distance = true;
 	ctx->Extensions.NV_texture_rectangle = true;
 	if (ctx->Mesa_DXTn) {
 		ctx->Extensions.EXT_texture_compression_s3tc = true;
-		ctx->Extensions.S3_s3tc = true;
+		ctx->Extensions.ANGLE_texture_compression_dxt = true;
 	}
 
 	/* GL constants. */
 	ctx->Const.MaxTextureCoordUnits = NV20_TEXTURE_UNITS;
-	ctx->Const.MaxTextureImageUnits = NV20_TEXTURE_UNITS;
+	ctx->Const.Program[MESA_SHADER_FRAGMENT].MaxTextureImageUnits = NV20_TEXTURE_UNITS;
 	ctx->Const.MaxTextureUnits = NV20_TEXTURE_UNITS;
 	ctx->Const.MaxTextureMaxAnisotropy = 8;
 	ctx->Const.MaxTextureLodBias = 15;

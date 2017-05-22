@@ -27,10 +27,13 @@
 #ifndef __NOUVEAU_SCREEN_H__
 #define __NOUVEAU_SCREEN_H__
 
+const __DRIextension **__driDriverGetExtensions_nouveau_vieux(void);
+
 struct nouveau_context;
 
 struct nouveau_screen {
 	__DRIscreen *dri_screen;
+	struct nouveau_drm *drm;
 	struct nouveau_device *device;
 	const struct nouveau_driver *driver;
 };

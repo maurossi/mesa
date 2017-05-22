@@ -22,52 +22,70 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
+
+/*
+ * NOTE: This file is not compiled by itself.  It's actually #included
+ * by the generated u_unfilled_gen.c file!
+ */
+
 #include "u_indices.h"
 #include "u_indices_priv.h"
+#include "util/u_prim.h"
 
 
 static void translate_ubyte_ushort( const void *in,
-                                    unsigned nr,
+                                    unsigned start,
+                                    unsigned in_nr,
+                                    unsigned out_nr,
+                                    unsigned restart_index,
                                     void *out )
 {
    const ubyte *in_ub = (const ubyte *)in;
    ushort *out_us = (ushort *)out;
    unsigned i;
-   for (i = 0; i < nr; i++)
-      out_us[i] = (ushort) in_ub[i];
+   for (i = 0; i < out_nr; i++)
+      out_us[i] = (ushort) in_ub[i+start];
 }
 
 static void translate_memcpy_ushort( const void *in,
-                                     unsigned nr,
+                                     unsigned start,
+                                     unsigned in_nr,
+                                     unsigned out_nr,
+                                     unsigned restart_index,
                                      void *out )
 {
-   memcpy(out, in, nr*sizeof(short));
+   memcpy(out, &((short *)in)[start], out_nr*sizeof(short));
 }
-                              
+
 static void translate_memcpy_uint( const void *in,
-                                   unsigned nr,
+                                   unsigned start,
+                                   unsigned in_nr,
+                                   unsigned out_nr,
+                                   unsigned restart_index,
                                    void *out )
 {
-   memcpy(out, in, nr*sizeof(int));
+   memcpy(out, &((int *)in)[start], out_nr*sizeof(int));
 }
 
 
-static void generate_linear_ushort( unsigned nr,
+static void generate_linear_ushort( unsigned start,
+                                    unsigned nr,
                                     void *out )
 {
    ushort *out_us = (ushort *)out;
    unsigned i;
    for (i = 0; i < nr; i++)
-      out_us[i] = (ushort) i;
+      out_us[i] = (ushort)(i + start);
 }
-                              
-static void generate_linear_uint( unsigned nr,
+
+static void generate_linear_uint( unsigned start,
+                                  unsigned nr,
                                   void *out )
 {
    unsigned *out_ui = (unsigned *)out;
    unsigned i;
    for (i = 0; i < nr; i++)
-      out_ui[i] = i;
+      out_ui[i] = i + start;
 }
 
 
@@ -76,12 +94,12 @@ static void generate_linear_uint( unsigned nr,
  * needed to draw the primitive with fill mode = PIPE_POLYGON_MODE_LINE using
  * separate lines (PIPE_PRIM_LINES).
  */
-static unsigned nr_lines( unsigned prim,
-                          unsigned nr )
+static unsigned
+nr_lines(enum pipe_prim_type prim, unsigned nr)
 {
    switch (prim) {
    case PIPE_PRIM_TRIANGLES:
-      return (nr / 3) * 6; 
+      return (nr / 3) * 6;
    case PIPE_PRIM_TRIANGLE_STRIP:
       return (nr - 2) * 6;
    case PIPE_PRIM_TRIANGLE_FAN:
@@ -92,25 +110,35 @@ static unsigned nr_lines( unsigned prim,
       return (nr - 2) / 2 * 8;
    case PIPE_PRIM_POLYGON:
       return 2 * nr; /* a line (two verts) for each polygon edge */
+   /* Note: these cases can't really be handled since drawing lines instead
+    * of triangles would also require changing the GS.  But if there's no GS,
+    * this should work.
+    */
+   case PIPE_PRIM_TRIANGLES_ADJACENCY:
+      return (nr / 6) * 6;
+   case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
+      return ((nr - 4) / 2) * 6;
    default:
       assert(0);
       return 0;
    }
 }
-                              
 
 
-int u_unfilled_translator( unsigned prim,
-                        unsigned in_index_size,
-                        unsigned nr,
-                        unsigned unfilled_mode,
-                        unsigned *out_prim,
-                        unsigned *out_index_size,
-                        unsigned *out_nr,
-                        u_translate_func *out_translate )
+enum indices_mode
+u_unfilled_translator(enum pipe_prim_type prim,
+                      unsigned in_index_size,
+                      unsigned nr,
+                      unsigned unfilled_mode,
+                      enum pipe_prim_type *out_prim,
+                      unsigned *out_index_size,
+                      unsigned *out_nr,
+                      u_translate_func *out_translate)
 {
    unsigned in_idx;
    unsigned out_idx;
+
+   assert(u_reduced_prim(prim) == PIPE_PRIM_TRIANGLES);
 
    u_unfilled_init();
 
@@ -118,13 +146,11 @@ int u_unfilled_translator( unsigned prim,
    *out_index_size = (in_index_size == 4) ? 4 : 2;
    out_idx = out_size_idx(*out_index_size);
 
-   if (unfilled_mode == PIPE_POLYGON_MODE_POINT) 
-   {
+   if (unfilled_mode == PIPE_POLYGON_MODE_POINT) {
       *out_prim = PIPE_PRIM_POINTS;
       *out_nr = nr;
 
-      switch (in_index_size)
-      {
+      switch (in_index_size) {
       case 1:
          *out_translate = translate_ubyte_ushort;
          return U_TRANSLATE_NORMAL;
@@ -151,17 +177,27 @@ int u_unfilled_translator( unsigned prim,
 }
 
 
-
-int u_unfilled_generator( unsigned prim,
-                          unsigned start,
-                          unsigned nr,
-                          unsigned unfilled_mode,
-                          unsigned *out_prim,
-                          unsigned *out_index_size,
-                          unsigned *out_nr,
-                          u_generate_func *out_generate )
+/**
+ * Utility for converting unfilled polygons into points, lines, triangles.
+ * Few drivers have direct support for OpenGL's glPolygonMode.
+ * This function helps with converting triangles into points or lines
+ * when the front and back fill modes are the same.  When there's
+ * different front/back fill modes, that can be handled with the
+ * 'draw' module.
+ */
+enum indices_mode
+u_unfilled_generator(enum pipe_prim_type prim,
+                     unsigned start,
+                     unsigned nr,
+                     unsigned unfilled_mode,
+                     enum pipe_prim_type *out_prim,
+                     unsigned *out_index_size,
+                     unsigned *out_nr,
+                     u_generate_func *out_generate)
 {
    unsigned out_idx;
+
+   assert(u_reduced_prim(prim) == PIPE_PRIM_TRIANGLES);
 
    u_unfilled_init();
 
@@ -169,7 +205,6 @@ int u_unfilled_generator( unsigned prim,
    out_idx = out_size_idx(*out_index_size);
 
    if (unfilled_mode == PIPE_POLYGON_MODE_POINT) {
-
       if (*out_index_size == 4)
          *out_generate = generate_linear_uint;
       else
@@ -188,4 +223,3 @@ int u_unfilled_generator( unsigned prim,
       return U_GENERATE_REUSABLE;
    }
 }
-

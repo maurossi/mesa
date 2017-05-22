@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -54,7 +54,8 @@ union tile_address {
       unsigned x:TILE_ADDR_BITS;     /* 16K / TILE_SIZE */
       unsigned y:TILE_ADDR_BITS;     /* 16K / TILE_SIZE */
       unsigned invalid:1;
-      unsigned pad:15;
+      unsigned layer:8;
+      unsigned pad:7;
    } bits;
    unsigned value;
 };
@@ -82,12 +83,14 @@ struct softpipe_tile_cache
 {
    struct pipe_context *pipe;
    struct pipe_surface *surface;  /**< the surface we're caching */
-   struct pipe_transfer *transfer;
-   void *transfer_map;
+   struct pipe_transfer **transfer;
+   void **transfer_map;
+   int num_maps;
 
    union tile_address tile_addrs[NUM_ENTRIES];
    struct softpipe_cached_tile *entries[NUM_ENTRIES];
-   uint clear_flags[(MAX_WIDTH / TILE_SIZE) * (MAX_HEIGHT / TILE_SIZE) / 32];
+   uint *clear_flags;
+   uint clear_flags_size;
    union pipe_color_union clear_color; /**< for color bufs */
    uint64_t clear_val;        /**< for z+stencil */
    boolean depth_stencil; /**< Is the surface a depth/stencil format? */
@@ -113,12 +116,6 @@ extern struct pipe_surface *
 sp_tile_cache_get_surface(struct softpipe_tile_cache *tc);
 
 extern void
-sp_tile_cache_map_transfers(struct softpipe_tile_cache *tc);
-
-extern void
-sp_tile_cache_unmap_transfers(struct softpipe_tile_cache *tc);
-
-extern void
 sp_flush_tile_cache(struct softpipe_tile_cache *tc);
 
 extern void
@@ -131,26 +128,26 @@ sp_find_cached_tile(struct softpipe_tile_cache *tc,
                     union tile_address addr );
 
 
-static INLINE union tile_address
+static inline union tile_address
 tile_address( unsigned x,
-              unsigned y )
+              unsigned y, unsigned layer )
 {
    union tile_address addr;
 
    addr.value = 0;
    addr.bits.x = x / TILE_SIZE;
    addr.bits.y = y / TILE_SIZE;
-      
+   addr.bits.layer = layer;
    return addr;
 }
 
 /* Quickly retrieve tile if it matches last lookup.
  */
-static INLINE struct softpipe_cached_tile *
+static inline struct softpipe_cached_tile *
 sp_get_cached_tile(struct softpipe_tile_cache *tc, 
-                   int x, int y )
+                   int x, int y, int layer )
 {
-   union tile_address addr = tile_address( x, y );
+   union tile_address addr = tile_address( x, y, layer );
 
    if (tc->last_tile_addr.value == addr.value)
       return tc->last_tile;

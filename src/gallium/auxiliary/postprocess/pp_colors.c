@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -28,6 +28,7 @@
 #include "postprocess/postprocess.h"
 #include "postprocess/pp_colors.h"
 #include "postprocess/pp_filters.h"
+#include "postprocess/pp_private.h"
 
 /** The run function of the color filters */
 void
@@ -35,7 +36,8 @@ pp_nocolor(struct pp_queue_t *ppq, struct pipe_resource *in,
            struct pipe_resource *out, unsigned int n)
 {
 
-   struct program *p = ppq->p;
+   struct pp_program *p = ppq->p;
+   const struct pipe_sampler_state *samplers[] = {&p->sampler_point};
 
    pp_filter_setup_in(p, in);
    pp_filter_setup_out(p, out);
@@ -43,8 +45,7 @@ pp_nocolor(struct pp_queue_t *ppq, struct pipe_resource *in,
    pp_filter_set_fb(p);
    pp_filter_misc_state(p);
 
-   cso_single_sampler(p->cso, PIPE_SHADER_FRAGMENT, 0, &p->sampler_point);
-   cso_single_sampler_done(p->cso, PIPE_SHADER_FRAGMENT);
+   cso_set_samplers(p->cso, PIPE_SHADER_FRAGMENT, 1, samplers);
    cso_set_sampler_views(p->cso, PIPE_SHADER_FRAGMENT, 1, &p->view);
 
    cso_set_vertex_shader_handle(p->cso, ppq->shaders[n][0]);
@@ -57,24 +58,37 @@ pp_nocolor(struct pp_queue_t *ppq, struct pipe_resource *in,
 
 /* Init functions */
 
-void
+bool
 pp_nored_init(struct pp_queue_t *ppq, unsigned int n, unsigned int val)
 {
-   ppq->shaders[n][1] = pp_tgsi_to_state(ppq->p->pipe, nored, false, "nored");
+   ppq->shaders[n][1] =
+      pp_tgsi_to_state(ppq->p->pipe, nored, false, "nored");
+
+   return (ppq->shaders[n][1] != NULL) ? TRUE : FALSE;
 }
 
 
-void
+bool
 pp_nogreen_init(struct pp_queue_t *ppq, unsigned int n, unsigned int val)
 {
    ppq->shaders[n][1] =
       pp_tgsi_to_state(ppq->p->pipe, nogreen, false, "nogreen");
+
+   return (ppq->shaders[n][1] != NULL) ? TRUE : FALSE;
 }
 
 
-void
+bool
 pp_noblue_init(struct pp_queue_t *ppq, unsigned int n, unsigned int val)
 {
    ppq->shaders[n][1] =
       pp_tgsi_to_state(ppq->p->pipe, noblue, false, "noblue");
+
+   return (ppq->shaders[n][1] != NULL) ? TRUE : FALSE;
+}
+
+/* Free functions */
+void
+pp_nocolor_free(struct pp_queue_t *ppq, unsigned int n)
+{
 }

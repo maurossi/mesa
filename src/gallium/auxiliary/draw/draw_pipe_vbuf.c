@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -29,8 +29,8 @@
  * \file
  * Vertex buffer drawing stage.
  * 
- * \author Jose Fonseca <jrfonsec@tungstengraphics.com>
- * \author Keith Whitwell <keith@tungstengraphics.com>
+ * \author Jose Fonseca <jfonseca@vmware.com>
+ * \author Keith Whitwell <keithw@vmware.com>
  */
 
 
@@ -74,9 +74,10 @@ struct vbuf_stage {
    unsigned max_indices;
    unsigned nr_indices;
 
-   /* Cache point size somewhere it's address won't change:
+   /* Cache point size somewhere its address won't change:
     */
    float point_size;
+   float zero4[4];
 
    struct translate_cache *cache;
 };
@@ -85,7 +86,7 @@ struct vbuf_stage {
 /**
  * Basically a cast wrapper.
  */
-static INLINE struct vbuf_stage *
+static inline struct vbuf_stage *
 vbuf_stage( struct draw_stage *stage )
 {
    assert(stage);
@@ -97,7 +98,7 @@ static void vbuf_flush_vertices( struct vbuf_stage *vbuf );
 static void vbuf_alloc_vertices( struct vbuf_stage *vbuf );
 
 
-static INLINE boolean 
+static inline boolean 
 overflow( void *map, void *ptr, unsigned bytes, unsigned bufsz )
 {
    unsigned long used = (unsigned long) ((char *)ptr - (char *)map);
@@ -105,7 +106,7 @@ overflow( void *map, void *ptr, unsigned bytes, unsigned bufsz )
 }
 
 
-static INLINE void 
+static inline void 
 check_space( struct vbuf_stage *vbuf, unsigned nr )
 {
    if (vbuf->nr_vertices + nr > vbuf->max_vertices ||
@@ -126,7 +127,7 @@ check_space( struct vbuf_stage *vbuf, unsigned nr )
  * have a couple of slots at the beginning (1-dword header, 4-dword
  * clip pos) that we ignore here.  We only use the vertex->data[] fields.
  */
-static INLINE ushort 
+static inline ushort 
 emit_vertex( struct vbuf_stage *vbuf,
              struct vertex_header *vertex )
 {
@@ -138,7 +139,7 @@ emit_vertex( struct vbuf_stage *vbuf,
       /* Note: we really do want data[0] here, not data[pos]: 
        */
       vbuf->translate->set_buffer(vbuf->translate, 0, vertex->data[0], 0, ~0);
-      vbuf->translate->run(vbuf->translate, 0, 1, 0, vbuf->vertex_ptr);
+      vbuf->translate->run(vbuf->translate, 0, 1, 0, 0, vbuf->vertex_ptr);
 
       if (0) draw_dump_emitted_vertex(vbuf->vinfo, (uint8_t *)vbuf->vertex_ptr);
       
@@ -205,6 +206,7 @@ vbuf_start_prim( struct vbuf_stage *vbuf, uint prim )
    struct translate_key hw_key;
    unsigned dst_offset;
    unsigned i;
+   const struct vertex_info *vinfo;
 
    vbuf->render->set_primitive(vbuf->render, prim);
 
@@ -215,27 +217,33 @@ vbuf_start_prim( struct vbuf_stage *vbuf, uint prim )
     * state change.
     */
    vbuf->vinfo = vbuf->render->get_vertex_info(vbuf->render);
-   vbuf->vertex_size = vbuf->vinfo->size * sizeof(float);
+   vinfo = vbuf->vinfo;
+   vbuf->vertex_size = vinfo->size * sizeof(float);
 
    /* Translate from pipeline vertices to hw vertices.
     */
    dst_offset = 0;
 
-   for (i = 0; i < vbuf->vinfo->num_attribs; i++) {
+   for (i = 0; i < vinfo->num_attribs; i++) {
       unsigned emit_sz = 0;
       unsigned src_buffer = 0;
       enum pipe_format output_format;
-      unsigned src_offset = (vbuf->vinfo->attrib[i].src_index * 4 * sizeof(float) );
+      unsigned src_offset = (vinfo->attrib[i].src_index * 4 * sizeof(float) );
 
-      output_format = draw_translate_vinfo_format(vbuf->vinfo->attrib[i].emit);
-      emit_sz = draw_translate_vinfo_size(vbuf->vinfo->attrib[i].emit);
+      output_format = draw_translate_vinfo_format(vinfo->attrib[i].emit);
+      emit_sz = draw_translate_vinfo_size(vinfo->attrib[i].emit);
 
       /* doesn't handle EMIT_OMIT */
       assert(emit_sz != 0);
 
-      if (vbuf->vinfo->attrib[i].emit == EMIT_1F_PSIZE) {
-	 src_buffer = 1;
-	 src_offset = 0;
+      if (vinfo->attrib[i].emit == EMIT_1F_PSIZE) {
+         src_buffer = 1;
+         src_offset = 0;
+      }
+      else if (vinfo->attrib[i].src_index == DRAW_ATTR_NONEXIST) {
+         /* elements which don't exist will get assigned zeros */
+         src_buffer = 2;
+         src_offset = 0;
       }
 
       hw_key.element[i].type = TRANSLATE_ELEMENT_NORMAL;
@@ -249,8 +257,8 @@ vbuf_start_prim( struct vbuf_stage *vbuf, uint prim )
       dst_offset += emit_sz;
    }
 
-   hw_key.nr_elements = vbuf->vinfo->num_attribs;
-   hw_key.output_stride = vbuf->vinfo->size * 4;
+   hw_key.nr_elements = vinfo->num_attribs;
+   hw_key.output_stride = vbuf->vertex_size;
 
    /* Don't bother with caching at this stage:
     */
@@ -261,6 +269,7 @@ vbuf_start_prim( struct vbuf_stage *vbuf, uint prim )
       vbuf->translate = translate_cache_find(vbuf->cache, &hw_key);
 
       vbuf->translate->set_buffer(vbuf->translate, 1, &vbuf->point_size, 0, ~0);
+      vbuf->translate->set_buffer(vbuf->translate, 2, &vbuf->zero4[0], 0, ~0);
    }
 
    vbuf->point_size = vbuf->stage.draw->rasterizer->point_size;
@@ -426,9 +435,9 @@ struct draw_stage *draw_vbuf_stage( struct draw_context *draw,
                                     struct vbuf_render *render )
 {
    struct vbuf_stage *vbuf = CALLOC_STRUCT(vbuf_stage);
-   if (vbuf == NULL)
+   if (!vbuf)
       goto fail;
-   
+
    vbuf->stage.draw = draw;
    vbuf->stage.name = "vbuf";
    vbuf->stage.point = vbuf_first_point;
@@ -437,29 +446,30 @@ struct draw_stage *draw_vbuf_stage( struct draw_context *draw,
    vbuf->stage.flush = vbuf_flush;
    vbuf->stage.reset_stipple_counter = vbuf_reset_stipple_counter;
    vbuf->stage.destroy = vbuf_destroy;
-   
+
    vbuf->render = render;
    vbuf->max_indices = MIN2(render->max_indices, UNDEFINED_VERTEX_ID-1);
 
-   vbuf->indices = (ushort *) align_malloc( vbuf->max_indices * 
-					    sizeof(vbuf->indices[0]), 
-					    16 );
+   vbuf->indices = (ushort *) align_malloc(vbuf->max_indices *
+                    sizeof(vbuf->indices[0]),
+                    16);
    if (!vbuf->indices)
       goto fail;
 
    vbuf->cache = translate_cache_create();
-   if (!vbuf->cache) 
+   if (!vbuf->cache)
       goto fail;
-      
-   
+
    vbuf->vertices = NULL;
    vbuf->vertex_ptr = vbuf->vertices;
-   
+
+   vbuf->zero4[0] = vbuf->zero4[1] = vbuf->zero4[2] = vbuf->zero4[3] = 0.0f;
+
    return &vbuf->stage;
 
- fail:
+fail:
    if (vbuf)
       vbuf_destroy(&vbuf->stage);
-   
+
    return NULL;
 }

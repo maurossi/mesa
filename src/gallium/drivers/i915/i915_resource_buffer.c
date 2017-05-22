@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2006 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2006 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -26,8 +26,8 @@
  **************************************************************************/
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
-  *   Michel Dänzer <michel@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
+  *   Michel Dänzer <daenzer@vmware.com>
   */
 
 #include "pipe/p_context.h"
@@ -60,62 +60,47 @@ i915_buffer_destroy(struct pipe_screen *screen,
 }
 
 
-static struct pipe_transfer *
-i915_get_transfer(struct pipe_context *pipe,
-                  struct pipe_resource *resource,
-                  unsigned level,
-                  unsigned usage,
-                  const struct pipe_box *box)
+static void *
+i915_buffer_transfer_map(struct pipe_context *pipe,
+                         struct pipe_resource *resource,
+                         unsigned level,
+                         unsigned usage,
+                         const struct pipe_box *box,
+                         struct pipe_transfer **ptransfer)
 {
    struct i915_context *i915 = i915_context(pipe);
-   struct pipe_transfer *transfer = util_slab_alloc(&i915->transfer_pool);
+   struct i915_buffer *buffer = i915_buffer(resource);
+   struct pipe_transfer *transfer = slab_alloc_st(&i915->transfer_pool);
 
-   if (transfer == NULL)
+   if (!transfer)
       return NULL;
 
    transfer->resource = resource;
    transfer->level = level;
    transfer->usage = usage;
    transfer->box = *box;
+   *ptransfer = transfer;
 
-   /* Note strides are zero, this is ok for buffers, but not for
-    * textures 2d & higher at least. 
-    */
-   return transfer;
-}
-
-static void
-i915_transfer_destroy(struct pipe_context *pipe,
-                      struct pipe_transfer *transfer)
-{
-   struct i915_context *i915 = i915_context(pipe);
-   util_slab_free(&i915->transfer_pool, transfer);
-}
-
-static void *
-i915_buffer_transfer_map( struct pipe_context *pipe,
-                          struct pipe_transfer *transfer )
-{
-   struct i915_buffer *buffer = i915_buffer(transfer->resource);
    return buffer->data + transfer->box.x;
 }
 
-
 static void
-i915_buffer_transfer_inline_write( struct pipe_context *rm_ctx,
-                                   struct pipe_resource *resource,
-                                   unsigned level,
-                                   unsigned usage,
-                                   const struct pipe_box *box,
-                                   const void *data,
-                                   unsigned stride,
-                                   unsigned layer_stride)
+i915_buffer_transfer_unmap(struct pipe_context *pipe,
+                           struct pipe_transfer *transfer)
+{
+   struct i915_context *i915 = i915_context(pipe);
+   slab_free_st(&i915->transfer_pool, transfer);
+}
+
+void
+i915_buffer_subdata(struct pipe_context *rm_ctx,
+                    struct pipe_resource *resource,
+                    unsigned usage, unsigned offset,
+                    unsigned size, const void *data)
 {
    struct i915_buffer *buffer = i915_buffer(resource);
 
-   memcpy(buffer->data + box->x,
-          data,
-          box->width);
+   memcpy(buffer->data + offset, data, size);
 }
 
 
@@ -123,12 +108,9 @@ struct u_resource_vtbl i915_buffer_vtbl =
 {
    i915_buffer_get_handle,	     /* get_handle */
    i915_buffer_destroy,		     /* resource_destroy */
-   i915_get_transfer,		     /* get_transfer */
-   i915_transfer_destroy,	     /* transfer_destroy */
    i915_buffer_transfer_map,	     /* transfer_map */
    u_default_transfer_flush_region,  /* transfer_flush_region */
-   u_default_transfer_unmap,	     /* transfer_unmap */
-   i915_buffer_transfer_inline_write /* transfer_inline_write */
+   i915_buffer_transfer_unmap,	     /* transfer_unmap */
 };
 
 
@@ -146,7 +128,7 @@ i915_buffer_create(struct pipe_screen *screen,
    buf->b.vtbl = &i915_buffer_vtbl;
    pipe_reference_init(&buf->b.b.reference, 1);
    buf->b.b.screen = screen;
-   buf->data = align_malloc(template->width0, 16);
+   buf->data = align_malloc(template->width0, 64);
    buf->free_on_destroy = TRUE;
 
    if (!buf->data)

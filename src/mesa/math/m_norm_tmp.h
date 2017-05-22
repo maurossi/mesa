@@ -1,7 +1,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  5.1
  *
  * Copyright (C) 1999-2003  Brian Paul   All Rights Reserved.
  *
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /*
@@ -39,7 +39,7 @@
  *           optimization)
  * dest - the destination vector of normals
  */
-static void _XFORMAPI
+static void
 TAG(transform_normalize_normals)( const GLmatrix *mat,
                                   GLfloat scale,
                                   const GLvector4f *in,
@@ -68,7 +68,7 @@ TAG(transform_normalize_normals)( const GLmatrix *mat,
 	 {
 	    GLdouble len = tx*tx + ty*ty + tz*tz;
 	    if (len > 1e-20) {
-	       GLfloat scale = INV_SQRTF(len);
+	       GLfloat scale = 1.0f / sqrtf(len);
 	       out[i][0] = tx * scale;
 	       out[i][1] = ty * scale;
 	       out[i][2] = tz * scale;
@@ -80,7 +80,7 @@ TAG(transform_normalize_normals)( const GLmatrix *mat,
       }
    }
    else {
-      if (scale != 1.0) {
+      if (scale != 1.0f) {
 	 m0 *= scale,  m4 *= scale,  m8 *= scale;
 	 m1 *= scale,  m5 *= scale,  m9 *= scale;
 	 m2 *= scale,  m6 *= scale,  m10 *= scale;
@@ -106,7 +106,7 @@ TAG(transform_normalize_normals)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(transform_normalize_normals_no_rot)( const GLmatrix *mat,
                                          GLfloat scale,
                                          const GLvector4f *in,
@@ -135,7 +135,7 @@ TAG(transform_normalize_normals_no_rot)( const GLmatrix *mat,
 	 {
 	    GLdouble len = tx*tx + ty*ty + tz*tz;
 	    if (len > 1e-20) {
-	       GLfloat scale = INV_SQRTF(len);
+	       GLfloat scale = 1.0f / sqrtf(len);
 	       out[i][0] = tx * scale;
 	       out[i][1] = ty * scale;
 	       out[i][2] = tz * scale;
@@ -171,7 +171,7 @@ TAG(transform_normalize_normals_no_rot)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(transform_rescale_normals_no_rot)( const GLmatrix *mat,
                                        GLfloat scale,
                                        const GLvector4f *in,
@@ -200,7 +200,7 @@ TAG(transform_rescale_normals_no_rot)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(transform_rescale_normals)( const GLmatrix *mat,
                                 GLfloat scale,
                                 const GLvector4f *in,
@@ -232,7 +232,7 @@ TAG(transform_rescale_normals)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(transform_normals_no_rot)( const GLmatrix *mat,
 			       GLfloat scale,
 			       const GLvector4f *in,
@@ -262,7 +262,7 @@ TAG(transform_normals_no_rot)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(transform_normals)( const GLmatrix *mat,
                         GLfloat scale,
                         const GLvector4f *in,
@@ -292,7 +292,7 @@ TAG(transform_normals)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(normalize_normals)( const GLmatrix *mat,
                         GLfloat scale,
                         const GLvector4f *in,
@@ -322,7 +322,7 @@ TAG(normalize_normals)( const GLmatrix *mat,
 	 const GLfloat x = from[0], y = from[1], z = from[2];
 	 GLdouble len = x * x + y * y + z * z;
 	 if (len > 1e-50) {
-	    len = INV_SQRTF(len);
+	    len = 1.0f / sqrtf(len);
 	    out[i][0] = (GLfloat)(x * len);
 	    out[i][1] = (GLfloat)(y * len);
 	    out[i][2] = (GLfloat)(z * len);
@@ -338,7 +338,7 @@ TAG(normalize_normals)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(rescale_normals)( const GLmatrix *mat,
                       GLfloat scale,
                       const GLvector4f *in,
@@ -361,7 +361,7 @@ TAG(rescale_normals)( const GLmatrix *mat,
 }
 
 
-static void _XFORMAPI
+static void
 TAG(init_c_norm_transform)( void )
 {
    _mesa_normal_tab[NORM_TRANSFORM_NO_ROT] =

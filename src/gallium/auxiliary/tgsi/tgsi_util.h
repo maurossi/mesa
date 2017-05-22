@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -31,6 +31,8 @@
 #if defined __cplusplus
 extern "C" {
 #endif
+
+#include "pipe/p_shader_tokens.h"
 
 struct tgsi_src_register;
 struct tgsi_full_src_register;
@@ -75,6 +77,26 @@ tgsi_util_set_full_src_register_sign_mode(
 unsigned
 tgsi_util_get_inst_usage_mask(const struct tgsi_full_instruction *inst,
                               unsigned src_idx);
+
+struct tgsi_src_register
+tgsi_util_get_src_from_ind(const struct tgsi_ind_register *reg);
+
+int
+tgsi_util_get_texture_coord_dim(unsigned tgsi_tex);
+
+int
+tgsi_util_get_shadow_ref_src_index(unsigned tgsi_tex);
+
+boolean
+tgsi_is_shadow_target(unsigned target);
+
+
+static inline boolean
+tgsi_is_msaa_target(unsigned target)
+{
+   return (target == TGSI_TEXTURE_2D_MSAA ||
+           target == TGSI_TEXTURE_2D_ARRAY_MSAA);
+}
 
 #if defined __cplusplus
 }

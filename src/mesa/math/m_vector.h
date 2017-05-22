@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.3
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /*
@@ -51,7 +51,7 @@
 
 /**
  * Wrap all the information about vectors up in a struct.  Has
- * additional fields compared to the other vectors to help us track of
+ * additional fields compared to the other vectors to help us track
  * different vertex sizes, and whether we need to clean columns out
  * because they contain non-(0,0,0,1) values.
  *
@@ -61,7 +61,7 @@
  */
 typedef struct {
    GLfloat (*data)[4];	/**< may be malloc'd or point to client data */
-   GLfloat *start;	/**< points somewhere inside of <data> */
+   GLfloat *start;	/**< points somewhere inside of GLvector4f::data */
    GLuint count;	/**< size of the vector (in elements) */
    GLuint stride;	/**< stride from one element to the next (in bytes) */
    GLuint size;		/**< 2-4 for vertices and 1-4 for texcoords */

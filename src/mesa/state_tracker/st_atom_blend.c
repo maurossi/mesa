@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   *   Brian Paul
   */
  
@@ -175,7 +175,7 @@ static GLboolean
 blend_per_rt(const struct gl_context *ctx)
 {
    if (ctx->Color.BlendEnabled &&
-      (ctx->Color.BlendEnabled != ((1 << ctx->Const.MaxDrawBuffers) - 1))) {
+      (ctx->Color.BlendEnabled != ((1U << ctx->Const.MaxDrawBuffers) - 1))) {
       /* This can only happen if GL_EXT_draw_buffers2 is enabled */
       return GL_TRUE;
    }
@@ -205,7 +205,7 @@ update_blend( struct st_context *st )
       blend->logicop_enable = 1;
       blend->logicop_func = translate_logicop(ctx->Color.LogicOp);
    }
-   else if (ctx->Color.BlendEnabled) {
+   else if (ctx->Color.BlendEnabled && !ctx->Color._AdvancedBlendMode) {
       /* blending enabled */
       for (i = 0, j = 0; i < num_state; i++) {
 
@@ -263,16 +263,16 @@ update_blend( struct st_context *st )
          blend->rt[i].colormask |= PIPE_MASK_A;
    }
 
-   if (ctx->Color.DitherFlag)
-      blend->dither = 1;
+   blend->dither = ctx->Color.DitherFlag;
 
-   if (ctx->Multisample.Enabled) {
-      /* unlike in gallium/d3d10 these operations are only performed
-         if msaa is enabled */
-      if (ctx->Multisample.SampleAlphaToCoverage)
-         blend->alpha_to_coverage = 1;
-      if (ctx->Multisample.SampleAlphaToOne)
-         blend->alpha_to_one = 1;
+   if (ctx->Multisample.Enabled &&
+       ctx->DrawBuffer->Visual.sampleBuffers > 0 &&
+       !(ctx->DrawBuffer->_IntegerBuffers & 0x1)) {
+      /* Unlike in gallium/d3d10 these operations are only performed
+       * if both msaa is enabled and we have a multisample buffer.
+       */
+      blend->alpha_to_coverage = ctx->Multisample.SampleAlphaToCoverage;
+      blend->alpha_to_one = ctx->Multisample.SampleAlphaToOne;
    }
 
    cso_set_blend(st->cso_context, blend);
@@ -286,10 +286,5 @@ update_blend( struct st_context *st )
 
 
 const struct st_tracked_state st_update_blend = {
-   "st_update_blend",					/* name */
-   {							/* dirty */
-      (_NEW_COLOR | _NEW_MULTISAMPLE),  /* XXX _NEW_BLEND someday? */	/* mesa */
-      0,						/* st */
-   },
    update_blend,					/* update */
 };

@@ -1,3 +1,4 @@
+#include <inttypes.h>  /* for PRIu64 macro */
 #include "util/u_math.h"
 #include "lp_rast_priv.h"
 #include "lp_state_fs.h"
@@ -42,11 +43,22 @@ static const char *cmd_names[LP_RAST_OP_MAX] =
    "begin_query",
    "end_query",
    "set_state",
+   "triangle_32_1",
+   "triangle_32_2",
+   "triangle_32_3",
+   "triangle_32_4",
+   "triangle_32_5",
+   "triangle_32_6",
+   "triangle_32_7",
+   "triangle_32_8",
+   "triangle_32_3_4",
+   "triangle_32_3_16",
+   "triangle_32_4_16",
 };
 
 static const char *cmd_name(unsigned cmd)
 {
-   assert(Elements(cmd_names) > cmd);
+   assert(ARRAY_SIZE(cmd_names) > cmd);
    return cmd_names[cmd];
 }
 
@@ -89,13 +101,13 @@ is_blend( const struct lp_rast_state *state,
 
 
 static void
-debug_bin( const struct cmd_bin *bin )
+debug_bin( const struct cmd_bin *bin, int x, int y )
 {
    const struct lp_rast_state *state = NULL;
    const struct cmd_block *head = bin->head;
    int i, j = 0;
 
-   debug_printf("bin %d,%d:\n", bin->x, bin->y);
+   debug_printf("bin %d,%d:\n", x, y);
                 
    while (head) {
       for (i = 0; i < head->count; i++, j++) {
@@ -194,8 +206,8 @@ debug_triangle(int tilex, int tiley,
    while (plane_mask) {
       plane[nr_planes] = tri_plane[u_bit_scan(&plane_mask)];
       plane[nr_planes].c = (plane[nr_planes].c +
-                            plane[nr_planes].dcdy * tiley -
-                            plane[nr_planes].dcdx * tilex);
+                            IMUL64(plane[nr_planes].dcdy, tiley) -
+                            IMUL64(plane[nr_planes].dcdx, tilex));
       nr_planes++;
    }
 
@@ -216,7 +228,7 @@ debug_triangle(int tilex, int tiley,
       }
 
       for (i = 0; i < nr_planes; i++) {
-         plane[i].c += plane[i].dcdx * TILE_SIZE;
+         plane[i].c += IMUL64(plane[i].dcdx, TILE_SIZE);
          plane[i].c += plane[i].dcdy;
       }
    }
@@ -230,13 +242,14 @@ debug_triangle(int tilex, int tiley,
 static void
 do_debug_bin( struct tile *tile,
               const struct cmd_bin *bin,
+              int x, int y,
               boolean print_cmds)
 {
    unsigned k, j = 0;
    const struct cmd_block *block;
 
-   int tx = bin->x * TILE_SIZE;
-   int ty = bin->y * TILE_SIZE;
+   int tx = x * TILE_SIZE;
+   int ty = y * TILE_SIZE;
 
    memset(tile->data, ' ', sizeof tile->data);
    tile->coverage = 0;
@@ -285,13 +298,13 @@ do_debug_bin( struct tile *tile,
 }
 
 void
-lp_debug_bin( const struct cmd_bin *bin)
+lp_debug_bin( const struct cmd_bin *bin, int i, int j)
 {
    struct tile tile;
    int x,y;
 
    if (bin->head) {
-      do_debug_bin(&tile, bin, TRUE);
+      do_debug_bin(&tile, bin, i, j, TRUE);
 
       debug_printf("------------------------------------------------------------------\n");
       for (y = 0; y < TILE_SIZE; y++) {
@@ -334,8 +347,8 @@ lp_debug_draw_bins_by_coverage( struct lp_scene *scene )
    unsigned x, y;
    unsigned total = 0;
    unsigned possible = 0;
-   static unsigned long long _total;
-   static unsigned long long _possible;
+   static uint64_t _total = 0;
+   static uint64_t _possible = 0;
 
    for (x = 0; x < scene->tiles_x; x++)
       debug_printf("-");
@@ -348,9 +361,9 @@ lp_debug_draw_bins_by_coverage( struct lp_scene *scene )
          struct tile tile;
 
          if (bin->head) {
-            //lp_debug_bin(bin);
+            //lp_debug_bin(bin, x, y);
 
-            do_debug_bin(&tile, bin, FALSE);
+            do_debug_bin(&tile, bin, x, y, FALSE);
 
             total += tile.coverage;
             possible += 64*64;
@@ -383,10 +396,12 @@ lp_debug_draw_bins_by_coverage( struct lp_scene *scene )
    _total += total;
    _possible += possible;
 
-   debug_printf("overall   total: %llu possible %llu: percentage: %f\n",
+
+   debug_printf("overall   total: %" PRIu64
+                " possible %" PRIu64 ": percentage: %f\n",
                 _total,
                 _possible,
-                _total * 100.0 / (double)_possible);
+                (double) _total * 100.0 / (double)_possible);
 }
 
 
@@ -416,7 +431,7 @@ lp_debug_bins( struct lp_scene *scene )
       for (x = 0; x < scene->tiles_x; x++) {
          struct cmd_bin *bin = lp_scene_get_bin(scene, x, y);
          if (bin->head) {
-            debug_bin(bin);
+            debug_bin(bin, x, y);
          }
       }
    }

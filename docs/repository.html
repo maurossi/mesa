@@ -7,16 +7,23 @@
 </head>
 <body>
 
+<div class="header">
+  <h1>The Mesa 3D Graphics Library</h1>
+</div>
+
+<iframe src="contents.html"></iframe>
+<div class="content">
+
 <h1>Code Repository</h1>
 
 <p>
-Mesa uses <a href="http://git-scm.com"target="_parent">git</a>
+Mesa uses <a href="http://git-scm.com">git</a>
 as its source code management system.
 </p>
 
 <p>
 The master git repository is hosted on
-<a href="http://www.freedesktop.org" target="_parent">freedesktop.org</a>.
+<a href="http://www.freedesktop.org">freedesktop.org</a>.
 </p>
 
 <p>
@@ -29,9 +36,9 @@ You may access the repository either as an
 <p>
 You may also 
 <a href="http://cgit.freedesktop.org/mesa/mesa/"
-target="_parent">browse the main Mesa git repository</a> and the
+>browse the main Mesa git repository</a> and the
 <a href="http://cgit.freedesktop.org/mesa/demos"
-target="_parent">Mesa demos and tests git repository</a>.
+>Mesa demos and tests git repository</a>.
 </p>
 
 
@@ -61,21 +68,40 @@ To get the Mesa sources anonymously (read-only):
 <h2 id="developer">Developer git Access</h2>
 
 <p>
-Mesa developers need to first have an account on
-<a href="http://www.freedesktop.org" target="_parent">freedesktop.org</a>.
-To get an account, please ask Brian or the other Mesa developers for
-permission.
-Then, if there are no objections, follow this
-<a href="http://www.freedesktop.org/wiki/AccountRequests" target="_parent">
-procedure</a>.
+If you wish to become a Mesa developer with git-write privilege, please
+follow this procedure:
 </p>
+<ol>
+<li>Subscribe to the
+<a href="http://lists.freedesktop.org/mailman/listinfo/mesa-dev">mesa-dev</a>
+mailing list.
+<li>Start contributing to the project by
+<a href="submittingpatches.html" target="_parent">submitting patches</a> to
+the mesa-dev list.  Specifically,
+<ul>
+<li>Use <code>git send-mail</code> to post your patches to mesa-dev.
+<li>Wait for someone to review the code and give you a <code>Reviewed-by</code>
+statement.
+<li>You'll have to rely on another Mesa developer to push your initial patches
+after they've been reviewed.
+</ul>
+<li>After you've demonstrated the ability to write good code and have had
+a dozen or so patches accepted you can apply for an account.
+<li>Occasionally, but rarely, someone may be given a git account sooner, but
+only if they're being supervised by another Mesa developer at the same
+organization and planning to work in a limited area of the code or on a
+separate branch.
+<li>To apply for an account, follow
+<a href="http://www.freedesktop.org/wiki/AccountRequests">these directions</a>.
+It's also appreciated if you briefly describe what you intend to do (work
+on a particular driver, add a new extension, etc.) in the bugzilla record.
+</ol>
 
 <p>
 Once your account is established:
 </p>
 
 <ol>
-<li>Install the git software on your computer if needed.<br><br>
 <li>Get an initial, local copy of the repository with:
     <pre>
     git clone git+ssh://username@git.freedesktop.org/git/mesa/mesa
@@ -95,7 +121,7 @@ Once your account is established:
 <h2>Windows Users</h2>
 
 <p>
-If you're <a href="http://git.wiki.kernel.org/index.php/WindowsInstall" target="_parent">
+If you're <a href="http://git.wiki.kernel.org/index.php/WindowsInstall">
 using git on Windows</a> you'll want to enable automatic CR/LF conversion in
 your local copy of the repository:
 </p>
@@ -149,7 +175,7 @@ each time you do a pull.
 </p>
 <li>Small changes to master
 <p>
-If you are an experienced git user working on substancial modifications,
+If you are an experienced git user working on substantial modifications,
 you are probably
 working on a separate branch and would rebase your branch prior to
 merging with master.
@@ -209,9 +235,10 @@ If you want the rebase action to be the default action, then
     git config --global branch.autosetuprebase=always
 </pre>
 <p>
-See <a href="http://www.eecs.harvard.edu/~cduan/technical/git/" target="_parent">Understanding Git Conceptually</a> for a fairly clear explanation about all of this.
+See <a href="http://www.eecs.harvard.edu/~cduan/technical/git/">Understanding Git Conceptually</a> for a fairly clear explanation about all of this.
 </p>
 </ol>
 
+</div>
 </body>
 </html>

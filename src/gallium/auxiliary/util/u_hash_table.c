@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -34,7 +34,7 @@
  * better lookup and cache performance and it appears to be possible to write 
  * a lock-free implementation of such hash tables . 
  * 
- * @author José Fonseca <jrfonseca@tungstengraphics.com>
+ * @author José Fonseca <jfonseca@vmware.com>
  */
 
 
@@ -68,7 +68,7 @@ struct util_hash_table_item
 };
 
 
-static INLINE struct util_hash_table_item *
+static inline struct util_hash_table_item *
 util_hash_table_item(struct cso_hash_iter iter)
 {
    return (struct util_hash_table_item *)cso_hash_iter_data(iter);
@@ -82,7 +82,7 @@ util_hash_table_create(unsigned (*hash)(void *key),
    struct util_hash_table *ht;
    
    ht = MALLOC_STRUCT(util_hash_table);
-   if(!ht)
+   if (!ht)
       return NULL;
    
    ht->cso = cso_hash_create();
@@ -98,7 +98,7 @@ util_hash_table_create(unsigned (*hash)(void *key),
 }
 
 
-static INLINE struct cso_hash_iter
+static inline struct cso_hash_iter
 util_hash_table_find_iter(struct util_hash_table *ht,
                           void *key,
                           unsigned key_hash)
@@ -118,7 +118,7 @@ util_hash_table_find_iter(struct util_hash_table *ht,
 }
 
 
-static INLINE struct util_hash_table_item *
+static inline struct util_hash_table_item *
 util_hash_table_find_item(struct util_hash_table *ht,
                           void *key,
                           unsigned key_hash)
@@ -154,14 +154,14 @@ util_hash_table_set(struct util_hash_table *ht,
    key_hash = ht->hash(key);
 
    item = util_hash_table_find_item(ht, key, key_hash);
-   if(item) {
+   if (item) {
       /* TODO: key/value destruction? */
       item->value = value;
       return PIPE_OK;
    }
    
    item = MALLOC_STRUCT(util_hash_table_item);
-   if(!item)
+   if (!item)
       return PIPE_ERROR_OUT_OF_MEMORY;
    
    item->key = key;
@@ -191,7 +191,7 @@ util_hash_table_get(struct util_hash_table *ht,
    key_hash = ht->hash(key);
 
    item = util_hash_table_find_item(ht, key, key_hash);
-   if(!item)
+   if (!item)
       return NULL;
    
    return item->value;
