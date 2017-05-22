@@ -24,7 +24,7 @@
  *
  */
 
-#include "main/mfeatures.h"
+#include <stdio.h>
 #include "main/mtypes.h"
 #include "main/fbobject.h"
 
@@ -35,21 +35,29 @@
 
 #include "drivers/common/meta.h"
 
+const char * const nouveau_vendor_string = "Nouveau";
+
+const char *
+nouveau_get_renderer_string(unsigned chipset)
+{
+	char hardware_name[32];
+	static char buffer[128];
+
+	snprintf(hardware_name, sizeof(hardware_name), "nv%02X", chipset);
+	driGetRendererString(buffer, hardware_name, 0);
+
+	return buffer;
+}
+
 static const GLubyte *
 nouveau_get_string(struct gl_context *ctx, GLenum name)
 {
-	static char buffer[128];
-	char hardware_name[32];
-
 	switch (name) {
 		case GL_VENDOR:
-			return (GLubyte *)"Nouveau";
+			return (GLubyte *)nouveau_vendor_string;
 
 		case GL_RENDERER:
-			sprintf(hardware_name, "nv%02X", context_chipset(ctx));
-			driGetRendererString(buffer, hardware_name, 0);
-
-			return (GLubyte *)buffer;
+			return (GLubyte *)nouveau_get_renderer_string(context_chipset(ctx));
 		default:
 			return NULL;
 	}
@@ -66,10 +74,11 @@ nouveau_flush(struct gl_context *ctx)
 	if (_mesa_is_winsys_fbo(ctx->DrawBuffer) &&
 	    ctx->DrawBuffer->_ColorDrawBufferIndexes[0] == BUFFER_FRONT_LEFT) {
 		__DRIscreen *screen = nctx->screen->dri_screen;
-		__DRIdri2LoaderExtension *dri2 = screen->dri2.loader;
+		const __DRIdri2LoaderExtension *dri2 = screen->dri2.loader;
 		__DRIdrawable *drawable = nctx->dri_context->driDrawablePriv;
 
-		dri2->flushFrontBuffer(drawable, drawable->loaderPrivate);
+		if (drawable && drawable->loaderPrivate)
+			dri2->flushFrontBuffer(drawable, drawable->loaderPrivate);
 	}
 }
 
@@ -114,8 +123,16 @@ nouveau_clear(struct gl_context *ctx, GLbitfield buffers)
 			fb->Attachment[i].Renderbuffer)->surface;
 
 		if (buf & BUFFER_BITS_COLOR) {
+			const float *color = ctx->Color.ClearColor.f;
+
+			if (fb->Attachment[i].Renderbuffer->_BaseFormat ==
+			    GL_LUMINANCE_ALPHA)
+				value = pack_la_clamp_f(
+						s->format, color[0], color[3]);
+			else
+				value = pack_rgba_clamp_f(s->format, color);
+
 			mask = pack_rgba_i(s->format, ctx->Color.ColorMask[0]);
-			value = pack_rgba_clamp_f(s->format, ctx->Color.ClearColor.f);
 
 			if (mask)
 				context_drv(ctx)->surface_fill(
@@ -155,7 +172,5 @@ nouveau_driver_functions_init(struct dd_function_table *functions)
 	functions->DrawPixels = _mesa_meta_DrawPixels;
 	functions->CopyPixels = _mesa_meta_CopyPixels;
 	functions->Bitmap = _mesa_meta_Bitmap;
-#if FEATURE_EXT_framebuffer_blit
-	functions->BlitFramebuffer = _mesa_meta_BlitFramebuffer;
-#endif
+	functions->BlitFramebuffer = _mesa_meta_and_swrast_BlitFramebuffer;
 }

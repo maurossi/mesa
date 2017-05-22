@@ -115,14 +115,10 @@ __glXFreeVertexArrayState(struct glx_context * gc)
    struct array_state_vector *arrays = state->array_state;
 
    if (arrays) {
-      if (arrays->stack) {
-         free(arrays->stack);
-         arrays->stack = NULL;
-      }
-      if (arrays->arrays) {
-         free(arrays->arrays);
-         arrays->arrays = NULL;
-      }
+      free(arrays->stack);
+      arrays->stack = NULL;
+      free(arrays->arrays);
+      arrays->arrays = NULL;
       free(arrays);
       state->array_state = NULL;
    }
@@ -139,9 +135,6 @@ __glXFreeVertexArrayState(struct glx_context * gc)
  * struct glx_context::server_minor, and __GLXcontext::server_major have been
  * initialized.  These values are used to determine what vertex arrays are
  * supported.
- *
- * \bug
- * Return values from malloc are not properly tested.
  */
 void
 __glXInitVertexArrayState(struct glx_context * gc)
@@ -159,6 +152,11 @@ __glXInitVertexArrayState(struct glx_context * gc)
 
    arrays = calloc(1, sizeof(struct array_state_vector));
    state->array_state = arrays;
+
+   if (arrays == NULL) {
+      __glXSetError(gc, GL_OUT_OF_MEMORY);
+      return;
+   }
 
    arrays->old_DrawArrays_possible = !state->NoDrawArraysProtocol;
    arrays->new_DrawArrays_possible = GL_FALSE;
@@ -208,6 +206,13 @@ __glXInitVertexArrayState(struct glx_context * gc)
    arrays->num_arrays = array_count;
    arrays->arrays = calloc(array_count, sizeof(struct array_state));
 
+   if (arrays->arrays == NULL) {
+      state->array_state = NULL;
+      free(arrays);
+      __glXSetError(gc, GL_OUT_OF_MEMORY);
+      return;
+   }
+
    arrays->arrays[0].data_type = GL_FLOAT;
    arrays->arrays[0].count = 3;
    arrays->arrays[0].key = GL_NORMAL_ARRAY;
@@ -237,8 +242,6 @@ __glXInitVertexArrayState(struct glx_context * gc)
 
       arrays->arrays[4 + i].old_DrawArrays_possible = (i == 0);
       arrays->arrays[4 + i].index = i;
-
-      arrays->arrays[4 + i].header[1] = i + GL_TEXTURE0;
    }
 
    i = 4 + texture_units;
@@ -271,14 +274,12 @@ __glXInitVertexArrayState(struct glx_context * gc)
 
       arrays->arrays[idx + i].old_DrawArrays_possible = 0;
       arrays->arrays[idx + i].index = idx;
-
-      arrays->arrays[idx + i].header[1] = idx;
    }
 
    i += vertex_program_attribs;
 
 
-   /* Vertex array *must* be last becuase of the way that
+   /* Vertex array *must* be last because of the way that
     * emit_DrawArrays_none works.
     */
 
@@ -293,6 +294,14 @@ __glXInitVertexArrayState(struct glx_context * gc)
    arrays->stack = malloc(sizeof(struct array_stack_state)
                           * arrays->num_arrays
                           * __GL_CLIENT_ATTRIB_STACK_DEPTH);
+
+   if (arrays->stack == NULL) {
+      state->array_state = NULL;
+      free(arrays->arrays);
+      free(arrays);
+      __glXSetError(gc, GL_OUT_OF_MEMORY);
+      return;
+   }
 }
 
 
@@ -310,7 +319,7 @@ calculate_single_vertex_size_none(const struct array_state_vector *arrays)
 
    for (i = 0; i < arrays->num_arrays; i++) {
       if (arrays->arrays[i].enabled) {
-         single_vertex_size += ((uint16_t *) arrays->arrays[i].header)[0];
+         single_vertex_size += arrays->arrays[i].header[0];
       }
    }
 
@@ -338,17 +347,45 @@ emit_element_none(GLubyte * dst,
           * protocol is for a 4Nus.  Since the sizes are small, the
           * performance impact on modern processors should be negligible.
           */
-         (void) memset(dst, 0, ((uint16_t *) arrays->arrays[i].header)[0]);
+         (void) memset(dst, 0, arrays->arrays[i].header[0]);
 
-         (void) memcpy(dst, arrays->arrays[i].header,
-                       arrays->arrays[i].header_size);
+         (void) memcpy(dst, arrays->arrays[i].header, 4);
 
-         dst += arrays->arrays[i].header_size;
+         dst += 4;
 
-         (void) memcpy(dst, ((GLubyte *) arrays->arrays[i].data) + offset,
-                       arrays->arrays[i].element_size);
-
-         dst += __GLX_PAD(arrays->arrays[i].element_size);
+         if (arrays->arrays[i].key == GL_TEXTURE_COORD_ARRAY &&
+             arrays->arrays[i].index > 0) {
+            /* Multi-texture coordinate arrays require the texture target
+             * to be sent.  For doubles it is after the data, for everything
+             * else it is before.
+             */
+            GLenum texture = arrays->arrays[i].index + GL_TEXTURE0;
+            if (arrays->arrays[i].data_type == GL_DOUBLE) {
+               (void) memcpy(dst, ((GLubyte *) arrays->arrays[i].data) + offset,
+                             arrays->arrays[i].element_size);
+               dst += arrays->arrays[i].element_size;
+               (void) memcpy(dst, &texture, 4);
+               dst += 4;
+            } else {
+               (void) memcpy(dst, &texture, 4);
+               dst += 4;
+               (void) memcpy(dst, ((GLubyte *) arrays->arrays[i].data) + offset,
+                             arrays->arrays[i].element_size);
+               dst += __GLX_PAD(arrays->arrays[i].element_size);
+            }
+         } else if (arrays->arrays[i].key == GL_VERTEX_ATTRIB_ARRAY_POINTER) {
+            /* Vertex attribute data requires the index sent first.
+             */
+            (void) memcpy(dst, &arrays->arrays[i].index, 4);
+            dst += 4;
+            (void) memcpy(dst, ((GLubyte *) arrays->arrays[i].data) + offset,
+                          arrays->arrays[i].element_size);
+            dst += __GLX_PAD(arrays->arrays[i].element_size);
+         } else {
+            (void) memcpy(dst, ((GLubyte *) arrays->arrays[i].data) + offset,
+                          arrays->arrays[i].element_size);
+            dst += __GLX_PAD(arrays->arrays[i].element_size);
+         }
       }
    }
 
@@ -1034,7 +1071,7 @@ __indirect_glDrawRangeElements(GLenum mode, GLuint start, GLuint end,
 
 
 void
-__indirect_glMultiDrawArraysEXT(GLenum mode, const GLint *first,
+__indirect_glMultiDrawArrays(GLenum mode, const GLint *first,
                                 const GLsizei *count, GLsizei primcount)
 {
    struct glx_context *gc = __glXGetCurrentContext();
@@ -1060,7 +1097,7 @@ __indirect_glMultiDrawArraysEXT(GLenum mode, const GLint *first,
 
 void
 __indirect_glMultiDrawElementsEXT(GLenum mode, const GLsizei * count,
-                                  GLenum type, const GLvoid ** indices,
+                                  GLenum type, const GLvoid * const * indices,
                                   GLsizei primcount)
 {
    struct glx_context *gc = __glXGetCurrentContext();
@@ -1084,6 +1121,10 @@ __indirect_glMultiDrawElementsEXT(GLenum mode, const GLsizei * count,
 }
 
 
+/* The HDR_SIZE macro argument is the command header size (4 bytes)
+ * plus any additional index word e.g. for texture units or vertex
+ * attributes.
+ */
 #define COMMON_ARRAY_DATA_INIT(a, PTR, TYPE, STRIDE, COUNT, NORMALIZED, HDR_SIZE, OPCODE) \
   do {                                                                  \
     (a)->data = PTR;                                                    \
@@ -1096,9 +1137,8 @@ __indirect_glMultiDrawElementsEXT(GLenum mode, const GLsizei * count,
     (a)->true_stride = (STRIDE == 0)                                    \
       ? (a)->element_size : STRIDE;                                     \
                                                                         \
-    (a)->header_size = HDR_SIZE;                                        \
-    ((uint16_t *) (a)->header)[0] = __GLX_PAD((a)->header_size + (a)->element_size); \
-    ((uint16_t *) (a)->header)[1] = OPCODE;                             \
+    (a)->header[0] = __GLX_PAD(HDR_SIZE + (a)->element_size);           \
+    (a)->header[1] = OPCODE;                                            \
   } while(0)
 
 
@@ -1371,7 +1411,7 @@ __indirect_glTexCoordPointer(GLint size, GLenum type, GLsizei stride,
       X_GLrop_TexCoord4iv
    };
    static const uint16_t float_ops[5] = {
-      0, X_GLrop_TexCoord1dv, X_GLrop_TexCoord2fv, X_GLrop_TexCoord3fv,
+      0, X_GLrop_TexCoord1fv, X_GLrop_TexCoord2fv, X_GLrop_TexCoord3fv,
       X_GLrop_TexCoord4fv
    };
    static const uint16_t double_ops[5] = {
@@ -1388,7 +1428,7 @@ __indirect_glTexCoordPointer(GLint size, GLenum type, GLsizei stride,
       X_GLrop_MultiTexCoord3ivARB, X_GLrop_MultiTexCoord4ivARB
    };
    static const uint16_t mfloat_ops[5] = {
-      0, X_GLrop_MultiTexCoord1dvARB, X_GLrop_MultiTexCoord2fvARB,
+      0, X_GLrop_MultiTexCoord1fvARB, X_GLrop_MultiTexCoord2fvARB,
       X_GLrop_MultiTexCoord3fvARB, X_GLrop_MultiTexCoord4fvARB
    };
    static const uint16_t mdouble_ops[5] = {
@@ -1466,7 +1506,7 @@ __indirect_glTexCoordPointer(GLint size, GLenum type, GLsizei stride,
 
 
 void
-__indirect_glSecondaryColorPointerEXT(GLint size, GLenum type, GLsizei stride,
+__indirect_glSecondaryColorPointer(GLint size, GLenum type, GLsizei stride,
                                       const GLvoid * pointer)
 {
    uint16_t opcode;
@@ -1526,7 +1566,7 @@ __indirect_glSecondaryColorPointerEXT(GLint size, GLenum type, GLsizei stride,
 
 
 void
-__indirect_glFogCoordPointerEXT(GLenum type, GLsizei stride,
+__indirect_glFogCoordPointer(GLenum type, GLsizei stride,
                                 const GLvoid * pointer)
 {
    uint16_t opcode;
@@ -1568,13 +1608,22 @@ __indirect_glFogCoordPointerEXT(GLenum type, GLsizei stride,
 
 
 void
-__indirect_glVertexAttribPointerARB(GLuint index, GLint size,
+__indirect_glVertexAttribPointer(GLuint index, GLint size,
                                     GLenum type, GLboolean normalized,
                                     GLsizei stride, const GLvoid * pointer)
 {
-   static const uint16_t short_ops[5] = { 0, 4189, 4190, 4191, 4192 };
-   static const uint16_t float_ops[5] = { 0, 4193, 4194, 4195, 4196 };
-   static const uint16_t double_ops[5] = { 0, 4197, 4198, 4199, 4200 };
+   static const uint16_t short_ops[5] = {
+        0, X_GLrop_VertexAttrib1svARB, X_GLrop_VertexAttrib2svARB,
+        X_GLrop_VertexAttrib3svARB, X_GLrop_VertexAttrib4svARB
+   };
+   static const uint16_t float_ops[5] = {
+        0, X_GLrop_VertexAttrib1fvARB, X_GLrop_VertexAttrib2fvARB,
+        X_GLrop_VertexAttrib3fvARB, X_GLrop_VertexAttrib4fvARB
+   };
+   static const uint16_t double_ops[5] = {
+        0, X_GLrop_VertexAttrib1dvARB, X_GLrop_VertexAttrib2dvARB,
+        X_GLrop_VertexAttrib3dvARB, X_GLrop_VertexAttrib4dvARB
+   };
 
    uint16_t opcode;
    struct glx_context *gc = __glXGetCurrentContext();
@@ -1667,8 +1716,7 @@ __indirect_glVertexAttribPointerARB(GLuint index, GLint size,
                           opcode);
 
    true_immediate_size = __glXTypeSize(type) * true_immediate_count;
-   ((uint16_t *) (a)->header)[0] = __GLX_PAD(a->header_size
-                                             + true_immediate_size);
+   a->header[0] = __GLX_PAD(8 + true_immediate_size);
 
    if (a->enabled) {
       arrays->array_info_cache_valid = GL_FALSE;
@@ -1705,7 +1753,7 @@ __indirect_glVertexAttribPointerNV(GLuint index, GLint size,
    case GL_SHORT:
    case GL_FLOAT:
    case GL_DOUBLE:
-      __indirect_glVertexAttribPointerARB(index, size, type,
+      __indirect_glVertexAttribPointer(index, size, type,
                                           normalized, stride, pointer);
       return;
    default:
@@ -1716,7 +1764,7 @@ __indirect_glVertexAttribPointerNV(GLuint index, GLint size,
 
 
 void
-__indirect_glClientActiveTextureARB(GLenum texture)
+__indirect_glClientActiveTexture(GLenum texture)
 {
    struct glx_context *const gc = __glXGetCurrentContext();
    __GLXattribute *const state =
@@ -1965,13 +2013,13 @@ __glXPopArrayState(__GLXattribute * state)
                                       stack[i].user_stride, stack[i].data);
          break;
       case GL_SECONDARY_COLOR_ARRAY:
-         __indirect_glSecondaryColorPointerEXT(stack[i].count,
+         __indirect_glSecondaryColorPointer(stack[i].count,
                                                stack[i].data_type,
                                                stack[i].user_stride,
                                                stack[i].data);
          break;
       case GL_FOG_COORDINATE_ARRAY:
-         __indirect_glFogCoordPointerEXT(stack[i].data_type,
+         __indirect_glFogCoordPointer(stack[i].data_type,
                                          stack[i].user_stride, stack[i].data);
          break;
 

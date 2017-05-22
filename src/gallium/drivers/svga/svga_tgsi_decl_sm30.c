@@ -118,7 +118,7 @@ emit_decl(struct svga_shader_emitter *emit,
    dcl.values[0] |= 1<<31;
 
    return (emit_instruction(emit, opcode) &&
-           svga_shader_emit_dwords( emit, dcl.values, Elements(dcl.values)));
+           svga_shader_emit_dwords( emit, dcl.values, ARRAY_SIZE(dcl.values)));
 }
 
 
@@ -216,7 +216,7 @@ ps30_input(struct svga_shader_emitter *emit,
 
       return emit_decl( emit, reg, 0, 0 );
    }
-   else if (emit->key.fkey.light_twoside &&
+   else if (emit->key.fs.light_twoside &&
             (semantic.Name == TGSI_SEMANTIC_COLOR)) {
 
       if (!translate_vs_ps_semantic( emit, semantic, &usage, &index ))
@@ -285,9 +285,9 @@ ps30_input(struct svga_shader_emitter *emit,
          return FALSE;
 
       if (semantic.Name == TGSI_SEMANTIC_GENERIC &&
-          emit->key.fkey.sprite_origin_lower_left &&
+          emit->key.sprite_origin_lower_left &&
           index >= 1 &&
-          emit->key.fkey.tex[index - 1].sprite_texgen) {
+          emit->key.tex[index - 1].sprite_texgen) {
          /* This is a sprite texture coord with lower-left origin.
           * We need to invert the texture T coordinate since the SVGA3D
           * device only supports an upper-left origin.
@@ -319,6 +319,7 @@ ps30_input(struct svga_shader_emitter *emit,
 /**
  * Process a PS output declaration.
  * Note that we don't actually emit a SVGA3DOpDcl for PS outputs.
+ * \idx  register index, such as OUT[2] (not semantic index)
  */
 static boolean
 ps30_output(struct svga_shader_emitter *emit,
@@ -327,14 +328,35 @@ ps30_output(struct svga_shader_emitter *emit,
 {
    switch (semantic.Name) {
    case TGSI_SEMANTIC_COLOR:
-      if (emit->unit == PIPE_SHADER_FRAGMENT &&
-          emit->key.fkey.white_fragments) {
-
-         emit->output_map[idx] = dst_register( SVGA3DREG_TEMP,
-                                               emit->nr_hw_temp++ );
-         emit->temp_col[idx] = emit->output_map[idx];
-         emit->true_col[idx] = dst_register( SVGA3DREG_COLOROUT, 
-                                              semantic.Index );
+      if (emit->unit == PIPE_SHADER_FRAGMENT) {
+         if (emit->key.fs.white_fragments) {
+            /* Used for XOR logicop mode */
+            emit->output_map[idx] = dst_register( SVGA3DREG_TEMP,
+                                                  emit->nr_hw_temp++ );
+            emit->temp_color_output[idx] = emit->output_map[idx];
+            emit->true_color_output[idx] = dst_register(SVGA3DREG_COLOROUT, 
+                                                        semantic.Index);
+         }
+         else if (emit->key.fs.write_color0_to_n_cbufs) {
+            /* We'll write color output [0] to all render targets.
+             * Prepare all the output registers here, but only when the
+             * semantic.Index == 0 so we don't do this more than once.
+             */
+            if (semantic.Index == 0) {
+               unsigned i;
+               for (i = 0; i < emit->key.fs.write_color0_to_n_cbufs; i++) {
+                  emit->output_map[idx+i] = dst_register(SVGA3DREG_TEMP,
+                                                     emit->nr_hw_temp++);
+                  emit->temp_color_output[i] = emit->output_map[idx+i];
+                  emit->true_color_output[i] = dst_register(SVGA3DREG_COLOROUT,
+                                                            i);
+               }
+            }
+         }
+         else {
+            emit->output_map[idx] =
+               dst_register(SVGA3DREG_COLOROUT, semantic.Index);
+         }
       }
       else {
          emit->output_map[idx] = dst_register( SVGA3DREG_COLOROUT, 
@@ -388,7 +410,7 @@ vs30_input(struct svga_shader_emitter *emit,
    dcl.values[0] |= 1<<31;
 
    return (emit_instruction(emit, opcode) &&
-           svga_shader_emit_dwords( emit, dcl.values, Elements(dcl.values)));
+           svga_shader_emit_dwords( emit, dcl.values, ARRAY_SIZE(dcl.values)));
 }
 
 
@@ -465,7 +487,7 @@ vs30_output(struct svga_shader_emitter *emit,
       /* This has the effect of not declaring psiz (below) and not 
        * emitting the final MOV to true_psiz in the postamble.
        */
-      if (!emit->key.vkey.allow_psiz)
+      if (!emit->key.vs.allow_psiz)
          return TRUE;
 
       emit->true_psiz = dcl.dst;
@@ -487,13 +509,32 @@ vs30_output(struct svga_shader_emitter *emit,
    }
 
    return (emit_instruction(emit, opcode) &&
-           svga_shader_emit_dwords( emit, dcl.values, Elements(dcl.values)));
+           svga_shader_emit_dwords( emit, dcl.values, ARRAY_SIZE(dcl.values)));
+}
+
+
+/** Translate PIPE_TEXTURE_x to SVGA3DSAMP_x */
+static ubyte
+svga_tgsi_sampler_type(const struct svga_shader_emitter *emit, int idx)
+{
+   switch (emit->sampler_target[idx]) {
+   case TGSI_TEXTURE_1D:
+      return SVGA3DSAMP_2D;
+   case TGSI_TEXTURE_2D:
+   case TGSI_TEXTURE_RECT:
+      return SVGA3DSAMP_2D;
+   case TGSI_TEXTURE_3D:
+      return SVGA3DSAMP_VOLUME;
+   case TGSI_TEXTURE_CUBE:
+      return SVGA3DSAMP_CUBE;
+   }
+
+   return SVGA3DSAMP_UNKNOWN;
 }
 
 
 static boolean
 ps30_sampler( struct svga_shader_emitter *emit,
-              struct tgsi_declaration_semantic semantic,
               unsigned idx )
 {
    SVGA3DOpDclArgs dcl;
@@ -508,9 +549,20 @@ ps30_sampler( struct svga_shader_emitter *emit,
    dcl.values[0] |= 1<<31;
 
    return (emit_instruction(emit, opcode) &&
-           svga_shader_emit_dwords( emit, dcl.values, Elements(dcl.values)));
+           svga_shader_emit_dwords( emit, dcl.values, ARRAY_SIZE(dcl.values)));
 }
 
+boolean
+svga_shader_emit_samplers_decl( struct svga_shader_emitter *emit )
+{
+   unsigned i;
+
+   for (i = 0; i < emit->num_samplers; i++) {
+      if (!ps30_sampler(emit, i))
+         return FALSE;
+   }
+   return TRUE;
+}
 
 boolean
 svga_translate_decl_sm30( struct svga_shader_emitter *emit,
@@ -521,12 +573,15 @@ svga_translate_decl_sm30( struct svga_shader_emitter *emit,
    unsigned idx;
 
    for( idx = first; idx <= last; idx++ ) {
-      boolean ok;
+      boolean ok = TRUE;
 
       switch (decl->Declaration.File) {
       case TGSI_FILE_SAMPLER:
          assert (emit->unit == PIPE_SHADER_FRAGMENT);
-         ok = ps30_sampler( emit, decl->Semantic, idx );
+         /* just keep track of the number of samplers here.
+          * Will emit the declaration in the helpers function.
+          */
+         emit->num_samplers = MAX2(emit->num_samplers, decl->Range.Last + 1);
          break;
 
       case TGSI_FILE_INPUT:
@@ -541,6 +596,14 @@ svga_translate_decl_sm30( struct svga_shader_emitter *emit,
             ok = vs30_output( emit, decl->Semantic, idx );
          else
             ok = ps30_output( emit, decl->Semantic, idx );
+         break;
+
+      case TGSI_FILE_SAMPLER_VIEW:
+         {
+            unsigned unit = decl->Range.First;
+            assert(decl->Range.First == decl->Range.Last);
+            emit->sampler_target[unit] = decl->SamplerView.Resource;
+         }
          break;
 
       default:

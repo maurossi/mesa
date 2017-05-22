@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   *   Brian Paul
   */
 
@@ -47,54 +47,6 @@
 #include "tgsi/tgsi_exec.h"
 
 DEBUG_GET_ONCE_BOOL_OPTION(gallium_dump_vs, "GALLIUM_DUMP_VS", FALSE)
-
-
-/**
- * Set a vertex shader constant buffer.
- * \param slot  which constant buffer in [0, PIPE_MAX_CONSTANT_BUFFERS-1]
- * \param constants  the mapped buffer
- * \param size  size of buffer in bytes
- */
-void
-draw_vs_set_constants(struct draw_context *draw,
-                      unsigned slot,
-                      const void *constants,
-                      unsigned size)
-{
-   const int alignment = 16;
-
-   /* check if buffer is 16-byte aligned */
-   if (((uintptr_t)constants) & (alignment - 1)) {
-      /* if not, copy the constants into a new, 16-byte aligned buffer */
-      if (size > draw->vs.const_storage_size[slot]) {
-         if (draw->vs.aligned_constant_storage[slot]) {
-            align_free((void *)draw->vs.aligned_constant_storage[slot]);
-            draw->vs.const_storage_size[slot] = 0;
-         }
-         draw->vs.aligned_constant_storage[slot] =
-            align_malloc(size, alignment);
-         if (draw->vs.aligned_constant_storage[slot]) {
-            draw->vs.const_storage_size[slot] = size;
-         }
-      }
-      assert(constants);
-      if (draw->vs.aligned_constant_storage[slot]) {
-         memcpy((void *)draw->vs.aligned_constant_storage[slot],
-                constants,
-                size);
-      }
-      constants = draw->vs.aligned_constant_storage[slot];
-   }
-
-   draw->vs.aligned_constants[slot] = constants;
-}
-
-
-void draw_vs_set_viewport( struct draw_context *draw,
-                           const struct pipe_viewport_state *viewport )
-{
-}
-
 
 
 struct draw_vertex_shader *
@@ -121,6 +73,7 @@ draw_create_vertex_shader(struct draw_context *draw,
    {
       uint i;
       bool found_clipvertex = FALSE;
+      vs->position_output = -1;
       for (i = 0; i < vs->info.num_outputs; i++) {
          if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_POSITION &&
              vs->info.output_semantic_index[i] == 0)
@@ -132,11 +85,12 @@ draw_create_vertex_shader(struct draw_context *draw,
                   vs->info.output_semantic_index[i] == 0) {
             found_clipvertex = TRUE;
             vs->clipvertex_output = i;
-         } else if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_CLIPDIST) {
-            if (vs->info.output_semantic_index[i] == 0)
-               vs->clipdistance_output[0] = i;
-            else
-               vs->clipdistance_output[1] = i;
+         } else if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_VIEWPORT_INDEX)
+            vs->viewport_index_output = i;
+         else if (vs->info.output_semantic_name[i] == TGSI_SEMANTIC_CLIPDIST) {
+            debug_assert(vs->info.output_semantic_index[i] <
+                         PIPE_MAX_CLIP_OR_CULL_DISTANCE_ELEMENT_COUNT);
+            vs->ccdistance_output[vs->info.output_semantic_index[i]] = i;
          }
       }
       if (!found_clipvertex)
@@ -161,9 +115,11 @@ draw_bind_vertex_shader(struct draw_context *draw,
       draw->vs.position_output = dvs->position_output;
       draw->vs.edgeflag_output = dvs->edgeflag_output;
       draw->vs.clipvertex_output = dvs->clipvertex_output;
-      draw->vs.clipdistance_output[0] = dvs->clipdistance_output[0];
-      draw->vs.clipdistance_output[1] = dvs->clipdistance_output[1];
+      draw->vs.ccdistance_output[0] = dvs->ccdistance_output[0];
+      draw->vs.ccdistance_output[1] = dvs->ccdistance_output[1];
       dvs->prepare( dvs, draw );
+      draw_update_clip_flags(draw);
+      draw_update_viewport_flags(draw);
    }
    else {
       draw->vs.vertex_shader = NULL;
@@ -193,9 +149,11 @@ draw_vs_init( struct draw_context *draw )
 {
    draw->dump_vs = debug_get_option_gallium_dump_vs();
 
-   draw->vs.tgsi.machine = tgsi_exec_machine_create();
-   if (!draw->vs.tgsi.machine)
-      return FALSE;
+   if (!draw->llvm) {
+      draw->vs.tgsi.machine = tgsi_exec_machine_create(PIPE_SHADER_VERTEX);
+      if (!draw->vs.tgsi.machine)
+         return FALSE;
+   }
 
    draw->vs.emit_cache = translate_cache_create();
    if (!draw->vs.emit_cache) 
@@ -211,21 +169,14 @@ draw_vs_init( struct draw_context *draw )
 void
 draw_vs_destroy( struct draw_context *draw )
 {
-   uint i;
-
    if (draw->vs.fetch_cache)
       translate_cache_destroy(draw->vs.fetch_cache);
 
    if (draw->vs.emit_cache)
       translate_cache_destroy(draw->vs.emit_cache);
 
-   for (i = 0; i < PIPE_MAX_CONSTANT_BUFFERS; i++) {
-      if (draw->vs.aligned_constant_storage[i]) {
-         align_free((void *)draw->vs.aligned_constant_storage[i]);
-      }
-   }
-
-   tgsi_exec_machine_destroy(draw->vs.tgsi.machine);
+   if (!draw->llvm)
+      tgsi_exec_machine_destroy(draw->vs.tgsi.machine);
 }
 
 
@@ -245,17 +196,17 @@ draw_vs_lookup_variant( struct draw_vertex_shader *vs,
    /* Else have to create a new one: 
     */
    variant = vs->create_variant( vs, key );
-   if (variant == NULL)
+   if (!variant)
       return NULL;
 
    /* Add it to our list, could be smarter: 
     */
-   if (vs->nr_variants < Elements(vs->variant)) {
+   if (vs->nr_variants < ARRAY_SIZE(vs->variant)) {
       vs->variant[vs->nr_variants++] = variant;
    }
    else {
       vs->last_variant++;
-      vs->last_variant %= Elements(vs->variant);
+      vs->last_variant %= ARRAY_SIZE(vs->variant);
       vs->variant[vs->last_variant]->destroy(vs->variant[vs->last_variant]);
       vs->variant[vs->last_variant] = variant;
    }
@@ -292,4 +243,17 @@ draw_vs_get_emit( struct draw_context *draw,
    }
    
    return draw->vs.emit;
+}
+
+void
+draw_vs_attach_so(struct draw_vertex_shader *dvs,
+                  const struct pipe_stream_output_info *info)
+{
+   dvs->state.stream_output = *info;
+}
+
+void
+draw_vs_reset_so(struct draw_vertex_shader *dvs)
+{
+   memset(&dvs->state.stream_output, 0, sizeof(dvs->state.stream_output));
 }

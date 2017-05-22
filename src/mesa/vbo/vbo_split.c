@@ -1,7 +1,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -18,12 +17,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 /* Deal with hardware and/or swtnl maximums:
@@ -99,7 +99,7 @@ GLboolean split_prim_inplace(GLenum mode, GLuint *first, GLuint *incr)
 
 
 void vbo_split_prims( struct gl_context *ctx,
-		      const struct gl_client_array *arrays[],
+		      const struct gl_vertex_array *arrays[],
 		      const struct _mesa_prim *prim,
 		      GLuint nr_prims,
 		      const struct _mesa_index_buffer *ib,
@@ -108,14 +108,6 @@ void vbo_split_prims( struct gl_context *ctx,
 		      vbo_draw_func draw,
 		      const struct split_limits *limits )
 {
-   GLint max_basevertex = prim->basevertex;
-   GLuint i;
-
-   for (i = 1; i < nr_prims; i++)
-      max_basevertex = MAX2(max_basevertex, prim[i].basevertex);
-
-   /* XXX max_basevertex is computed but not used, why? */
-
    if (ib) {
       if (limits->max_indices == 0) {
 	 /* Could traverse the indices, re-emitting vertices in turn.

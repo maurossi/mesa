@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -54,7 +54,7 @@ i915_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    struct i915_context *i915 = i915_context(pipe);
    struct draw_context *draw = i915->draw;
    const void *mapped_indices = NULL;
-
+   unsigned i;
 
    /*
     * Ack vs contants here, helps ipers a lot.
@@ -65,6 +65,16 @@ i915_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
       i915_update_derived(i915);
 
    /*
+    * Map vertex buffers
+    */
+   for (i = 0; i < i915->nr_vertex_buffers; i++) {
+      const void *buf = i915->vertex_buffers[i].user_buffer;
+      if (!buf)
+            buf = i915_buffer(i915->vertex_buffers[i].buffer)->data;
+      draw_set_mapped_vertex_buffer(draw, i, buf, ~0);
+   }
+
+   /*
     * Map index buffer, if present
     */
    if (info->indexed) {
@@ -73,7 +83,7 @@ i915_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
          mapped_indices = i915_buffer(i915->index_buffer.buffer)->data;
       draw_set_indexes(draw,
                        (ubyte *) mapped_indices + i915->index_buffer.offset,
-                       i915->index_buffer.index_size);
+                       i915->index_buffer.index_size, ~0);
    }
 
    if (i915->constants[PIPE_SHADER_VERTEX])
@@ -92,8 +102,14 @@ i915_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
     */
    draw_vbo(i915->draw, info);
 
+   /*
+    * unmap vertex/index buffers
+    */
+   for (i = 0; i < i915->nr_vertex_buffers; i++) {
+      draw_set_mapped_vertex_buffer(i915->draw, i, NULL, 0);
+   }
    if (mapped_indices)
-      draw_set_indexes(draw, NULL, 0);
+      draw_set_indexes(draw, NULL, 0, 0);
 
    if (i915->num_vertex_sampler_views > 0)
       i915_cleanup_vertex_sampling(i915);
@@ -139,12 +155,12 @@ static void i915_destroy(struct pipe_context *pipe)
 }
 
 struct pipe_context *
-i915_create_context(struct pipe_screen *screen, void *priv)
+i915_create_context(struct pipe_screen *screen, void *priv, unsigned flags)
 {
    struct i915_context *i915;
 
    i915 = CALLOC_STRUCT(i915_context);
-   if (i915 == NULL)
+   if (!i915)
       return NULL;
 
    i915->iws = i915_screen(screen)->iws;
@@ -161,10 +177,10 @@ i915_create_context(struct pipe_screen *screen, void *priv)
    i915->base.draw_vbo = i915_draw_vbo;
 
    /* init this before draw */
-   util_slab_create(&i915->transfer_pool, sizeof(struct pipe_transfer),
-                    16, UTIL_SLAB_SINGLETHREADED);
-   util_slab_create(&i915->texture_transfer_pool, sizeof(struct i915_transfer),
-                    16, UTIL_SLAB_SINGLETHREADED);
+   slab_create(&i915->transfer_pool, sizeof(struct pipe_transfer),
+                    16);
+   slab_create(&i915->texture_transfer_pool, sizeof(struct i915_transfer),
+                    16);
 
    /* Batch stream debugging is a bit hacked up at the moment:
     */
@@ -187,16 +203,16 @@ i915_create_context(struct pipe_screen *screen, void *priv)
    i915_init_resource_functions(i915);
    i915_init_query_functions(i915);
 
+   /* Create blitter. */
+   i915->blitter = util_blitter_create(&i915->base);
+   assert(i915->blitter);
+
+   /* must be done before installing Draw stages */
+   util_blitter_cache_all_shaders(i915->blitter);
+
    draw_install_aaline_stage(i915->draw, &i915->base);
    draw_install_aapoint_stage(i915->draw, &i915->base);
    draw_enable_point_sprites(i915->draw, TRUE);
-
-   /* augmented draw pipeline clobbers state functions */
-   i915_init_fixup_state_functions(i915);
-
-   /* Create blitter last - calls state creation functions. */
-   i915->blitter = util_blitter_create(&i915->base);
-   assert(i915->blitter);
 
    i915->dirty = ~0;
    i915->hardware_dirty = ~0;

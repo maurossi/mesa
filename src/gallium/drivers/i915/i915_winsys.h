@@ -61,6 +61,12 @@ enum i915_winsys_buffer_tile
    I915_TILE_Y
 };
 
+enum i915_winsys_flush_flags
+{
+   I915_FLUSH_ASYNC = 0,
+   I915_FLUSH_END_OF_FRAME = 1
+};
+
 struct i915_winsys_batchbuffer {
 
    struct i915_winsys *iws;
@@ -125,7 +131,8 @@ struct i915_winsys {
     * Flush a bufferbatch.
     */
    void (*batchbuffer_flush)(struct i915_winsys_batchbuffer *batch,
-                             struct pipe_fence_handle **fence);
+                             struct pipe_fence_handle **fence,
+                             enum i915_winsys_flush_flags flags);
 
    /**
     * Destroy a batchbuffer.
@@ -169,6 +176,7 @@ struct i915_winsys {
    struct i915_winsys_buffer *
       (*buffer_from_handle)(struct i915_winsys *iws,
                             struct winsys_handle *whandle,
+                            unsigned height,
                             enum i915_winsys_buffer_tile *tiling,
                             unsigned *stride);
 
@@ -239,6 +247,11 @@ struct i915_winsys {
    int (*fence_finish)(struct i915_winsys *iws,
                        struct pipe_fence_handle *fence);
    /*@}*/
+
+   /**
+    * Retrieve the aperture size (in MiB) of the device.
+    */
+   int (*aperture_size)(struct i915_winsys *iws);
 
 
    /**

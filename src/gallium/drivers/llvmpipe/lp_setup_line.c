@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -36,6 +36,8 @@
 #include "lp_rast.h"
 #include "lp_state_fs.h"
 #include "lp_state_setup.h"
+#include "lp_context.h"
+#include "draw/draw_context.h"
 
 #define NUM_CHANNELS 4
 
@@ -44,6 +46,7 @@ struct lp_line_info {
    float dx;
    float dy;
    float oneoverarea;
+   boolean frontfacing;
 
    const float (*v1)[4];
    const float (*v2)[4];
@@ -213,7 +216,8 @@ static void setup_line_coefficients( struct lp_setup_context *setup,
       case LP_INTERP_FACING:
          for (i = 0; i < NUM_CHANNELS; i++)
             if (usage_mask & (1 << i))
-               constant_coef(setup, info, slot+1, 1.0, i);
+               constant_coef(setup, info, slot+1,
+                             info->frontfacing ? 1.0f : -1.0f, i);
          break;
 
       default:
@@ -229,7 +233,7 @@ static void setup_line_coefficients( struct lp_setup_context *setup,
 
 
 
-static INLINE int subpixel_snap( float a )
+static inline int subpixel_snap( float a )
 {
    return util_iround(FIXED_ONE * a);
 }
@@ -258,14 +262,14 @@ print_line(struct lp_setup_context *setup,
 }
 
 
-static INLINE boolean sign(float x){
+static inline boolean sign(float x){
    return x >= 0;  
 }  
 
 
 /* Used on positive floats only:
  */
-static INLINE float fracf(float f)
+static inline float fracf(float f)
 {
    return f - floorf(f);
 }
@@ -277,6 +281,7 @@ try_setup_line( struct lp_setup_context *setup,
                const float (*v1)[4],
                const float (*v2)[4])
 {
+   struct llvmpipe_context *lp_context = (struct llvmpipe_context *)setup->pipe;
    struct lp_scene *scene = setup->scene;
    const struct lp_setup_variant_key *key = &setup->setup.variant->key;
    struct lp_rast_triangle *line;
@@ -289,6 +294,8 @@ try_setup_line( struct lp_setup_context *setup,
    int y[4];
    int i;
    int nr_planes = 4;
+   unsigned viewport_index = 0;
+   unsigned layer = 0;
    
    /* linewidth should be interpreted as integer */
    int fixed_width = util_iround(width) * FIXED_ONE;
@@ -304,6 +311,7 @@ try_setup_line( struct lp_setup_context *setup,
    float y2diff;
    float dx, dy;
    float area;
+   const float (*pv)[4];
 
    boolean draw_start;
    boolean draw_end;
@@ -313,13 +321,20 @@ try_setup_line( struct lp_setup_context *setup,
    if (0)
       print_line(setup, v1, v2);
 
-   if (setup->scissor_test) {
-      nr_planes = 8;
+   if (setup->flatshade_first) {
+      pv = v1;
    }
    else {
-      nr_planes = 4;
+      pv = v2;
    }
-
+   if (setup->viewport_index_slot > 0) {
+      unsigned *udata = (unsigned*)pv[setup->viewport_index_slot];
+      viewport_index = lp_clamp_viewport_idx(*udata);
+   }
+   if (setup->layer_slot > 0) {
+      layer = *(unsigned*)pv[setup->layer_slot];
+      layer = MIN2(layer, scene->fb_max_layer);
+   }
 
    dx = v1[0][0] - v2[0][0];
    dy = v1[0][1] - v2[0][1];
@@ -531,11 +546,6 @@ try_setup_line( struct lp_setup_context *setup,
       y[3] = subpixel_snap(v1[0][1] + y_offset     - setup->pixel_offset);
    }
 
-
-
-   LP_COUNT(nr_tris);
-
- 
    /* Bounding rectangle (in pixels) */
    {
       /* Yes this is necessary to accurately calculate bounding boxes
@@ -543,7 +553,7 @@ try_setup_line( struct lp_setup_context *setup,
        * up needing a bottom-left fill convention, which requires
        * slightly different rounding.
        */
-      int adj = (setup->pixel_offset != 0) ? 1 : 0;
+      int adj = (setup->bottom_edge_rule != 0) ? 1 : 0;
 
       bbox.x0 = (MIN4(x[0], x[1], x[2], x[3]) + (FIXED_ONE-1)) >> FIXED_ORDER;
       bbox.x1 = (MAX4(x[0], x[1], x[2], x[3]) + (FIXED_ONE-1)) >> FIXED_ORDER;
@@ -563,7 +573,7 @@ try_setup_line( struct lp_setup_context *setup,
       return TRUE;
    }
 
-   if (!u_rect_test_intersection(&setup->draw_region, &bbox)) {
+   if (!u_rect_test_intersection(&setup->draw_regions[viewport_index], &bbox)) {
       if (0) debug_printf("offscreen\n");
       LP_COUNT(nr_culled_tris);
       return TRUE;
@@ -573,6 +583,18 @@ try_setup_line( struct lp_setup_context *setup,
     */
    bbox.x0 = MAX2(bbox.x0, 0);
    bbox.y0 = MAX2(bbox.y0, 0);
+
+   nr_planes = 4;
+   /*
+    * Determine how many scissor planes we need, that is drop scissor
+    * edges if the bounding box of the tri is fully inside that edge.
+    */
+   if (setup->scissor_test) {
+      /* why not just use draw_regions */
+      boolean s_planes[4];
+      scissor_planes_needed(s_planes, &bbox, &setup->scissors[viewport_index]);
+      nr_planes += s_planes[0] + s_planes[1] + s_planes[2] + s_planes[3];
+   }
 
    line = lp_setup_alloc_triangle(scene,
                                   key->num_inputs,
@@ -588,6 +610,13 @@ try_setup_line( struct lp_setup_context *setup,
    line->v[1][1] = v2[0][1];
 #endif
 
+   LP_COUNT(nr_tris);
+
+   if (lp_context->active_statistics_queries &&
+       !llvmpipe_rasterization_disabled(lp_context)) {
+      lp_context->pipeline_statistics.c_primitives++;
+   }
+
    /* calculate the deltas */
    plane = GET_PLANES(line);
    plane[0].dcdy = x[0] - x[1];
@@ -600,42 +629,45 @@ try_setup_line( struct lp_setup_context *setup,
    plane[2].dcdx = y[2] - y[3];
    plane[3].dcdx = y[3] - y[0];
 
+   if (draw_will_inject_frontface(lp_context->draw) &&
+       setup->face_slot > 0) {
+      line->inputs.frontfacing = v1[setup->face_slot][0];
+   } else {
+      line->inputs.frontfacing = TRUE;
+   }
 
    /* Setup parameter interpolants:
     */
    info.a0 = GET_A0(&line->inputs);
    info.dadx = GET_DADX(&line->inputs);
    info.dady = GET_DADY(&line->inputs);
+   info.frontfacing = line->inputs.frontfacing;
    setup_line_coefficients(setup, &info); 
 
-   line->inputs.frontfacing = TRUE;
    line->inputs.disable = FALSE;
    line->inputs.opaque = FALSE;
+   line->inputs.layer = layer;
+   line->inputs.viewport_index = viewport_index;
 
+   /*
+    * XXX: this code is mostly identical to the one in lp_setup_tri, except it
+    * uses 4 planes instead of 3. Could share the code (including the sse
+    * assembly, in fact we'd get the 4th plane for free).
+    * The only difference apart from storing the 4th plane would be some
+    * different shuffle for calculating dcdx/dcdy.
+    */
    for (i = 0; i < 4; i++) {
 
-      /* half-edge constants, will be interated over the whole render
+      /* half-edge constants, will be iterated over the whole render
        * target.
        */
-      plane[i].c = plane[i].dcdx * x[i] - plane[i].dcdy * y[i];
+      plane[i].c = IMUL64(plane[i].dcdx, x[i]) - IMUL64(plane[i].dcdy, y[i]);
 
-      
-      /* correct for top-left vs. bottom-left fill convention.  
-       *
-       * note that we're overloading gl_rasterization_rules to mean
-       * both (0.5,0.5) pixel centers *and* bottom-left filling
-       * convention.
-       *
-       * GL actually has a top-left filling convention, but GL's
-       * notion of "top" differs from gallium's...
-       *
-       * Also, sometimes (in FBO cases) GL will render upside down
-       * to its usual method, in which case it will probably want
-       * to use the opposite, top-left convention.
-       */         
+      /* correct for top-left vs. bottom-left fill convention.
+       */
       if (plane[i].dcdx < 0) {
          /* both fill conventions want this - adjust for left edges */
-         plane[i].c++;            
+         plane[i].c++;
       }
       else if (plane[i].dcdx == 0) {
          if (setup->pixel_offset == 0) {
@@ -681,32 +713,49 @@ try_setup_line( struct lp_setup_context *setup,
     * Note that otherwise, the scissor planes only vary in 'C' value,
     * and even then only on state-changes.  Could alternatively store
     * these planes elsewhere.
+    * (Or only store the c value together with a bit indicating which
+    * scissor edge this is, so rasterization would treat them differently
+    * (easier to evaluate) to ordinary planes.)
     */
-   if (nr_planes == 8) {
-      const struct u_rect *scissor = &setup->scissor;
+   if (nr_planes > 4) {
+      /* why not just use draw_regions */
+      const struct u_rect *scissor = &setup->scissors[viewport_index];
+      struct lp_rast_plane *plane_s = &plane[4];
+      boolean s_planes[4];
+      scissor_planes_needed(s_planes, &bbox, scissor);
 
-      plane[4].dcdx = -1;
-      plane[4].dcdy = 0;
-      plane[4].c = 1-scissor->x0;
-      plane[4].eo = 1;
-
-      plane[5].dcdx = 1;
-      plane[5].dcdy = 0;
-      plane[5].c = scissor->x1+1;
-      plane[5].eo = 0;
-
-      plane[6].dcdx = 0;
-      plane[6].dcdy = 1;
-      plane[6].c = 1-scissor->y0;
-      plane[6].eo = 1;
-
-      plane[7].dcdx = 0;
-      plane[7].dcdy = -1;
-      plane[7].c = scissor->y1+1;
-      plane[7].eo = 0;
+      if (s_planes[0]) {
+         plane_s->dcdx = -1 << 8;
+         plane_s->dcdy = 0;
+         plane_s->c = (1-scissor->x0) << 8;
+         plane_s->eo = 1 << 8;
+         plane_s++;
+      }
+      if (s_planes[1]) {
+         plane_s->dcdx = 1 << 8;
+         plane_s->dcdy = 0;
+         plane_s->c = (scissor->x1+1) << 8;
+         plane_s->eo = 0 << 8;
+         plane_s++;
+      }
+      if (s_planes[2]) {
+         plane_s->dcdx = 0;
+         plane_s->dcdy = 1 << 8;
+         plane_s->c = (1-scissor->y0) << 8;
+         plane_s->eo = 1 << 8;
+         plane_s++;
+      }
+      if (s_planes[3]) {
+         plane_s->dcdx = 0;
+         plane_s->dcdy = -1 << 8;
+         plane_s->c = (scissor->y1+1) << 8;
+         plane_s->eo = 0;
+         plane_s++;
+      }
+      assert(plane_s == &plane[nr_planes]);
    }
 
-   return lp_setup_bin_triangle(setup, line, &bbox, nr_planes);
+   return lp_setup_bin_triangle(setup, line, &bbox, nr_planes, viewport_index);
 }
 
 

@@ -40,6 +40,7 @@
 #include "glxclient.h"
 #include "apple_glx_context.h"
 #include "apple_xgl_api.h"
+#include "main/glheader.h"
 #include "glapitable.h"
 
 extern struct _glapi_table * __ogl_framework_api;
@@ -53,7 +54,7 @@ __applegl_glDrawBuffer(GLenum mode)
 {
    struct glx_context * gc = __glXGetCurrentContext();
 
-   if (gc && apple_glx_context_uses_stereo(gc->driContext)) {
+   if (gc != &dummyContext && apple_glx_context_uses_stereo(gc->driContext)) {
       GLenum buf[2];
       GLsizei n = 0;
 
@@ -75,7 +76,7 @@ __applegl_glDrawBuffer(GLenum mode)
          break;
       }
 
-      __ogl_framework_api->DrawBuffersARB(n, buf);
+      __ogl_framework_api->DrawBuffers(n, buf);
    }
    else {
       __ogl_framework_api->DrawBuffer(mode);
@@ -84,11 +85,11 @@ __applegl_glDrawBuffer(GLenum mode)
 
 
 void
-__applegl_glDrawBuffersARB(GLsizei n, const GLenum * bufs)
+__applegl_glDrawBuffers(GLsizei n, const GLenum * bufs)
 {
    struct glx_context * gc = __glXGetCurrentContext();
 
-   if (gc && apple_glx_context_uses_stereo(gc->driContext)) {
+   if (gc != &dummyContext && apple_glx_context_uses_stereo(gc->driContext)) {
       GLenum newbuf[n + 2];
       GLsizei i, outi = 0;
       bool have_back = false;
@@ -116,9 +117,9 @@ __applegl_glDrawBuffersARB(GLsizei n, const GLenum * bufs)
          newbuf[outi++] = GL_FRONT_RIGHT;
       }
 
-      __ogl_framework_api->DrawBuffersARB(outi, newbuf);
+      __ogl_framework_api->DrawBuffers(outi, newbuf);
    }
    else {
-      __ogl_framework_api->DrawBuffersARB(n, bufs);
+      __ogl_framework_api->DrawBuffers(n, bufs);
    }
 }

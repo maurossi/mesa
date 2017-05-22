@@ -28,28 +28,27 @@ include $(LOCAL_PATH)/common/Makefile.sources
 #-----------------------------------------------
 # Variables common to all DRI drivers
 
-MESA_DRI_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/dri
-MESA_DRI_MODULE_UNSTRIPPED_PATH := $(TARGET_OUT_SHARED_LIBRARIES_UNSTRIPPED)/dri
-
 MESA_DRI_CFLAGS := \
-	-DFEATURE_GL=1 \
-	-DFEATURE_ES1=1 \
-	-DFEATURE_ES2=1
+	-DHAVE_ANDROID_PLATFORM
 
 MESA_DRI_C_INCLUDES := \
 	$(addprefix $(MESA_TOP)/, $(mesa_dri_common_INCLUDES)) \
-	$(DRM_TOP) \
-	$(DRM_TOP)/include/drm \
+	$(MESA_TOP)/src/gallium/include \
+	$(MESA_TOP)/src/gallium/auxiliary \
+	external/expat/lib
 
 MESA_DRI_WHOLE_STATIC_LIBRARIES := \
 	libmesa_glsl \
+	libmesa_compiler \
+	libmesa_nir \
+	libmesa_megadriver_stub \
 	libmesa_dri_common \
-	libmesa_dricore
+	libmesa_dricore \
+	libmesa_util
 
 MESA_DRI_SHARED_LIBRARIES := \
 	libcutils \
 	libdl \
-	libdrm \
 	libexpat \
 	libglapi \
 	liblog

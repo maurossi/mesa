@@ -26,10 +26,13 @@
  * Thomas Hellstrom <thellstrom-at-vmware-dot-com>
  */
 
+#include <unistd.h>
+#include <fcntl.h>
 #include "xa_tracker.h"
 #include "xa_priv.h"
 #include "pipe/p_state.h"
 #include "pipe/p_format.h"
+#include "pipe-loader/pipe_loader.h"
 #include "state_tracker/drm_driver.h"
 #include "util/u_inlines.h"
 
@@ -80,7 +83,7 @@ static const unsigned int stype_bind[XA_LAST_SURFACE_TYPE] = { 0,
 };
 
 static struct xa_format_descriptor
-xa_get_pipe_format(enum xa_formats xa_format)
+xa_get_pipe_format(struct xa_tracker *xa, enum xa_formats xa_format)
 {
     struct xa_format_descriptor fdesc;
 
@@ -100,7 +103,13 @@ xa_get_pipe_format(enum xa_formats xa_format)
 	fdesc.format = PIPE_FORMAT_B5G5R5A1_UNORM;
 	break;
     case xa_format_a8:
-	fdesc.format = PIPE_FORMAT_L8_UNORM;
+        if (xa->screen->is_format_supported(xa->screen, PIPE_FORMAT_R8_UNORM,
+                                            PIPE_TEXTURE_2D, 0,
+                                            stype_bind[xa_type_a] |
+                                            PIPE_BIND_RENDER_TARGET))
+            fdesc.format = PIPE_FORMAT_R8_UNORM;
+        else
+            fdesc.format = PIPE_FORMAT_L8_UNORM;
 	break;
     case xa_format_z24:
 	fdesc.format = PIPE_FORMAT_Z24X8_UNORM;
@@ -124,7 +133,12 @@ xa_get_pipe_format(enum xa_formats xa_format)
 	fdesc.format = PIPE_FORMAT_S8_UINT_Z24_UNORM;
 	break;
     case xa_format_yuv8:
-	fdesc.format = PIPE_FORMAT_L8_UNORM;
+        if (xa->screen->is_format_supported(xa->screen, PIPE_FORMAT_R8_UNORM,
+                                            PIPE_TEXTURE_2D, 0,
+                                            stype_bind[xa_type_yuv_component]))
+            fdesc.format = PIPE_FORMAT_R8_UNORM;
+        else
+            fdesc.format = PIPE_FORMAT_L8_UNORM;
 	break;
     default:
 	fdesc.xa_format = xa_format_unknown;
@@ -139,11 +153,17 @@ xa_tracker_create(int drm_fd)
     struct xa_tracker *xa = calloc(1, sizeof(struct xa_tracker));
     enum xa_surface_type stype;
     unsigned int num_formats;
+    int fd;
 
     if (!xa)
 	return NULL;
 
-    xa->screen = driver_descriptor.create_screen(drm_fd);
+    if (drm_fd < 0 || (fd = fcntl(drm_fd, F_DUPFD_CLOEXEC, 3)) < 0)
+	goto out_no_fd;
+
+    if (pipe_loader_drm_probe_fd(&xa->dev, fd))
+	xa->screen = pipe_loader_create_screen(xa->dev);
+
     if (!xa->screen)
 	goto out_no_screen;
 
@@ -172,7 +192,8 @@ xa_tracker_create(int drm_fd)
 	for (i = 0; i < num_preferred[stype]; ++i) {
 	    xa_format = preferred[stype][i];
 
-	    struct xa_format_descriptor fdesc = xa_get_pipe_format(xa_format);
+	    struct xa_format_descriptor fdesc =
+                xa_get_pipe_format(xa, xa_format);
 
 	    if (xa->screen->is_format_supported(xa->screen, fdesc.format,
 						PIPE_TEXTURE_2D, 0, bind)) {
@@ -190,6 +211,11 @@ xa_tracker_create(int drm_fd)
  out_no_pipe:
     xa->screen->destroy(xa->screen);
  out_no_screen:
+    if (xa->dev)
+	pipe_loader_release(&xa->dev, 1);
+    else
+	close(fd);
+ out_no_fd:
     free(xa);
     return NULL;
 }
@@ -200,6 +226,7 @@ xa_tracker_destroy(struct xa_tracker *xa)
     free(xa->supported_formats);
     xa_context_destroy(xa->default_ctx);
     xa->screen->destroy(xa->screen);
+    pipe_loader_release(&xa->dev, 1);
     free(xa);
 }
 
@@ -240,7 +267,7 @@ xa_get_format_stype_depth(struct xa_tracker *xa,
     int found = 0;
 
     for (i = xa->format_map[stype][0]; i <= xa->format_map[stype][1]; ++i) {
-	fdesc = xa_get_pipe_format(xa->supported_formats[i]);
+	fdesc = xa_get_pipe_format(xa, xa->supported_formats[i]);
 	if (fdesc.xa_format != xa_format_unknown &&
 	    xa_format_depth(fdesc.xa_format) == depth) {
 	    found = 1;
@@ -258,7 +285,7 @@ XA_EXPORT int
 xa_format_check_supported(struct xa_tracker *xa,
 			  enum xa_formats xa_format, unsigned int flags)
 {
-    struct xa_format_descriptor fdesc = xa_get_pipe_format(xa_format);
+    struct xa_format_descriptor fdesc = xa_get_pipe_format(xa, xa_format);
     unsigned int bind;
 
     if (fdesc.xa_format == xa_format_unknown)
@@ -279,13 +306,28 @@ xa_format_check_supported(struct xa_tracker *xa,
     return XA_ERR_NONE;
 }
 
-XA_EXPORT struct xa_surface *
-xa_surface_create(struct xa_tracker *xa,
+static unsigned
+handle_type(enum xa_handle_type type)
+{
+    switch (type) {
+    case xa_handle_type_kms:
+	return DRM_API_HANDLE_TYPE_KMS;
+    case xa_handle_type_fd:
+        return DRM_API_HANDLE_TYPE_FD;
+    case xa_handle_type_shared:
+    default:
+	return DRM_API_HANDLE_TYPE_SHARED;
+    }
+}
+
+static struct xa_surface *
+surface_create(struct xa_tracker *xa,
 		  int width,
 		  int height,
 		  int depth,
 		  enum xa_surface_type stype,
-		  enum xa_formats xa_format, unsigned int flags)
+		  enum xa_formats xa_format, unsigned int flags,
+		  struct winsys_handle *whandle)
 {
     struct pipe_resource *template;
     struct xa_surface *srf;
@@ -294,7 +336,7 @@ xa_surface_create(struct xa_tracker *xa,
     if (xa_format == xa_format_unknown)
 	fdesc = xa_get_format_stype_depth(xa, stype, depth);
     else
-	fdesc = xa_get_pipe_format(xa_format);
+	fdesc = xa_get_pipe_format(xa, xa_format);
 
     if (fdesc.xa_format == xa_format_unknown)
 	return NULL;
@@ -320,10 +362,15 @@ xa_surface_create(struct xa_tracker *xa,
     if (flags & XA_FLAG_SCANOUT)
 	template->bind |= PIPE_BIND_SCANOUT;
 
-    srf->tex = xa->screen->resource_create(xa->screen, template);
+    if (whandle)
+	srf->tex = xa->screen->resource_from_handle(xa->screen, template, whandle,
+                                                    PIPE_HANDLE_USAGE_READ_WRITE);
+    else
+	srf->tex = xa->screen->resource_create(xa->screen, template);
     if (!srf->tex)
 	goto out_no_tex;
 
+    srf->refcount = 1;
     srf->xa = xa;
     srf->flags = flags;
     srf->fdesc = fdesc;
@@ -332,6 +379,51 @@ xa_surface_create(struct xa_tracker *xa,
  out_no_tex:
     free(srf);
     return NULL;
+}
+
+
+XA_EXPORT struct xa_surface *
+xa_surface_create(struct xa_tracker *xa,
+		  int width,
+		  int height,
+		  int depth,
+		  enum xa_surface_type stype,
+		  enum xa_formats xa_format, unsigned int flags)
+{
+    return surface_create(xa, width, height, depth, stype, xa_format, flags, NULL);
+}
+
+
+XA_EXPORT struct xa_surface *
+xa_surface_from_handle(struct xa_tracker *xa,
+		  int width,
+		  int height,
+		  int depth,
+		  enum xa_surface_type stype,
+		  enum xa_formats xa_format, unsigned int flags,
+		  uint32_t handle, uint32_t stride)
+{
+    return xa_surface_from_handle2(xa, width, height, depth, stype, xa_format,
+                                   DRM_API_HANDLE_TYPE_SHARED, flags, handle,
+                                   stride);
+}
+
+XA_EXPORT struct xa_surface *
+xa_surface_from_handle2(struct xa_tracker *xa,
+                        int width,
+                        int height,
+                        int depth,
+                        enum xa_surface_type stype,
+                        enum xa_formats xa_format, unsigned int flags,
+                        enum xa_handle_type type,
+                        uint32_t handle, uint32_t stride)
+{
+    struct winsys_handle whandle;
+    memset(&whandle, 0, sizeof(whandle));
+    whandle.type = handle_type(type);
+    whandle.handle = handle;
+    whandle.stride = stride;
+    return surface_create(xa, width, height, depth, stype, xa_format, flags, &whandle);
 }
 
 XA_EXPORT int
@@ -357,7 +449,7 @@ xa_surface_redefine(struct xa_surface *srf,
     if (xa_format == xa_format_unknown)
 	fdesc = xa_get_format_stype_depth(xa, stype, depth);
     else
-	fdesc = xa_get_pipe_format(xa_format);
+	fdesc = xa_get_pipe_format(xa, xa_format);
 
     if (width == template->width0 && height == template->height0 &&
 	template->format == fdesc.format &&
@@ -407,7 +499,7 @@ xa_surface_redefine(struct xa_surface *srf,
 			xa_min(save_height, template->height0), &src_box);
 	pipe->resource_copy_region(pipe, texture,
 				   0, 0, 0, 0, srf->tex, 0, &src_box);
-	pipe->flush(pipe, &xa->default_ctx->last_fence);
+	xa_context_flush(xa->default_ctx);
     }
 
     pipe_resource_reference(&srf->tex, texture);
@@ -418,9 +510,22 @@ xa_surface_redefine(struct xa_surface *srf,
     return XA_ERR_NONE;
 }
 
-XA_EXPORT void
-xa_surface_destroy(struct xa_surface *srf)
+XA_EXPORT struct xa_surface*
+xa_surface_ref(struct xa_surface *srf)
 {
+    if (srf == NULL) {
+	return NULL;
+    }
+    srf->refcount++;
+    return srf;
+}
+
+XA_EXPORT void
+xa_surface_unref(struct xa_surface *srf)
+{
+    if (srf == NULL || --srf->refcount) {
+	return;
+    }
     pipe_resource_reference(&srf->tex, NULL);
     free(srf);
 }
@@ -435,6 +540,7 @@ xa_tracker_version(int *major, int *minor, int *patch)
 
 XA_EXPORT int
 xa_surface_handle(struct xa_surface *srf,
+		  enum xa_handle_type type,
 		  uint32_t * handle, unsigned int *stride)
 {
     struct winsys_handle whandle;
@@ -443,8 +549,10 @@ xa_surface_handle(struct xa_surface *srf,
     boolean res;
 
     memset(&whandle, 0, sizeof(whandle));
-    whandle.type = DRM_API_HANDLE_TYPE_SHARED;
-    res = screen->resource_get_handle(screen, srf->tex, &whandle);
+    whandle.type = handle_type(type);
+    res = screen->resource_get_handle(screen, srf->xa->default_ctx->pipe,
+                                      srf->tex, &whandle,
+                                      PIPE_HANDLE_USAGE_READ_WRITE);
     if (!res)
 	return -XA_ERR_INVAL;
 

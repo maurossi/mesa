@@ -1,7 +1,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  4.1
  *
  * Copyright (C) 1999-2002  Brian Paul   All Rights Reserved.
  *
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -37,12 +37,11 @@ void GLAPIENTRY
 _mesa_Hint( GLenum target, GLenum mode )
 {
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glHint %s %s\n",
-                  _mesa_lookup_enum_by_nr(target),
-                  _mesa_lookup_enum_by_nr(mode));
+                  _mesa_enum_to_string(target),
+                  _mesa_enum_to_string(mode));
 
    if (mode != GL_NICEST && mode != GL_FASTEST && mode != GL_DONT_CARE) {
       _mesa_error(ctx, GL_INVALID_ENUM, "glHint(mode)");
@@ -51,7 +50,7 @@ _mesa_Hint( GLenum target, GLenum mode )
 
    switch (target) {
       case GL_FOG_HINT:
-         if (ctx->API != API_OPENGL && ctx->API != API_OPENGLES)
+         if (ctx->API != API_OPENGL_COMPAT && ctx->API != API_OPENGLES)
             goto invalid_target;
          if (ctx->Hint.Fog == mode)
 	    return;
@@ -67,7 +66,7 @@ _mesa_Hint( GLenum target, GLenum mode )
          ctx->Hint.LineSmooth = mode;
          break;
       case GL_PERSPECTIVE_CORRECTION_HINT:
-         if (ctx->API != API_OPENGL && ctx->API != API_OPENGLES)
+         if (ctx->API != API_OPENGL_COMPAT && ctx->API != API_OPENGLES)
             goto invalid_target;
          if (ctx->Hint.PerspectiveCorrection == mode)
 	    return;
@@ -75,7 +74,7 @@ _mesa_Hint( GLenum target, GLenum mode )
          ctx->Hint.PerspectiveCorrection = mode;
          break;
       case GL_POINT_SMOOTH_HINT:
-         if (ctx->API != API_OPENGL && ctx->API != API_OPENGLES)
+         if (ctx->API != API_OPENGL_COMPAT && ctx->API != API_OPENGLES)
             goto invalid_target;
          if (ctx->Hint.PointSmooth == mode)
 	    return;
@@ -89,16 +88,6 @@ _mesa_Hint( GLenum target, GLenum mode )
 	    return;
 	 FLUSH_VERTICES(ctx, _NEW_HINT);
          ctx->Hint.PolygonSmooth = mode;
-         break;
-
-      /* GL_EXT_clip_volume_hint */
-      case GL_CLIP_VOLUME_CLIPPING_HINT_EXT:
-         if (ctx->API != API_OPENGL)
-            goto invalid_target;
-         if (ctx->Hint.ClipVolumeClipping == mode)
-	    return;
-	 FLUSH_VERTICES(ctx, _NEW_HINT);
-         ctx->Hint.ClipVolumeClipping = mode;
          break;
 
       /* GL_ARB_texture_compression */
@@ -134,11 +123,6 @@ _mesa_Hint( GLenum target, GLenum mode )
       default:
          goto invalid_target;
    }
-
-   if (ctx->Driver.Hint) {
-      (*ctx->Driver.Hint)( ctx, target, mode );
-   }
-
    return;
 
 invalid_target:
@@ -159,7 +143,6 @@ void _mesa_init_hint( struct gl_context * ctx )
    ctx->Hint.LineSmooth = GL_DONT_CARE;
    ctx->Hint.PolygonSmooth = GL_DONT_CARE;
    ctx->Hint.Fog = GL_DONT_CARE;
-   ctx->Hint.ClipVolumeClipping = GL_DONT_CARE;
    ctx->Hint.TextureCompression = GL_DONT_CARE;
    ctx->Hint.GenerateMipmap = GL_DONT_CARE;
    ctx->Hint.FragmentShaderDerivative = GL_DONT_CARE;

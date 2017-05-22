@@ -30,97 +30,17 @@
 #ifndef EGLCOMPILER_INCLUDED
 #define EGLCOMPILER_INCLUDED
 
-
-/**
- * Get standard integer types
- */
-#if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 199901L)
-#  include <stdint.h>
-#elif defined(_MSC_VER)
-   typedef __int8             int8_t;
-   typedef unsigned __int8    uint8_t;
-   typedef __int16            int16_t;
-   typedef unsigned __int16   uint16_t;
-   typedef __int32            int32_t;
-   typedef unsigned __int32   uint32_t;
-   typedef __int64            int64_t;
-   typedef unsigned __int64   uint64_t;
-
-#  if defined(_WIN64)
-     typedef __int64            intptr_t;
-     typedef unsigned __int64   uintptr_t;
-#  else
-     typedef __int32            intptr_t;
-     typedef unsigned __int32   uintptr_t;
-#  endif
-
-#  define INT64_C(__val) __val##i64
-#  define UINT64_C(__val) __val##ui64
-#else
-/* hope the best instead of adding a bunch of ifdef's */
-#  include <stdint.h>
+#ifdef __cplusplus
+extern "C" {
 #endif
 
+#define STATIC_ASSERT(COND) \
+   do { \
+      (void) sizeof(char [1 - 2*!(COND)]); \
+   } while (0)
 
-/**
- * Function inlining
- */
-#ifndef inline
-#  ifdef __cplusplus
-     /* C++ supports inline keyword */
-#  elif defined(__GNUC__)
-#    define inline __inline__
-#  elif defined(_MSC_VER)
-#    define inline __inline
-#  elif defined(__ICL)
-#    define inline __inline
-#  elif defined(__INTEL_COMPILER)
-     /* Intel compiler supports inline keyword */
-#  elif defined(__WATCOMC__) && (__WATCOMC__ >= 1100)
-#    define inline __inline
-#  elif defined(__SUNPRO_C) && defined(__C99FEATURES__)
-     /* C99 supports inline keyword */
-#  elif (__STDC_VERSION__ >= 199901L)
-     /* C99 supports inline keyword */
-#  else
-#    define inline
-#  endif
-#endif
-#ifndef INLINE
-#  define INLINE inline
-#endif
-
-
-/**
- * Function visibility
- */
-#ifndef PUBLIC
-#  if defined(__GNUC__) || (defined(__SUNPRO_C) && (__SUNPRO_C >= 0x590))
-#    define PUBLIC __attribute__((visibility("default")))
-#  elif defined(_MSC_VER)
-#    define PUBLIC __declspec(dllexport)
-#  else
-#    define PUBLIC
-#  endif
-#endif
-
-/**
- * The __FUNCTION__ gcc variable is generally only used for debugging.
- * If we're not using gcc, define __FUNCTION__ as a cpp symbol here.
- * Don't define it if using a newer Windows compiler.
- */
-#ifndef __FUNCTION__
-# if defined(__VMS)
-#  define __FUNCTION__ "VMS$NL:"
-# elif (!defined __GNUC__) && (!defined __xlC__) && \
-      (!defined(_MSC_VER) || _MSC_VER < 1300)
-#  if (__STDC_VERSION__ >= 199901L) /* C99 */ || \
-    (defined(__SUNPRO_C) && defined(__C99FEATURES__))
-#   define __FUNCTION__ __func__
-#  else
-#   define __FUNCTION__ "<unknown>"
-#  endif
-# endif
+#ifdef __cplusplus
+}
 #endif
 
 #endif /* EGLCOMPILER_INCLUDED */

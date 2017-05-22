@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,14 +18,14 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  **************************************************************************/
 
-/* Authors:  Zack Rusin <zack@tungstengraphics.com>
+/* Authors:  Zack Rusin <zackr@vmware.com>
  */
 
 #include "util/u_debug.h"
@@ -80,7 +80,7 @@ unsigned cso_construct_key(void *item, int item_size)
    return hash_key((item), item_size);
 }
 
-static INLINE struct cso_hash *_cso_hash_for_type(struct cso_cache *sc, enum cso_cache_type type)
+static inline struct cso_hash *_cso_hash_for_type(struct cso_cache *sc, enum cso_cache_type type)
 {
    struct cso_hash *hash;
    hash = sc->hashes[type];
@@ -127,7 +127,7 @@ static void delete_velements(void *state, void *data)
    FREE(state);
 }
 
-static INLINE void delete_cso(void *state, enum cso_cache_type type)
+static inline void delete_cso(void *state, enum cso_cache_type type)
 {
    switch (type) {
    case CSO_BLEND:
@@ -152,7 +152,7 @@ static INLINE void delete_cso(void *state, enum cso_cache_type type)
 }
 
 
-static INLINE void sanitize_hash(struct cso_cache *sc,
+static inline void sanitize_hash(struct cso_cache *sc,
                                  struct cso_hash *hash,
                                  enum cso_cache_type type,
                                  int max_size)
@@ -162,7 +162,7 @@ static INLINE void sanitize_hash(struct cso_cache *sc,
 }
 
 
-static INLINE void sanitize_cb(struct cso_hash *hash, enum cso_cache_type type,
+static inline void sanitize_cb(struct cso_hash *hash, enum cso_cache_type type,
                                int max_size, void *user_data)
 {
    /* if we're approach the maximum size, remove fourth of the entries
@@ -247,7 +247,7 @@ struct cso_cache *cso_cache_create(void)
 {
    struct cso_cache *sc = MALLOC_STRUCT(cso_cache);
    int i;
-   if (sc == NULL)
+   if (!sc)
       return NULL;
 
    sc->max_size           = 4096;

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,21 +16,22 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
-
+#include <stdbool.h>
 #include "glheader.h"
 #include "context.h"
+#include "debug_output.h"
 #include "get.h"
 #include "enums.h"
 #include "extensions.h"
-#include "mfeatures.h"
 #include "mtypes.h"
-
+#include "macros.h"
 
 /**
  * Return the string for a glGetString(GL_SHADING_LANGUAGE_VERSION) query.
@@ -40,16 +40,9 @@ static const GLubyte *
 shading_language_version(struct gl_context *ctx)
 {
    switch (ctx->API) {
-   case API_OPENGL:
+   case API_OPENGL_COMPAT:
    case API_OPENGL_CORE:
-      if (!ctx->Extensions.ARB_shader_objects) {
-         _mesa_error(ctx, GL_INVALID_ENUM, "glGetString");
-         return (const GLubyte *) 0;
-      }
-
       switch (ctx->Const.GLSLVersion) {
-      case 110:
-         return (const GLubyte *) "1.10";
       case 120:
          return (const GLubyte *) "1.20";
       case 130:
@@ -66,6 +59,12 @@ shading_language_version(struct gl_context *ctx)
          return (const GLubyte *) "4.10";
       case 420:
          return (const GLubyte *) "4.20";
+      case 430:
+         return (const GLubyte *) "4.30";
+      case 440:
+         return (const GLubyte *) "4.40";
+      case 450:
+         return (const GLubyte *) "4.50";
       default:
          _mesa_problem(ctx,
                        "Invalid GLSL version in shading_language_version()");
@@ -74,8 +73,20 @@ shading_language_version(struct gl_context *ctx)
       break;
 
    case API_OPENGLES2:
-      return (const GLubyte *) "OpenGL ES GLSL ES 1.0.16";
-
+      switch (ctx->Version) {
+      case 20:
+         return (const GLubyte *) "OpenGL ES GLSL ES 1.0.16";
+      case 30:
+         return (const GLubyte *) "OpenGL ES GLSL ES 3.00";
+      case 31:
+         return (const GLubyte *) "OpenGL ES GLSL ES 3.10";
+      case 32:
+         return (const GLubyte *) "OpenGL ES GLSL ES 3.20";
+      default:
+         _mesa_problem(ctx,
+                       "Invalid OpenGL ES version in shading_language_version()");
+         return (const GLubyte *) 0;
+      }
    case API_OPENGLES:
       /* fall-through */
 
@@ -113,7 +124,7 @@ _mesa_GetString( GLenum name )
    assert(ctx->Driver.GetString);
    {
       /* Give the driver the chance to handle this query */
-      const GLubyte *str = (*ctx->Driver.GetString)(ctx, name);
+      const GLubyte *str = ctx->Driver.GetString(ctx, name);
       if (str)
          return str;
    }
@@ -131,24 +142,17 @@ _mesa_GetString( GLenum name )
             return (const GLubyte *) 0;
          }
          return (const GLubyte *) ctx->Extensions.String;
-#if FEATURE_ARB_shading_language_100 || FEATURE_ES2
       case GL_SHADING_LANGUAGE_VERSION:
          if (ctx->API == API_OPENGLES)
             break;
 	 return shading_language_version(ctx);
-#endif
-#if FEATURE_NV_fragment_program || FEATURE_ARB_fragment_program || \
-    FEATURE_NV_vertex_program || FEATURE_ARB_vertex_program
-      case GL_PROGRAM_ERROR_STRING_NV:
-         if (ctx->API == API_OPENGL &&
-             (ctx->Extensions.NV_fragment_program ||
-              ctx->Extensions.ARB_fragment_program ||
-              ctx->Extensions.NV_vertex_program ||
+      case GL_PROGRAM_ERROR_STRING_ARB:
+         if (ctx->API == API_OPENGL_COMPAT &&
+             (ctx->Extensions.ARB_fragment_program ||
               ctx->Extensions.ARB_vertex_program)) {
             return (const GLubyte *) ctx->Program.ErrorString;
          }
          break;
-#endif
       default:
          break;
    }
@@ -179,7 +183,7 @@ _mesa_GetStringi(GLenum name, GLuint index)
       }
       return _mesa_get_enabled_extension(ctx, index);
    default:
-      _mesa_error( ctx, GL_INVALID_ENUM, "glGetString" );
+      _mesa_error(ctx, GL_INVALID_ENUM, "glGetStringi");
       return (const GLubyte *) 0;
    }
 }
@@ -202,81 +206,78 @@ _mesa_GetPointerv( GLenum pname, GLvoid **params )
 {
    GET_CURRENT_CONTEXT(ctx);
    const GLuint clientUnit = ctx->Array.ActiveTexture;
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
+   const char *callerstr;
+
+   if (_mesa_is_desktop_gl(ctx))
+      callerstr = "glGetPointerv";
+   else
+      callerstr = "glGetPointervKHR";
 
    if (!params)
       return;
 
    if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGetPointerv %s\n", _mesa_lookup_enum_by_nr(pname));
+      _mesa_debug(ctx, "%s %s\n", callerstr, _mesa_enum_to_string(pname));
 
    switch (pname) {
       case GL_VERTEX_ARRAY_POINTER:
-         if (ctx->API != API_OPENGL && ctx->API != API_OPENGLES)
+         if (ctx->API != API_OPENGL_COMPAT && ctx->API != API_OPENGLES)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_POS].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_POS].Ptr;
          break;
       case GL_NORMAL_ARRAY_POINTER:
-         if (ctx->API != API_OPENGL && ctx->API != API_OPENGLES)
+         if (ctx->API != API_OPENGL_COMPAT && ctx->API != API_OPENGLES)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_NORMAL].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_NORMAL].Ptr;
          break;
       case GL_COLOR_ARRAY_POINTER:
-         if (ctx->API != API_OPENGL && ctx->API != API_OPENGLES)
+         if (ctx->API != API_OPENGL_COMPAT && ctx->API != API_OPENGLES)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_COLOR0].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_COLOR0].Ptr;
          break;
       case GL_SECONDARY_COLOR_ARRAY_POINTER_EXT:
-         if (ctx->API != API_OPENGL)
+         if (ctx->API != API_OPENGL_COMPAT)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_COLOR1].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_COLOR1].Ptr;
          break;
       case GL_FOG_COORDINATE_ARRAY_POINTER_EXT:
-         if (ctx->API != API_OPENGL)
+         if (ctx->API != API_OPENGL_COMPAT)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_FOG].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_FOG].Ptr;
          break;
       case GL_INDEX_ARRAY_POINTER:
-         if (ctx->API != API_OPENGL)
+         if (ctx->API != API_OPENGL_COMPAT)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_COLOR_INDEX].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_COLOR_INDEX].Ptr;
          break;
       case GL_TEXTURE_COORD_ARRAY_POINTER:
-         if (ctx->API != API_OPENGL && ctx->API != API_OPENGLES)
+         if (ctx->API != API_OPENGL_COMPAT && ctx->API != API_OPENGLES)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_TEX(clientUnit)].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_TEX(clientUnit)].Ptr;
          break;
       case GL_EDGE_FLAG_ARRAY_POINTER:
-         if (ctx->API != API_OPENGL)
+         if (ctx->API != API_OPENGL_COMPAT)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_EDGEFLAG].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_EDGEFLAG].Ptr;
          break;
       case GL_FEEDBACK_BUFFER_POINTER:
-         if (ctx->API != API_OPENGL)
+         if (ctx->API != API_OPENGL_COMPAT)
             goto invalid_pname;
          *params = ctx->Feedback.Buffer;
          break;
       case GL_SELECTION_BUFFER_POINTER:
-         if (ctx->API != API_OPENGL)
+         if (ctx->API != API_OPENGL_COMPAT)
             goto invalid_pname;
          *params = ctx->Select.Buffer;
          break;
-#if FEATURE_point_size_array
       case GL_POINT_SIZE_ARRAY_POINTER_OES:
          if (ctx->API != API_OPENGLES)
             goto invalid_pname;
-         *params = (GLvoid *) ctx->Array.ArrayObj->VertexAttrib[VERT_ATTRIB_POINT_SIZE].Ptr;
+         *params = (GLvoid *) ctx->Array.VAO->VertexAttrib[VERT_ATTRIB_POINT_SIZE].Ptr;
          break;
-#endif
       case GL_DEBUG_CALLBACK_FUNCTION_ARB:
-         if (!_mesa_is_desktop_gl(ctx))
-            goto invalid_pname;
-         *params = (GLvoid *) ctx->Debug.Callback;
-         break;
       case GL_DEBUG_CALLBACK_USER_PARAM_ARB:
-         if (!_mesa_is_desktop_gl(ctx))
-            goto invalid_pname;
-         *params = ctx->Debug.CallbackData;
+         *params = _mesa_get_debug_state_ptr(ctx, pname);
          break;
       default:
          goto invalid_pname;
@@ -285,7 +286,7 @@ _mesa_GetPointerv( GLenum pname, GLvoid **params )
    return;
 
 invalid_pname:
-   _mesa_error( ctx, GL_INVALID_ENUM, "glGetPointerv" );
+   _mesa_error( ctx, GL_INVALID_ENUM, "%s", callerstr);
    return;
 }
 
@@ -304,26 +305,9 @@ _mesa_GetError( void )
    ASSERT_OUTSIDE_BEGIN_END_WITH_RETVAL(ctx, 0);
 
    if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGetError <-- %s\n", _mesa_lookup_enum_by_nr(e));
+      _mesa_debug(ctx, "glGetError <-- %s\n", _mesa_enum_to_string(e));
 
    ctx->ErrorValue = (GLenum) GL_NO_ERROR;
    ctx->ErrorDebugCount = 0;
    return e;
-}
-
-/**
- * Returns an error code specified by GL_ARB_robustness, or GL_NO_ERROR.
- * \return current context status
- */
-GLenum GLAPIENTRY
-_mesa_GetGraphicsResetStatusARB( void )
-{
-   GET_CURRENT_CONTEXT(ctx);
-   GLenum status = ctx->ResetStatus;
-
-   if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGetGraphicsResetStatusARB"
-                       "(always returns GL_NO_ERROR)\n");
-
-   return status;
 }

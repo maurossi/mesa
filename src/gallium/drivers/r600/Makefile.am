@@ -1,50 +1,35 @@
 include Makefile.sources
-
-noinst_LIBRARIES = libr600.a
+include $(top_srcdir)/src/gallium/Automake.inc
 
 AM_CFLAGS = \
-	-I$(top_srcdir)/src/gallium/include \
-	-I$(top_srcdir)/src/gallium/auxiliary \
-	-I$(top_srcdir)/src/gallium/drivers \
-	-I$(top_srcdir)/include \
+	$(GALLIUM_DRIVER_CFLAGS) \
 	$(RADEON_CFLAGS) \
-	$(DEFINES) \
-	$(PIC_FLAGS) \
-	$(VISIBILITY_CFLAGS)
+	-I$(top_srcdir)/src/amd/common
 
-libr600_a_SOURCES = \
-	$(C_SOURCES)
+AM_CXXFLAGS = \
+	$(GALLIUM_DRIVER_CXXFLAGS) \
+	$(RADEON_CFLAGS) \
+	-I$(top_srcdir)/src/amd/common
 
-if NEED_RADEON_GALLIUM
+noinst_LTLIBRARIES = libr600.la
 
-# This is a hack until we can move the backend into the LLVM project.
-# We need to use mklib, because it splits up libradeon.a into object files
-# so that we can link it with the r600 objects.
-libr600_a_AR = $(top_srcdir)/bin/mklib -o r600 -static
+libr600_la_SOURCES = \
+	$(C_SOURCES) \
+	$(CXX_SOURCES)
 
-libr600_a_SOURCES += \
-	$(LLVM_C_SOURCES) \
-	$(LLVM_CXX_SOURCES)
-
-libr600_a_LIBADD = \
-	$(top_builddir)/src/gallium/drivers/radeon/libradeon.a
+if NEED_RADEON_LLVM
 
 AM_CFLAGS += \
 	$(LLVM_CFLAGS) \
 	-I$(top_srcdir)/src/gallium/drivers/radeon/
 
-AM_CXXFLAGS= \
-	$(LLVM_CXXFLAGS)
-else
-libr600_a_AR = $(AR) $(ARFLAGS)
-endif
-
-if USE_R600_LLVM_COMPILER
-AM_CFLAGS += \
-	-DR600_USE_LLVM
 endif
 
 if HAVE_GALLIUM_COMPUTE
 AM_CFLAGS += \
 	-DHAVE_OPENCL
 endif
+
+EXTRA_DIST = \
+	sb/notes.markdown \
+	sb/sb_bc_fmt_def.inc

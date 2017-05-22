@@ -29,14 +29,11 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef __R200_IOCTL_H__
 #define __R200_IOCTL_H__
-
-#include "main/simple_list.h"
-#include "radeon_dri.h"
 
 #include "radeon_bo_gem.h"
 #include "radeon_cs_gem.h"
@@ -76,10 +73,10 @@ void r200SetUpAtomList( r200ContextPtr rmesa );
 #define R200_NEWPRIM( rmesa )			\
 do {						\
    if ( rmesa->radeon.dma.flush )			\
-      rmesa->radeon.dma.flush( rmesa->radeon.glCtx );	\
+      rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );	\
 } while (0)
 
-/* Can accomodate several state changes and primitive changes without
+/* Can accommodate several state changes and primitive changes without
  * actually firing the buffer.
  */
 #define R200_STATECHANGE( rmesa, ATOM )			\
@@ -103,7 +100,7 @@ do {								\
    memcpy( rmesa->hw.ATOM.lastcmd, rmesa->hw.ATOM.cmd,	\
 	   rmesa->hw.ATOM.cmd_size * 4)
 
-static INLINE int R200_DB_STATECHANGE( 
+static inline int R200_DB_STATECHANGE( 
    r200ContextPtr rmesa,
    struct radeon_state_atom *atom )
 {

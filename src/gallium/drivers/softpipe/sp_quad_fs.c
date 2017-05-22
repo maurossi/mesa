@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * Copyright 2008 VMware, Inc.  All rights reserved.
  * 
@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -56,7 +56,7 @@ struct quad_shade_stage
 
 
 /** cast wrapper */
-static INLINE struct quad_shade_stage *
+static inline struct quad_shade_stage *
 quad_shade_stage(struct quad_stage *qs)
 {
    return (struct quad_shade_stage *) qs;
@@ -67,15 +67,20 @@ quad_shade_stage(struct quad_stage *qs)
  * Execute fragment shader for the four fragments in the quad.
  * \return TRUE if quad is alive, FALSE if all four pixels are killed
  */
-static INLINE boolean
+static inline boolean
 shade_quad(struct quad_stage *qs, struct quad_header *quad)
 {
    struct softpipe_context *softpipe = qs->softpipe;
    struct tgsi_exec_machine *machine = softpipe->fs_machine;
 
+   if (softpipe->active_statistics_queries) {
+      softpipe->pipeline_statistics.ps_invocations +=
+         util_bitcount(quad->inout.mask);         
+   }
+
    /* run shader */
    machine->flatshade_color = softpipe->rasterizer->flatshade ? TRUE : FALSE;
-   return softpipe->fs_variant->run( softpipe->fs_variant, machine, quad );
+   return softpipe->fs_variant->run( softpipe->fs_variant, machine, quad, softpipe->early_depth );
 }
 
 

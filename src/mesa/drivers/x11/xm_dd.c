@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.2
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -54,9 +54,9 @@ finish_or_flush( struct gl_context *ctx )
 {
    const XMesaContext xmesa = XMESA_CONTEXT(ctx);
    if (xmesa) {
-      _glthread_LOCK_MUTEX(_xmesa_lock);
+      mtx_lock(&_xmesa_lock);
       XSync( xmesa->display, False );
-      _glthread_UNLOCK_MUTEX(_xmesa_lock);
+      mtx_unlock(&_xmesa_lock);
    }
 }
 
@@ -366,12 +366,10 @@ xmesa_DrawPixels_8R8G8B( struct gl_context *ctx,
          buf = (GLubyte *) ctx->Driver.MapBufferRange(ctx, 0,
 						      unpack->BufferObj->Size,
 						      GL_MAP_READ_BIT,
-						      unpack->BufferObj);
+						      unpack->BufferObj,
+                                                      MAP_INTERNAL);
          if (!buf) {
-            /* buffer is already mapped - that's an error */
-            _mesa_error(ctx, GL_INVALID_OPERATION,
-                        "glDrawPixels(PBO is mapped)");
-            return;
+            return; /* error */
          }
          pixels = ADD_POINTERS(buf, pixels);
       }
@@ -388,10 +386,10 @@ xmesa_DrawPixels_8R8G8B( struct gl_context *ctx,
          const int rowLength = clippedUnpack.RowLength;
          XMesaImage ximage;
 
-         ASSERT(xmesa->xm_visual->dithered_pf == PF_8R8G8B);
-         ASSERT(xmesa->xm_visual->undithered_pf == PF_8R8G8B);
-         ASSERT(dpy);
-         ASSERT(gc);
+         assert(xmesa->xm_visual->dithered_pf == PF_8R8G8B);
+         assert(xmesa->xm_visual->undithered_pf == PF_8R8G8B);
+         assert(dpy);
+         assert(gc);
 
          /* This is a little tricky since all coordinates up to now have
           * been in the OpenGL bottom-to-top orientation.  X is top-to-bottom
@@ -417,7 +415,7 @@ xmesa_DrawPixels_8R8G8B( struct gl_context *ctx,
       }
 
       if (_mesa_is_bufferobj(unpack->BufferObj)) {
-         ctx->Driver.UnmapBuffer(ctx, unpack->BufferObj);
+         ctx->Driver.UnmapBuffer(ctx, unpack->BufferObj, MAP_INTERNAL);
       }
    }
    else {
@@ -500,12 +498,10 @@ xmesa_DrawPixels_5R6G5B( struct gl_context *ctx,
          buf = (GLubyte *) ctx->Driver.MapBufferRange(ctx, 0,
 						      unpack->BufferObj->Size,
 						      GL_MAP_READ_BIT,
-						      unpack->BufferObj);
+						      unpack->BufferObj,
+                                                      MAP_INTERNAL);
          if (!buf) {
-            /* buffer is already mapped - that's an error */
-            _mesa_error(ctx, GL_INVALID_OPERATION,
-                        "glDrawPixels(PBO is mapped)");
-            return;
+            return; /* error */
          }
          pixels = ADD_POINTERS(buf, pixels);
       }
@@ -522,9 +518,9 @@ xmesa_DrawPixels_5R6G5B( struct gl_context *ctx,
          const int rowLength = clippedUnpack.RowLength;
          XMesaImage ximage;
 
-         ASSERT(xmesa->xm_visual->undithered_pf == PF_5R6G5B);
-         ASSERT(dpy);
-         ASSERT(gc);
+         assert(xmesa->xm_visual->undithered_pf == PF_5R6G5B);
+         assert(dpy);
+         assert(gc);
 
          /* This is a little tricky since all coordinates up to now have
           * been in the OpenGL bottom-to-top orientation.  X is top-to-bottom
@@ -550,7 +546,7 @@ xmesa_DrawPixels_5R6G5B( struct gl_context *ctx,
       }
 
       if (unpack->BufferObj->Name) {
-         ctx->Driver.UnmapBuffer(ctx, unpack->BufferObj);
+         ctx->Driver.UnmapBuffer(ctx, unpack->BufferObj, MAP_INTERNAL);
       }
    }
    else {
@@ -618,8 +614,8 @@ xmesa_CopyPixels( struct gl_context *ctx,
       struct xmesa_renderbuffer *dstXrb
          = xmesa_renderbuffer(ctx->DrawBuffer->_ColorDrawBuffers[0]);
 
-      ASSERT(dpy);
-      ASSERT(gc);
+      assert(dpy);
+      assert(gc);
 
       /* Note: we don't do any special clipping work here.  We could,
        * but X will do it for us.
@@ -750,17 +746,13 @@ xmesa_update_state( struct gl_context *ctx, GLbitfield new_state )
  * That problem led to the GLX_MESA_resize_buffers extension.
  */
 static void
-xmesa_viewport(struct gl_context *ctx, GLint x, GLint y, GLsizei w, GLsizei h)
+xmesa_viewport(struct gl_context *ctx)
 {
    XMesaContext xmctx = XMESA_CONTEXT(ctx);
    XMesaBuffer xmdrawbuf = XMESA_BUFFER(ctx->WinSysDrawBuffer);
    XMesaBuffer xmreadbuf = XMESA_BUFFER(ctx->WinSysReadBuffer);
    xmesa_check_and_update_buffer_size(xmctx, xmdrawbuf);
    xmesa_check_and_update_buffer_size(xmctx, xmreadbuf);
-   (void) x;
-   (void) y;
-   (void) w;
-   (void) h;
 }
 
 
@@ -804,9 +796,6 @@ xmesa_begin_query(struct gl_context *ctx, struct gl_query_object *q)
 /**
  * Return the difference between the two given times in microseconds.
  */
-#ifdef __VMS
-#define suseconds_t unsigned int
-#endif
 static GLuint64EXT
 time_diff(const struct timeval *t0, const struct timeval *t1)
 {
@@ -844,7 +833,6 @@ xmesa_init_driver_functions( XMesaVisual xmvisual,
 {
    driver->GetString = get_string;
    driver->UpdateState = xmesa_update_state;
-   driver->GetBufferSize = NULL; /* OBSOLETE */
    driver->Flush = finish_or_flush;
    driver->Finish = finish_or_flush;
    driver->ColorMask = color_mask;
@@ -853,7 +841,7 @@ xmesa_init_driver_functions( XMesaVisual xmvisual,
    if (TEST_META_FUNCS) {
       driver->Clear = _mesa_meta_Clear;
       driver->CopyPixels = _mesa_meta_CopyPixels;
-      driver->BlitFramebuffer = _mesa_meta_BlitFramebuffer;
+      driver->BlitFramebuffer = _mesa_meta_and_swrast_BlitFramebuffer;
       driver->DrawPixels = _mesa_meta_DrawPixels;
       driver->Bitmap = _mesa_meta_Bitmap;
    }

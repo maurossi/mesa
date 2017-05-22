@@ -29,7 +29,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef __R200_CONTEXT_H__
@@ -42,7 +42,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "main/macros.h"
 #include "main/mtypes.h"
-#include "main/colormac.h"
 #include "r200_reg.h"
 #include "r200_vertprog.h"
 
@@ -60,7 +59,7 @@ typedef struct r200_context *r200ContextPtr;
 #include "main/mm.h"
 
 struct r200_vertex_program {
-        struct gl_vertex_program mesa_program; /* Must be first */
+        struct gl_program mesa_program; /* Must be first */
         int translated;
         /* need excess instr: 1 for late loop checking, 2 for 
            additional instr due to instr/attr, 3 for fog */
@@ -109,7 +108,6 @@ struct r200_texture_state {
 #define CTX_RB3D_COLOROFFSET  11
 #define CTX_CMD_2             12 /* why */
 #define CTX_RB3D_COLORPITCH   13 /* why */
-#define CTX_STATE_SIZE_OLDDRM 14
 #define CTX_CMD_3             14
 #define CTX_RB3D_BLENDCOLOR   15
 #define CTX_RB3D_ABLENDCNTL   16
@@ -167,9 +165,6 @@ struct r200_texture_state {
 #define TEX_PP_TXSIZE               4  /*2c0c*/
 #define TEX_PP_TXPITCH              5  /*2c10*/
 #define TEX_PP_BORDER_COLOR         6  /*2c14*/
-#define TEX_CMD_1_OLDDRM            7
-#define TEX_PP_TXOFFSET_OLDDRM      8  /*2d00 */
-#define TEX_STATE_SIZE_OLDDRM       9
 #define TEX_PP_CUBIC_FACES          7
 #define TEX_PP_TXMULTI_CTL          8
 #define TEX_CMD_1_NEWDRM            9
@@ -618,12 +613,16 @@ struct r200_context {
    struct r200_swtcl_info swtcl;
 
    GLboolean using_hyperz;
-   GLboolean texmicrotile;
 
   struct ati_fragment_shader *afs_loaded;
 };
 
-#define R200_CONTEXT(ctx)		((r200ContextPtr)(ctx->DriverCtx))
+
+static inline r200ContextPtr
+R200_CONTEXT(struct gl_context *ctx)
+{
+   return (r200ContextPtr) ctx;
+}
 
 
 extern void r200DestroyContext( __DRIcontext *driContextPriv );
@@ -633,6 +632,7 @@ extern GLboolean r200CreateContext( gl_api api,
 				    unsigned major_version,
 				    unsigned minor_version,
 				    uint32_t flags,
+                                    bool notify_reset,
 				    unsigned *error,
 				    void *sharedContextPrivate);
 extern GLboolean r200MakeCurrent( __DRIcontext *driContextPriv,

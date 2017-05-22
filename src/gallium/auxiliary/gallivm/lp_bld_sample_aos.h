@@ -42,11 +42,12 @@
 
 void
 lp_build_sample_aos(struct lp_build_sample_context *bld,
-                    unsigned unit,
+                    unsigned sampler_unit,
                     LLVMValueRef s,
                     LLVMValueRef t,
                     LLVMValueRef r,
-                    LLVMValueRef lod_ipart,
+                    const LLVMValueRef *offsets,
+                    LLVMValueRef lod_positive,
                     LLVMValueRef lod_fpart,
                     LLVMValueRef ilevel0,
                     LLVMValueRef ilevel1,

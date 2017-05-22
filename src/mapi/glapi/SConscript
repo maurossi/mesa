@@ -8,6 +8,8 @@ Import('*')
 
 env = env.Clone()
 
+env.MSVC2013Compat()
+
 env.Append(CPPDEFINES = [
     'MAPI_MODE_UTIL',
 ])
@@ -16,6 +18,7 @@ if env['platform'] == 'windows':
     env.Append(CPPDEFINES = [
         '_GDI32_', # prevent gl* being declared __declspec(dllimport) in MS headers
         'BUILD_GL32', # declare gl* as __declspec(dllexport) in Mesa headers
+        'KHRONOS_DLL_EXPORTS', # declare gl* as __declspec(dllexport) in Khronos headers
     ])
     if env['gles']:
         env.Append(CPPDEFINES = ['_GLAPI_DLL_EXPORTS'])
@@ -24,8 +27,10 @@ if env['platform'] == 'windows':
         env.Append(CPPDEFINES = ['_GLAPI_NO_EXPORTS'])
 
 env.Append(CPPPATH = [
+    '#/src',
     '#/src/mapi',
     '#/src/mesa',
+    Dir('..'), # src/mapi build path
 ])
 
 glapi_sources = [
@@ -33,7 +38,6 @@ glapi_sources = [
     'glapi_entrypoint.c',
     'glapi_getproc.c',
     'glapi_nop.c',
-    'glthread.c',
     'glapi.c',
 ]
 
@@ -42,14 +46,15 @@ mapi_sources = [
     'u_execmem.c',
 ]
 for s in mapi_sources:
-    o = env.SharedObject(s[:-2], '../mapi/' + s)
+    o = env.SharedObject(s[:-2], '../' + s)
     glapi_sources.append(o)
 
 #
 # Assembly sources
 #
-if env['gcc'] and env['platform'] not in ('darwin', 'windows'):
+if env['platform'] not in ('cygwin', 'darwin', 'windows'):
     GLAPI = '#src/mapi/glapi/'
+    sources = [GLAPI + 'gen/gl_and_es_API.xml'] + env.Glob(GLAPI + 'gen/*.xml')
 
     if env['machine'] == 'x86':
         env.Append(CPPDEFINES = [
@@ -61,7 +66,7 @@ if env['gcc'] and env['platform'] not in ('darwin', 'windows'):
         env.CodeGenerate(
             target = 'glapi_x86.S',
             script = GLAPI + 'gen/gl_x86_asm.py',
-            source = GLAPI + 'gen/gl_API.xml',
+            source = sources,
             command = python_cmd + ' $SCRIPT -f $SOURCE > $TARGET'
             )
     elif env['machine'] == 'x86_64':
@@ -74,7 +79,7 @@ if env['gcc'] and env['platform'] not in ('darwin', 'windows'):
         env.CodeGenerate(
             target = 'glapi_x86-64.S',
             script = GLAPI + 'gen/gl_x86-64_asm.py',
-            source = GLAPI + 'gen/gl_API.xml',
+            source = sources,
             command = python_cmd + ' $SCRIPT -f $SOURCE > $TARGET'
             )
     elif env['machine'] == 'sparc':
@@ -87,22 +92,14 @@ if env['gcc'] and env['platform'] not in ('darwin', 'windows'):
         env.CodeGenerate(
             target = 'glapi_sparc.S',
             script = GLAPI + 'gen/gl_SPARC_asm.py',
-            source = GLAPI + 'gen/gl_API.xml',
+            source = sources,
             command = python_cmd + ' $SCRIPT -f $SOURCE > $TARGET'
             )
     else:
         pass
-
-if env['toolchain'] == 'crossmingw':
-    # compile these files without -gstabs option
-    glapi_sources = env.compile_without_gstabs(glapi_sources, "glapi_dispatch.c")
-    glapi_sources = env.compile_without_gstabs(glapi_sources, "glapi_getproc.c")
 
 glapi = env.ConvenienceLibrary(
     target = 'glapi',
     source = glapi_sources,
 )
 Export('glapi')
-
-
-env.Depends(glapi_sources, glapi_headers)

@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,7 +30,6 @@
  */
 
 
-#include "util/u_clear.h"
 #include "util/u_format.h"
 #include "util/u_pack_color.h"
 #include "i915_context.h"
@@ -66,10 +65,10 @@ i915_clear_emit(struct pipe_context *pipe, unsigned buffers,
 
       util_pack_color(color->f, cbuf->format, &u_color);
       if (util_format_get_blocksize(cbuf_tex->b.b.format) == 4) {
-         clear_color = u_color.ui;
+         clear_color = u_color.ui[0];
          color_clear_bbp = 32;
       } else {
-         clear_color = (u_color.ui & 0xffff) | (u_color.ui << 16);
+         clear_color = (u_color.ui[0] & 0xffff) | (u_color.ui[0] << 16);
          color_clear_bbp = 16;
       }
 
@@ -78,7 +77,7 @@ i915_clear_emit(struct pipe_context *pipe, unsigned buffers,
          util_pack_color(color->f, cbuf->format, &u_color);
       else
          util_pack_color(color->f, PIPE_FORMAT_B8G8R8A8_UNORM, &u_color);
-      clear_color8888 = u_color.ui;
+      clear_color8888 = u_color.ui[0];
    } else
       clear_color = clear_color8888 = 0;
 
@@ -123,7 +122,7 @@ i915_clear_emit(struct pipe_context *pipe, unsigned buffers,
          i915_emit_hardware_state(i915);
 
       if (!BEGIN_BATCH(1 + 2*(7 + 7))) {
-         FLUSH_BATCH(NULL);
+         FLUSH_BATCH(NULL, I915_FLUSH_ASYNC);
 
          i915_emit_hardware_state(i915);
          i915->vbo_flushed = 1;
@@ -174,7 +173,7 @@ i915_clear_emit(struct pipe_context *pipe, unsigned buffers,
          i915_emit_hardware_state(i915);
 
       if (!BEGIN_BATCH(1 + 7 + 7)) {
-         FLUSH_BATCH(NULL);
+         FLUSH_BATCH(NULL, I915_FLUSH_ASYNC);
 
          i915_emit_hardware_state(i915);
          i915->vbo_flushed = 1;
@@ -206,7 +205,7 @@ i915_clear_emit(struct pipe_context *pipe, unsigned buffers,
    /* Flush after clear, its expected to be a costly operation.
     * This is not required, just a heuristic, but without the flush we'd need to
     * clobber the SCISSOR_ENABLE dynamic state. */
-   FLUSH_BATCH(NULL);
+   FLUSH_BATCH(NULL, I915_FLUSH_ASYNC);
 
    i915->last_fired_vertices = i915->fired_vertices;
    i915->fired_vertices = 0;
@@ -221,8 +220,27 @@ i915_clear_blitter(struct pipe_context *pipe, unsigned buffers,
                    const union pipe_color_union *color,
                    double depth, unsigned stencil)
 {
-   util_clear(pipe, &i915_context(pipe)->framebuffer, buffers, color, depth,
-              stencil);
+   struct pipe_framebuffer_state *framebuffer =
+      &i915_context(pipe)->framebuffer;
+   unsigned i;
+
+   for (i = 0; i < framebuffer->nr_cbufs; i++) {
+      if (buffers & (PIPE_CLEAR_COLOR0 << i)) {
+         struct pipe_surface *ps = framebuffer->cbufs[i];
+
+         if (ps) {
+            pipe->clear_render_target(pipe, ps, color, 0, 0, ps->width,
+                                      ps->height, true);
+         }
+      }
+   }
+
+   if (buffers & PIPE_CLEAR_DEPTHSTENCIL) {
+      struct pipe_surface *ps = framebuffer->zsbuf;
+      pipe->clear_depth_stencil(pipe, ps, buffers & PIPE_CLEAR_DEPTHSTENCIL,
+                                depth, stencil,
+                                0, 0, ps->width, ps->height, true);
+   }
 }
 
 void

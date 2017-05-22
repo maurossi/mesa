@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.6
  *
  * Copyright (C) 1995 Thorsten.Ohl @ Physik.TH-Darmstadt.de
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
@@ -19,9 +18,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -30,6 +30,7 @@
  */
 
 
+#include <stdio.h>
 #include "main/core.h"
 #include <GL/glx.h>
 
@@ -241,7 +242,7 @@ glXUseXFont(Font font, int first, int count, int listbase)
    max_bm_width = (max_width + 7) / 8;
    max_bm_height = max_height;
 
-   bm = (GLubyte *) MALLOC((max_bm_width * max_bm_height) * sizeof(GLubyte));
+   bm = malloc((max_bm_width * max_bm_height) * sizeof(GLubyte));
    if (!bm) {
       XFreeFontInfo(NULL, fs, 1);
       _mesa_error(NULL, GL_OUT_OF_MEMORY,
@@ -357,7 +358,7 @@ glXUseXFont(Font font, int first, int count, int listbase)
       glEndList();
    }
 
-   FREE(bm);
+   free(bm);
    XFreeFontInfo(NULL, fs, 1);
    XFreeGC(dpy, gc);
 

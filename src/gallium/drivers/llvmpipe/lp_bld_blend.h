@@ -38,6 +38,7 @@
 struct pipe_blend_state;
 struct lp_type;
 struct lp_build_context;
+struct lp_build_mask_context;
 
 
 LLVMValueRef
@@ -56,25 +57,19 @@ lp_build_blend(struct lp_build_context *bld,
 LLVMValueRef
 lp_build_blend_aos(struct gallivm_state *gallivm,
                    const struct pipe_blend_state *blend,
-                   const enum pipe_format *cbuf_format,
+                   enum pipe_format cbuf_format,
                    struct lp_type type,
                    unsigned rt,
                    LLVMValueRef src,
+                   LLVMValueRef src_alpha,
+                   LLVMValueRef src1,
+                   LLVMValueRef src1_alpha,
                    LLVMValueRef dst,
                    LLVMValueRef mask,
                    LLVMValueRef const_,
-                   const unsigned char swizzle[4]);
-
-
-void
-lp_build_blend_soa(struct gallivm_state *gallivm,
-                   const struct pipe_blend_state *blend,
-                   struct lp_type type,
-                   unsigned rt,
-                   LLVMValueRef src[4],
-                   LLVMValueRef dst[4],
-                   LLVMValueRef const_[4],
-                   LLVMValueRef res[4]);
+                   LLVMValueRef const_alpha,
+                   const unsigned char swizzle[4],
+                   int nr_channels);
 
 
 /**
@@ -105,5 +100,11 @@ lp_build_blend_func_reverse(unsigned rgb_func,
 boolean
 lp_build_blend_func_commutative(unsigned func);
 
+void
+lp_build_alpha_to_coverage(struct gallivm_state *gallivm,
+                           struct lp_type type,
+                           struct lp_build_mask_context *mask,
+                           LLVMValueRef alpha,
+                           boolean do_branch);
 
 #endif /* !LP_BLD_BLEND_H */

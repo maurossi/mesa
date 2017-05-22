@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright 2010 VMware, Inc.
  * All Rights Reserved.
  *
@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -36,6 +36,11 @@ struct pipe_resource;
 struct pipe_shader_state;
 
 
+extern void
+util_pstipple_update_stipple_texture(struct pipe_context *pipe,
+                                     struct pipe_resource *tex,
+                                     const uint32_t pattern[32]);
+
 extern struct pipe_resource *
 util_pstipple_create_stipple_texture(struct pipe_context *pipe,
                                      const uint32_t pattern[32]);
@@ -47,10 +52,11 @@ util_pstipple_create_sampler_view(struct pipe_context *pipe,
 extern void *
 util_pstipple_create_sampler(struct pipe_context *pipe);
 
-extern struct pipe_shader_state *
-util_pstipple_create_fragment_shader(struct pipe_context *pipe,
-                                     struct pipe_shader_state *fs,
-                                     unsigned *samplerUnitOut);
+struct tgsi_token *
+util_pstipple_create_fragment_shader(const struct tgsi_token *tokens,
+                                     unsigned *samplerUnitOut,
+                                     unsigned fixed_unit,
+                                     unsigned wincoordFile);
 
 
 #endif

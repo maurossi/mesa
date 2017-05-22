@@ -12,20 +12,13 @@ Intel i915
 
 Driver for Intel i915 and i945 chipsets.
 
-Identity
-^^^^^^^^
-
-Wrapper driver. The identity driver is a simple skeleton that passes through
-all of its :ref:`Context` and :ref:`Screen` methods to an underlying Context
-and Screen, and as such, it is an excellent starting point for new drivers.
-
 LLVM Softpipe
 ^^^^^^^^^^^^^
 
 A version of :ref:`softpipe` that uses the Low-Level Virtual Machine to
 dynamically generate optimized rasterizing pipelines.
 
-nVidia nvfx
+nVidia nv30
 ^^^^^^^^^^^
 
 Driver for the nVidia nv30 and nv40 families of GPUs.
@@ -34,6 +27,11 @@ nVidia nv50
 ^^^^^^^^^^^
 
 Driver for the nVidia nv50 family of GPUs.
+
+nVidia nvc0
+^^^^^^^^^^^
+
+Driver for the nVidia nvc0 / fermi family of GPUs.
 
 VMware SVGA
 ^^^^^^^^^^^
@@ -45,12 +43,29 @@ ATI r300
 
 Driver for the ATI/AMD r300, r400, and r500 families of GPUs.
 
+ATI/AMD r600
+^^^^^^^^^^^^
+
+Driver for the ATI/AMD r600, r700, Evergreen and Northern Islands families of GPUs.
+
+AMD radeonsi
+^^^^^^^^^^^^
+
+Driver for the AMD Southern Islands family of GPUs.
+
+freedreno
+^^^^^^^^^
+
+Driver for Qualcomm Adreno a2xx, a3xx, and a4xx series of GPUs.
+
 .. _softpipe:
 
 Softpipe
 ^^^^^^^^
 
 Reference software rasterizer. Slow but accurate.
+
+.. _trace:
 
 Trace
 ^^^^^
@@ -63,17 +78,13 @@ Rbug
 
 Wrapper driver. :ref:`rbug` driver used with stand alone rbug-gui.
 
-.. _galahad:
-
-Galahad
-^^^^^^^
-
-Wrapper driver. Sanity checker for the internal gallium state. Normally
-a driver should n't have to sanity check the input it gets from a state
-tracker. Any wrong state received should be perceived as a state tracker bug.
-
 State Trackers
 --------------
+
+Clover
+^^^^^^
+
+Tracker that implements the Khronos OpenCL standard.
 
 .. _dri:
 
@@ -83,14 +94,6 @@ Direct Rendering Infrastructure
 Tracker that implements the client-side DRI protocol, for providing direct
 acceleration services to X11 servers with the DRI extension. Supports DRI1
 and DRI2. Only GL is supported.
-
-.. _egl:
-
-EGL
-^^^
-
-Tracker for the Khronos EGL standard, used to set up GL and GLES contexts
-without extra knowledge of the underlying windowing system.
 
 GLX
 ^^^
@@ -102,20 +105,24 @@ Tracker implementing a GL state machine. Not usable as a standalone tracker;
 Mesa should be built with another state tracker, such as :ref:`DRI` or
 :ref:`EGL`.
 
-Python
-^^^^^^
+VDPAU
+^^^^^
 
-OpenVG
-^^^^^^
+Tracker for Video Decode and Presentation API for Unix.
 
 WGL
 ^^^
 
-Xorg/XFree86 DDX
-^^^^^^^^^^^^^^^^
+Xorg DDX
+^^^^^^^^
 
-Tracker for XFree86 and Xorg X11 servers. Provides device-dependent
+Tracker for Xorg X11 servers. Provides device-dependent
 modesetting and acceleration as a DDX driver.
+
+XvMC
+^^^^
+
+Tracker for X-Video Motion Compensation.
 
 Auxiliary
 ---------

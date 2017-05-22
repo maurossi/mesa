@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,6 +27,8 @@
  **************************************************************************/
 
 #include "postprocess/postprocess.h"
+#include "postprocess/pp_private.h"
+
 #include "cso_cache/cso_context.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_context.h"
@@ -37,27 +39,23 @@
 #include "util/u_memory.h"
 
 /** Initialize the internal details */
-struct program *
-pp_init_prog(struct pp_queue_t *ppq, struct pipe_screen *pscreen)
+struct pp_program *
+pp_init_prog(struct pp_queue_t *ppq, struct pipe_context *pipe,
+             struct cso_context *cso)
 {
-
-   struct program *p;
+   struct pp_program *p;
 
    pp_debug("Initializing program\n");
-   if (!pscreen)
+   if (!pipe)
       return NULL;
 
-   p = CALLOC(1, sizeof(struct program));
+   p = CALLOC(1, sizeof(struct pp_program));
    if (!p)
       return NULL;
 
-   p->screen = pscreen;
-   p->pipe = pscreen->context_create(pscreen, NULL);
-
-   /* XXX this doesn't use the cso_context of the state tracker, but creates
-    * its own. Having 2 existing cso_contexts use 1 pipe_context may cause
-    * undefined behavior! */
-   p->cso = cso_create_context(p->pipe);
+   p->screen = pipe->screen;
+   p->pipe = pipe;
+   p->cso = cso;
 
    {
       static const float verts[4][2][4] = {
@@ -79,8 +77,8 @@ pp_init_prog(struct pp_queue_t *ppq, struct pipe_screen *pscreen)
           }
       };
 
-      p->vbuf = pipe_buffer_create(pscreen, PIPE_BIND_VERTEX_BUFFER,
-                                   PIPE_USAGE_STATIC, sizeof(verts));
+      p->vbuf = pipe_buffer_create(pipe->screen, PIPE_BIND_VERTEX_BUFFER,
+                                   PIPE_USAGE_DEFAULT, sizeof(verts));
       pipe_buffer_write(p->pipe, p->vbuf, 0, sizeof(verts), verts);
    }
 
@@ -91,7 +89,8 @@ pp_init_prog(struct pp_queue_t *ppq, struct pipe_screen *pscreen)
       PIPE_BLENDFACTOR_INV_SRC_ALPHA;
 
    p->rasterizer.cull_face = PIPE_FACE_NONE;
-   p->rasterizer.gl_rasterization_rules = 1;
+   p->rasterizer.half_pixel_center = 1;
+   p->rasterizer.bottom_edge_rule = 1;
    p->rasterizer.depth_clip = 1;
 
    p->sampler.wrap_s = p->sampler.wrap_t = p->sampler.wrap_r =
@@ -132,15 +131,12 @@ pp_init_prog(struct pp_queue_t *ppq, struct pipe_screen *pscreen)
       const uint semantic_indexes[] = { 0, 0 };
       p->passvs = util_make_vertex_passthrough_shader(p->pipe, 2,
                                                       semantic_names,
-                                                      semantic_indexes);
+                                                      semantic_indexes, FALSE);
    }
 
    p->framebuffer.nr_cbufs = 1;
 
-   p->surf.usage = PIPE_BIND_RENDER_TARGET;
    p->surf.format = PIPE_FORMAT_B8G8R8A8_UNORM;
-
-   p->pipe->set_sample_mask(p->pipe, ~0);
 
    return p;
 }

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -28,6 +28,8 @@
 #include "main/imports.h"
 #include "main/format_pack.h"
 #include "main/format_unpack.h"
+#include "main/core.h"
+#include "main/stencil.h"
 
 #include "s_context.h"
 #include "s_depth.h"
@@ -59,7 +61,7 @@ ENDIF
  * within the 4-byte pixel will be either 0 or 3.
  */
 static GLint
-get_stencil_offset(gl_format format)
+get_stencil_offset(mesa_format format)
 {
    const GLubyte one = 1;
    GLubyte pixel[MAX_PIXEL_BYTES];
@@ -128,7 +130,7 @@ apply_stencil_op(const struct gl_context *ctx, GLenum oper, GLuint face,
                  GLuint n, GLubyte stencil[], const GLubyte mask[],
                  GLint stride)
 {
-   const GLubyte ref = ctx->Stencil.Ref[face];
+   const GLubyte ref = _mesa_get_stencil_ref(ctx, face);
    const GLubyte wrtmask = ctx->Stencil.WriteMask[face];
    const GLubyte invmask = (GLubyte) (~wrtmask);
    GLuint i, j;
@@ -215,7 +217,7 @@ do_stencil_test(struct gl_context *ctx, GLuint face, GLuint n,
    GLboolean allfail = GL_FALSE;
    GLuint i, j;
    const GLuint valueMask = ctx->Stencil.ValueMask[face];
-   const GLubyte ref = (GLubyte) (ctx->Stencil.Ref[face] & valueMask);
+   const GLubyte ref = (GLubyte) (_mesa_get_stencil_ref(ctx, face) & valueMask);
    GLubyte s;
 
    /*
@@ -278,7 +280,7 @@ compute_pass_fail_masks(GLuint n, const GLubyte origMask[],
 {
    GLuint i;
    for (i = 0; i < n; i++) {
-      ASSERT(newMask[i] == 0 || newMask[i] == 1);
+      assert(newMask[i] == 0 || newMask[i] == 1);
       passMask[i] = origMask[i] & newMask[i];
       failMask[i] = origMask[i] & (newMask[i] ^ 1);
    }
@@ -298,7 +300,7 @@ get_s8_values(struct gl_context *ctx, struct gl_renderbuffer *rb,
    const GLubyte *map = _swrast_pixel_address(rb, 0, 0);
    GLuint i;
 
-   if (rb->Format == MESA_FORMAT_S8) {
+   if (rb->Format == MESA_FORMAT_S_UINT8) {
       const GLint rowStride = srb->RowStride;
       for (i = 0; i < count; i++) {
          if (x[i] >= 0 && y[i] >= 0 && x[i] < w && y[i] < h) {
@@ -585,7 +587,7 @@ _swrast_clear_stencil_buffer(struct gl_context *ctx)
    }
 
    switch (rb->Format) {
-   case MESA_FORMAT_S8:
+   case MESA_FORMAT_S_UINT8:
       {
          GLubyte clear = ctx->Stencil.Clear & writeMask & 0xff;
          GLubyte mask = (~writeMask) & 0xff;
@@ -612,7 +614,7 @@ _swrast_clear_stencil_buffer(struct gl_context *ctx)
          }
       }
       break;
-   case MESA_FORMAT_S8_Z24:
+   case MESA_FORMAT_Z24_UNORM_S8_UINT:
       {
          GLuint clear = (ctx->Stencil.Clear & writeMask & 0xff) << 24;
          GLuint mask = (((~writeMask) & 0xff) << 24) | 0xffffff;
@@ -625,7 +627,7 @@ _swrast_clear_stencil_buffer(struct gl_context *ctx)
          }
       }
       break;
-   case MESA_FORMAT_Z24_S8:
+   case MESA_FORMAT_S8_UINT_Z24_UNORM:
       {
          GLuint clear = ctx->Stencil.Clear & writeMask & 0xff;
          GLuint mask = 0xffffff00 | ((~writeMask) & 0xff);

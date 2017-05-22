@@ -18,8 +18,8 @@
 #include <stdio.h>
 
 enum pipe_format formats[] = {
-   PIPE_FORMAT_R8G8B8A8_UNORM,
-   PIPE_FORMAT_B8G8R8A8_UNORM,
+   PIPE_FORMAT_RGBA8888_UNORM,
+   PIPE_FORMAT_BGRA8888_UNORM,
    PIPE_FORMAT_NONE
 };
 
@@ -60,25 +60,23 @@ static struct vertex vertices[] =
 
 static void set_viewport( float x, float y,
                           float width, float height,
-                          float near, float far)
+                          float zNear, float zFar)
 {
-   float z = far;
+   float z = zFar;
    float half_width = (float)width / 2.0f;
    float half_height = (float)height / 2.0f;
-   float half_depth = ((float)far - (float)near) / 2.0f;
+   float half_depth = ((float)zFar - (float)zNear) / 2.0f;
    struct pipe_viewport_state vp;
 
    vp.scale[0] = half_width;
    vp.scale[1] = half_height;
    vp.scale[2] = half_depth;
-   vp.scale[3] = 1.0f;
 
    vp.translate[0] = half_width + x;
    vp.translate[1] = half_height + y;
    vp.translate[2] = half_depth + z;
-   vp.translate[3] = 0.0f;
 
-   ctx->set_viewport_state( ctx, &vp );
+   ctx->set_viewport_states( ctx, 0, 1, &vp );
 }
 
 static void set_vertices( void )
@@ -97,16 +95,17 @@ static void set_vertices( void )
    handle = ctx->create_vertex_elements_state(ctx, 2, ve);
    ctx->bind_vertex_elements_state(ctx, handle);
 
+   memset(&vbuf, 0, sizeof vbuf);
 
    vbuf.stride = sizeof( struct vertex );
    vbuf.buffer_offset = 0;
    vbuf.buffer = pipe_buffer_create_with_data(ctx,
                                               PIPE_BIND_VERTEX_BUFFER,
-                                              PIPE_USAGE_STATIC,
+                                              PIPE_USAGE_DEFAULT,
                                               sizeof(vertices),
                                               vertices);
 
-   ctx->set_vertex_buffers(ctx, 1, &vbuf);
+   ctx->set_vertex_buffers(ctx, 0, 1, &vbuf);
 }
 
 static void set_vertex_shader( void )
@@ -151,11 +150,11 @@ static void draw( void )
 
    ctx->clear(ctx, PIPE_CLEAR_COLOR, &clear_color, 0, 0);
    util_draw_arrays(ctx, PIPE_PRIM_QUADS, 0, 4);
-   ctx->flush(ctx, NULL);
+   ctx->flush(ctx, NULL, 0);
 
    graw_save_surface_to_file(ctx, surf, NULL);
 
-   screen->flush_frontbuffer(screen, rttex, 0, 0, window);
+   screen->flush_frontbuffer(screen, rttex, 0, 0, window, NULL);
 }
 
 #define SIZE 16
@@ -210,6 +209,7 @@ static void init_tex( void )
    tex2d[1][1][3] = 255;
 #endif
 
+   memset(&templat, 0, sizeof(templat));
    templat.target = PIPE_TEXTURE_2D;
    templat.format = PIPE_FORMAT_B8G8R8A8_UNORM;
    templat.width0 = SIZE;
@@ -227,14 +227,14 @@ static void init_tex( void )
 
    u_box_2d(0,0,SIZE,SIZE, &box);
 
-   ctx->transfer_inline_write(ctx,
-                              samptex,
-                              0,
-                              PIPE_TRANSFER_WRITE,
-                              &box,
-                              tex2d,
-                              sizeof tex2d[0],
-                              sizeof tex2d);
+   ctx->texture_subdata(ctx,
+                        samptex,
+                        0,
+                        PIPE_TRANSFER_WRITE,
+                        &box,
+                        tex2d,
+                        sizeof tex2d[0],
+                        sizeof tex2d);
 
    /* Possibly read back & compare against original data:
     */
@@ -242,12 +242,10 @@ static void init_tex( void )
    {
       struct pipe_transfer *t;
       uint32_t *ptr;
-      t = pipe_get_transfer(ctx, samptex,
-                            0, 0, /* level, layer */
-                            PIPE_TRANSFER_READ,
-                            0, 0, SIZE, SIZE); /* x, y, width, height */
-
-      ptr = ctx->transfer_map(ctx, t);
+      ptr = pipe_transfer_map(ctx, samptex,
+                              0, 0, /* level, layer */
+                              PIPE_TRANSFER_READ,
+                              0, 0, SIZE, SIZE, &t); /* x, y, width, height */
 
       if (memcmp(ptr, tex2d, sizeof tex2d) != 0) {
          assert(0);
@@ -255,8 +253,6 @@ static void init_tex( void )
       }
 
       ctx->transfer_unmap(ctx, t);
-
-      ctx->transfer_destroy(ctx, t);
    }
 
    memset(&sv_template, 0, sizeof sv_template);
@@ -270,7 +266,7 @@ static void init_tex( void )
    if (sv == NULL)
       exit(5);
 
-   ctx->set_fragment_sampler_views(ctx, 1, &sv);
+   ctx->set_sampler_views(ctx, PIPE_SHADER_FRAGMENT, 0, 1, &sv);
    
 
    memset(&sampler_desc, 0, sizeof sampler_desc);
@@ -289,7 +285,7 @@ static void init_tex( void )
    if (sampler == NULL)
       exit(6);
 
-   ctx->bind_fragment_sampler_states(ctx, 1, &sampler);
+   ctx->bind_sampler_states(ctx, PIPE_SHADER_FRAGMENT, 0, 1, &sampler);
    
 }
 
@@ -318,10 +314,11 @@ static void init( void )
       exit(1);
    }
 
-   ctx = screen->context_create(screen, NULL);
+   ctx = screen->context_create(screen, NULL, 0);
    if (ctx == NULL)
       exit(3);
 
+   memset(&templat, 0, sizeof(templat));
    templat.target = PIPE_TEXTURE_2D;
    templat.format = formats[i];
    templat.width0 = WIDTH;
@@ -339,7 +336,6 @@ static void init( void )
       exit(4);
 
    surf_tmpl.format = templat.format;
-   surf_tmpl.usage = PIPE_BIND_RENDER_TARGET;
    surf_tmpl.u.tex.level = 0;
    surf_tmpl.u.tex.first_layer = 0;
    surf_tmpl.u.tex.last_layer = 0;
@@ -377,7 +373,8 @@ static void init( void )
       void *handle;
       memset(&rasterizer, 0, sizeof rasterizer);
       rasterizer.cull_face = PIPE_FACE_NONE;
-      rasterizer.gl_rasterization_rules = 1;
+      rasterizer.half_pixel_center = 1;
+      rasterizer.bottom_edge_rule = 1;
       rasterizer.depth_clip = 1;
       handle = ctx->create_rasterizer_state(ctx, &rasterizer);
       ctx->bind_rasterizer_state(ctx, handle);

@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -31,6 +31,7 @@
 #include "i915_reg.h"
 #include "i915_context.h"
 #include "i915_fpc.h"
+#include "i915_debug_private.h"
 
 #include "pipe/p_shader_tokens.h"
 #include "util/u_math.h"
@@ -110,7 +111,7 @@ static const float cos_constants[4] = { 1.0,
 /**
  * component-wise negation of ureg
  */
-static INLINE int
+static inline int
 negate(int reg, int x, int y, int z, int w)
 {
    /* Another neat thing about the UREG representation */
@@ -133,8 +134,8 @@ i915_use_passthrough_shader(struct i915_fragment_shader *fs)
    if (fs->program) {
       memcpy(fs->program, passthrough_program, sizeof(passthrough_program));
       memcpy(fs->decl, passthrough_decl, sizeof(passthrough_decl));
-      fs->program_len = Elements(passthrough_program);
-      fs->decl_len = Elements(passthrough_decl);
+      fs->program_len = ARRAY_SIZE(passthrough_program);
+      fs->decl_len = ARRAY_SIZE(passthrough_decl);
    }
    fs->num_constants = 0;
 }
@@ -179,7 +180,7 @@ static uint get_mapping(struct i915_fragment_shader* fs, int unit)
 static uint
 src_vector(struct i915_fp_compile *p,
            const struct i915_full_src_register *source,
-           struct i915_fragment_shader* fs)
+           struct i915_fragment_shader *fs)
 {
    uint index = source->Register.Index;
    uint src = 0, sem_name, sem_ind;
@@ -328,7 +329,7 @@ get_result_flags(const struct i915_full_instruction *inst)
       = inst->Dst[0].Register.WriteMask;
    uint flags = 0x0;
 
-   if (inst->Instruction.Saturate == TGSI_SAT_ZERO_ONE)
+   if (inst->Instruction.Saturate)
       flags |= A0_DEST_SATURATE;
 
    if (writeMask & TGSI_WRITEMASK_X)
@@ -381,8 +382,8 @@ translate_tex_src_target(struct i915_fp_compile *p, uint tex)
 /**
  * Return the number of coords needed to access a given TGSI_TEXTURE_*
  */
-static uint
-texture_num_coords(struct i915_fp_compile *p, uint tex)
+uint
+i915_num_coords(uint tex)
 {
    switch (tex) {
    case TGSI_TEXTURE_SHADOW1D:
@@ -400,7 +401,7 @@ texture_num_coords(struct i915_fp_compile *p, uint tex)
       return 3;
 
    default:
-      i915_program_error(p, "Num coords");
+      debug_printf("Unknown texture target for num coords");
       return 2;
    }
 }
@@ -427,7 +428,7 @@ emit_tex(struct i915_fp_compile *p,
                     sampler,
                     coord,
                     opcode,
-                    texture_num_coords(p, texture) );
+                    i915_num_coords(texture) );
 }
 
 
@@ -440,7 +441,7 @@ static void
 emit_simple_arith(struct i915_fp_compile *p,
                   const struct i915_full_instruction *inst,
                   uint opcode, uint numArgs,
-                  struct i915_fragment_shader* fs)
+                  struct i915_fragment_shader *fs)
 {
    uint arg1, arg2, arg3;
 
@@ -465,7 +466,7 @@ static void
 emit_simple_arith_swap2(struct i915_fp_compile *p,
                         const struct i915_full_instruction *inst,
                         uint opcode, uint numArgs,
-                        struct i915_fragment_shader* fs)
+                        struct i915_fragment_shader *fs)
 {
    struct i915_full_instruction inst2;
 
@@ -499,15 +500,6 @@ i915_translate_instruction(struct i915_fp_compile *p,
    uint tmp = 0;
 
    switch (inst->Instruction.Opcode) {
-   case TGSI_OPCODE_ABS:
-      src0 = src_vector(p, &inst->Src[0], fs);
-      i915_emit_arith(p,
-                      A0_MAX,
-                      get_result_vector(p, &inst->Dst[0]),
-                      get_result_flags(inst), 0,
-                      src0, negate(src0, 1, 1, 1, 1), 0);
-      break;
-
    case TGSI_OPCODE_ADD:
       emit_simple_arith(p, inst, A0_ADD, 2, fs);
       break;
@@ -584,7 +576,7 @@ i915_translate_instruction(struct i915_fp_compile *p,
   case TGSI_OPCODE_DDX:
   case TGSI_OPCODE_DDY:
       /* XXX We just output 0 here */
-      debug_printf("Punting DDX/DDX\n");
+      debug_printf("Punting DDX/DDY\n");
       src0 = get_result_vector(p, &inst->Dst[0]);
       i915_emit_arith(p,
                       A0_MOV,
@@ -662,7 +654,7 @@ i915_translate_instruction(struct i915_fp_compile *p,
       emit_simple_arith(p, inst, A0_FRC, 1, fs);
       break;
 
-   case TGSI_OPCODE_KIL:
+   case TGSI_OPCODE_KILL_IF:
       /* kill if src[0].x < 0 || src[0].y < 0 ... */
       src0 = src_vector(p, &inst->Src[0], fs);
       tmp = i915_get_utemp(p);
@@ -676,10 +668,8 @@ i915_translate_instruction(struct i915_fp_compile *p,
                       1);                    /* num_coord */
       break;
 
-   case TGSI_OPCODE_KILP:
-      /* We emit an unconditional kill; we may want to revisit
-       * if we ever implement conditionals.
-       */
+   case TGSI_OPCODE_KILL:
+      /* unconditional kill */
       tmp = i915_get_utemp(p);
 
       i915_emit_texld(p,
@@ -765,21 +755,7 @@ i915_translate_instruction(struct i915_fp_compile *p,
       break;
 
    case TGSI_OPCODE_MIN:
-      src0 = src_vector(p, &inst->Src[0], fs);
-      src1 = src_vector(p, &inst->Src[1], fs);
-      tmp = i915_get_utemp(p);
-      flags = get_result_flags(inst);
-
-      i915_emit_arith(p,
-                      A0_MAX,
-                      tmp, flags & A0_DEST_CHANNEL_ALL, 0,
-                      negate(src0, 1, 1, 1, 1),
-                      negate(src1, 1, 1, 1, 1), 0);
-
-      i915_emit_arith(p,
-                      A0_MOV,
-                      get_result_vector(p, &inst->Dst[0]),
-                      flags, 0, negate(tmp, 1, 1, 1, 1), 0, 0);
+      emit_simple_arith(p, inst, A0_MIN, 2, fs);
       break;
 
    case TGSI_OPCODE_MOV:
@@ -1046,17 +1022,6 @@ i915_translate_instruction(struct i915_fp_compile *p,
                       negate(tmp, 1, 1, 1, 1), 0);
       break;
 
-   case TGSI_OPCODE_SUB:
-      src0 = src_vector(p, &inst->Src[0], fs);
-      src1 = src_vector(p, &inst->Src[1], fs);
-
-      i915_emit_arith(p,
-                      A0_ADD,
-                      get_result_vector(p, &inst->Dst[0]),
-                      get_result_flags(inst), 0,
-                      src0, negate(src1, 1, 1, 1, 1), 0);
-      break;
-
    case TGSI_OPCODE_TEX:
       emit_tex(p, inst, T0_TEXLD, fs);
       break;
@@ -1110,7 +1075,7 @@ i915_translate_instruction(struct i915_fp_compile *p,
 
 
 static void i915_translate_token(struct i915_fp_compile *p,
-                                 const union i915_full_token* token,
+                                 const union i915_full_token *token,
                                  struct i915_fragment_shader *fs)
 {
    struct i915_fragment_shader *ifs = p->shader;
@@ -1129,7 +1094,7 @@ static void i915_translate_token(struct i915_fp_compile *p,
                == TGSI_FILE_CONSTANT) {
          uint i;
          for (i = token->FullDeclaration.Range.First;
-              i <= token->FullDeclaration.Range.Last;
+              i <= MIN2(token->FullDeclaration.Range.Last, I915_MAX_CONSTANT - 1);
               i++) {
             assert(ifs->constant_flags[i] == 0x0);
             ifs->constant_flags[i] = I915_CONSTFLAG_USER;

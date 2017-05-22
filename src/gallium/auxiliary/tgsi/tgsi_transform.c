@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -109,6 +109,7 @@ tgsi_transform_shader(const struct tgsi_token *tokens_in,
                       struct tgsi_transform_context *ctx)
 {
    uint procType;
+   boolean first_instruction = TRUE;
 
    /* input shader */
    struct tgsi_parse_context parse;
@@ -136,9 +137,9 @@ tgsi_transform_shader(const struct tgsi_token *tokens_in,
       return -1;
    }
    procType = parse.FullHeader.Processor.Processor;
-   assert(procType == TGSI_PROCESSOR_FRAGMENT ||
-          procType == TGSI_PROCESSOR_VERTEX ||
-          procType == TGSI_PROCESSOR_GEOMETRY);
+   assert(procType == PIPE_SHADER_FRAGMENT ||
+          procType == PIPE_SHADER_VERTEX ||
+          procType == PIPE_SHADER_GEOMETRY);
 
 
    /**
@@ -166,10 +167,28 @@ tgsi_transform_shader(const struct tgsi_token *tokens_in,
             struct tgsi_full_instruction *fullinst
                = &parse.FullToken.FullInstruction;
 
-            if (ctx->transform_instruction)
-               ctx->transform_instruction(ctx, fullinst);
-            else
+            if (first_instruction && ctx->prolog) {
+               ctx->prolog(ctx);
+            }
+
+            /* XXX Note: we may also want to look for a main/top-level
+             * TGSI_OPCODE_RET instruction in the future.
+             */
+            if (fullinst->Instruction.Opcode == TGSI_OPCODE_END
+                && ctx->epilog) {
+               /* Emit caller's epilog */
+               ctx->epilog(ctx);
+               /* Emit END */
                ctx->emit_instruction(ctx, fullinst);
+            }
+            else {
+               if (ctx->transform_instruction)
+                  ctx->transform_instruction(ctx, fullinst);
+               else
+                  ctx->emit_instruction(ctx, fullinst);
+            }
+
+            first_instruction = FALSE;
          }
          break;
 
@@ -211,10 +230,6 @@ tgsi_transform_shader(const struct tgsi_token *tokens_in,
       default:
          assert( 0 );
       }
-   }
-
-   if (ctx->epilog) {
-      ctx->epilog(ctx);
    }
 
    tgsi_parse_free (&parse);

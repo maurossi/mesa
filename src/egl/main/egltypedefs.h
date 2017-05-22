@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright 2009-2010 Chia-I Wu <olvaffe@gmail.com>
  * Copyright 2010 LunarG, Inc.
  * All Rights Reserved.
@@ -31,12 +31,15 @@
 #ifndef EGLTYPEDEFS_INCLUDED
 #define EGLTYPEDEFS_INCLUDED
 
-#define EGL_EGLEXT_PROTOTYPES
-
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
 
 #include "eglcompiler.h"
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 typedef struct _egl_api _EGLAPI;
 
@@ -67,5 +70,10 @@ typedef struct _egl_surface _EGLSurface;
 typedef struct _egl_sync _EGLSync;
 
 typedef struct _egl_thread_info _EGLThreadInfo;
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* EGLTYPEDEFS_INCLUDED */

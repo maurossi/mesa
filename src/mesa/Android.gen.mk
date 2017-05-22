@@ -27,18 +27,19 @@ ifeq ($(LOCAL_MODULE_CLASS),)
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 endif
 
-intermediates := $(call local-intermediates-dir)
+intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
 # This is the list of auto-generated files: sources and headers
 sources := \
 	main/enums.c \
-	main/api_exec_es1.c \
-	main/api_exec_es1_dispatch.h \
-	main/api_exec_es1_remap_helper.h \
-	program/program_parse.tab.c \
-	program/lex.yy.c \
+	main/api_exec.c \
 	main/dispatch.h \
-	main/remap_helper.h
+	main/format_pack.c \
+	main/format_unpack.c \
+	main/format_info.h \
+	main/remap_helper.h \
+	main/get_hash.h
 
 LOCAL_SRC_FILES := $(filter-out $(sources), $(LOCAL_SRC_FILES))
 
@@ -59,55 +60,15 @@ LOCAL_GENERATED_SOURCES += $(sources)
 
 glapi := $(MESA_TOP)/src/mapi/glapi/gen
 
-es_src_deps := \
-	$(LOCAL_PATH)/main/APIspec.xml \
-	$(LOCAL_PATH)/main/es_generator.py \
-	$(LOCAL_PATH)/main/APIspecutil.py \
-	$(LOCAL_PATH)/main/APIspec.py
-
-es_hdr_deps := \
+dispatch_deps := \
 	$(wildcard $(glapi)/*.py) \
 	$(wildcard $(glapi)/*.xml)
-
-define local-l-to-c
-	@mkdir -p $(dir $@)
-	@echo "Mesa Lex: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(LEX) -o$@ $<
-endef
-
-define local-y-to-c-and-h
-	@mkdir -p $(dir $@)
-	@echo "Mesa Yacc: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(YACC) -o $@ $<
-endef
 
 define es-gen
 	@mkdir -p $(dir $@)
 	@echo "Gen ES: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	$(hide) $(PRIVATE_SCRIPT) $(1) $(PRIVATE_XML) > $@
 endef
-
-$(intermediates)/main/api_exec_%.c: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/main/es_generator.py
-$(intermediates)/main/api_exec_%.c: PRIVATE_XML := -S $(LOCAL_PATH)/main/APIspec.xml
-$(intermediates)/main/api_exec_%_dispatch.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(glapi)/gl_table.py
-$(intermediates)/main/api_exec_%_dispatch.h: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
-$(intermediates)/main/api_exec_%_remap_helper.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(glapi)/remap_helper.py
-$(intermediates)/main/api_exec_%_remap_helper.h: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
-
-$(intermediates)/main/api_exec_es1.c: $(es_src_deps)
-	$(call es-gen, -V GLES1.1)
-
-$(intermediates)/main/api_exec_%_dispatch.h: $(es_hdr_deps)
-	$(call es-gen, -c $* -m remap_table)
-
-$(intermediates)/main/api_exec_%_remap_helper.h: $(es_hdr_deps)
-	$(call es-gen, -c $*)
-
-$(intermediates)/program/program_parse.tab.c: $(LOCAL_PATH)/program/program_parse.y
-	$(local-y-to-c-and-h)
-
-$(intermediates)/program/lex.yy.c: $(LOCAL_PATH)/program/program_lexer.l
-	$(local-l-to-c)
 
 $(intermediates)/main/git_sha1.h:
 	@mkdir -p $(dir $@)
@@ -129,20 +90,26 @@ $(intermediates)/x86/matypes.h: $(matypes_deps)
 	@echo "MATYPES: $(PRIVATE_MODULE) <= $(notdir $@)"
 	$(hide) $< > $@
 
-$(intermediates)/main/dispatch.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(glapi)/gl_table.py
-$(intermediates)/main/dispatch.h: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
+$(intermediates)/main/dispatch.h: $(prebuilt_intermediates)/main/dispatch.h
+	cp -a $< $@
 
-$(intermediates)/main/dispatch.h: $(es_hdr_deps)
-	$(call es-gen, $* -m remap_table)
+$(intermediates)/main/remap_helper.h: $(prebuilt_intermediates)/main/remap_helper.h
+	cp -a $< $@
 
-$(intermediates)/main/remap_helper.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(glapi)/remap_helper.py
-$(intermediates)/main/remap_helper.h: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
+$(intermediates)/main/enums.c: $(prebuilt_intermediates)/main/enums.c
+	cp -a $< $@
 
-$(intermediates)/main/remap_helper.h: $(es_hdr_deps)
-	$(call es-gen, $*)
+$(intermediates)/main/api_exec.c: $(prebuilt_intermediates)/main/api_exec.c
+	cp -a $< $@
 
-$(intermediates)/main/enums.c: PRIVATE_SCRIPT :=$(MESA_PYTHON2) $(glapi)/gl_enums.py
-$(intermediates)/main/enums.c: PRIVATE_XML := -f $(glapi)/gl_and_es_API.xml
+$(intermediates)/main/get_hash.h: $(prebuilt_intermediates)/main/get_hash.h
+	cp -a $< $@
 
-$(intermediates)/main/enums.c: $(es_src_deps)
-	$(call es-gen)
+$(intermediates)/main/format_info.h: $(prebuilt_intermediates)/main/format_info.h
+	cp -a $< $@
+
+$(intermediates)/main/format_pack.c: $(prebuilt_intermediates)/main/format_pack.c
+	cp -a $< $@
+
+$(intermediates)/main/format_unpack.c: $(prebuilt_intermediates)/main/format_unpack.c
+	cp -a $< $@

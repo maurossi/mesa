@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.1
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -30,50 +30,49 @@
 
 #include "main/glheader.h"
 #include "main/macros.h"
-#include "main/mtypes.h"		/* GLchan hack */
 
 #include "m_translate.h"
 
 
 
 typedef void (*trans_1f_func)(GLfloat *to,
-			      CONST void *ptr,
+			      const void *ptr,
 			      GLuint stride,
 			      GLuint start,
 			      GLuint n );
 
 typedef void (*trans_1ui_func)(GLuint *to,
-			       CONST void *ptr,
+			       const void *ptr,
 			       GLuint stride,
 			       GLuint start,
 			       GLuint n );
 
 typedef void (*trans_1ub_func)(GLubyte *to,
-			       CONST void *ptr,
+			       const void *ptr,
 			       GLuint stride,
 			       GLuint start,
 			       GLuint n );
 
 typedef void (*trans_4ub_func)(GLubyte (*to)[4],
-                               CONST void *ptr,
+                               const void *ptr,
                                GLuint stride,
                                GLuint start,
                                GLuint n );
 
 typedef void (*trans_4us_func)(GLushort (*to)[4],
-                               CONST void *ptr,
+                               const void *ptr,
                                GLuint stride,
                                GLuint start,
                                GLuint n );
 
 typedef void (*trans_4f_func)(GLfloat (*to)[4],
-			      CONST void *ptr,
+			      const void *ptr,
 			      GLuint stride,
 			      GLuint start,
 			      GLuint n );
 
 typedef void (*trans_3fn_func)(GLfloat (*to)[3],
-			      CONST void *ptr,
+			      const void *ptr,
 			      GLuint stride,
 			      GLuint start,
 			      GLuint n );
@@ -84,10 +83,6 @@ typedef void (*trans_3fn_func)(GLfloat (*to)[3],
 #define TYPE_IDX(t) ((t) & 0xf)
 #define MAX_TYPES TYPE_IDX(GL_DOUBLE)+1      /* 0xa + 1 */
 
-
-/* This macro is used on other systems, so undefine it for this module */
-
-#undef	CHECK
 
 static trans_1f_func  _math_trans_1f_tab[MAX_TYPES];
 static trans_1ui_func _math_trans_1ui_tab[MAX_TYPES];
@@ -109,7 +104,6 @@ static trans_4f_func  _math_trans_4fn_tab[5][MAX_TYPES];
 #define STRIDE stride
 #define NEXT_F f += stride
 #define NEXT_F2
-#define CHECK
 
 
 
@@ -530,7 +524,7 @@ static trans_4f_func  _math_trans_4fn_tab[5][MAX_TYPES];
 
 
 static void trans_4_GLubyte_4ub_raw(GLubyte (*t)[4],
-				    CONST void *Ptr,
+				    const void *Ptr,
 				    GLuint stride,
 				    ARGS )
 {
@@ -605,7 +599,6 @@ static void init_translate_raw(void)
 #undef CLASS
 #endif
 #undef ARGS
-#undef CHECK
 #undef SRC_START
 #undef DST_START
 #undef NEXT_F
@@ -625,7 +618,7 @@ void _math_init_translate( void )
  * Translate vector of values to GLfloat [1].
  */
 void _math_trans_1f(GLfloat *to,
-		    CONST void *ptr,
+		    const void *ptr,
 		    GLuint stride,
 		    GLenum type,
 		    GLuint start,
@@ -638,7 +631,7 @@ void _math_trans_1f(GLfloat *to,
  * Translate vector of values to GLuint [1].
  */
 void _math_trans_1ui(GLuint *to,
-		     CONST void *ptr,
+		     const void *ptr,
 		     GLuint stride,
 		     GLenum type,
 		     GLuint start,
@@ -651,7 +644,7 @@ void _math_trans_1ui(GLuint *to,
  * Translate vector of values to GLubyte [1].
  */
 void _math_trans_1ub(GLubyte *to,
-		     CONST void *ptr,
+		     const void *ptr,
 		     GLuint stride,
 		     GLenum type,
 		     GLuint start,
@@ -665,7 +658,7 @@ void _math_trans_1ub(GLubyte *to,
  * Translate vector of values to GLubyte [4].
  */
 void _math_trans_4ub(GLubyte (*to)[4],
-		     CONST void *ptr,
+		     const void *ptr,
 		     GLuint stride,
 		     GLenum type,
 		     GLuint size,
@@ -676,30 +669,10 @@ void _math_trans_4ub(GLubyte (*to)[4],
 }
 
 /**
- * Translate vector of values to GLchan [4].
- */
-void _math_trans_4chan( GLchan (*to)[4],
-			CONST void *ptr,
-			GLuint stride,
-			GLenum type,
-			GLuint size,
-			GLuint start,
-			GLuint n )
-{
-#if CHAN_TYPE == GL_UNSIGNED_BYTE
-   _math_trans_4ub( to, ptr, stride, type, size, start, n );
-#elif CHAN_TYPE == GL_UNSIGNED_SHORT
-   _math_trans_4us( to, ptr, stride, type, size, start, n );
-#elif CHAN_TYPE == GL_FLOAT
-   _math_trans_4fn( to, ptr, stride, type, size, start, n );
-#endif
-}
-
-/**
  * Translate vector of values to GLushort [4].
  */
 void _math_trans_4us(GLushort (*to)[4],
-		     CONST void *ptr,
+		     const void *ptr,
 		     GLuint stride,
 		     GLenum type,
 		     GLuint size,
@@ -713,7 +686,7 @@ void _math_trans_4us(GLushort (*to)[4],
  * Translate vector of values to GLfloat [4].
  */
 void _math_trans_4f(GLfloat (*to)[4],
-		    CONST void *ptr,
+		    const void *ptr,
 		    GLuint stride,
 		    GLenum type,
 		    GLuint size,
@@ -727,7 +700,7 @@ void _math_trans_4f(GLfloat (*to)[4],
  * Translate vector of values to GLfloat[4], normalized to [-1, 1].
  */
 void _math_trans_4fn(GLfloat (*to)[4],
-		    CONST void *ptr,
+		    const void *ptr,
 		    GLuint stride,
 		    GLenum type,
 		    GLuint size,
@@ -741,7 +714,7 @@ void _math_trans_4fn(GLfloat (*to)[4],
  * Translate vector of values to GLfloat[3], normalized to [-1, 1].
  */
 void _math_trans_3fn(GLfloat (*to)[3],
-		    CONST void *ptr,
+		    const void *ptr,
 		    GLuint stride,
 		    GLenum type,
 		    GLuint start,

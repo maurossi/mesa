@@ -29,15 +29,15 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #include "main/glheader.h"
 #include "main/imports.h"
 #include "main/mtypes.h"
 #include "main/enums.h"
-#include "main/colormac.h"
 #include "main/light.h"
+#include "main/state.h"
 
 #include "vbo/vbo.h"
 #include "tnl/tnl.h"
@@ -60,7 +60,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define HAVE_LINE_STRIPS 1
 #define HAVE_TRIANGLES   1
 #define HAVE_TRI_STRIPS  1
-#define HAVE_TRI_STRIP_1 0
 #define HAVE_TRI_FANS    1
 #define HAVE_QUADS       1
 #define HAVE_QUAD_STRIPS 1
@@ -68,7 +67,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define HAVE_ELTS        1
 
 
-#define HW_POINTS           ((!(ctx->_TriangleCaps & DD_POINT_SMOOTH)) ? \
+#define HW_POINTS           ((!ctx->Point.SmoothFlag) ? \
 				R200_VF_PRIM_POINT_SPRITES : R200_VF_PRIM_POINTS)
 #define HW_LINES            R200_VF_PRIM_LINES
 #define HW_LINE_LOOP        0
@@ -153,7 +152,7 @@ static GLushort *r200AllocElts( r200ContextPtr rmesa, GLuint nr )
    }
    else {
       if (rmesa->radeon.dma.flush)
-	 rmesa->radeon.dma.flush( rmesa->radeon.glCtx );
+	 rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );
 
       r200EmitAOS( rmesa,
 		   rmesa->radeon.tcl.aos_count, 0 );
@@ -312,7 +311,7 @@ static GLuint r200EnsureEmitSize( struct gl_context * ctx , GLubyte* vimap_rev )
     state_size = radeonCountStateEmitSize( &rmesa->radeon );
     /* vtx may be changed in r200EmitArrays so account for it if not dirty */
     if (!rmesa->hw.vtx.dirty)
-      state_size += rmesa->hw.vtx.check(rmesa->radeon.glCtx, &rmesa->hw.vtx);
+      state_size += rmesa->hw.vtx.check(&rmesa->radeon.glCtx, &rmesa->hw.vtx);
     /* predict size for elements */
     for (i = 0; i < VB->PrimitiveCount; ++i)
     {
@@ -339,7 +338,7 @@ static GLuint r200EnsureEmitSize( struct gl_context * ctx , GLubyte* vimap_rev )
       "%s space %u, aos %d\n",
       __func__, space_required, AOS_BUFSZ(nr_aos) );
   /* flush the buffer in case we need more than is left. */
-  if (rcommonEnsureCmdBufSpace(&rmesa->radeon, space_required + state_size, __FUNCTION__))
+  if (rcommonEnsureCmdBufSpace(&rmesa->radeon, space_required + state_size, __func__))
     return space_required + radeonCountStateEmitSize( &rmesa->radeon );
   else
     return space_required + state_size;
@@ -373,7 +372,7 @@ static GLboolean r200_run_tcl_render( struct gl_context *ctx,
    if (rmesa->radeon.TclFallback)
       return GL_TRUE;	/* fallback to software t&l */
 
-   radeon_print(RADEON_RENDER, RADEON_NORMAL, "%s\n", __FUNCTION__);
+   radeon_print(RADEON_RENDER, RADEON_NORMAL, "%s\n", __func__);
 
    if (VB->Count == 0)
       return GL_FALSE;
@@ -402,7 +401,7 @@ static GLboolean r200_run_tcl_render( struct gl_context *ctx,
          FIXME: OTOH, we're missing the case where a ATI_fragment_shader accesses
          the secondary color (if lighting is disabled). The chip seems
          misconfigured for that though elsewhere (tcl output, might lock up) */
-      if (ctx->_TriangleCaps & DD_SEPARATE_SPECULAR) {
+      if (_mesa_need_secondary_color(ctx)) {
 	 map_rev_fixed[5] = VERT_ATTRIB_COLOR1;
       }
 
@@ -411,7 +410,7 @@ static GLboolean r200_run_tcl_render( struct gl_context *ctx,
       }
 
       for (i = 0 ; i < ctx->Const.MaxTextureUnits; i++) {
-	 if (ctx->Texture.Unit[i]._ReallyEnabled) {
+	 if (ctx->Texture.Unit[i]._Current) {
 	    if (rmesa->TexGenNeedNormals[i]) {
 	       map_rev_fixed[2] = VERT_ATTRIB_NORMAL;
 	    }
@@ -428,26 +427,26 @@ static GLboolean r200_run_tcl_render( struct gl_context *ctx,
 	 We only need to change compsel. */
       GLuint out_compsel = 0;
       const GLbitfield64 vp_out =
-	 rmesa->curr_vp_hw->mesa_program.Base.OutputsWritten;
+	 rmesa->curr_vp_hw->mesa_program.info.outputs_written;
 
       vimap_rev = &rmesa->curr_vp_hw->inputmap_rev[0];
-      assert(vp_out & BITFIELD64_BIT(VERT_RESULT_HPOS));
+      assert(vp_out & BITFIELD64_BIT(VARYING_SLOT_POS));
       out_compsel = R200_OUTPUT_XYZW;
-      if (vp_out & BITFIELD64_BIT(VERT_RESULT_COL0)) {
+      if (vp_out & BITFIELD64_BIT(VARYING_SLOT_COL0)) {
 	 out_compsel |= R200_OUTPUT_COLOR_0;
       }
-      if (vp_out & BITFIELD64_BIT(VERT_RESULT_COL1)) {
+      if (vp_out & BITFIELD64_BIT(VARYING_SLOT_COL1)) {
 	 out_compsel |= R200_OUTPUT_COLOR_1;
       }
-      if (vp_out & BITFIELD64_BIT(VERT_RESULT_FOGC)) {
+      if (vp_out & BITFIELD64_BIT(VARYING_SLOT_FOGC)) {
          out_compsel |= R200_OUTPUT_DISCRETE_FOG;
       }
-      if (vp_out & BITFIELD64_BIT(VERT_RESULT_PSIZ)) {
+      if (vp_out & BITFIELD64_BIT(VARYING_SLOT_PSIZ)) {
 	 out_compsel |= R200_OUTPUT_PT_SIZE;
       }
-      for (i = VERT_RESULT_TEX0; i < VERT_RESULT_TEX6; i++) {
+      for (i = VARYING_SLOT_TEX0; i < VARYING_SLOT_TEX6; i++) {
 	 if (vp_out & BITFIELD64_BIT(i)) {
-	    out_compsel |= R200_OUTPUT_TEX_0 << (i - VERT_RESULT_TEX0);
+	    out_compsel |= R200_OUTPUT_TEX_0 << (i - VARYING_SLOT_TEX0);
 	 }
       }
       if (rmesa->hw.vtx.cmd[VTX_TCL_OUTPUT_COMPSEL] != out_compsel) {
@@ -546,7 +545,7 @@ static void transition_to_hwtnl( struct gl_context *ctx )
    tnl->Driver.NotifyMaterialChange = r200UpdateMaterial;
 
    if ( rmesa->radeon.dma.flush )			
-      rmesa->radeon.dma.flush( rmesa->radeon.glCtx );	
+      rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );	
 
    rmesa->radeon.dma.flush = NULL;
    
@@ -613,7 +612,7 @@ void r200TclFallback( struct gl_context *ctx, GLuint bit, GLboolean mode )
 		if (oldfallback == 0) {
 			/* We have to flush before transition */
 			if ( rmesa->radeon.dma.flush )
-				rmesa->radeon.dma.flush( rmesa->radeon.glCtx );
+				rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );
 
 			if (R200_DEBUG & RADEON_FALLBACKS)
 				fprintf(stderr, "R200 begin tcl fallback %s\n",
@@ -626,7 +625,7 @@ void r200TclFallback( struct gl_context *ctx, GLuint bit, GLboolean mode )
 		if (oldfallback == bit) {
 			/* We have to flush before transition */
 			if ( rmesa->radeon.dma.flush )
-				rmesa->radeon.dma.flush( rmesa->radeon.glCtx );
+				rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );
 
 			if (R200_DEBUG & RADEON_FALLBACKS)
 				fprintf(stderr, "R200 end tcl fallback %s\n",

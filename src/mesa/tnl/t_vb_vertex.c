@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,22 +16,24 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
 #include "main/glheader.h"
-#include "main/colormac.h"
 #include "main/macros.h"
 #include "main/imports.h"
 #include "main/mtypes.h"
 
 #include "math/m_xform.h"
+
+#include "util/bitscan.h"
 
 #include "t_context.h"
 #include "t_pipeline.h"
@@ -64,40 +65,39 @@ static void NAME( struct gl_context *ctx,				\
 		  GLubyte *clipormask,				\
 		  GLubyte *clipandmask )			\
 {								\
-   GLuint p;							\
+   GLbitfield mask = ctx->Transform.ClipPlanesEnabled;          \
+   while (mask) {                                               \
+      const int p = u_bit_scan(&mask);                          \
+      GLuint nr, i;						\
+      const GLfloat a = ctx->Transform._ClipUserPlane[p][0];	\
+      const GLfloat b = ctx->Transform._ClipUserPlane[p][1];	\
+      const GLfloat c = ctx->Transform._ClipUserPlane[p][2];	\
+      const GLfloat d = ctx->Transform._ClipUserPlane[p][3];	\
+      GLfloat *coord = (GLfloat *)clip->data;                   \
+      GLuint stride = clip->stride;				\
+      GLuint count = clip->count;				\
 								\
-   for (p = 0; p < ctx->Const.MaxClipPlanes; p++)		\
-      if (ctx->Transform.ClipPlanesEnabled & (1 << p)) {	\
-	 GLuint nr, i;						\
-	 const GLfloat a = ctx->Transform._ClipUserPlane[p][0];	\
-	 const GLfloat b = ctx->Transform._ClipUserPlane[p][1];	\
-	 const GLfloat c = ctx->Transform._ClipUserPlane[p][2];	\
-	 const GLfloat d = ctx->Transform._ClipUserPlane[p][3];	\
-         GLfloat *coord = (GLfloat *)clip->data;		\
-         GLuint stride = clip->stride;				\
-         GLuint count = clip->count;				\
+      for (nr = 0, i = 0 ; i < count ; i++) {                   \
+         GLfloat dp = coord[0] * a + coord[1] * b;		\
+         if (SZ > 2) dp += coord[2] * c;			\
+         if (SZ > 3) dp += coord[3] * d; else dp += d;          \
 								\
-	 for (nr = 0, i = 0 ; i < count ; i++) {		\
-	    GLfloat dp = coord[0] * a + coord[1] * b;		\
-	    if (SZ > 2) dp += coord[2] * c;			\
-	    if (SZ > 3) dp += coord[3] * d; else dp += d;	\
+         if (dp < 0) {                                          \
+            nr++;						\
+            clipmask[i] |= CLIP_USER_BIT;			\
+         }							\
 								\
-	    if (dp < 0) {					\
-	       nr++;						\
-	       clipmask[i] |= CLIP_USER_BIT;			\
-	    }							\
+         STRIDE_F(coord, stride);				\
+      }                                                         \
 								\
-	    STRIDE_F(coord, stride);				\
-	 }							\
-								\
-	 if (nr > 0) {						\
-	    *clipormask |= CLIP_USER_BIT;			\
-	    if (nr == count) {					\
-	       *clipandmask |= CLIP_USER_BIT;			\
-	       return;						\
-	    }							\
-	 }							\
+      if (nr > 0) {						\
+         *clipormask |= CLIP_USER_BIT;                          \
+         if (nr == count) {					\
+            *clipandmask |= CLIP_USER_BIT;			\
+            return;						\
+         }							\
       }								\
+   }								\
 }
 
 
@@ -236,7 +236,7 @@ static GLboolean init_vertex_stage( struct gl_context *ctx,
    struct vertex_stage_data *store;
    GLuint size = VB->Size;
 
-   stage->privatePtr = CALLOC(sizeof(*store));
+   stage->privatePtr = calloc(1, sizeof(*store));
    store = VERTEX_STAGE_DATA(stage);
    if (!store)
       return GL_FALSE;
@@ -245,7 +245,7 @@ static GLboolean init_vertex_stage( struct gl_context *ctx,
    _mesa_vector4f_alloc( &store->clip, 0, size, 32 );
    _mesa_vector4f_alloc( &store->proj, 0, size, 32 );
 
-   store->clipmask = (GLubyte *) _mesa_align_malloc(sizeof(GLubyte)*size, 32 );
+   store->clipmask = _mesa_align_malloc(sizeof(GLubyte)*size, 32 );
 
    if (!store->clipmask ||
        !store->eye.data ||
@@ -265,7 +265,7 @@ static void dtr( struct tnl_pipeline_stage *stage )
       _mesa_vector4f_free( &store->clip );
       _mesa_vector4f_free( &store->proj );
       _mesa_align_free( store->clipmask );
-      FREE(store);
+      free(store);
       stage->privatePtr = NULL;
       stage->run = init_vertex_stage;
    }

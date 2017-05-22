@@ -27,7 +27,7 @@ void r700_bytecode_cf_vtx_build(uint32_t *bytecode, const struct r600_bytecode_c
 {
 	unsigned count = (cf->ndw / 4) - 1;
 	*bytecode++ = S_SQ_CF_WORD0_ADDR(cf->addr >> 1);
-	*bytecode++ = cf->inst |
+	*bytecode++ = S_SQ_CF_WORD1_CF_INST(r600_isa_cf_opcode(ISA_CC_R700, cf->op)) |
 			S_SQ_CF_WORD1_BARRIER(1) |
 			S_SQ_CF_WORD1_COUNT(count) |
 			S_SQ_CF_WORD1_COUNT_3(count >> 3);
@@ -48,6 +48,7 @@ int r700_bytecode_alu_build(struct r600_bytecode *bc, struct r600_bytecode_alu *
 
 	/* don't replace gpr by pv or ps for destination register */
 	if (alu->is_op3) {
+		assert(!alu->src[0].abs && !alu->src[1].abs && !alu->src[2].abs);
 		bc->bytecode[id++] = S_SQ_ALU_WORD1_DST_GPR(alu->dst.sel) |
 					S_SQ_ALU_WORD1_DST_CHAN(alu->dst.chan) |
 			                S_SQ_ALU_WORD1_DST_REL(alu->dst.rel) |
@@ -56,7 +57,7 @@ int r700_bytecode_alu_build(struct r600_bytecode *bc, struct r600_bytecode_alu *
 					S_SQ_ALU_WORD1_OP3_SRC2_REL(alu->src[2].rel) |
 					S_SQ_ALU_WORD1_OP3_SRC2_CHAN(alu->src[2].chan) |
 					S_SQ_ALU_WORD1_OP3_SRC2_NEG(alu->src[2].neg) |
-					S_SQ_ALU_WORD1_OP3_ALU_INST(alu->inst) |
+					S_SQ_ALU_WORD1_OP3_ALU_INST(r600_isa_alu_opcode(bc->isa->hw_class, alu->op)) |
 					S_SQ_ALU_WORD1_BANK_SWIZZLE(alu->bank_swizzle);
 	} else {
 		bc->bytecode[id++] = S_SQ_ALU_WORD1_DST_GPR(alu->dst.sel) |
@@ -67,10 +68,58 @@ int r700_bytecode_alu_build(struct r600_bytecode *bc, struct r600_bytecode_alu *
 					S_SQ_ALU_WORD1_OP2_SRC1_ABS(alu->src[1].abs) |
 					S_SQ_ALU_WORD1_OP2_WRITE_MASK(alu->dst.write) |
 					S_SQ_ALU_WORD1_OP2_OMOD(alu->omod) |
-					S_SQ_ALU_WORD1_OP2_ALU_INST(alu->inst) |
+					S_SQ_ALU_WORD1_OP2_ALU_INST(r600_isa_alu_opcode(bc->isa->hw_class, alu->op)) |
 					S_SQ_ALU_WORD1_BANK_SWIZZLE(alu->bank_swizzle) |
 			                S_SQ_ALU_WORD1_OP2_UPDATE_EXECUTE_MASK(alu->execute_mask) |
 			                S_SQ_ALU_WORD1_OP2_UPDATE_PRED(alu->update_pred);
 	}
 	return 0;
+}
+
+void r700_bytecode_alu_read(struct r600_bytecode *bc,
+		struct r600_bytecode_alu *alu, uint32_t word0, uint32_t word1)
+{
+	/* WORD0 */
+	alu->src[0].sel = G_SQ_ALU_WORD0_SRC0_SEL(word0);
+	alu->src[0].rel = G_SQ_ALU_WORD0_SRC0_REL(word0);
+	alu->src[0].chan = G_SQ_ALU_WORD0_SRC0_CHAN(word0);
+	alu->src[0].neg = G_SQ_ALU_WORD0_SRC0_NEG(word0);
+	alu->src[1].sel = G_SQ_ALU_WORD0_SRC1_SEL(word0);
+	alu->src[1].rel = G_SQ_ALU_WORD0_SRC1_REL(word0);
+	alu->src[1].chan = G_SQ_ALU_WORD0_SRC1_CHAN(word0);
+	alu->src[1].neg = G_SQ_ALU_WORD0_SRC1_NEG(word0);
+	alu->index_mode = G_SQ_ALU_WORD0_INDEX_MODE(word0);
+	alu->pred_sel = G_SQ_ALU_WORD0_PRED_SEL(word0);
+	alu->last = G_SQ_ALU_WORD0_LAST(word0);
+
+	/* WORD1 */
+	alu->bank_swizzle = G_SQ_ALU_WORD1_BANK_SWIZZLE(word1);
+	if (alu->bank_swizzle)
+		alu->bank_swizzle_force = alu->bank_swizzle;
+	alu->dst.sel = G_SQ_ALU_WORD1_DST_GPR(word1);
+	alu->dst.rel = G_SQ_ALU_WORD1_DST_REL(word1);
+	alu->dst.chan = G_SQ_ALU_WORD1_DST_CHAN(word1);
+	alu->dst.clamp = G_SQ_ALU_WORD1_CLAMP(word1);
+	if (G_SQ_ALU_WORD1_ENCODING(word1)) /*ALU_DWORD1_OP3*/
+	{
+		alu->is_op3 = 1;
+		alu->src[2].sel = G_SQ_ALU_WORD1_OP3_SRC2_SEL(word1);
+		alu->src[2].rel = G_SQ_ALU_WORD1_OP3_SRC2_REL(word1);
+		alu->src[2].chan = G_SQ_ALU_WORD1_OP3_SRC2_CHAN(word1);
+		alu->src[2].neg = G_SQ_ALU_WORD1_OP3_SRC2_NEG(word1);
+		alu->op = r600_isa_alu_by_opcode(bc->isa,
+				G_SQ_ALU_WORD1_OP3_ALU_INST(word1), 1);
+	}
+	else /*ALU_DWORD1_OP2*/
+	{
+		alu->src[0].abs = G_SQ_ALU_WORD1_OP2_SRC0_ABS(word1);
+		alu->src[1].abs = G_SQ_ALU_WORD1_OP2_SRC1_ABS(word1);
+		alu->op = r600_isa_alu_by_opcode(bc->isa,
+				G_SQ_ALU_WORD1_OP2_ALU_INST(word1), 0);
+		alu->omod = G_SQ_ALU_WORD1_OP2_OMOD(word1);
+		alu->dst.write = G_SQ_ALU_WORD1_OP2_WRITE_MASK(word1);
+		alu->update_pred = G_SQ_ALU_WORD1_OP2_UPDATE_PRED(word1);
+		alu->execute_mask =
+			G_SQ_ALU_WORD1_OP2_UPDATE_EXECUTE_MASK(word1);
+	}
 }

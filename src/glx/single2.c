@@ -36,11 +36,9 @@
 #include "indirect.h"
 #include "indirect_vertex_array.h"
 #include "glapi.h"
-#ifdef USE_XCB
 #include <xcb/xcb.h>
 #include <xcb/glx.h>
 #include <X11/Xlib-xcb.h>
-#endif /* USE_XCB */
 
 #if !defined(__GNUC__)
 #  define __builtin_expect(x, y) x
@@ -332,7 +330,7 @@ __indirect_glGetBooleanv(GLenum val, GLboolean * b)
 
    if (compsize == 0) {
       /*
-       ** Error occured; don't modify user's buffer.
+       ** Error occurred; don't modify user's buffer.
        */
    }
    else {
@@ -383,7 +381,7 @@ __indirect_glGetDoublev(GLenum val, GLdouble * d)
 
    if (compsize == 0) {
       /*
-       ** Error occured; don't modify user's buffer.
+       ** Error occurred; don't modify user's buffer.
        */
    }
    else {
@@ -434,7 +432,7 @@ __indirect_glGetFloatv(GLenum val, GLfloat * f)
 
    if (compsize == 0) {
       /*
-       ** Error occured; don't modify user's buffer.
+       ** Error occurred; don't modify user's buffer.
        */
    }
    else {
@@ -485,7 +483,7 @@ __indirect_glGetIntegerv(GLenum val, GLint * i)
 
    if (compsize == 0) {
       /*
-       ** Error occured; don't modify user's buffer.
+       ** Error occurred; don't modify user's buffer.
        */
    }
    else {
@@ -590,7 +588,7 @@ __indirect_glRenderMode(GLenum mode)
    if (reply.newMode != mode) {
       /*
        ** Switch to new mode did not take effect, therefore an error
-       ** occured.  When an error happens the server won't send us any
+       ** occurred.  When an error happens the server won't send us any
        ** other data.
        */
    }
@@ -721,7 +719,7 @@ __indirect_glGetString(GLenum name)
                 */
                const size_t size = 7 + strlen((char *) s) + 4;
 
-               gc->version = Xmalloc(size);
+               gc->version = malloc(size);
                if (gc->version == NULL) {
                   /* If we couldn't allocate memory for the new string,
                    * make a best-effort and just copy the client-side version
@@ -737,7 +735,7 @@ __indirect_glGetString(GLenum name)
                else {
                   snprintf((char *) gc->version, size, "%u.%u (%s)",
                            client_major, client_minor, s);
-                  Xfree(s);
+                  free(s);
                   s = gc->version;
                }
             }
@@ -782,7 +780,7 @@ __indirect_glGetString(GLenum name)
 #endif
 
             __glXCalculateUsableGLExtensions(gc, (char *) s, major, minor);
-            XFree(s);
+            free(s);
             s = gc->extensions;
             break;
          }
@@ -887,10 +885,10 @@ __indirect_glAreTexturesResident(GLsizei n, const GLuint * textures,
    Display *const dpy = gc->currentDpy;
    GLboolean retval = (GLboolean) 0;
    if (__builtin_expect((n >= 0) && (dpy != NULL), 1)) {
-#ifdef USE_XCB
       xcb_connection_t *c = XGetXCBConnection(dpy);
+      xcb_glx_are_textures_resident_reply_t *reply;
       (void) __glXFlushRenderBuffer(gc, gc->pc);
-      xcb_glx_are_textures_resident_reply_t *reply =
+      reply =
          xcb_glx_are_textures_resident_reply(c,
                                              xcb_glx_are_textures_resident
                                              (c, gc->currentContextTag, n,
@@ -900,31 +898,6 @@ __indirect_glAreTexturesResident(GLsizei n, const GLuint * textures,
                     sizeof(GLboolean));
       retval = reply->ret_val;
       free(reply);
-#else
-      const GLuint cmdlen = 4 + __GLX_PAD((n * 4));
-      GLubyte const *pc =
-         __glXSetupSingleRequest(gc, X_GLsop_AreTexturesResident, cmdlen);
-      (void) memcpy((void *) (pc + 0), (void *) (&n), 4);
-      (void) memcpy((void *) (pc + 4), (void *) (textures), (n * 4));
-      if (n & 3) {
-         /* n is not a multiple of four.
-          * When reply_is_always_array is TRUE, __glXReadReply() will
-          * put a multiple of four bytes into the dest buffer.  If the
-          * caller's buffer is not a multiple of four in size, we'll write
-          * out of bounds.  So use a temporary buffer that's a few bytes
-          * larger.
-          */
-         GLboolean *res4 = malloc((n + 3) & ~3);
-         retval = (GLboolean) __glXReadReply(dpy, 1, res4, GL_TRUE);
-         memcpy(residences, res4, n);
-         free(res4);
-      }
-      else {
-         retval = (GLboolean) __glXReadReply(dpy, 1, residences, GL_TRUE);
-      }
-      UnlockDisplay(dpy);
-      SyncHandle();
-#endif /* USE_XCB */
    }
    return retval;
 }

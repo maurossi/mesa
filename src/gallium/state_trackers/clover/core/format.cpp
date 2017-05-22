@@ -14,13 +14,11 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-// THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 //
-
-#include <algorithm>
 
 #include "core/format.hpp"
 #include "core/memory.hpp"
@@ -145,20 +143,17 @@ namespace clover {
    }
 
    std::set<cl_image_format>
-   supported_formats(cl_context ctx, cl_mem_object_type type) {
+   supported_formats(const context &ctx, cl_mem_object_type type) {
       std::set<cl_image_format> s;
       pipe_texture_target target = translate_target(type);
       unsigned bindings = (PIPE_BIND_SAMPLER_VIEW |
-                           PIPE_BIND_COMPUTE_RESOURCE |
-                           PIPE_BIND_TRANSFER_READ |
-                           PIPE_BIND_TRANSFER_WRITE);
+                           PIPE_BIND_COMPUTE_RESOURCE);
 
       for (auto f : formats) {
-         if (std::all_of(ctx->devs.begin(), ctx->devs.end(),
-                         [=](const device *dev) {
-                            return dev->pipe->is_format_supported(
-                               dev->pipe, f.second, target, 1, bindings);
-                         }))
+         if (all_of([=](const device &dev) {
+                  return dev.pipe->is_format_supported(
+                     dev.pipe, f.second, target, 1, bindings);
+               }, ctx.devices()))
             s.insert(f.first);
       }
 

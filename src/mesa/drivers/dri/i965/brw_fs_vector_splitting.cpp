@@ -37,15 +37,11 @@
  * behavior we want for the results of texture lookups, but probably not for
  */
 
-extern "C" {
-#include "main/core.h"
-#include "intel_context.h"
-}
-#include "glsl/ir.h"
-#include "glsl/ir_visitor.h"
-#include "glsl/ir_print_visitor.h"
-#include "glsl/ir_rvalue_visitor.h"
-#include "glsl/glsl_types.h"
+#include "main/imports.h"
+#include "compiler/glsl/ir.h"
+#include "compiler/glsl/ir_rvalue_visitor.h"
+#include "compiler/glsl_types.h"
+#include "util/hash_table.h"
 
 static bool debug = false;
 
@@ -56,7 +52,6 @@ public:
    {
       this->var = var;
       this->whole_vector_access = 0;
-      this->declaration = false;
       this->mem_ctx = NULL;
    }
 
@@ -64,8 +59,6 @@ public:
 
    /** Number of times the variable is referenced, including assignments. */
    unsigned whole_vector_access;
-
-   bool declaration; /* If the variable had a decl in the instruction stream */
 
    ir_variable *components[4];
 
@@ -78,7 +71,8 @@ public:
    ir_vector_reference_visitor(void)
    {
       this->mem_ctx = ralloc_context(NULL);
-      this->variable_list.make_empty();
+      this->ht = _mesa_hash_table_create(mem_ctx, _mesa_hash_pointer,
+                                         _mesa_key_pointer_equal);
    }
 
    ~ir_vector_reference_visitor(void)
@@ -95,7 +89,7 @@ public:
    variable_entry *get_variable_entry(ir_variable *var);
 
    /* List of variable_entry */
-   exec_list variable_list;
+   struct hash_table *ht;
 
    void *mem_ctx;
 };
@@ -108,13 +102,18 @@ ir_vector_reference_visitor::get_variable_entry(ir_variable *var)
    if (!var->type->is_vector())
       return NULL;
 
-   switch (var->mode) {
+   switch (var->data.mode) {
    case ir_var_uniform:
-   case ir_var_in:
-   case ir_var_out:
-   case ir_var_inout:
+   case ir_var_shader_storage:
+   case ir_var_shader_shared:
+   case ir_var_shader_in:
+   case ir_var_shader_out:
+   case ir_var_system_value:
+   case ir_var_function_in:
+   case ir_var_function_out:
+   case ir_var_function_inout:
       /* Can't split varyings or uniforms.  Function in/outs won't get split
-       * either, so don't care about the ambiguity.
+       * either.
        */
       return NULL;
    case ir_var_auto:
@@ -122,14 +121,12 @@ ir_vector_reference_visitor::get_variable_entry(ir_variable *var)
       break;
    }
 
-   foreach_list(node, &this->variable_list) {
-      variable_entry *entry = (variable_entry *)node;
-      if (entry->var == var)
-	 return entry;
-   }
+   struct hash_entry *hte = _mesa_hash_table_search(ht, var);
+   if (hte)
+      return (struct variable_entry *) hte->data;
 
    variable_entry *entry = new(mem_ctx) variable_entry(var);
-   this->variable_list.push_tail(entry);
+   _mesa_hash_table_insert(ht, var, entry);
    return entry;
 }
 
@@ -137,10 +134,8 @@ ir_vector_reference_visitor::get_variable_entry(ir_variable *var)
 ir_visitor_status
 ir_vector_reference_visitor::visit(ir_variable *ir)
 {
-   variable_entry *entry = this->get_variable_entry(ir);
-
-   if (entry)
-      entry->declaration = true;
+   /* Make sure splitting looks at splitting this variable */
+   (void)this->get_variable_entry(ir);
 
    return visit_continue;
 }
@@ -179,7 +174,7 @@ ir_vector_reference_visitor::visit_enter(ir_assignment *ir)
       return visit_continue_with_parent;
    }
    if (ir->lhs->as_dereference_variable() &&
-       is_power_of_two(ir->write_mask) &&
+       _mesa_is_pow_two(ir->write_mask) &&
        !ir->condition) {
       /* If we're writing just a channel, then channel-splitting the LHS is OK.
        */
@@ -201,9 +196,9 @@ ir_vector_reference_visitor::visit_enter(ir_function_signature *ir)
 
 class ir_vector_splitting_visitor : public ir_rvalue_visitor {
 public:
-   ir_vector_splitting_visitor(exec_list *vars)
+   ir_vector_splitting_visitor(struct hash_table *vars)
    {
-      this->variable_list = vars;
+      this->ht = vars;
    }
 
    virtual ir_visitor_status visit_leave(ir_assignment *);
@@ -211,7 +206,7 @@ public:
    void handle_rvalue(ir_rvalue **rvalue);
    variable_entry *get_splitting_entry(ir_variable *var);
 
-   exec_list *variable_list;
+   struct hash_table *ht;
 };
 
 variable_entry *
@@ -222,14 +217,8 @@ ir_vector_splitting_visitor::get_splitting_entry(ir_variable *var)
    if (!var->type->is_vector())
       return NULL;
 
-   foreach_list(node, &*this->variable_list) {
-      variable_entry *entry = (variable_entry *)node;
-      if (entry->var == var) {
-	 return entry;
-      }
-   }
-
-   return NULL;
+   struct hash_entry *hte = _mesa_hash_table_search(ht, var);
+   return hte ? (struct variable_entry *) hte->data : NULL;
 }
 
 void
@@ -316,8 +305,8 @@ ir_vector_splitting_visitor::visit_leave(ir_assignment *ir)
 	 elem = 3;
 	 break;
       default:
-	 ir->print();
-	 assert(!"not reached: non-channelwise dereference of LHS.");
+	 ir->fprint(stderr);
+	 unreachable("not reached: non-channelwise dereference of LHS.");
       }
 
       ir->lhs = new(mem_ctx) ir_dereference_variable(lhs->components[elem]);
@@ -336,26 +325,27 @@ ir_vector_splitting_visitor::visit_leave(ir_assignment *ir)
 bool
 brw_do_vector_splitting(exec_list *instructions)
 {
+   struct hash_entry *hte;
+
    ir_vector_reference_visitor refs;
 
    visit_list_elements(&refs, instructions);
 
    /* Trim out variables we can't split. */
-   foreach_list_safe(node, &refs.variable_list) {
-      variable_entry *entry = (variable_entry *)node;
-
+   hash_table_foreach(refs.ht, hte) {
+      struct variable_entry *entry = (struct variable_entry *) hte->data;
       if (debug) {
-	 printf("vector %s@%p: decl %d, whole_access %d\n",
-		entry->var->name, (void *) entry->var, entry->declaration,
-		entry->whole_vector_access);
+	 fprintf(stderr, "vector %s@%p: whole_access %d\n",
+                 entry->var->name, (void *) entry->var,
+                 entry->whole_vector_access);
       }
 
-      if (!entry->declaration || entry->whole_vector_access) {
-	 entry->remove();
+      if (entry->whole_vector_access) {
+         _mesa_hash_table_remove(refs.ht, hte);
       }
    }
 
-   if (refs.variable_list.is_empty())
+   if (refs.ht->entries == 0)
       return false;
 
    void *mem_ctx = ralloc_context(NULL);
@@ -363,27 +353,44 @@ brw_do_vector_splitting(exec_list *instructions)
    /* Replace the decls of the vectors to be split with their split
     * components.
     */
-   foreach_list(node, &refs.variable_list) {
-      variable_entry *entry = (variable_entry *)node;
+   hash_table_foreach(refs.ht, hte) {
+      struct variable_entry *entry = (struct variable_entry *) hte->data;
       const struct glsl_type *type;
       type = glsl_type::get_instance(entry->var->type->base_type, 1, 1);
 
       entry->mem_ctx = ralloc_parent(entry->var);
 
       for (unsigned int i = 0; i < entry->var->type->vector_elements; i++) {
-	 const char *name = ralloc_asprintf(mem_ctx, "%s_%c",
-					    entry->var->name,
-					    "xyzw"[i]);
+         char *const name = ir_variable::temporaries_allocate_names
+            ? ralloc_asprintf(mem_ctx, "%s_%c",
+                              entry->var->name,
+                              "xyzw"[i])
+            : NULL;
 
 	 entry->components[i] = new(entry->mem_ctx) ir_variable(type, name,
 								ir_var_temporary);
+
+         ralloc_free(name);
+
+         if (entry->var->constant_initializer) {
+            ir_constant_data data = {0};
+            assert(entry->var->data.has_initializer);
+            if (entry->var->type->is_double()) {
+               data.d[0] = entry->var->constant_initializer->value.d[i];
+            } else {
+               data.u[0] = entry->var->constant_initializer->value.u[i];
+            }
+            entry->components[i]->data.has_initializer = true;
+            entry->components[i]->constant_initializer = new(entry->components[i]) ir_constant(type, &data);
+         }
+
 	 entry->var->insert_before(entry->components[i]);
       }
 
       entry->var->remove();
    }
 
-   ir_vector_splitting_visitor split(&refs.variable_list);
+   ir_vector_splitting_visitor split(refs.ht);
    visit_list_elements(&split, instructions);
 
    ralloc_free(mem_ctx);

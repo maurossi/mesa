@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.9
  *
  * Copyright (C) 2010 LunarG Inc.
  *
@@ -46,14 +45,16 @@ struct xmesa_st_framebuffer {
    struct pipe_resource *display_resource;
 };
 
-static INLINE struct xmesa_st_framebuffer *
+
+static inline struct xmesa_st_framebuffer *
 xmesa_st_framebuffer(struct st_framebuffer_iface *stfbi)
 {
    return (struct xmesa_st_framebuffer *) stfbi->st_manager_private;
 }
 
+
 /**
- * Display an attachment to the xlib_drawable of the framebuffer.
+ * Display (present) an attachment to the xlib_drawable of the framebuffer.
  */
 static boolean
 xmesa_st_framebuffer_display(struct st_framebuffer_iface *stfbi,
@@ -73,10 +74,10 @@ xmesa_st_framebuffer_display(struct st_framebuffer_iface *stfbi,
       pres = xstfb->display_resource;
    }
 
-   xstfb->screen->flush_frontbuffer(xstfb->screen, pres, 0, 0, &xstfb->buffer->ws);
-
+   xstfb->screen->flush_frontbuffer(xstfb->screen, pres, 0, 0, &xstfb->buffer->ws, NULL);
    return TRUE;
 }
+
 
 /**
  * Copy the contents between the attachments.
@@ -105,6 +106,7 @@ xmesa_st_framebuffer_copy_textures(struct st_framebuffer_iface *stfbi,
       pipe->resource_copy_region(pipe, dst_ptex, 0, x, y, 0,
                                  src_ptex, 0, &src_box);
 }
+
 
 /**
  * Remove outdated textures and create the requested ones.
@@ -191,8 +193,9 @@ xmesa_st_framebuffer_validate_textures(struct st_framebuffer_iface *stfbi,
  * \param count  number of framebuffer attachments in statts[]
  * \param out  returns resources for each of the attachments
  */
-static boolean 
-xmesa_st_framebuffer_validate(struct st_framebuffer_iface *stfbi,
+static boolean
+xmesa_st_framebuffer_validate(struct st_context_iface *stctx,
+                              struct st_framebuffer_iface *stfbi,
                               const enum st_attachment_type *statts,
                               unsigned count,
                               struct pipe_resource **out)
@@ -249,11 +252,13 @@ xmesa_st_framebuffer_validate(struct st_framebuffer_iface *stfbi,
    return TRUE;
 }
 
+
 /**
  * Called via st_framebuffer_iface::flush_front()
  */
 static boolean
-xmesa_st_framebuffer_flush_front(struct st_framebuffer_iface *stfbi,
+xmesa_st_framebuffer_flush_front(struct st_context_iface *stctx,
+                                 struct st_framebuffer_iface *stfbi,
                                  enum st_attachment_type statt)
 {
    struct xmesa_st_framebuffer *xstfb = xmesa_st_framebuffer(stfbi);
@@ -267,6 +272,7 @@ xmesa_st_framebuffer_flush_front(struct st_framebuffer_iface *stfbi,
    return ret;
 }
 
+
 struct st_framebuffer_iface *
 xmesa_create_st_framebuffer(XMesaDisplay xmdpy, XMesaBuffer b)
 {
@@ -278,10 +284,8 @@ xmesa_create_st_framebuffer(XMesaDisplay xmdpy, XMesaBuffer b)
    stfbi = CALLOC_STRUCT(st_framebuffer_iface);
    xstfb = CALLOC_STRUCT(xmesa_st_framebuffer);
    if (!stfbi || !xstfb) {
-      if (stfbi)
-         FREE(stfbi);
-      if (xstfb)
-         FREE(xstfb);
+      free(stfbi);
+      free(xstfb);
       return NULL;
    }
 
@@ -289,7 +293,7 @@ xmesa_create_st_framebuffer(XMesaDisplay xmdpy, XMesaBuffer b)
    xstfb->buffer = b;
    xstfb->screen = xmdpy->screen;
    xstfb->stvis = b->xm_visual->stvis;
-   if(xstfb->screen->get_param(xstfb->screen, PIPE_CAP_NPOT_TEXTURES))
+   if (xstfb->screen->get_param(xstfb->screen, PIPE_CAP_NPOT_TEXTURES))
       xstfb->target = PIPE_TEXTURE_2D;
    else
       xstfb->target = PIPE_TEXTURE_RECT;
@@ -303,6 +307,7 @@ xmesa_create_st_framebuffer(XMesaDisplay xmdpy, XMesaBuffer b)
    return stfbi;
 }
 
+
 void
 xmesa_destroy_st_framebuffer(struct st_framebuffer_iface *stfbi)
 {
@@ -314,9 +319,23 @@ xmesa_destroy_st_framebuffer(struct st_framebuffer_iface *stfbi)
    for (i = 0; i < ST_ATTACHMENT_COUNT; i++)
       pipe_resource_reference(&xstfb->textures[i], NULL);
 
-   FREE(xstfb);
-   FREE(stfbi);
+   free(xstfb);
+   free(stfbi);
 }
+
+
+/**
+ * Return the pipe_surface which corresponds to the given
+ * framebuffer attachment.
+ */
+struct pipe_resource *
+xmesa_get_framebuffer_resource(struct st_framebuffer_iface *stfbi,
+                               enum st_attachment_type att)
+{
+   struct xmesa_st_framebuffer *xstfb = xmesa_st_framebuffer(stfbi);
+   return xstfb->textures[att];
+}
+
 
 void
 xmesa_swap_st_framebuffer(struct st_framebuffer_iface *stfbi)
@@ -346,6 +365,7 @@ xmesa_swap_st_framebuffer(struct st_framebuffer_iface *stfbi)
    }
 }
 
+
 void
 xmesa_copy_st_framebuffer(struct st_framebuffer_iface *stfbi,
                           enum st_attachment_type src,
@@ -357,30 +377,31 @@ xmesa_copy_st_framebuffer(struct st_framebuffer_iface *stfbi,
       xmesa_st_framebuffer_display(stfbi, dst);
 }
 
+
 struct pipe_resource*
 xmesa_get_attachment(struct st_framebuffer_iface *stfbi,
                      enum st_attachment_type st_attachment)
 {
    struct xmesa_st_framebuffer *xstfb = xmesa_st_framebuffer(stfbi);
-   struct pipe_resource* res;
+   struct pipe_resource *res;
 
    res = xstfb->textures[st_attachment];
    return res;
 }
 
+
 struct pipe_context*
-xmesa_get_context(struct st_framebuffer_iface* stfbi)
+xmesa_get_context(struct st_framebuffer_iface *stfbi)
 {
    struct pipe_context *pipe;
    struct xmesa_st_framebuffer *xstfb = xmesa_st_framebuffer(stfbi);
 
    pipe = xstfb->display->pipe;
    if (!pipe) {
-      pipe = xstfb->screen->context_create(xstfb->screen, NULL);
+      pipe = xstfb->screen->context_create(xstfb->screen, NULL, 0);
       if (!pipe)
          return NULL;
       xstfb->display->pipe = pipe;
    }
    return pipe;
 }
-

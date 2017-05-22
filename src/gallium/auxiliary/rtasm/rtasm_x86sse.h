@@ -15,9 +15,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  **************************************************************************/
 
@@ -135,18 +136,18 @@ enum x86_target
 };
 
 /* make this read a member of x86_function if target != host is desired */
-static INLINE enum x86_target x86_target( struct x86_function* p )
+static inline enum x86_target x86_target( struct x86_function* p )
 {
 #ifdef PIPE_ARCH_X86
    return X86_32;
-#elif defined(_WIN64)
+#elif (defined(PIPE_OS_CYGWIN) || defined(PIPE_OS_WINDOWS)) && defined(PIPE_ARCH_X86_64)
    return X86_64_WIN64_ABI;
 #elif defined(PIPE_ARCH_X86_64)
    return X86_64_STD_ABI;
 #endif
 }
 
-static INLINE unsigned x86_target_caps( struct x86_function* p )
+static inline unsigned x86_target_caps( struct x86_function* p )
 {
    return p->caps;
 }

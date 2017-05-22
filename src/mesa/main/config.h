@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  * Copyright (C) 2008  VMware, Inc.  All Rights Reserved.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -90,9 +90,6 @@
 /** Line width granularity */
 #define LINE_WIDTH_GRANULARITY 0.1
 
-/** Max texture palette / color table size */
-#define MAX_COLOR_TABLE_SIZE 256
-
 /** Max memory to allow for a single texture image (in megabytes) */
 #define MAX_TEXTURE_MBYTES 1024
 
@@ -124,7 +121,7 @@
  * Max number of texture image units.  Also determines number of texture
  * samplers in shaders.
  */
-#define MAX_TEXTURE_IMAGE_UNITS 16
+#define MAX_TEXTURE_IMAGE_UNITS 32
 
 /**
  * Larger of MAX_TEXTURE_COORD_UNITS and MAX_TEXTURE_IMAGE_UNITS.
@@ -135,12 +132,13 @@
  */
 #define MAX_TEXTURE_UNITS ((MAX_TEXTURE_COORD_UNITS > MAX_TEXTURE_IMAGE_UNITS) ? MAX_TEXTURE_COORD_UNITS : MAX_TEXTURE_IMAGE_UNITS)
 
+/** Maximum number of viewports supported with ARB_viewport_array */
+#define MAX_VIEWPORTS 16
 
-/** Maximum viewport size */
-#define MAX_VIEWPORT_WIDTH 16384
-#define MAX_VIEWPORT_HEIGHT 16384
+/** Maximum number of window rectangles supported with EXT_window_rectangles */
+#define MAX_WINDOW_RECTANGLES 8
 
-/** Maxmimum size for CVA.  May be overridden by the drivers.  */
+/** Maximum size for CVA.  May be overridden by the drivers.  */
 #define MAX_ARRAY_LOCK_SIZE 3000
 
 /** Subpixel precision for antialiasing, window coordinate snapping */
@@ -170,6 +168,19 @@
 /*@{*/
 #define MAX_PROGRAM_LOCAL_PARAMS       4096
 #define MAX_UNIFORMS                   4096
+#define MAX_UNIFORM_BUFFERS            15 /* + 1 default uniform buffer */
+#define MAX_SHADER_STORAGE_BUFFERS     16
+/* 6 is for vertex, hull, domain, geometry, fragment, and compute shader. */
+#define MAX_COMBINED_UNIFORM_BUFFERS   (MAX_UNIFORM_BUFFERS * 6)
+#define MAX_COMBINED_SHADER_STORAGE_BUFFERS   (MAX_SHADER_STORAGE_BUFFERS * 6)
+#define MAX_ATOMIC_COUNTERS            4096
+/* 6 is for vertex, hull, domain, geometry, fragment, and compute shader. */
+#define MAX_COMBINED_ATOMIC_BUFFERS    (MAX_UNIFORM_BUFFERS * 6)
+/* Size of an atomic counter in bytes according to ARB_shader_atomic_counters */
+#define ATOMIC_COUNTER_SIZE            4
+#define MAX_IMAGE_UNIFORMS             32
+/* 6 is for vertex, hull, domain, geometry, fragment, and compute shader. */
+#define MAX_IMAGE_UNITS                (MAX_IMAGE_UNIFORMS * 6)
 /*@}*/
 
 /**
@@ -186,8 +197,7 @@
 #define MAX_PROGRAM_MATRIX_STACK_DEPTH 4
 #define MAX_PROGRAM_CALL_DEPTH         8
 #define MAX_PROGRAM_TEMPS              256
-#define MAX_PROGRAM_ADDRESS_REGS       2
-#define MAX_VARYING                    32    /**< number of float[4] vectors */
+#define MAX_PROGRAM_ADDRESS_REGS       1
 #define MAX_SAMPLERS                   MAX_TEXTURE_IMAGE_UNITS
 #define MAX_PROGRAM_INPUTS             32
 #define MAX_PROGRAM_OUTPUTS            64
@@ -202,34 +212,15 @@
 /** For GL_ARB_fragment_program */
 /*@{*/
 #define MAX_FRAGMENT_PROGRAM_ADDRESS_REGS 0
+#define MAX_FRAGMENT_PROGRAM_PARAMS       64
+#define MAX_FRAGMENT_PROGRAM_INPUTS       12
 /*@}*/
-
-/** For GL_NV_vertex_program */
-/*@{*/
-#define MAX_NV_VERTEX_PROGRAM_INSTRUCTIONS 128
-#define MAX_NV_VERTEX_PROGRAM_TEMPS         12
-#define MAX_NV_VERTEX_PROGRAM_PARAMS        96
-#define MAX_NV_VERTEX_PROGRAM_INPUTS        16
-#define MAX_NV_VERTEX_PROGRAM_OUTPUTS       15
-/*@}*/
-
-/** For GL_NV_fragment_program */
-/*@{*/
-#define MAX_NV_FRAGMENT_PROGRAM_INSTRUCTIONS 1024 /* 72 for GL_ARB_f_p */
-#define MAX_NV_FRAGMENT_PROGRAM_TEMPS         96
-#define MAX_NV_FRAGMENT_PROGRAM_PARAMS        64
-#define MAX_NV_FRAGMENT_PROGRAM_INPUTS        12
-#define MAX_NV_FRAGMENT_PROGRAM_OUTPUTS        3
-#define MAX_NV_FRAGMENT_PROGRAM_WRITE_ONLYS    2
-/*@}*/
-
 
 /** For GL_ARB_vertex_shader */
 /*@{*/
 #define MAX_VERTEX_GENERIC_ATTRIBS 16
-#define MAX_VERTEX_TEXTURE_IMAGE_UNITS MAX_TEXTURE_IMAGE_UNITS
-#define MAX_COMBINED_TEXTURE_IMAGE_UNITS (MAX_VERTEX_TEXTURE_IMAGE_UNITS + \
-					  MAX_TEXTURE_IMAGE_UNITS)
+/* 6 is for vertex, hull, domain, geometry, fragment, and compute shader. */
+#define MAX_COMBINED_TEXTURE_IMAGE_UNITS (MAX_TEXTURE_IMAGE_UNITS * 6)
 /*@}*/
 
 
@@ -252,22 +243,58 @@
 #define MAX_FEEDBACK_BUFFERS 4
 #define MAX_FEEDBACK_ATTRIBS 32
 
-/** For GL_ARB_geometry_shader4 */
+/** For geometry shader */
 /*@{*/
-#define MAX_GEOMETRY_TEXTURE_IMAGE_UNITS             8
-#define MAX_GEOMETRY_VARYING_COMPONENTS              32
-#define MAX_VERTEX_VARYING_COMPONENTS                32
 #define MAX_GEOMETRY_UNIFORM_COMPONENTS              512
 #define MAX_GEOMETRY_OUTPUT_VERTICES                 256
 #define MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS         1024
 /*@}*/
 
-/** For GL_ARB_debug_output */
+/** For GL_ARB_debug_output and GL_KHR_debug */
 /*@{*/
 #define MAX_DEBUG_LOGGED_MESSAGES   10
 #define MAX_DEBUG_MESSAGE_LENGTH    4096
 /*@}*/
 
+/** For GL_KHR_debug */
+/*@{*/
+#define MAX_LABEL_LENGTH 256
+#define MAX_DEBUG_GROUP_STACK_DEPTH 64
+/*@}*/
+
+/** For GL_ARB_gpu_shader5 */
+/*@{*/
+#define MAX_GEOMETRY_SHADER_INVOCATIONS     32
+#define MIN_FRAGMENT_INTERPOLATION_OFFSET   -0.5
+#define MAX_FRAGMENT_INTERPOLATION_OFFSET   0.5
+#define FRAGMENT_INTERPOLATION_OFFSET_BITS  4
+#define MAX_VERTEX_STREAMS                  4
+/*@}*/
+
+/** For GL_ARB_shader_subroutine */
+/*@{*/
+#define MAX_SUBROUTINES                   256
+#define MAX_SUBROUTINE_UNIFORM_LOCATIONS  1024
+/*@}*/
+
+/** For GL_INTEL_performance_query */
+/*@{*/
+#define MAX_PERFQUERY_QUERY_NAME_LENGTH     256
+#define MAX_PERFQUERY_COUNTER_NAME_LENGTH   256
+#define MAX_PERFQUERY_COUNTER_DESC_LENGTH   1024
+#define PERFQUERY_HAVE_GPA_EXTENDED_COUNTERS 0
+/*@}*/
+
+/** For GL_ARB_pipeline_statistics_query */
+#define MAX_PIPELINE_STATISTICS             11
+
+/** For GL_ARB_tessellation_shader */
+/*@{*/
+#define MAX_TESS_GEN_LEVEL 64
+#define MAX_PATCH_VERTICES 32
+#define MAX_TESS_PATCH_COMPONENTS 120
+#define MAX_TESS_CONTROL_TOTAL_OUTPUT_COMPONENTS 4096
+/*@}*/
 
 /*
  * Color channel component order
