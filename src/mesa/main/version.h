@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.11
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright (C) 2009  VMware, Inc.  All Rights Reserved.
@@ -18,34 +17,34 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #ifndef VERSION_H
 #define VERSION_H
 
+#include "mtypes.h"
 
-struct gl_context;
 
-
-/* Mesa version */
-#define MESA_MAJOR 9
-#define MESA_MINOR 0
-#define MESA_PATCH 3
-#define MESA_VERSION_STRING "9.0.3"
-
-/* To make version comparison easy */
-#define MESA_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
-#define MESA_VERSION_CODE MESA_VERSION(MESA_MAJOR, MESA_MINOR, MESA_PATCH)
-
+extern GLuint
+_mesa_get_version(const struct gl_extensions *extensions,
+                  struct gl_constants *consts, gl_api api);
 
 extern void
 _mesa_compute_version(struct gl_context *ctx);
 
+extern bool
+_mesa_override_gl_version_contextless(struct gl_constants *consts,
+                                      gl_api *apiOut, GLuint *versionOut);
+
 extern void
-_mesa_override_glsl_version(struct gl_context *ctx);
+_mesa_override_gl_version(struct gl_context *ctx);
+
+extern void
+_mesa_override_glsl_version(struct gl_constants *consts);
 
 #endif /* VERSION_H */

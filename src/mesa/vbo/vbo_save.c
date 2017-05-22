@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.2
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,36 +16,21 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 
 #include "main/mtypes.h"
 #include "main/bufferobj.h"
 #include "main/imports.h"
-#include "main/mfeatures.h"
 
 #include "vbo_context.h"
-
-
-#if FEATURE_dlist
-
-
-static void vbo_save_callback_init( struct gl_context *ctx )
-{
-   ctx->Driver.NewList = vbo_save_NewList;
-   ctx->Driver.EndList = vbo_save_EndList;
-   ctx->Driver.SaveFlushVertices = vbo_save_SaveFlushVertices;
-   ctx->Driver.BeginCallList = vbo_save_BeginCallList;
-   ctx->Driver.EndCallList = vbo_save_EndCallList;
-   ctx->Driver.NotifySaveBegin = vbo_save_NotifyBegin;
-}
-
 
 
 /**
@@ -60,16 +44,15 @@ void vbo_save_init( struct gl_context *ctx )
    save->ctx = ctx;
 
    vbo_save_api_init( save );
-   vbo_save_callback_init(ctx);
 
    {
-      struct gl_client_array *arrays = save->arrays;
+      struct gl_vertex_array *arrays = save->arrays;
       unsigned i;
 
       memcpy(arrays, &vbo->currval[VBO_ATTRIB_POS],
              VERT_ATTRIB_FF_MAX * sizeof(arrays[0]));
       for (i = 0; i < VERT_ATTRIB_FF_MAX; ++i) {
-         struct gl_client_array *array;
+         struct gl_vertex_array *array;
          array = &arrays[VERT_ATTRIB_FF(i)];
          array->BufferObj = NULL;
          _mesa_reference_buffer_object(ctx, &arrays->BufferObj,
@@ -81,7 +64,7 @@ void vbo_save_init( struct gl_context *ctx )
              VERT_ATTRIB_GENERIC_MAX * sizeof(arrays[0]));
 
       for (i = 0; i < VERT_ATTRIB_GENERIC_MAX; ++i) {
-         struct gl_client_array *array;
+         struct gl_vertex_array *array;
          array = &arrays[VERT_ATTRIB_GENERIC(i)];
          array->BufferObj = NULL;
          _mesa_reference_buffer_object(ctx, &array->BufferObj,
@@ -89,7 +72,7 @@ void vbo_save_init( struct gl_context *ctx )
       }
    }
 
-   ctx->Driver.CurrentSavePrimitive = PRIM_UNKNOWN;
+   ctx->Driver.CurrentSavePrimitive = PRIM_OUTSIDE_BEGIN_END;
 }
 
 
@@ -101,13 +84,13 @@ void vbo_save_destroy( struct gl_context *ctx )
 
    if (save->prim_store) {
       if ( --save->prim_store->refcount == 0 ) {
-         FREE( save->prim_store );
+         free(save->prim_store);
          save->prim_store = NULL;
       }
       if ( --save->vertex_store->refcount == 0 ) {
          _mesa_reference_buffer_object(ctx,
                                        &save->vertex_store->bufferobj, NULL);
-         FREE( save->vertex_store );
+         free(save->vertex_store);
          save->vertex_store = NULL;
       }
    }
@@ -131,6 +114,3 @@ void vbo_save_fallback( struct gl_context *ctx, GLboolean fallback )
    else
       save->replay_flags &= ~VBO_SAVE_FALLBACK;
 }
-
-
-#endif /* FEATURE_dlist */

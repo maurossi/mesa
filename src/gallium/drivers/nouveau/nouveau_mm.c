@@ -3,14 +3,21 @@
 
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
-#include "util/u_double_list.h"
+#include "util/list.h"
 
 #include "nouveau_winsys.h"
 #include "nouveau_screen.h"
 #include "nouveau_mm.h"
 
-#define MM_MIN_ORDER 7
-#define MM_MAX_ORDER 20
+/* TODO: Higher orders can waste a lot of space for npot size buffers, should
+ * add an extra cache for such buffer objects.
+ *
+ * HACK: Max order == 21 to accommodate TF2's 1.5 MiB, frequently reallocated
+ * vertex buffer (VM flush (?) decreases performance dramatically).
+ */
+
+#define MM_MIN_ORDER 7 /* >= 6 to not violate ARB_map_buffer_alignment */
+#define MM_MAX_ORDER 21
 
 #define MM_NUM_BUCKETS (MM_MAX_ORDER - MM_MIN_ORDER + 1)
 
@@ -63,7 +70,7 @@ mm_slab_alloc(struct mm_slab *slab)
    return -1;
 }
 
-static INLINE void
+static inline void
 mm_slab_free(struct mm_slab *slab, int i)
 {
    assert(i < slab->count);
@@ -72,7 +79,7 @@ mm_slab_free(struct mm_slab *slab, int i)
    assert(slab->free <= slab->count);
 }
 
-static INLINE int
+static inline int
 mm_get_order(uint32_t size)
 {
    int s = __builtin_clz(size) ^ 31;
@@ -97,12 +104,12 @@ mm_bucket_by_size(struct nouveau_mman *cache, unsigned size)
 }
 
 /* size of bo allocation for slab with chunks of (1 << chunk_order) bytes */
-static INLINE uint32_t
+static inline uint32_t
 mm_default_slab_size(unsigned chunk_order)
 {
    static const int8_t slab_order[MM_MAX_ORDER - MM_MIN_ORDER + 1] =
    {
-      12, 12, 13, 14, 14, 17, 17, 17, 17, 19, 19, 20, 21, 22
+      12, 12, 13, 14, 14, 17, 17, 17, 17, 19, 19, 20, 21, 22, 22
    };
 
    assert(chunk_order <= MM_MAX_ORDER && chunk_order >= MM_MIN_ORDER);
@@ -256,7 +263,7 @@ nouveau_mm_create(struct nouveau_device *dev, uint32_t domain,
    return cache;
 }
 
-static INLINE void
+static inline void
 nouveau_mm_free_slabs(struct list_head *head)
 {
    struct mm_slab *slab, *next;
@@ -289,4 +296,3 @@ nouveau_mm_destroy(struct nouveau_mman *cache)
 
    FREE(cache);
 }
-

@@ -72,6 +72,7 @@ static void r300_shader_read_vs_outputs(
             case TGSI_SEMANTIC_GENERIC:
                 assert(index < ATTR_GENERIC_COUNT);
                 vs_outputs->generic[index] = i;
+                vs_outputs->num_generic++;
                 break;
 
             case TGSI_SEMANTIC_FOG:
@@ -186,7 +187,7 @@ static void r300_dummy_vertex_shader(
 
     /* Make a simple vertex shader which outputs (0, 0, 0, 1),
      * effectively rendering nothing. */
-    ureg = ureg_create(TGSI_PROCESSOR_VERTEX);
+    ureg = ureg_create(PIPE_SHADER_VERTEX);
     dst = ureg_DECL_output(ureg, TGSI_SEMANTIC_POSITION, 0);
     imm = ureg_imm4f(ureg, 0, 0, 0, 1);
 
@@ -210,7 +211,7 @@ void r300_translate_vertex_shader(struct r300_context *r300,
 
     /* Setup the compiler */
     memset(&compiler, 0, sizeof(compiler));
-    rc_init(&compiler.Base);
+    rc_init(&compiler.Base, NULL);
 
     DBG_ON(r300, DBG_VP) ? compiler.Base.Debug |= RC_DBG_LOG : 0;
     DBG_ON(r300, DBG_P_STAT) ? compiler.Base.Debug |= RC_DBG_STATS : 0;

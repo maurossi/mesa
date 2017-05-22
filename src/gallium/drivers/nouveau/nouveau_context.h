@@ -2,9 +2,12 @@
 #define __NOUVEAU_CONTEXT_H__
 
 #include "pipe/p_context.h"
-#include <libdrm/nouveau.h>
+#include "pipe/p_state.h"
+#include <nouveau.h>
 
 #define NOUVEAU_MAX_SCRATCH_BUFS 4
+
+struct nv04_resource;
 
 struct nouveau_context {
    struct pipe_context pipe;
@@ -12,9 +15,9 @@ struct nouveau_context {
 
    struct nouveau_client *client;
    struct nouveau_pushbuf *pushbuf;
+   struct pipe_debug_callback debug;
 
-   boolean vbo_dirty;
-   boolean cb_dirty;
+   bool vbo_dirty;
 
    void (*copy_data)(struct nouveau_context *,
                      struct nouveau_bo *dst, unsigned, unsigned,
@@ -24,9 +27,13 @@ struct nouveau_context {
                      unsigned, const void *);
    /* base, size refer to the whole constant buffer */
    void (*push_cb)(struct nouveau_context *,
-                   struct nouveau_bo *, unsigned domain,
-                   unsigned base, unsigned size,
+                   struct nv04_resource *,
                    unsigned offset, unsigned words, const uint32_t *);
+
+   /* @return: @ref reduced by nr of references found in context */
+   int (*invalidate_resource_storage)(struct nouveau_context *,
+                                      struct pipe_resource *,
+                                      int ref);
 
    struct {
       uint8_t *map;
@@ -36,13 +43,20 @@ struct nouveau_context {
       unsigned end;
       struct nouveau_bo *bo[NOUVEAU_MAX_SCRATCH_BUFS];
       struct nouveau_bo *current;
-      struct nouveau_bo **runout;
-      unsigned nr_runout;
+      struct runout {
+         unsigned nr;
+         struct nouveau_bo *bo[0];
+      } *runout;
       unsigned bo_size;
    } scratch;
+
+   struct {
+      uint32_t buf_cache_count;
+      uint32_t buf_cache_frame;
+   } stats;
 };
 
-static INLINE struct nouveau_context *
+static inline struct nouveau_context *
 nouveau_context(struct pipe_context *pipe)
 {
    return (struct nouveau_context *)pipe;
@@ -52,17 +66,20 @@ void
 nouveau_context_init_vdec(struct nouveau_context *);
 
 void
+nouveau_context_init(struct nouveau_context *);
+
+void
 nouveau_scratch_runout_release(struct nouveau_context *);
 
 /* This is needed because we don't hold references outside of context::scratch,
  * because we don't want to un-bo_ref each allocation every time. This is less
  * work, and we need the wrap index anyway for extreme situations.
  */
-static INLINE void
+static inline void
 nouveau_scratch_done(struct nouveau_context *nv)
 {
    nv->scratch.wrap = nv->scratch.id;
-   if (unlikely(nv->scratch.nr_runout))
+   if (unlikely(nv->scratch.runout))
       nouveau_scratch_runout_release(nv);
 }
 
@@ -73,7 +90,7 @@ void *
 nouveau_scratch_get(struct nouveau_context *, unsigned size, uint64_t *gpu_addr,
                     struct nouveau_bo **);
 
-static INLINE void
+static inline void
 nouveau_context_destroy(struct nouveau_context *ctx)
 {
    int i;
@@ -84,4 +101,17 @@ nouveau_context_destroy(struct nouveau_context *ctx)
 
    FREE(ctx);
 }
+
+static inline  void
+nouveau_context_update_frame_stats(struct nouveau_context *nv)
+{
+   nv->stats.buf_cache_frame <<= 1;
+   if (nv->stats.buf_cache_count) {
+      nv->stats.buf_cache_count = 0;
+      nv->stats.buf_cache_frame |= 1;
+      if ((nv->stats.buf_cache_frame & 0xf) == 0xf)
+         nv->screen->hint_buf_keep_sysmem_copy = true;
+   }
+}
+
 #endif

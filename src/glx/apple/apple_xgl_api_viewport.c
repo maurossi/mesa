@@ -30,6 +30,7 @@
 #include "glxclient.h"
 #include "apple_glx_context.h"
 #include "apple_xgl_api.h"
+#include "main/glheader.h"
 #include "glapitable.h"
 
 extern struct _glapi_table * __ogl_framework_api;
@@ -40,7 +41,7 @@ __applegl_glViewport(GLint x, GLint y, GLsizei width, GLsizei height)
    struct glx_context *gc = __glXGetCurrentContext();
    Display *dpy = glXGetCurrentDisplay();
 
-   if (gc && gc->driContext)
+   if (gc != &dummyContext && gc->driContext)
       apple_glx_context_update(dpy, gc->driContext);
 
    __ogl_framework_api->Viewport(x, y, width, height);

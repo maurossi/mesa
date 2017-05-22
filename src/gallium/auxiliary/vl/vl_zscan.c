@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -47,6 +47,13 @@ enum VS_OUTPUT
 {
    VS_O_VPOS = 0,
    VS_O_VTEX = 0
+};
+
+const int vl_zscan_normal_16[] =
+{
+   /* Zig-Zag scan pattern */
+    0, 1, 4, 8, 5, 2, 3, 6,
+    9,12,13,10, 7,11,14,15
 };
 
 const int vl_zscan_linear[] =
@@ -92,17 +99,14 @@ static void *
 create_vert_shader(struct vl_zscan *zscan)
 {
    struct ureg_program *shader;
-
    struct ureg_src scale;
    struct ureg_src vrect, vpos, block_num;
-
    struct ureg_dst tmp;
    struct ureg_dst o_vpos;
    struct ureg_dst *o_vtex;
+   unsigned i;
 
-   signed i;
-
-   shader = ureg_create(TGSI_PROCESSOR_VERTEX);
+   shader = ureg_create(PIPE_SHADER_VERTEX);
    if (!shader)
       return NULL;
 
@@ -148,7 +152,7 @@ create_vert_shader(struct vl_zscan *zscan)
    for (i = 0; i < zscan->num_channels; ++i) {
       ureg_ADD(shader, ureg_writemask(tmp, TGSI_WRITEMASK_X), ureg_scalar(ureg_src(tmp), TGSI_SWIZZLE_Y),
                ureg_imm1f(shader, 1.0f / (zscan->blocks_per_line * VL_BLOCK_WIDTH)
-                * (i - (signed)zscan->num_channels / 2)));
+                * ((signed)i - (signed)zscan->num_channels / 2)));
 
       ureg_MAD(shader, ureg_writemask(o_vtex[i], TGSI_WRITEMASK_X), vrect,
                ureg_imm1f(shader, 1.0f / zscan->blocks_per_line), ureg_src(tmp));
@@ -179,7 +183,7 @@ create_frag_shader(struct vl_zscan *zscan)
 
    unsigned i;
 
-   shader = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   shader = ureg_create(PIPE_SHADER_FRAGMENT);
    if (!shader)
       return NULL;
 
@@ -270,7 +274,8 @@ init_state(struct vl_zscan *zscan)
    assert(zscan);
 
    memset(&rs_state, 0, sizeof(rs_state));
-   rs_state.gl_rasterization_rules = true;
+   rs_state.half_pixel_center = true;
+   rs_state.bottom_edge_rule = true;
    rs_state.depth_clip = 1;
    zscan->rs_state = zscan->pipe->create_rasterizer_state(zscan->pipe, &rs_state);
    if (!zscan->rs_state)
@@ -381,20 +386,13 @@ vl_zscan_layout(struct pipe_context *pipe, const int layout[64], unsigned blocks
    if (!res)
       goto error_resource;
 
-   buf_transfer = pipe->get_transfer
-   (
-      pipe, res,
-      0, PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD_RANGE,
-      &rect
-   );
-   if (!buf_transfer)
-      goto error_transfer;
-
-   pitch = buf_transfer->stride / sizeof(float);
-
-   f = pipe->transfer_map(pipe, buf_transfer);
+   f = pipe->transfer_map(pipe, res,
+                          0, PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD_RANGE,
+                          &rect, &buf_transfer);
    if (!f)
       goto error_map;
+
+   pitch = buf_transfer->stride / sizeof(float);
 
    for (i = 0; i < blocks_per_line; ++i)
       for (y = 0; y < VL_BLOCK_HEIGHT; ++y)
@@ -408,7 +406,6 @@ vl_zscan_layout(struct pipe_context *pipe, const int layout[64], unsigned blocks
          }
 
    pipe->transfer_unmap(pipe, buf_transfer);
-   pipe->transfer_destroy(pipe, buf_transfer);
 
    memset(&sv_tmpl, 0, sizeof(sv_tmpl));
    u_sampler_view_default_template(&sv_tmpl, res, res->format);
@@ -420,9 +417,6 @@ vl_zscan_layout(struct pipe_context *pipe, const int layout[64], unsigned blocks
    return sv;
 
 error_map:
-   pipe->transfer_destroy(pipe, buf_transfer);
-
-error_transfer:
    pipe_resource_reference(&res, NULL);
 
 error_resource:
@@ -480,11 +474,9 @@ vl_zscan_init_buffer(struct vl_zscan *zscan, struct vl_zscan_buffer *buffer,
    buffer->viewport.scale[0] = dst->width;
    buffer->viewport.scale[1] = dst->height;
    buffer->viewport.scale[2] = 1;
-   buffer->viewport.scale[3] = 1;
    buffer->viewport.translate[0] = 0;
    buffer->viewport.translate[1] = 0;
    buffer->viewport.translate[2] = 0;
-   buffer->viewport.translate[3] = 0;
 
    buffer->fb_state.width = dst->width;
    buffer->fb_state.height = dst->height;
@@ -560,20 +552,14 @@ vl_zscan_upload_quant(struct vl_zscan *zscan, struct vl_zscan_buffer *buffer,
 
    rect.width *= zscan->blocks_per_line;
 
-   buf_transfer = pipe->get_transfer
-   (
-      pipe, buffer->quant->texture,
-      0, PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD_RANGE,
-      &rect
-   );
-   if (!buf_transfer)
-      goto error_transfer;
+   data = pipe->transfer_map(pipe, buffer->quant->texture,
+                             0, PIPE_TRANSFER_WRITE |
+                             PIPE_TRANSFER_DISCARD_RANGE,
+                             &rect, &buf_transfer);
+   if (!data)
+      return;
 
    pitch = buf_transfer->stride;
-
-   data = pipe->transfer_map(pipe, buf_transfer);
-   if (!data)
-      goto error_map;
 
    for (i = 0; i < zscan->blocks_per_line; ++i)
       for (y = 0; y < VL_BLOCK_HEIGHT; ++y)
@@ -581,12 +567,6 @@ vl_zscan_upload_quant(struct vl_zscan *zscan, struct vl_zscan_buffer *buffer,
             data[i * VL_BLOCK_WIDTH + y * pitch + x] = matrix[x + y * VL_BLOCK_WIDTH];
 
    pipe->transfer_unmap(pipe, buf_transfer);
-
-error_map:
-   pipe->transfer_destroy(pipe, buf_transfer);
-
-error_transfer:
-   return;
 }
 
 void
@@ -596,10 +576,12 @@ vl_zscan_render(struct vl_zscan *zscan, struct vl_zscan_buffer *buffer, unsigned
 
    zscan->pipe->bind_rasterizer_state(zscan->pipe, zscan->rs_state);
    zscan->pipe->bind_blend_state(zscan->pipe, zscan->blend);
-   zscan->pipe->bind_fragment_sampler_states(zscan->pipe, 3, zscan->samplers);
+   zscan->pipe->bind_sampler_states(zscan->pipe, PIPE_SHADER_FRAGMENT,
+                                    0, 3, zscan->samplers);
    zscan->pipe->set_framebuffer_state(zscan->pipe, &buffer->fb_state);
-   zscan->pipe->set_viewport_state(zscan->pipe, &buffer->viewport);
-   zscan->pipe->set_fragment_sampler_views(zscan->pipe, 3, &buffer->src);
+   zscan->pipe->set_viewport_states(zscan->pipe, 0, 1, &buffer->viewport);
+   zscan->pipe->set_sampler_views(zscan->pipe, PIPE_SHADER_FRAGMENT,
+                                  0, 3, &buffer->src);
    zscan->pipe->bind_vs_state(zscan->pipe, zscan->vs);
    zscan->pipe->bind_fs_state(zscan->pipe, zscan->fs);
    util_draw_arrays_instanced(zscan->pipe, PIPE_PRIM_QUADS, 0, 4, 0, num_instances);

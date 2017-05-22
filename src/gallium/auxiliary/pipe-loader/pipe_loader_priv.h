@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -31,8 +31,10 @@
 #include "pipe_loader.h"
 
 struct pipe_loader_ops {
-   struct pipe_screen *(*create_screen)(struct pipe_loader_device *dev,
-                                        const char *library_paths);
+   struct pipe_screen *(*create_screen)(struct pipe_loader_device *dev);
+
+   const struct drm_conf_ret *(*configuration)(struct pipe_loader_device *dev,
+                                               enum drm_conf conf);
 
    void (*release)(struct pipe_loader_device **dev);
 };

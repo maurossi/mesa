@@ -10,11 +10,13 @@ env.Append(CPPPATH = [
     '#/src/mesa',
     '#/src/mesa/main',
     '#src/gallium/state_trackers/glx/xlib',
+    Dir('../../../mapi'), # src/mapi build path for python-generated GL API files/headers
 ])
 
 env.Append(CPPDEFINES = ['USE_XSHM'])
 
 env.Prepend(LIBS = env['X11_LIBS'])
+env.Prepend(LIBPATH = env['X11_LIBPATH'])
 
 # when GLES is enabled, gl* and _glapi_* belong to bridge_glapi and
 # shared_glapi respectively
@@ -26,8 +28,11 @@ env.Prepend(LIBS = [
     st_xlib,
     ws_xlib,
     glapi,
+    mesautil,
+    compiler,
     mesa,
     glsl,
+    nir,
     gallium,
 ])
 
@@ -35,16 +40,29 @@ sources = [
     'xlib.c',
 ]
 
-# The sources depend on the python-generated GL API files/headers.
-env.Depends(sources, glapi_headers)
-
 if True:
-    env.Append(CPPDEFINES = ['GALLIUM_TRACE', 'GALLIUM_RBUG', 'GALLIUM_GALAHAD', 'GALLIUM_SOFTPIPE'])
-    env.Prepend(LIBS = [trace, rbug, galahad, softpipe])
+    env.Append(CPPDEFINES = ['GALLIUM_TRACE', 'GALLIUM_RBUG', 'GALLIUM_SOFTPIPE'])
+    env.Prepend(LIBS = [trace, rbug, softpipe])
 
 if env['llvm']:
     env.Append(CPPDEFINES = ['GALLIUM_LLVMPIPE'])
     env.Prepend(LIBS = [llvmpipe])
+
+    if env['swr']:
+        env.Append(CPPDEFINES = 'HAVE_SWR')
+        env.Prepend(LIBS = [swr])
+
+if env['platform'] != 'darwin':
+    # Disallow undefined symbols, except with Address Sanitizer, since libasan
+    # is not linked on shared libs, as it should be LD_PRELOAD'ed instead
+    if not env['asan']:
+        env.Append(SHLINKFLAGS = [
+            '-Wl,-z,defs',
+        ])
+    env.Append(SHLINKFLAGS = [
+        # Restrict exported symbols
+        '-Wl,--version-script=%s' % File("libgl-xlib.sym").srcnode().path,
+    ])
 
 # libGL.so.1.5
 libgl_1_5 = env.SharedLibrary(

@@ -31,6 +31,7 @@
 
 #include "swrast/swrast.h"
 #include "tnl/tnl.h"
+#include "util/bitscan.h"
 
 static void
 nouveau_alpha_func(struct gl_context *ctx, GLenum func, GLfloat ref)
@@ -107,12 +108,6 @@ nouveau_depth_mask(struct gl_context *ctx, GLboolean flag)
 }
 
 static void
-nouveau_depth_range(struct gl_context *ctx, GLclampd nearval, GLclampd farval)
-{
-	context_dirty(ctx, VIEWPORT);
-}
-
-static void
 nouveau_read_buffer(struct gl_context *ctx, GLenum buffer)
 {
 	nouveau_validate_framebuffer(ctx);
@@ -128,7 +123,7 @@ nouveau_draw_buffers(struct gl_context *ctx, GLsizei n, const GLenum *buffers)
 static void
 nouveau_enable(struct gl_context *ctx, GLenum cap, GLboolean state)
 {
-	int i;
+	GLbitfield mask;
 
 	switch (cap) {
 	case GL_ALPHA_TEST:
@@ -193,9 +188,10 @@ nouveau_enable(struct gl_context *ctx, GLenum cap, GLboolean state)
 		context_dirty(ctx, LIGHT_MODEL);
 		context_dirty(ctx, LIGHT_ENABLE);
 
-		for (i = 0; i < MAX_LIGHTS; i++) {
-			if (ctx->Light.Light[i].Enabled)
-				context_dirty_i(ctx, LIGHT_SOURCE, i);
+		mask = ctx->Light._EnabledLights;
+		while (mask) {
+			const int i = u_bit_scan(&mask);
+			context_dirty_i(ctx, LIGHT_SOURCE, i);
 		}
 
 		context_dirty(ctx, MATERIAL_FRONT_AMBIENT);
@@ -325,7 +321,7 @@ nouveau_polygon_mode(struct gl_context *ctx, GLenum face, GLenum mode)
 }
 
 static void
-nouveau_polygon_offset(struct gl_context *ctx, GLfloat factor, GLfloat units)
+nouveau_polygon_offset(struct gl_context *ctx, GLfloat factor, GLfloat units, GLfloat clamp)
 {
 	context_dirty(ctx, POLYGON_OFFSET);
 }
@@ -340,12 +336,6 @@ static void
 nouveau_render_mode(struct gl_context *ctx, GLenum mode)
 {
 	context_dirty(ctx, RENDER_MODE);
-}
-
-static void
-nouveau_scissor(struct gl_context *ctx, GLint x, GLint y, GLsizei w, GLsizei h)
-{
-	context_dirty(ctx, SCISSOR);
 }
 
 static void
@@ -404,9 +394,8 @@ nouveau_tex_env(struct gl_context *ctx, GLenum target, GLenum pname,
 }
 
 static void
-nouveau_tex_parameter(struct gl_context *ctx, GLenum target,
-		      struct gl_texture_object *t, GLenum pname,
-		      const GLfloat *params)
+nouveau_tex_parameter(struct gl_context *ctx,
+		      struct gl_texture_object *t, GLenum pname)
 {
 	switch (pname) {
 	case GL_TEXTURE_MAG_FILTER:
@@ -427,12 +416,6 @@ nouveau_tex_parameter(struct gl_context *ctx, GLenum target,
 		context_dirty_i(ctx, TEX_OBJ, ctx->Texture.CurrentUnit);
 		break;
 	}
-}
-
-static void
-nouveau_viewport(struct gl_context *ctx, GLint x, GLint y, GLsizei w, GLsizei h)
-{
-	context_dirty(ctx, VIEWPORT);
 }
 
 void
@@ -483,6 +466,12 @@ nouveau_update_state(struct gl_context *ctx, GLbitfield new_state)
 			context_dirty_i(ctx, TEX_MAT, i);
 	}
 
+	if (new_state & _NEW_SCISSOR)
+		context_dirty(ctx, SCISSOR);
+
+	if (new_state & _NEW_VIEWPORT)
+		context_dirty(ctx, VIEWPORT);
+
 	if (new_state & _NEW_CURRENT_ATTRIB &&
 	    new_state & _NEW_LIGHT) {
 		context_dirty(ctx, MATERIAL_FRONT_AMBIENT);
@@ -504,6 +493,7 @@ nouveau_update_state(struct gl_context *ctx, GLbitfield new_state)
 
 	_swrast_InvalidateState(ctx, new_state);
 	_tnl_InvalidateState(ctx, new_state);
+	_vbo_InvalidateState(ctx, new_state);
 
 	nouveau_state_emit(ctx);
 }
@@ -524,7 +514,6 @@ nouveau_state_init(struct gl_context *ctx)
 	ctx->Driver.FrontFace = nouveau_front_face;
 	ctx->Driver.DepthFunc = nouveau_depth_func;
 	ctx->Driver.DepthMask = nouveau_depth_mask;
-	ctx->Driver.DepthRange = nouveau_depth_range;
 	ctx->Driver.ReadBuffer = nouveau_read_buffer;
 	ctx->Driver.DrawBuffers = nouveau_draw_buffers;
 	ctx->Driver.Enable = nouveau_enable;
@@ -540,7 +529,6 @@ nouveau_state_init(struct gl_context *ctx)
 	ctx->Driver.PolygonOffset = nouveau_polygon_offset;
 	ctx->Driver.PolygonStipple = nouveau_polygon_stipple;
 	ctx->Driver.RenderMode = nouveau_render_mode;
-	ctx->Driver.Scissor = nouveau_scissor;
 	ctx->Driver.ShadeModel = nouveau_shade_model;
 	ctx->Driver.StencilFuncSeparate = nouveau_stencil_func_separate;
 	ctx->Driver.StencilMaskSeparate = nouveau_stencil_mask_separate;
@@ -548,7 +536,6 @@ nouveau_state_init(struct gl_context *ctx)
 	ctx->Driver.TexGen = nouveau_tex_gen;
 	ctx->Driver.TexEnv = nouveau_tex_env;
 	ctx->Driver.TexParameter = nouveau_tex_parameter;
-	ctx->Driver.Viewport = nouveau_viewport;
 
 	ctx->Driver.UpdateState = nouveau_update_state;
 

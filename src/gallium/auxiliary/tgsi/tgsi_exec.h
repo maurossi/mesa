@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * All Rights Reserved.
  * Copyright 2009-2010 VMware, Inc.  All rights Reserved.
  * 
@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -88,9 +88,84 @@ struct tgsi_interp_coef
    float dady[TGSI_NUM_CHANNELS];
 };
 
-enum tgsi_sampler_control {
-   tgsi_sampler_lod_bias,
-   tgsi_sampler_lod_explicit
+enum tgsi_sampler_control
+{
+   TGSI_SAMPLER_LOD_NONE,
+   TGSI_SAMPLER_LOD_BIAS,
+   TGSI_SAMPLER_LOD_EXPLICIT,
+   TGSI_SAMPLER_LOD_ZERO,
+   TGSI_SAMPLER_DERIVS_EXPLICIT,
+   TGSI_SAMPLER_GATHER,
+};
+
+struct tgsi_image_params {
+   unsigned unit;
+   unsigned tgsi_tex_instr;
+   enum pipe_format format;
+   unsigned execmask;
+};
+
+struct tgsi_image {
+   /* image interfaces */
+   void (*load)(const struct tgsi_image *image,
+                const struct tgsi_image_params *params,
+                const int s[TGSI_QUAD_SIZE],
+                const int t[TGSI_QUAD_SIZE],
+                const int r[TGSI_QUAD_SIZE],
+                const int sample[TGSI_QUAD_SIZE],
+                float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+
+   void (*store)(const struct tgsi_image *image,
+                 const struct tgsi_image_params *params,
+                 const int s[TGSI_QUAD_SIZE],
+                 const int t[TGSI_QUAD_SIZE],
+                 const int r[TGSI_QUAD_SIZE],
+                 const int sample[TGSI_QUAD_SIZE],
+                 float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+
+   void (*op)(const struct tgsi_image *image,
+              const struct tgsi_image_params *params,
+              unsigned opcode,
+              const int s[TGSI_QUAD_SIZE],
+              const int t[TGSI_QUAD_SIZE],
+              const int r[TGSI_QUAD_SIZE],
+              const int sample[TGSI_QUAD_SIZE],
+              float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE],
+              float rgba2[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+
+   void (*get_dims)(const struct tgsi_image *image,
+                    const struct tgsi_image_params *params,
+                    int dims[4]);
+};
+
+struct tgsi_buffer_params {
+   unsigned unit;
+   unsigned execmask;
+   unsigned writemask;
+};
+
+struct tgsi_buffer {
+   /* buffer interfaces */
+   void (*load)(const struct tgsi_buffer *buffer,
+                const struct tgsi_buffer_params *params,
+                const int s[TGSI_QUAD_SIZE],
+                float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+
+   void (*store)(const struct tgsi_buffer *buffer,
+                 const struct tgsi_buffer_params *params,
+                 const int s[TGSI_QUAD_SIZE],
+                 float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+
+   void (*op)(const struct tgsi_buffer *buffer,
+              const struct tgsi_buffer_params *params,
+              unsigned opcode,
+              const int s[TGSI_QUAD_SIZE],
+              float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE],
+              float rgba2[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+
+   void (*get_dims)(const struct tgsi_buffer *buffer,
+                    const struct tgsi_buffer_params *params,
+                    int *dim);
 };
 
 /**
@@ -100,24 +175,54 @@ enum tgsi_sampler_control {
 struct tgsi_sampler
 {
    /** Get samples for four fragments in a quad */
+   /* this interface contains 5 sets of channels that vary
+    * depending on the sampler.
+    * s - the first texture coordinate for sampling.
+    * t - the second texture coordinate for sampling - unused for 1D,
+          layer for 1D arrays.
+    * r - the third coordinate for sampling for 3D, cube, cube arrays,
+    *     layer for 2D arrays. Compare value for 1D/2D shadows.
+    * c0 - Compare value for shadow cube and shadow 2d arrays,
+    *      layer for cube arrays.
+    * derivs - explicit derivatives.
+    * offset - texel offsets
+    * lod - lod value, except for shadow cube arrays (compare value there).
+    */
    void (*get_samples)(struct tgsi_sampler *sampler,
+                       const unsigned sview_index,
+                       const unsigned sampler_index,
                        const float s[TGSI_QUAD_SIZE],
                        const float t[TGSI_QUAD_SIZE],
-                       const float p[TGSI_QUAD_SIZE],
+                       const float r[TGSI_QUAD_SIZE],
                        const float c0[TGSI_QUAD_SIZE],
+                       const float c1[TGSI_QUAD_SIZE],
+                       float derivs[3][2][TGSI_QUAD_SIZE],
+                       const int8_t offset[3],
                        enum tgsi_sampler_control control,
                        float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
-   void (*get_dims)(struct tgsi_sampler *sampler, int level,
-		    int dims[4]);
-   void (*get_texel)(struct tgsi_sampler *sampler, const int i[TGSI_QUAD_SIZE],
-		     const int j[TGSI_QUAD_SIZE], const int k[TGSI_QUAD_SIZE],
-		     const int lod[TGSI_QUAD_SIZE], const int8_t offset[3],
-		     float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+   void (*get_dims)(struct tgsi_sampler *sampler,
+                    const unsigned sview_index,
+                    int level, int dims[4]);
+   void (*get_texel)(struct tgsi_sampler *sampler,
+                     const unsigned sview_index,
+                     const int i[TGSI_QUAD_SIZE],
+                     const int j[TGSI_QUAD_SIZE], const int k[TGSI_QUAD_SIZE],
+                     const int lod[TGSI_QUAD_SIZE], const int8_t offset[3],
+                     float rgba[TGSI_NUM_CHANNELS][TGSI_QUAD_SIZE]);
+   void (*query_lod)(const struct tgsi_sampler *tgsi_sampler,
+                     const unsigned sview_index,
+                     const unsigned sampler_index,
+                     const float s[TGSI_QUAD_SIZE],
+                     const float t[TGSI_QUAD_SIZE],
+                     const float p[TGSI_QUAD_SIZE],
+                     const float c0[TGSI_QUAD_SIZE],
+                     const enum tgsi_sampler_control control,
+                     float mipmap[TGSI_QUAD_SIZE],
+                     float lod[TGSI_QUAD_SIZE]);
 };
 
-#define TGSI_EXEC_NUM_TEMPS       128
+#define TGSI_EXEC_NUM_TEMPS       4096
 #define TGSI_EXEC_NUM_IMMEDIATES  256
-#define TGSI_EXEC_NUM_TEMP_ARRAYS 8
 
 /*
  * Locations of various utility registers (_I = Index, _C = Channel)
@@ -161,22 +266,18 @@ struct tgsi_sampler
 #define TGSI_EXEC_TEMP_HALF_I       (TGSI_EXEC_NUM_TEMPS + 3)
 #define TGSI_EXEC_TEMP_HALF_C       0
 
-/* execution mask, each value is either 0 or ~0 */
-#define TGSI_EXEC_MASK_I            (TGSI_EXEC_NUM_TEMPS + 3)
-#define TGSI_EXEC_MASK_C            1
-
 /* 4 register buffer for various purposes */
 #define TGSI_EXEC_TEMP_R0           (TGSI_EXEC_NUM_TEMPS + 4)
 #define TGSI_EXEC_NUM_TEMP_R        4
 
 #define TGSI_EXEC_TEMP_ADDR         (TGSI_EXEC_NUM_TEMPS + 8)
-#define TGSI_EXEC_NUM_ADDRS         1
+#define TGSI_EXEC_NUM_ADDRS         3
 
 /* predicate register */
-#define TGSI_EXEC_TEMP_P0           (TGSI_EXEC_NUM_TEMPS + 9)
+#define TGSI_EXEC_TEMP_P0           (TGSI_EXEC_NUM_TEMPS + 11)
 #define TGSI_EXEC_NUM_PREDS         1
 
-#define TGSI_EXEC_NUM_TEMP_EXTRAS   10
+#define TGSI_EXEC_NUM_TEMP_EXTRAS   12
 
 
 
@@ -190,11 +291,11 @@ struct tgsi_sampler
  * input register files, this is the stride between two 1D
  * arrays.
  */
-#define TGSI_EXEC_MAX_INPUT_ATTRIBS 17
+#define TGSI_EXEC_MAX_INPUT_ATTRIBS 32
 
-/* The maximum number of constant vectors per constant buffer.
+/* The maximum number of bytes per constant buffer.
  */
-#define TGSI_EXEC_MAX_CONST_BUFFER  4096
+#define TGSI_EXEC_MAX_CONST_BUFFER_SIZE  (4096 * sizeof(float[4]))
 
 /* The maximum number of vertices per primitive */
 #define TGSI_MAX_PRIM_VERTICES 6
@@ -245,7 +346,6 @@ struct tgsi_exec_machine
     */
    struct tgsi_exec_vector       Temps[TGSI_EXEC_NUM_TEMPS +
                                        TGSI_EXEC_NUM_TEMP_EXTRAS];
-   struct tgsi_exec_vector       TempArray[TGSI_EXEC_NUM_TEMP_ARRAYS][TGSI_EXEC_NUM_TEMPS];
 
    float                         Imms[TGSI_EXEC_NUM_IMMEDIATES][4];
 
@@ -256,31 +356,41 @@ struct tgsi_exec_machine
 
    /* System values */
    unsigned                      SysSemanticToIndex[TGSI_SEMANTIC_COUNT];
-   union tgsi_exec_channel       SystemValue[TGSI_MAX_MISC_INPUTS];
+   struct tgsi_exec_vector       SystemValue[TGSI_MAX_MISC_INPUTS];
 
    struct tgsi_exec_vector       *Addrs;
    struct tgsi_exec_vector       *Predicates;
 
-   struct tgsi_sampler           **Samplers;
+   struct tgsi_sampler           *Sampler;
 
+   struct tgsi_image             *Image;
+   struct tgsi_buffer            *Buffer;
    unsigned                      ImmLimit;
 
    const void *Consts[PIPE_MAX_CONSTANT_BUFFERS];
    unsigned ConstsSize[PIPE_MAX_CONSTANT_BUFFERS];
 
    const struct tgsi_token       *Tokens;   /**< Declarations, instructions */
-   unsigned                      Processor; /**< TGSI_PROCESSOR_x */
+   enum pipe_shader_type         ShaderType; /**< PIPE_SHADER_x */
 
    /* GEOMETRY processor only. */
    unsigned                      *Primitives;
    unsigned                       NumOutputs;
    unsigned                       MaxGeometryShaderOutputs;
+   unsigned                       MaxOutputVertices;
 
    /* FRAGMENT processor only. */
    const struct tgsi_interp_coef *InterpCoefs;
    struct tgsi_exec_vector       QuadPos;
    float                         Face;    /**< +1 if front facing, -1 if back facing */
    bool                          flatshade_color;
+
+   /* Compute Only */
+   void                          *LocalMem;
+   unsigned                      LocalMemSize;
+
+   /* See GLSL 4.50 specification for definition of helper invocations */
+   uint NonHelperMask;  /**< non-helpers */
    /* Conditional execution masks */
    uint CondMask;  /**< For IF/ELSE/ENDIF */
    uint LoopMask;  /**< For BGNLOOP/ENDLOOP */
@@ -335,10 +445,12 @@ struct tgsi_exec_machine
       SamplerViews[PIPE_MAX_SHADER_SAMPLER_VIEWS];
 
    boolean UsedGeometryShader;
+
+   int pc;
 };
 
 struct tgsi_exec_machine *
-tgsi_exec_machine_create( void );
+tgsi_exec_machine_create(enum pipe_shader_type shader_type);
 
 void
 tgsi_exec_machine_destroy(struct tgsi_exec_machine *mach);
@@ -348,12 +460,13 @@ void
 tgsi_exec_machine_bind_shader(
    struct tgsi_exec_machine *mach,
    const struct tgsi_token *tokens,
-   uint numSamplers,
-   struct tgsi_sampler **samplers);
+   struct tgsi_sampler *sampler,
+   struct tgsi_image *image,
+   struct tgsi_buffer *buffer);
 
 uint
 tgsi_exec_machine_run(
-   struct tgsi_exec_machine *mach );
+   struct tgsi_exec_machine *mach, int start_pc );
 
 
 void
@@ -364,27 +477,6 @@ boolean
 tgsi_check_soa_dependencies(const struct tgsi_full_instruction *inst);
 
 
-static INLINE void
-tgsi_set_kill_mask(struct tgsi_exec_machine *mach, unsigned mask)
-{
-   mach->Temps[TGSI_EXEC_TEMP_KILMASK_I].xyzw[TGSI_EXEC_TEMP_KILMASK_C].u[0] =
-      mask;
-}
-
-
-/** Set execution mask values prior to executing the shader */
-static INLINE void
-tgsi_set_exec_mask(struct tgsi_exec_machine *mach,
-                   boolean ch0, boolean ch1, boolean ch2, boolean ch3)
-{
-   int *mask = mach->Temps[TGSI_EXEC_MASK_I].xyzw[TGSI_EXEC_MASK_C].i;
-   mask[0] = ch0 ? ~0 : 0;
-   mask[1] = ch1 ? ~0 : 0;
-   mask[2] = ch2 ? ~0 : 0;
-   mask[3] = ch3 ? ~0 : 0;
-}
-
-
 extern void
 tgsi_exec_set_constant_buffers(struct tgsi_exec_machine *mach,
                                unsigned num_bufs,
@@ -392,7 +484,7 @@ tgsi_exec_set_constant_buffers(struct tgsi_exec_machine *mach,
                                const unsigned *buf_sizes);
 
 
-static INLINE int
+static inline int
 tgsi_exec_get_shader_param(enum pipe_shader_cap param)
 {
    switch(param) {
@@ -405,14 +497,14 @@ tgsi_exec_get_shader_param(enum pipe_shader_cap param)
       return TGSI_EXEC_MAX_NESTING;
    case PIPE_SHADER_CAP_MAX_INPUTS:
       return TGSI_EXEC_MAX_INPUT_ATTRIBS;
-   case PIPE_SHADER_CAP_MAX_CONSTS:
-      return TGSI_EXEC_MAX_CONST_BUFFER;
+   case PIPE_SHADER_CAP_MAX_OUTPUTS:
+      return 32;
+   case PIPE_SHADER_CAP_MAX_CONST_BUFFER_SIZE:
+      return TGSI_EXEC_MAX_CONST_BUFFER_SIZE;
    case PIPE_SHADER_CAP_MAX_CONST_BUFFERS:
       return PIPE_MAX_CONSTANT_BUFFERS;
    case PIPE_SHADER_CAP_MAX_TEMPS:
       return TGSI_EXEC_NUM_TEMPS;
-   case PIPE_SHADER_CAP_MAX_ADDRS:
-      return TGSI_EXEC_NUM_ADDRS;
    case PIPE_SHADER_CAP_MAX_PREDS:
       return TGSI_EXEC_NUM_PREDS;
    case PIPE_SHADER_CAP_TGSI_CONT_SUPPORTED:
@@ -428,9 +520,34 @@ tgsi_exec_get_shader_param(enum pipe_shader_cap param)
       return 1;
    case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
       return PIPE_MAX_SAMPLERS;
-   default:
+   case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
+      return PIPE_MAX_SHADER_SAMPLER_VIEWS;
+   case PIPE_SHADER_CAP_PREFERRED_IR:
+      return PIPE_SHADER_IR_TGSI;
+   case PIPE_SHADER_CAP_SUPPORTED_IRS:
+      return 1 << PIPE_SHADER_IR_TGSI;
+   case PIPE_SHADER_CAP_TGSI_SQRT_SUPPORTED:
+      return 1;
+   case PIPE_SHADER_CAP_DOUBLES:
+   case PIPE_SHADER_CAP_TGSI_DFRACEXP_DLDEXP_SUPPORTED:
+   case PIPE_SHADER_CAP_TGSI_ANY_INOUT_DECL_RANGE:
+      return 1;
+   case PIPE_SHADER_CAP_TGSI_DROUND_SUPPORTED:
+   case PIPE_SHADER_CAP_TGSI_FMA_SUPPORTED:
+   case PIPE_SHADER_CAP_LOWER_IF_THRESHOLD:
       return 0;
+   case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
+      return PIPE_MAX_SHADER_BUFFERS;
+   case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
+      return PIPE_MAX_SHADER_IMAGES;
+
+   case PIPE_SHADER_CAP_MAX_UNROLL_ITERATIONS_HINT:
+      return 32;
    }
+   /* if we get here, we missed a shader cap above (and should have seen
+    * a compiler warning.)
+    */
+   return 0;
 }
 
 #if defined __cplusplus

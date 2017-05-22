@@ -23,15 +23,22 @@
 
 LOCAL_PATH := $(call my-dir)
 
-# get C_SOURCES
+# get C_SOURCES and GENERATED_SOURCES
 include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_C_INCLUDES :=
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
 
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+LOCAL_C_INCLUDES := \
+	$(MESA_TOP)/src/amd/common \
+	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_amd_common,,)/common
+
+LOCAL_SHARED_LIBRARIES := libdrm_radeon
 LOCAL_MODULE := libmesa_pipe_radeonsi
 
 include $(GALLIUM_COMMON_MK)

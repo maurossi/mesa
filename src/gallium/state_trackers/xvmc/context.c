@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -31,7 +31,7 @@
 #include <X11/extensions/XvMClib.h>
 
 #include "pipe/p_screen.h"
-#include "pipe/p_video_decoder.h"
+#include "pipe/p_video_codec.h"
 #include "pipe/p_video_state.h"
 #include "pipe/p_state.h"
 
@@ -67,7 +67,7 @@ static Status Validate(Display *dpy, XvPortID port, int surface_type_id,
 
    *found_port = false;
 
-   for (unsigned int i = 0; i < XScreenCount(dpy); ++i) {
+   for (int i = 0; i < XScreenCount(dpy); ++i) {
       ret = XvQueryAdaptors(dpy, XRootWindow(dpy, i), &num_adaptors, &adaptor_info);
       if (ret != Success)
          return ret;
@@ -87,7 +87,7 @@ static Status Validate(Display *dpy, XvPortID port, int surface_type_id,
                return BadAlloc;
             }
 
-            for (unsigned int l = 0; l < num_types && !found_surface; ++l) {
+            for (int l = 0; l < num_types && !found_surface; ++l) {
                if (surface_info[l].surface_type_id != surface_type_id)
                   continue;
 
@@ -113,7 +113,7 @@ static Status Validate(Display *dpy, XvPortID port, int surface_type_id,
                                     *mc_type, *surface_flags, *subpic_max_w, *subpic_max_h);
             }
 
-            XFree(surface_info);
+            free(surface_info);
          }
       }
 
@@ -191,6 +191,7 @@ Status XvMCCreateContext(Display *dpy, XvPortID port, int surface_type_id,
    Status ret;
    struct vl_screen *vscreen;
    struct pipe_context *pipe;
+   struct pipe_video_codec templat = {0};
    XvMCContextPrivate *context_priv;
    vl_csc_matrix csc;
 
@@ -228,7 +229,7 @@ Status XvMCCreateContext(Display *dpy, XvPortID port, int surface_type_id,
       return BadAlloc;
 
    /* TODO: Reuse screen if process creates another context */
-   vscreen = vl_screen_create(dpy, scrn);
+   vscreen = vl_dri2_screen_create(dpy, scrn);
 
    if (!vscreen) {
       XVMC_MSG(XVMC_ERR, "[XvMC] Could not create VL screen.\n");
@@ -236,27 +237,28 @@ Status XvMCCreateContext(Display *dpy, XvPortID port, int surface_type_id,
       return BadAlloc;
    }
 
-   pipe = vscreen->pscreen->context_create(vscreen->pscreen, vscreen);
+   pipe = vscreen->pscreen->context_create(vscreen->pscreen, vscreen, 0);
    if (!pipe) {
       XVMC_MSG(XVMC_ERR, "[XvMC] Could not create VL context.\n");
-      vl_screen_destroy(vscreen);
+      vscreen->destroy(vscreen);
       FREE(context_priv);
       return BadAlloc;
    }
 
-   context_priv->decoder = pipe->create_video_decoder
-   (
-      pipe, ProfileToPipe(mc_type),
-      (mc_type & XVMC_IDCT) ? PIPE_VIDEO_ENTRYPOINT_IDCT : PIPE_VIDEO_ENTRYPOINT_MC,
-      FormatToPipe(chroma_format),
-      width, height, 2,
-      true
-   );
+   templat.profile = ProfileToPipe(mc_type);
+   templat.entrypoint = (mc_type & XVMC_IDCT) ? PIPE_VIDEO_ENTRYPOINT_IDCT : PIPE_VIDEO_ENTRYPOINT_MC;
+   templat.chroma_format = FormatToPipe(chroma_format);
+   templat.width = width;
+   templat.height = height;
+   templat.max_references = 2;
+   templat.expect_chunked_decode = true;
+
+   context_priv->decoder = pipe->create_video_codec(pipe, &templat);
 
    if (!context_priv->decoder) {
       XVMC_MSG(XVMC_ERR, "[XvMC] Could not create VL decoder.\n");
       pipe->destroy(pipe);
-      vl_screen_destroy(vscreen);
+      vscreen->destroy(vscreen);
       FREE(context_priv);
       return BadAlloc;
    }
@@ -265,7 +267,7 @@ Status XvMCCreateContext(Display *dpy, XvPortID port, int surface_type_id,
       XVMC_MSG(XVMC_ERR, "[XvMC] Could not create VL compositor.\n");
       context_priv->decoder->destroy(context_priv->decoder);
       pipe->destroy(pipe);
-      vl_screen_destroy(vscreen);
+      vscreen->destroy(vscreen);
       FREE(context_priv);
       return BadAlloc;
    }
@@ -275,7 +277,7 @@ Status XvMCCreateContext(Display *dpy, XvPortID port, int surface_type_id,
       vl_compositor_cleanup(&context_priv->compositor);
       context_priv->decoder->destroy(context_priv->decoder);
       pipe->destroy(pipe);
-      vl_screen_destroy(vscreen);
+      vscreen->destroy(vscreen);
       FREE(context_priv);
       return BadAlloc;
    }
@@ -291,7 +293,7 @@ Status XvMCCreateContext(Display *dpy, XvPortID port, int surface_type_id,
       context_priv->color_standard,
       &context_priv->procamp, true, &csc
    );
-   vl_compositor_set_csc_matrix(&context_priv->cstate, (const vl_csc_matrix *)&csc);
+   vl_compositor_set_csc_matrix(&context_priv->cstate, (const vl_csc_matrix *)&csc, 1.0f, 0.0f);
 
    context_priv->vscreen = vscreen;
    context_priv->pipe = pipe;
@@ -330,7 +332,7 @@ Status XvMCDestroyContext(Display *dpy, XvMCContext *context)
    vl_compositor_cleanup_state(&context_priv->cstate);
    vl_compositor_cleanup(&context_priv->compositor);
    context_priv->pipe->destroy(context_priv->pipe);
-   vl_screen_destroy(context_priv->vscreen);
+   context_priv->vscreen->destroy(context_priv->vscreen);
    FREE(context_priv);
    context->privData = NULL;
 

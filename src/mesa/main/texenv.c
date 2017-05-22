@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright (C) 2009  VMware, Inc.  All Rights Reserved.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /** 
@@ -32,6 +32,7 @@
 
 #include "main/glheader.h"
 #include "main/context.h"
+#include "main/blend.h"
 #include "main/enums.h"
 #include "main/macros.h"
 #include "main/mtypes.h"
@@ -41,7 +42,7 @@
 
 
 #define TE_ERROR(errCode, msg, value)				\
-   _mesa_error(ctx, errCode, msg, _mesa_lookup_enum_by_nr(value));
+   _mesa_error(ctx, errCode, msg, _mesa_enum_to_string(value));
 
 
 /** Set texture env mode */
@@ -122,7 +123,7 @@ set_combiner_mode(struct gl_context *ctx,
       break;
    case GL_DOT3_RGB_EXT:
    case GL_DOT3_RGBA_EXT:
-      legal = (ctx->API == API_OPENGL &&
+      legal = (ctx->API == API_OPENGL_COMPAT &&
                ctx->Extensions.EXT_texture_env_dot3 &&
                pname == GL_COMBINE_RGB);
       break;
@@ -134,13 +135,8 @@ set_combiner_mode(struct gl_context *ctx,
    case GL_MODULATE_ADD_ATI:
    case GL_MODULATE_SIGNED_ADD_ATI:
    case GL_MODULATE_SUBTRACT_ATI:
-      legal = (ctx->API == API_OPENGL &&
+      legal = (ctx->API == API_OPENGL_COMPAT &&
                ctx->Extensions.ATI_texture_env_combine3);
-      break;
-   case GL_BUMP_ENVMAP_ATI:
-      legal = (ctx->API == API_OPENGL &&
-               ctx->Extensions.ATI_envmap_bumpmap &&
-               pname == GL_COMBINE_RGB);
       break;
    default:
       legal = GL_FALSE;
@@ -206,7 +202,7 @@ set_combiner_source(struct gl_context *ctx,
       return;
    }
 
-   if ((term == 3) && (ctx->API != API_OPENGL
+   if ((term == 3) && (ctx->API != API_OPENGL_COMPAT
                        || !ctx->Extensions.NV_texture_env_combine4)) {
       TE_ERROR(GL_INVALID_ENUM, "glTexEnv(pname=%s)", pname);
       return;
@@ -236,12 +232,12 @@ set_combiner_source(struct gl_context *ctx,
                param - GL_TEXTURE0 < ctx->Const.MaxTextureUnits);
       break;
    case GL_ZERO:
-      legal = (ctx->API == API_OPENGL &&
+      legal = (ctx->API == API_OPENGL_COMPAT &&
                (ctx->Extensions.ATI_texture_env_combine3 ||
                 ctx->Extensions.NV_texture_env_combine4));
       break;
    case GL_ONE:
-      legal = (ctx->API == API_OPENGL &&
+      legal = (ctx->API == API_OPENGL_COMPAT &&
                ctx->Extensions.ATI_texture_env_combine3);
       break;
    default:
@@ -293,7 +289,7 @@ set_combiner_operand(struct gl_context *ctx,
       return;
    }
 
-   if ((term == 3) && (ctx->API != API_OPENGL
+   if ((term == 3) && (ctx->API != API_OPENGL_COMPAT
                        || !ctx->Extensions.NV_texture_env_combine4)) {
       TE_ERROR(GL_INVALID_ENUM, "glTexEnv(pname=%s)", pname);
       return;
@@ -392,9 +388,7 @@ _mesa_TexEnvfv( GLenum target, GLenum pname, const GLfloat *param )
    const GLint iparam0 = (GLint) param[0];
    struct gl_texture_unit *texUnit;
    GLuint maxUnit;
-
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    maxUnit = (target == GL_POINT_SPRITE_NV && pname == GL_COORD_REPLACE_NV)
       ? ctx->Const.MaxTextureCoordUnits : ctx->Const.MaxCombinedTextureImageUnits;
@@ -441,26 +435,6 @@ _mesa_TexEnvfv( GLenum target, GLenum pname, const GLfloat *param )
       case GL_ALPHA_SCALE:
          set_combiner_scale(ctx, texUnit, pname, param[0]);
 	 break;
-      case GL_BUMP_TARGET_ATI:
-         if (ctx->API != API_OPENGL || !ctx->Extensions.ATI_envmap_bumpmap) {
-	    _mesa_error( ctx, GL_INVALID_ENUM, "glTexEnv(pname=0x%x)", pname );
-	    return;
-	 }
-	 if ((iparam0 < GL_TEXTURE0) ||
-             (iparam0 > GL_TEXTURE31)) {
-	    /* spec doesn't say this but it seems logical */
-	    _mesa_error( ctx, GL_INVALID_ENUM, "glTexEnv(param=0x%x)", iparam0);
-	    return;
-	 }
-	 if (!((1 << (iparam0 - GL_TEXTURE0)) & ctx->Const.SupportedBumpUnits)) {
-	    _mesa_error( ctx, GL_INVALID_VALUE, "glTexEnv(param=0x%x)", iparam0);
-	    return;
-	 }
-	 else {
-	    FLUSH_VERTICES(ctx, _NEW_TEXTURE);
-	    texUnit->BumpTarget = iparam0;
-	 }
-	 break;
       default:
 	 _mesa_error( ctx, GL_INVALID_ENUM, "glTexEnv(pname)" );
 	 return;
@@ -486,20 +460,22 @@ _mesa_TexEnvfv( GLenum target, GLenum pname, const GLfloat *param )
 	 return;
       }
       if (pname == GL_COORD_REPLACE_NV) {
-         if (iparam0 == GL_TRUE || iparam0 == GL_FALSE) {
-            /* It's kind of weird to set point state via glTexEnv,
-             * but that's what the spec calls for.
-             */
-            const GLboolean state = (GLboolean) iparam0;
-            if (ctx->Point.CoordReplace[ctx->Texture.CurrentUnit] == state)
+         /* It's kind of weird to set point state via glTexEnv,
+          * but that's what the spec calls for.
+          */
+         if (iparam0 == GL_TRUE) {
+            if (ctx->Point.CoordReplace & (1u << ctx->Texture.CurrentUnit))
                return;
-            FLUSH_VERTICES(ctx, _NEW_POINT);
-            ctx->Point.CoordReplace[ctx->Texture.CurrentUnit] = state;
-         }
-         else {
+            ctx->Point.CoordReplace |= (1u << ctx->Texture.CurrentUnit);
+         } else if (iparam0 == GL_FALSE) {
+            if (~(ctx->Point.CoordReplace) & (1u << ctx->Texture.CurrentUnit))
+               return;
+            ctx->Point.CoordReplace &= ~(1u << ctx->Texture.CurrentUnit);
+         } else {
             _mesa_error( ctx, GL_INVALID_VALUE, "glTexEnv(param=0x%x)", iparam0);
             return;
          }
+         FLUSH_VERTICES(ctx, _NEW_POINT);
       }
       else {
          _mesa_error( ctx, GL_INVALID_ENUM, "glTexEnv(pname=0x%x)", pname );
@@ -507,20 +483,21 @@ _mesa_TexEnvfv( GLenum target, GLenum pname, const GLfloat *param )
       }
    }
    else {
-      _mesa_error( ctx, GL_INVALID_ENUM, "glTexEnv(target=0x%x)",target );
+      _mesa_error(ctx, GL_INVALID_ENUM, "glTexEnv(target=%s)",
+                  _mesa_enum_to_string(target));
       return;
    }
 
    if (MESA_VERBOSE&(VERBOSE_API|VERBOSE_TEXTURE))
       _mesa_debug(ctx, "glTexEnv %s %s %.1f(%s) ...\n",
-                  _mesa_lookup_enum_by_nr(target),
-                  _mesa_lookup_enum_by_nr(pname),
+                  _mesa_enum_to_string(target),
+                  _mesa_enum_to_string(pname),
                   *param,
-                  _mesa_lookup_enum_by_nr((GLenum) iparam0));
+                  _mesa_enum_to_string((GLenum) iparam0));
 
    /* Tell device driver about the new texture environment */
    if (ctx->Driver.TexEnv) {
-      (*ctx->Driver.TexEnv)( ctx, target, pname, param );
+      ctx->Driver.TexEnv(ctx, target, pname, param);
    }
 }
 
@@ -588,7 +565,7 @@ get_texenvi(struct gl_context *ctx, const struct gl_texture_unit *texUnit,
       return texUnit->Combine.SourceRGB[rgb_idx];
    }
    case GL_SOURCE3_RGB_NV:
-      if (ctx->API == API_OPENGL && ctx->Extensions.NV_texture_env_combine4) {
+      if (ctx->API == API_OPENGL_COMPAT && ctx->Extensions.NV_texture_env_combine4) {
          return texUnit->Combine.SourceRGB[3];
       }
       else {
@@ -602,7 +579,7 @@ get_texenvi(struct gl_context *ctx, const struct gl_texture_unit *texUnit,
       return texUnit->Combine.SourceA[alpha_idx];
    }
    case GL_SOURCE3_ALPHA_NV:
-      if (ctx->API == API_OPENGL && ctx->Extensions.NV_texture_env_combine4) {
+      if (ctx->API == API_OPENGL_COMPAT && ctx->Extensions.NV_texture_env_combine4) {
          return texUnit->Combine.SourceA[3];
       }
       else {
@@ -616,7 +593,7 @@ get_texenvi(struct gl_context *ctx, const struct gl_texture_unit *texUnit,
       return texUnit->Combine.OperandRGB[op_rgb];
    }
    case GL_OPERAND3_RGB_NV:
-      if (ctx->API == API_OPENGL && ctx->Extensions.NV_texture_env_combine4) {
+      if (ctx->API == API_OPENGL_COMPAT && ctx->Extensions.NV_texture_env_combine4) {
          return texUnit->Combine.OperandRGB[3];
       }
       else {
@@ -630,7 +607,7 @@ get_texenvi(struct gl_context *ctx, const struct gl_texture_unit *texUnit,
       return texUnit->Combine.OperandA[op_alpha];
    }
    case GL_OPERAND3_ALPHA_NV:
-      if (ctx->API == API_OPENGL && ctx->Extensions.NV_texture_env_combine4) {
+      if (ctx->API == API_OPENGL_COMPAT && ctx->Extensions.NV_texture_env_combine4) {
          return texUnit->Combine.OperandA[3];
       }
       else {
@@ -641,16 +618,6 @@ get_texenvi(struct gl_context *ctx, const struct gl_texture_unit *texUnit,
       return 1 << texUnit->Combine.ScaleShiftRGB;
    case GL_ALPHA_SCALE:
       return 1 << texUnit->Combine.ScaleShiftA;
-   case GL_BUMP_TARGET_ATI:
-      /* spec doesn't say so, but I think this should be queryable */
-      if (ctx->API == API_OPENGL && ctx->Extensions.ATI_envmap_bumpmap) {
-         return texUnit->BumpTarget;
-      }
-      else {
-         _mesa_error(ctx, GL_INVALID_ENUM, "glGetTexEnvfv(pname)");
-      }
-      break;
-
    default:
       _mesa_error(ctx, GL_INVALID_ENUM, "glGetTexEnvfv(pname)");
       break;
@@ -667,7 +634,6 @@ _mesa_GetTexEnvfv( GLenum target, GLenum pname, GLfloat *params )
    GLuint maxUnit;
    const struct gl_texture_unit *texUnit;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    maxUnit = (target == GL_POINT_SPRITE_NV && pname == GL_COORD_REPLACE_NV)
       ? ctx->Const.MaxTextureCoordUnits : ctx->Const.MaxCombinedTextureImageUnits;
@@ -682,7 +648,7 @@ _mesa_GetTexEnvfv( GLenum target, GLenum pname, GLfloat *params )
       if (pname == GL_TEXTURE_ENV_COLOR) {
          if(ctx->NewState & (_NEW_BUFFERS | _NEW_FRAG_CLAMP))
             _mesa_update_state(ctx);
-         if(ctx->Color._ClampFragmentColor)
+         if (_mesa_get_clamp_fragment_color(ctx, ctx->DrawBuffer))
             COPY_4FV( params, texUnit->EnvColor );
          else
             COPY_4FV( params, texUnit->EnvColorUnclamped );
@@ -711,7 +677,10 @@ _mesa_GetTexEnvfv( GLenum target, GLenum pname, GLfloat *params )
          return;
       }
       if (pname == GL_COORD_REPLACE_NV) {
-         *params = (GLfloat) ctx->Point.CoordReplace[ctx->Texture.CurrentUnit];
+         if (ctx->Point.CoordReplace & (1u << ctx->Texture.CurrentUnit))
+            *params = 1.0f;
+         else
+            *params = 0.0f;
       }
       else {
          _mesa_error( ctx, GL_INVALID_ENUM, "glGetTexEnvfv(pname)" );
@@ -731,7 +700,6 @@ _mesa_GetTexEnviv( GLenum target, GLenum pname, GLint *params )
    GLuint maxUnit;
    const struct gl_texture_unit *texUnit;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    maxUnit = (target == GL_POINT_SPRITE_NV && pname == GL_COORD_REPLACE_NV)
       ? ctx->Const.MaxTextureCoordUnits : ctx->Const.MaxCombinedTextureImageUnits;
@@ -773,7 +741,10 @@ _mesa_GetTexEnviv( GLenum target, GLenum pname, GLint *params )
          return;
       }
       if (pname == GL_COORD_REPLACE_NV) {
-         *params = (GLint) ctx->Point.CoordReplace[ctx->Texture.CurrentUnit];
+         if (ctx->Point.CoordReplace & (1u << ctx->Texture.CurrentUnit))
+            *params = GL_TRUE;
+         else
+            *params = GL_FALSE;
       }
       else {
          _mesa_error( ctx, GL_INVALID_ENUM, "glGetTexEnviv(pname)" );
@@ -786,170 +757,3 @@ _mesa_GetTexEnviv( GLenum target, GLenum pname, GLint *params )
    }
 }
 
-
-/**
- * Why does ATI_envmap_bumpmap require new entrypoints? Should just
- * reuse TexEnv ones...
- */
-void GLAPIENTRY
-_mesa_TexBumpParameterivATI( GLenum pname, const GLint *param )
-{
-   GLfloat p[4];
-   GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
-   if (!ctx->Extensions.ATI_envmap_bumpmap) {
-      /* This isn't an "official" error case, but let's tell the user
-       * that something's wrong.
-       */
-      _mesa_error(ctx, GL_INVALID_OPERATION, "glTexBumpParameterivATI");
-      return;
-   }
-
-   if (pname == GL_BUMP_ROT_MATRIX_ATI) {
-      /* hope that conversion is correct here */
-      p[0] = INT_TO_FLOAT( param[0] );
-      p[1] = INT_TO_FLOAT( param[1] );
-      p[2] = INT_TO_FLOAT( param[2] );
-      p[3] = INT_TO_FLOAT( param[3] );
-   }
-   else {
-      p[0] = (GLfloat) param[0];
-      p[1] = p[2] = p[3] = 0.0F;  /* init to zero, just to be safe */
-   }
-   _mesa_TexBumpParameterfvATI( pname, p );
-}
-
-
-void GLAPIENTRY
-_mesa_TexBumpParameterfvATI( GLenum pname, const GLfloat *param )
-{
-   struct gl_texture_unit *texUnit;
-   GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
-   if (!ctx->Extensions.ATI_envmap_bumpmap) {
-      _mesa_error(ctx, GL_INVALID_OPERATION, "glTexBumpParameterfvATI");
-      return;
-   }
-
-   texUnit = _mesa_get_current_tex_unit(ctx);
-
-   if (pname == GL_BUMP_ROT_MATRIX_ATI) {
-      if (TEST_EQ_4V(param, texUnit->RotMatrix))
-         return;
-      FLUSH_VERTICES(ctx, _NEW_TEXTURE);
-      COPY_4FV(texUnit->RotMatrix, param);
-   }
-   else {
-      _mesa_error( ctx, GL_INVALID_ENUM, "glTexBumpParameter(pname)" );
-      return;
-   }
-   /* Drivers might want to know about this, instead of dedicated function
-      just shove it into TexEnv where it really belongs anyway */
-   if (ctx->Driver.TexEnv) {
-      (*ctx->Driver.TexEnv)( ctx, 0, pname, param );
-   }
-}
-
-
-void GLAPIENTRY
-_mesa_GetTexBumpParameterivATI( GLenum pname, GLint *param )
-{
-   const struct gl_texture_unit *texUnit;
-   GLuint i;
-   GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
-   if (!ctx->Extensions.ATI_envmap_bumpmap) {
-      _mesa_error(ctx, GL_INVALID_OPERATION, "glGetTexBumpParameterivATI");
-      return;
-   }
-
-   texUnit = _mesa_get_current_tex_unit(ctx);
-
-   if (pname == GL_BUMP_ROT_MATRIX_SIZE_ATI) {
-      /* spec leaves open to support larger matrices.
-         Don't think anyone would ever want to use it
-         (and apps almost certainly would not understand it and
-         thus fail to submit matrices correctly) so hardcode this. */
-      *param = 4;
-   }
-   else if (pname == GL_BUMP_ROT_MATRIX_ATI) {
-      /* hope that conversion is correct here */
-      param[0] = FLOAT_TO_INT(texUnit->RotMatrix[0]);
-      param[1] = FLOAT_TO_INT(texUnit->RotMatrix[1]);
-      param[2] = FLOAT_TO_INT(texUnit->RotMatrix[2]);
-      param[3] = FLOAT_TO_INT(texUnit->RotMatrix[3]);
-   }
-   else if (pname == GL_BUMP_NUM_TEX_UNITS_ATI) {
-      GLint count = 0;
-      for (i = 0; i < ctx->Const.MaxTextureImageUnits; i++) {
-         if (ctx->Const.SupportedBumpUnits & (1 << i)) {
-            count++;
-         }
-      }
-      *param = count;
-   }
-   else if (pname == GL_BUMP_TEX_UNITS_ATI) {
-      for (i = 0; i < ctx->Const.MaxTextureImageUnits; i++) {
-         if (ctx->Const.SupportedBumpUnits & (1 << i)) {
-            *param++ = i + GL_TEXTURE0;
-         }
-      }
-   }
-   else {
-      _mesa_error( ctx, GL_INVALID_ENUM, "glGetTexBumpParameter(pname)" );
-      return;
-   }
-}
-
-
-void GLAPIENTRY
-_mesa_GetTexBumpParameterfvATI( GLenum pname, GLfloat *param )
-{
-   const struct gl_texture_unit *texUnit;
-   GLuint i;
-   GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
-   if (!ctx->Extensions.ATI_envmap_bumpmap) {
-      _mesa_error(ctx, GL_INVALID_OPERATION, "glGetTexBumpParameterfvATI");
-      return;
-   }
-
-   texUnit = _mesa_get_current_tex_unit(ctx);
-
-   if (pname == GL_BUMP_ROT_MATRIX_SIZE_ATI) {
-      /* spec leaves open to support larger matrices.
-         Don't think anyone would ever want to use it
-         (and apps might not understand it) so hardcode this. */
-      *param = 4.0F;
-   }
-   else if (pname == GL_BUMP_ROT_MATRIX_ATI) {
-      param[0] = texUnit->RotMatrix[0];
-      param[1] = texUnit->RotMatrix[1];
-      param[2] = texUnit->RotMatrix[2];
-      param[3] = texUnit->RotMatrix[3];
-   }
-   else if (pname == GL_BUMP_NUM_TEX_UNITS_ATI) {
-      GLint count = 0;
-      for (i = 0; i < ctx->Const.MaxTextureImageUnits; i++) {
-         if (ctx->Const.SupportedBumpUnits & (1 << i)) {
-            count++;
-         }
-      }
-      *param = (GLfloat) count;
-   }
-   else if (pname == GL_BUMP_TEX_UNITS_ATI) {
-      for (i = 0; i < ctx->Const.MaxTextureImageUnits; i++) {
-         if (ctx->Const.SupportedBumpUnits & (1 << i)) {
-            *param++ = (GLfloat) (i + GL_TEXTURE0);
-         }
-      }
-   }
-   else {
-      _mesa_error( ctx, GL_INVALID_ENUM, "glGetTexBumpParameter(pname)" );
-      return;
-   }
-}

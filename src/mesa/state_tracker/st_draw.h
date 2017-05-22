@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2004 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2004 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
     
 
@@ -39,13 +39,15 @@
 
 struct _mesa_index_buffer;
 struct _mesa_prim;
-struct gl_client_array;
+struct gl_vertex_array;
 struct gl_context;
 struct st_context;
 
 void st_init_draw( struct st_context *st );
 
 void st_destroy_draw( struct st_context *st );
+
+struct draw_context *st_get_draw_context(struct st_context *st);
 
 extern void
 st_draw_vbo(struct gl_context *ctx,
@@ -55,7 +57,9 @@ st_draw_vbo(struct gl_context *ctx,
 	    GLboolean index_bounds_valid,
             GLuint min_index,
             GLuint max_index,
-            struct gl_transform_feedback_object *tfb_vertcount);
+            struct gl_transform_feedback_object *tfb_vertcount,
+            unsigned stream,
+            struct gl_buffer_object *indirect);
 
 extern void
 st_feedback_draw_vbo(struct gl_context *ctx,
@@ -65,7 +69,9 @@ st_feedback_draw_vbo(struct gl_context *ctx,
 		     GLboolean index_bounds_valid,
                      GLuint min_index,
                      GLuint max_index,
-                     struct gl_transform_feedback_object *tfb_vertcount);
+                     struct gl_transform_feedback_object *tfb_vertcount,
+                     unsigned stream,
+                     struct gl_buffer_object *indirect);
 
 /**
  * When drawing with VBOs, the addresses specified with
@@ -74,11 +80,18 @@ st_feedback_draw_vbo(struct gl_context *ctx,
  * This function is basically a cast wrapper to avoid warnings when building
  * in 64-bit mode.
  */
-static INLINE unsigned
+static inline unsigned
 pointer_to_offset(const void *ptr)
 {
-   return (unsigned) (((unsigned long) ptr) & 0xffffffffUL);
+   return (unsigned) (((GLsizeiptr) ptr) & 0xffffffffUL);
 }
 
+
+bool
+st_draw_quad(struct st_context *st,
+             float x0, float y0, float x1, float y1, float z,
+             float s0, float t0, float s1, float t1,
+             const float *color,
+             unsigned num_instances);
 
 #endif

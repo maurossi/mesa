@@ -24,7 +24,7 @@
 
 #include <stdio.h>
 
-#include "../r300_reg.h"
+#include "r300_reg.h"
 
 #include "radeon_compiler_util.h"
 #include "radeon_dataflow.h"
@@ -193,7 +193,8 @@ static void ei_vector1(struct r300_vertex_program_code *vp,
 				     0,
 				     t_dst_index(vp, &vpi->DstReg),
 				     t_dst_mask(vpi->DstReg.WriteMask),
-				     t_dst_class(vpi->DstReg.File));
+				     t_dst_class(vpi->DstReg.File),
+                                     vpi->SaturateMode == RC_SATURATE_ZERO_ONE);
 	inst[1] = t_src(vp, &vpi->SrcReg[0]);
 	inst[2] = __CONST(0, RC_SWIZZLE_ZERO);
 	inst[3] = __CONST(0, RC_SWIZZLE_ZERO);
@@ -209,7 +210,8 @@ static void ei_vector2(struct r300_vertex_program_code *vp,
 				     0,
 				     t_dst_index(vp, &vpi->DstReg),
 				     t_dst_mask(vpi->DstReg.WriteMask),
-				     t_dst_class(vpi->DstReg.File));
+				     t_dst_class(vpi->DstReg.File),
+                                     vpi->SaturateMode == RC_SATURATE_ZERO_ONE);
 	inst[1] = t_src(vp, &vpi->SrcReg[0]);
 	inst[2] = t_src(vp, &vpi->SrcReg[1]);
 	inst[3] = __CONST(1, RC_SWIZZLE_ZERO);
@@ -225,7 +227,8 @@ static void ei_math1(struct r300_vertex_program_code *vp,
 				     0,
 				     t_dst_index(vp, &vpi->DstReg),
 				     t_dst_mask(vpi->DstReg.WriteMask),
-				     t_dst_class(vpi->DstReg.File));
+				     t_dst_class(vpi->DstReg.File),
+                                     vpi->SaturateMode == RC_SATURATE_ZERO_ONE);
 	inst[1] = t_src_scalar(vp, &vpi->SrcReg[0]);
 	inst[2] = __CONST(0, RC_SWIZZLE_ZERO);
 	inst[3] = __CONST(0, RC_SWIZZLE_ZERO);
@@ -242,7 +245,8 @@ static void ei_lit(struct r300_vertex_program_code *vp,
 				     0,
 				     t_dst_index(vp, &vpi->DstReg),
 				     t_dst_mask(vpi->DstReg.WriteMask),
-				     t_dst_class(vpi->DstReg.File));
+				     t_dst_class(vpi->DstReg.File),
+                                     vpi->SaturateMode == RC_SATURATE_ZERO_ONE);
 	/* NOTE: Users swizzling might not work. */
 	inst[1] = PVS_SRC_OPERAND(t_src_index(vp, &vpi->SrcReg[0]), t_swizzle(GET_SWZ(vpi->SrcReg[0].Swizzle, 0)),	// X
 				  t_swizzle(GET_SWZ(vpi->SrcReg[0].Swizzle, 3)),	// W
@@ -309,14 +313,16 @@ static void ei_mad(struct r300_vertex_program_code *vp,
 				1,
 				t_dst_index(vp, &vpi->DstReg),
 				t_dst_mask(vpi->DstReg.WriteMask),
-				t_dst_class(vpi->DstReg.File));
+				t_dst_class(vpi->DstReg.File),
+                                vpi->SaturateMode == RC_SATURATE_ZERO_ONE);
 	} else {
 		inst[0] = PVS_OP_DST_OPERAND(VE_MULTIPLY_ADD,
 				0,
 				0,
 				t_dst_index(vp, &vpi->DstReg),
 				t_dst_mask(vpi->DstReg.WriteMask),
-				t_dst_class(vpi->DstReg.File));
+				t_dst_class(vpi->DstReg.File),
+                                vpi->SaturateMode == RC_SATURATE_ZERO_ONE);
 
 		/* Arguments with constant swizzles still count as a unique
 		 * temporary, so we should make sure these arguments share a
@@ -349,7 +355,8 @@ static void ei_pow(struct r300_vertex_program_code *vp,
 				     0,
 				     t_dst_index(vp, &vpi->DstReg),
 				     t_dst_mask(vpi->DstReg.WriteMask),
-				     t_dst_class(vpi->DstReg.File));
+				     t_dst_class(vpi->DstReg.File),
+                                     vpi->SaturateMode == RC_SATURATE_ZERO_ONE);
 	inst[1] = t_src_scalar(vp, &vpi->SrcReg[0]);
 	inst[2] = __CONST(0, RC_SWIZZLE_ZERO);
 	inst[3] = t_src_scalar(vp, &vpi->SrcReg[1]);
@@ -380,7 +387,7 @@ static void translate_vertex_program(struct radeon_compiler *c, void *user)
 
 		if (info->HasDstReg) {
 			/* Neither is Saturate. */
-			if (vpi->SaturateMode != RC_SATURATE_NONE) {
+			if (vpi->SaturateMode != RC_SATURATE_NONE && !c->is_r500) {
 				rc_error(&compiler->Base, "Vertex program does not support the Saturate "
 					 "modifier (yet).\n");
 			}
@@ -398,6 +405,7 @@ static void translate_vertex_program(struct radeon_compiler *c, void *user)
 		switch (vpi->Opcode) {
 		case RC_OPCODE_ADD: ei_vector2(compiler->code, VE_ADD, vpi, inst); break;
 		case RC_OPCODE_ARL: ei_vector1(compiler->code, VE_FLT2FIX_DX, vpi, inst); break;
+		case RC_OPCODE_ARR: ei_vector1(compiler->code, VE_FLT2FIX_DX_RND, vpi, inst); break;
 		case RC_OPCODE_COS: ei_math1(compiler->code, ME_COS, vpi, inst); break;
 		case RC_OPCODE_DP4: ei_vector2(compiler->code, VE_DOT_PRODUCT, vpi, inst); break;
 		case RC_OPCODE_DST: ei_vector2(compiler->code, VE_DISTANCE_VECTOR, vpi, inst); break;
@@ -791,7 +799,7 @@ static void transform_negative_addressing(struct r300_vertex_program_compiler *c
 	struct rc_instruction *inst, *add;
 	unsigned const_swizzle;
 
-	/* Transform ARL */
+	/* Transform ARL/ARR */
 	add = rc_insert_new_instruction(&c->Base, arl->Prev);
 	add->U.I.Opcode = RC_OPCODE_ADD;
 	add->U.I.DstReg.File = RC_FILE_TEMPORARY;
@@ -826,7 +834,7 @@ static void rc_emulate_negative_addressing(struct radeon_compiler *compiler, voi
 	for (inst = c->Base.Program.Instructions.Next; inst != &c->Base.Program.Instructions; inst = inst->Next) {
 		const struct rc_opcode_info * opcode = rc_get_opcode_info(inst->U.I.Opcode);
 
-		if (inst->U.I.Opcode == RC_OPCODE_ARL) {
+		if (inst->U.I.Opcode == RC_OPCODE_ARL || inst->U.I.Opcode == RC_OPCODE_ARR) {
 			if (lastARL != NULL && min_offset < 0)
 				transform_negative_addressing(c, lastARL, inst, min_offset);
 
@@ -839,8 +847,8 @@ static void rc_emulate_negative_addressing(struct radeon_compiler *compiler, voi
 			if (inst->U.I.SrcReg[i].RelAddr &&
 			    inst->U.I.SrcReg[i].Index < 0) {
 				/* ARL must precede any indirect addressing. */
-				if (lastARL == NULL) {
-					rc_error(&c->Base, "Vertex shader: Found relative addressing without ARL.");
+				if (!lastARL) {
+					rc_error(&c->Base, "Vertex shader: Found relative addressing without ARL/ARR.");
 					return;
 				}
 
@@ -854,7 +862,7 @@ static void rc_emulate_negative_addressing(struct radeon_compiler *compiler, voi
 		transform_negative_addressing(c, lastARL, inst, min_offset);
 }
 
-static struct rc_swizzle_caps r300_vertprog_swizzle_caps = {
+struct rc_swizzle_caps r300_vertprog_swizzle_caps = {
 	.IsNative = &swizzle_is_native,
 	.Split = 0 /* should never be called */
 };

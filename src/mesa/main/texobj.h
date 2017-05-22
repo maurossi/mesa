@@ -5,7 +5,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  6.5
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -22,9 +21,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -38,6 +38,11 @@
 #include "samplerobj.h"
 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+
 /**
  * \name Internal functions
  */
@@ -47,11 +52,30 @@ extern struct gl_texture_object *
 _mesa_lookup_texture(struct gl_context *ctx, GLuint id);
 
 extern struct gl_texture_object *
+_mesa_lookup_texture_err(struct gl_context *ctx, GLuint id, const char* func);
+
+extern void
+_mesa_begin_texture_lookups(struct gl_context *ctx);
+
+extern void
+_mesa_end_texture_lookups(struct gl_context *ctx);
+
+extern struct gl_texture_object *
+_mesa_lookup_texture_locked(struct gl_context *ctx, GLuint id);
+
+extern struct gl_texture_object *
+_mesa_get_current_tex_object(struct gl_context *ctx, GLenum target);
+
+extern struct gl_texture_object *
 _mesa_new_texture_object( struct gl_context *ctx, GLuint name, GLenum target );
 
 extern void
-_mesa_initialize_texture_object( struct gl_texture_object *obj,
+_mesa_initialize_texture_object( struct gl_context *ctx,
+                                 struct gl_texture_object *obj,
                                  GLuint name, GLenum target );
+
+extern int
+_mesa_tex_target_to_index(const struct gl_context *ctx, GLenum target);
 
 extern void
 _mesa_delete_texture_object( struct gl_context *ctx,
@@ -77,15 +101,22 @@ _mesa_reference_texobj(struct gl_texture_object **ptr,
       _mesa_reference_texobj_(ptr, tex);
 }
 
-
 /**
- * Return number of faces for a texture target.  This will be 6 for
- * cube maps (and cube map arrays) and 1 otherwise.
+ * Lock a texture for updating.  See also _mesa_lock_context_textures().
  */
-static inline GLuint
-_mesa_num_tex_faces(GLenum target)
+static inline void
+_mesa_lock_texture(struct gl_context *ctx, struct gl_texture_object *texObj)
 {
-   return target == GL_TEXTURE_CUBE_MAP ? 6 : 1;
+   mtx_lock(&ctx->Shared->TexMutex);
+   ctx->Shared->TextureStateStamp++;
+   (void) texObj;
+}
+
+static inline void
+_mesa_unlock_texture(struct gl_context *ctx, struct gl_texture_object *texObj)
+{
+   (void) texObj;
+   mtx_unlock(&ctx->Shared->TexMutex);
 }
 
 
@@ -94,7 +125,14 @@ static inline GLboolean
 _mesa_is_texture_complete(const struct gl_texture_object *texObj,
                           const struct gl_sampler_object *sampler)
 {
-   if (texObj->_IsIntegerFormat &&
+   /*
+    * According to ARB_stencil_texturing, NEAREST_MIPMAP_NEAREST would
+    * be forbidden, however it is allowed per GL 4.5 rules, allow it
+    * even without GL 4.5 since it was a spec mistake.
+    */
+   if ((texObj->_IsIntegerFormat ||
+        (texObj->StencilSampling &&
+         texObj->Image[0][texObj->BaseLevel]->_BaseFormat == GL_DEPTH_STENCIL)) &&
        (sampler->MagFilter != GL_NEAREST ||
         (sampler->MinFilter != GL_NEAREST &&
          sampler->MinFilter != GL_NEAREST_MIPMAP_NEAREST))) {
@@ -114,11 +152,14 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
                                 struct gl_texture_object *obj );
 
 extern GLboolean
+_mesa_cube_level_complete(const struct gl_texture_object *texObj,
+                          const GLint level);
+
+extern GLboolean
 _mesa_cube_complete(const struct gl_texture_object *texObj);
 
 extern void
-_mesa_dirty_texobj(struct gl_context *ctx, struct gl_texture_object *texObj,
-                   GLboolean invalidate_state);
+_mesa_dirty_texobj(struct gl_context *ctx, struct gl_texture_object *texObj);
 
 extern struct gl_texture_object *
 _mesa_get_fallback_texture(struct gl_context *ctx, gl_texture_index tex);
@@ -126,11 +167,19 @@ _mesa_get_fallback_texture(struct gl_context *ctx, gl_texture_index tex);
 extern GLuint
 _mesa_total_texture_memory(struct gl_context *ctx);
 
+extern GLenum
+_mesa_texture_base_format(const struct gl_texture_object *texObj);
+
 extern void
 _mesa_unlock_context_textures( struct gl_context *ctx );
 
 extern void
 _mesa_lock_context_textures( struct gl_context *ctx );
+
+extern void
+_mesa_delete_nameless_texture(struct gl_context *ctx,
+                              struct gl_texture_object *texObj);
+
 
 /*@}*/
 
@@ -140,8 +189,10 @@ _mesa_lock_context_textures( struct gl_context *ctx );
 /*@{*/
 
 extern void GLAPIENTRY
-_mesa_GenTextures( GLsizei n, GLuint *textures );
+_mesa_GenTextures(GLsizei n, GLuint *textures);
 
+extern void GLAPIENTRY
+_mesa_CreateTextures(GLenum target, GLsizei n, GLuint *textures);
 
 extern void GLAPIENTRY
 _mesa_DeleteTextures( GLsizei n, const GLuint *textures );
@@ -149,6 +200,12 @@ _mesa_DeleteTextures( GLsizei n, const GLuint *textures );
 
 extern void GLAPIENTRY
 _mesa_BindTexture( GLenum target, GLuint texture );
+
+extern void GLAPIENTRY
+_mesa_BindTextureUnit(GLuint unit, GLuint texture);
+
+extern void GLAPIENTRY
+_mesa_BindTextures( GLuint first, GLsizei count, const GLuint *textures );
 
 
 extern void GLAPIENTRY
@@ -172,6 +229,11 @@ extern void GLAPIENTRY
 _mesa_InvalidateTexImage(GLuint texture, GLint level);
 
 /*@}*/
+
+
+#ifdef __cplusplus
+}
+#endif
 
 
 #endif

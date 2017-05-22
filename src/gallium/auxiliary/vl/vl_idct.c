@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -148,7 +148,7 @@ create_mismatch_vert_shader(struct vl_idct *idct)
    struct ureg_dst t_tex;
    struct ureg_dst o_vpos, o_addr[2];
 
-   shader = ureg_create(TGSI_PROCESSOR_VERTEX);
+   shader = ureg_create(PIPE_SHADER_VERTEX);
    if (!shader)
       return NULL;
 
@@ -200,7 +200,7 @@ create_mismatch_frag_shader(struct vl_idct *idct)
 
    unsigned i;
 
-   shader = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   shader = ureg_create(PIPE_SHADER_FRAGMENT);
    if (!shader)
       return NULL;
 
@@ -264,7 +264,7 @@ create_stage1_vert_shader(struct vl_idct *idct)
    struct ureg_dst t_tex, t_start;
    struct ureg_dst o_vpos, o_l_addr[2], o_r_addr[2];
 
-   shader = ureg_create(TGSI_PROCESSOR_VERTEX);
+   shader = ureg_create(PIPE_SHADER_VERTEX);
    if (!shader)
       return NULL;
 
@@ -321,15 +321,13 @@ static void *
 create_stage1_frag_shader(struct vl_idct *idct)
 {
    struct ureg_program *shader;
-
    struct ureg_src l_addr[2], r_addr[2];
-
    struct ureg_dst l[4][2], r[2];
    struct ureg_dst *fragment;
+   unsigned i;
+   int j;
 
-   int i, j;
-
-   shader = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   shader = ureg_create(PIPE_SHADER_FRAGMENT);
    if (!shader)
       return NULL;
 
@@ -516,7 +514,8 @@ init_state(struct vl_idct *idct)
 
    memset(&rs_state, 0, sizeof(rs_state));
    rs_state.point_size = 1;
-   rs_state.gl_rasterization_rules = true;
+   rs_state.half_pixel_center = true;
+   rs_state.bottom_edge_rule = true;
    rs_state.depth_clip = 1;
    idct->rs_state = idct->pipe->create_rasterizer_state(idct->pipe, &rs_state);
    if (!idct->rs_state)
@@ -603,13 +602,11 @@ init_source(struct vl_idct *idct, struct vl_idct_buffer *buffer)
    surf_templ.format = tex->format;
    surf_templ.u.tex.first_layer = 0;
    surf_templ.u.tex.last_layer = 0;
-   surf_templ.usage = PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_RENDER_TARGET;
    buffer->fb_state_mismatch.cbufs[0] = idct->pipe->create_surface(idct->pipe, tex, &surf_templ);
 
    buffer->viewport_mismatch.scale[0] = tex->width0;
    buffer->viewport_mismatch.scale[1] = tex->height0;
    buffer->viewport_mismatch.scale[2] = 1;
-   buffer->viewport_mismatch.scale[3] = 1;
 
    return true;
 }
@@ -643,7 +640,6 @@ init_intermediate(struct vl_idct *idct, struct vl_idct_buffer *buffer)
       surf_templ.format = tex->format;
       surf_templ.u.tex.first_layer = i;
       surf_templ.u.tex.last_layer = i;
-      surf_templ.usage = PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_RENDER_TARGET;
       buffer->fb_state.cbufs[i] = idct->pipe->create_surface(
          idct->pipe, tex, &surf_templ);
 
@@ -654,7 +650,6 @@ init_intermediate(struct vl_idct *idct, struct vl_idct_buffer *buffer)
    buffer->viewport.scale[0] = tex->width0;
    buffer->viewport.scale[1] = tex->height0;
    buffer->viewport.scale[2] = 1;
-   buffer->viewport.scale[3] = 1;
 
    return true;
 
@@ -713,20 +708,14 @@ vl_idct_upload_matrix(struct pipe_context *pipe, float scale)
    if (!matrix)
       goto error_matrix;
 
-   buf_transfer = pipe->get_transfer
-   (
-      pipe, matrix,
-      0, PIPE_TRANSFER_WRITE | PIPE_TRANSFER_DISCARD_RANGE,
-      &rect
-   );
-   if (!buf_transfer)
-      goto error_transfer;
-
-   pitch = buf_transfer->stride / sizeof(float);
-
-   f = pipe->transfer_map(pipe, buf_transfer);
+   f = pipe->transfer_map(pipe, matrix, 0,
+                                     PIPE_TRANSFER_WRITE |
+                                     PIPE_TRANSFER_DISCARD_RANGE,
+                                     &rect, &buf_transfer);
    if (!f)
       goto error_map;
+
+   pitch = buf_transfer->stride / sizeof(float);
 
    for(i = 0; i < VL_BLOCK_HEIGHT; ++i)
       for(j = 0; j < VL_BLOCK_WIDTH; ++j)
@@ -734,7 +723,6 @@ vl_idct_upload_matrix(struct pipe_context *pipe, float scale)
          f[i * pitch + j] = ((const float (*)[8])const_matrix)[j][i] * scale;
 
    pipe->transfer_unmap(pipe, buf_transfer);
-   pipe->transfer_destroy(pipe, buf_transfer);
 
    memset(&sv_templ, 0, sizeof(sv_templ));
    u_sampler_view_default_template(&sv_templ, matrix, matrix->format);
@@ -746,9 +734,6 @@ vl_idct_upload_matrix(struct pipe_context *pipe, float scale)
    return sv;
 
 error_map:
-   pipe->transfer_destroy(pipe, buf_transfer);
-
-error_transfer:
    pipe_resource_reference(&matrix, NULL);
 
 error_matrix:
@@ -836,19 +821,23 @@ vl_idct_flush(struct vl_idct *idct, struct vl_idct_buffer *buffer, unsigned num_
 
    idct->pipe->bind_rasterizer_state(idct->pipe, idct->rs_state);
    idct->pipe->bind_blend_state(idct->pipe, idct->blend);
-   idct->pipe->bind_fragment_sampler_states(idct->pipe, 2, idct->samplers);
-   idct->pipe->set_fragment_sampler_views(idct->pipe, 2, buffer->sampler_views.stage[0]);
+
+   idct->pipe->bind_sampler_states(idct->pipe, PIPE_SHADER_FRAGMENT,
+                                   0, 2, idct->samplers);
+
+   idct->pipe->set_sampler_views(idct->pipe, PIPE_SHADER_FRAGMENT, 0, 2,
+                                 buffer->sampler_views.stage[0]);
 
    /* mismatch control */
    idct->pipe->set_framebuffer_state(idct->pipe, &buffer->fb_state_mismatch);
-   idct->pipe->set_viewport_state(idct->pipe, &buffer->viewport_mismatch);
+   idct->pipe->set_viewport_states(idct->pipe, 0, 1, &buffer->viewport_mismatch);
    idct->pipe->bind_vs_state(idct->pipe, idct->vs_mismatch);
    idct->pipe->bind_fs_state(idct->pipe, idct->fs_mismatch);
    util_draw_arrays_instanced(idct->pipe, PIPE_PRIM_POINTS, 0, 1, 0, num_instances);
 
    /* first stage */
    idct->pipe->set_framebuffer_state(idct->pipe, &buffer->fb_state);
-   idct->pipe->set_viewport_state(idct->pipe, &buffer->viewport);
+   idct->pipe->set_viewport_states(idct->pipe, 0, 1, &buffer->viewport);
    idct->pipe->bind_vs_state(idct->pipe, idct->vs);
    idct->pipe->bind_fs_state(idct->pipe, idct->fs);
    util_draw_arrays_instanced(idct->pipe, PIPE_PRIM_QUADS, 0, 4, 0, num_instances);
@@ -861,7 +850,9 @@ vl_idct_prepare_stage2(struct vl_idct *idct, struct vl_idct_buffer *buffer)
 
    /* second stage */
    idct->pipe->bind_rasterizer_state(idct->pipe, idct->rs_state);
-   idct->pipe->bind_fragment_sampler_states(idct->pipe, 2, idct->samplers);
-   idct->pipe->set_fragment_sampler_views(idct->pipe, 2, buffer->sampler_views.stage[1]);
+   idct->pipe->bind_sampler_states(idct->pipe, PIPE_SHADER_FRAGMENT,
+                                   0, 2, idct->samplers);
+   idct->pipe->set_sampler_views(idct->pipe, PIPE_SHADER_FRAGMENT,
+                                 0, 2, buffer->sampler_views.stage[1]);
 }
 

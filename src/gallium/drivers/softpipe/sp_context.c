@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * Copyright 2008 VMware, Inc.  All rights reserved.
  * 
@@ -19,7 +19,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
  **************************************************************************/
 
 /* Author:
- *    Keith Whitwell <keith@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #include "draw/draw_context.h"
@@ -38,8 +38,7 @@
 #include "util/u_pstipple.h"
 #include "util/u_inlines.h"
 #include "tgsi/tgsi_exec.h"
-#include "vl/vl_decoder.h"
-#include "vl/vl_video_buffer.h"
+#include "sp_buffer.h"
 #include "sp_clear.h"
 #include "sp_context.h"
 #include "sp_flush.h"
@@ -51,39 +50,8 @@
 #include "sp_texture.h"
 #include "sp_query.h"
 #include "sp_screen.h"
-
-
-/**
- * Map any drawing surfaces which aren't already mapped
- */
-void
-softpipe_map_transfers(struct softpipe_context *sp)
-{
-   unsigned i;
-
-   for (i = 0; i < sp->framebuffer.nr_cbufs; i++) {
-      sp_tile_cache_map_transfers(sp->cbuf_cache[i]);
-   }
-
-   sp_tile_cache_map_transfers(sp->zsbuf_cache);
-}
-
-
-/**
- * Unmap any mapped drawing surfaces
- */
-void
-softpipe_unmap_transfers(struct softpipe_context *sp)
-{
-   uint i;
-
-   for (i = 0; i < sp->framebuffer.nr_cbufs; i++) {
-      sp_tile_cache_unmap_transfers(sp->cbuf_cache[i]);
-   }
-
-   sp_tile_cache_unmap_transfers(sp->zsbuf_cache);
-}
-
+#include "sp_tex_sample.h"
+#include "sp_image.h"
 
 static void
 softpipe_destroy( struct pipe_context *pipe )
@@ -98,6 +66,10 @@ softpipe_destroy( struct pipe_context *pipe )
    pipe_resource_reference(&softpipe->pstipple.texture, NULL);
    pipe_sampler_view_reference(&softpipe->pstipple.sampler_view, NULL);
 #endif
+
+   if (softpipe->blitter) {
+      util_blitter_destroy(softpipe->blitter);
+   }
 
    if (softpipe->draw)
       draw_destroy( softpipe->draw );
@@ -122,15 +94,15 @@ softpipe_destroy( struct pipe_context *pipe )
    sp_destroy_tile_cache(softpipe->zsbuf_cache);
    pipe_surface_reference(&softpipe->framebuffer.zsbuf, NULL);
 
-   for (sh = 0; sh < Elements(softpipe->tex_cache); sh++) {
-      for (i = 0; i < Elements(softpipe->tex_cache[0]); i++) {
+   for (sh = 0; sh < ARRAY_SIZE(softpipe->tex_cache); sh++) {
+      for (i = 0; i < ARRAY_SIZE(softpipe->tex_cache[0]); i++) {
          sp_destroy_tex_tile_cache(softpipe->tex_cache[sh][i]);
          pipe_sampler_view_reference(&softpipe->sampler_views[sh][i], NULL);
       }
    }
 
-   for (sh = 0; sh < Elements(softpipe->constants); sh++) {
-      for (i = 0; i < Elements(softpipe->constants[0]); i++) {
+   for (sh = 0; sh < ARRAY_SIZE(softpipe->constants); sh++) {
+      for (i = 0; i < ARRAY_SIZE(softpipe->constants[0]); i++) {
          if (softpipe->constants[sh][i]) {
             pipe_resource_reference(&softpipe->constants[sh][i], NULL);
          }
@@ -142,6 +114,12 @@ softpipe_destroy( struct pipe_context *pipe )
    }
 
    tgsi_exec_machine_destroy(softpipe->fs_machine);
+
+   for (i = 0; i < PIPE_SHADER_TYPES; i++) {
+      FREE(softpipe->tgsi.sampler[i]);
+      FREE(softpipe->tgsi.image[i]);
+      FREE(softpipe->tgsi.buffer[i]);
+   }
 
    FREE( softpipe );
 }
@@ -181,8 +159,8 @@ softpipe_is_resource_referenced( struct pipe_context *pipe,
    }
    
    /* check if any of the tex_cache textures are this texture */
-   for (sh = 0; sh < Elements(softpipe->tex_cache); sh++) {
-      for (i = 0; i < Elements(softpipe->tex_cache[0]); i++) {
+   for (sh = 0; sh < ARRAY_SIZE(softpipe->tex_cache); sh++) {
+      for (i = 0; i < ARRAY_SIZE(softpipe->tex_cache[0]); i++) {
          if (softpipe->tex_cache[sh][i] &&
              softpipe->tex_cache[sh][i]->texture == texture)
             return SP_REFERENCED_FOR_READ;
@@ -198,19 +176,21 @@ softpipe_is_resource_referenced( struct pipe_context *pipe,
 static void
 softpipe_render_condition( struct pipe_context *pipe,
                            struct pipe_query *query,
+                           boolean condition,
                            uint mode )
 {
    struct softpipe_context *softpipe = softpipe_context( pipe );
 
    softpipe->render_cond_query = query;
    softpipe->render_cond_mode = mode;
+   softpipe->render_cond_cond = condition;
 }
 
 
 
 struct pipe_context *
-softpipe_create_context( struct pipe_screen *screen,
-			 void *priv )
+softpipe_create_context(struct pipe_screen *screen,
+			void *priv, unsigned flags)
 {
    struct softpipe_screen *sp_screen = softpipe_screen(screen);
    struct softpipe_context *softpipe = CALLOC_STRUCT(softpipe_context);
@@ -218,8 +198,21 @@ softpipe_create_context( struct pipe_screen *screen,
 
    util_init_math();
 
+   for (i = 0; i < PIPE_SHADER_TYPES; i++) {
+      softpipe->tgsi.sampler[i] = sp_create_tgsi_sampler();
+   }
+
+   for (i = 0; i < PIPE_SHADER_TYPES; i++) {
+      softpipe->tgsi.image[i] = sp_create_tgsi_image();
+   }
+
+   for (i = 0; i < PIPE_SHADER_TYPES; i++) {
+      softpipe->tgsi.buffer[i] = sp_create_tgsi_buffer();
+   }
+
    softpipe->dump_fs = debug_get_bool_option( "SOFTPIPE_DUMP_FS", FALSE );
    softpipe->dump_gs = debug_get_bool_option( "SOFTPIPE_DUMP_GS", FALSE );
+   softpipe->dump_cs = debug_get_bool_option( "SOFTPIPE_DUMP_CS", FALSE );
 
    softpipe->pipe.screen = screen;
    softpipe->pipe.destroy = softpipe_destroy;
@@ -235,19 +228,20 @@ softpipe_create_context( struct pipe_screen *screen,
    softpipe_init_streamout_funcs(&softpipe->pipe);
    softpipe_init_texture_funcs( &softpipe->pipe );
    softpipe_init_vertex_funcs(&softpipe->pipe);
+   softpipe_init_image_funcs(&softpipe->pipe);
 
    softpipe->pipe.set_framebuffer_state = softpipe_set_framebuffer_state;
 
    softpipe->pipe.draw_vbo = softpipe_draw_vbo;
 
+   softpipe->pipe.launch_grid = softpipe_launch_grid;
+
    softpipe->pipe.clear = softpipe_clear;
    softpipe->pipe.flush = softpipe_flush_wrapped;
-
+   softpipe->pipe.texture_barrier = softpipe_texture_barrier;
+   softpipe->pipe.memory_barrier = softpipe_memory_barrier;
    softpipe->pipe.render_condition = softpipe_render_condition;
    
-   softpipe->pipe.create_video_decoder = vl_create_decoder;
-   softpipe->pipe.create_video_buffer = vl_video_buffer_create;
-
    /*
     * Alloc caches for accessing drawing surfaces and textures.
     * Must be before quad stage setup!
@@ -257,15 +251,15 @@ softpipe_create_context( struct pipe_screen *screen,
    softpipe->zsbuf_cache = sp_create_tile_cache( &softpipe->pipe );
 
    /* Allocate texture caches */
-   for (sh = 0; sh < Elements(softpipe->tex_cache); sh++) {
-      for (i = 0; i < Elements(softpipe->tex_cache[0]); i++) {
+   for (sh = 0; sh < ARRAY_SIZE(softpipe->tex_cache); sh++) {
+      for (i = 0; i < ARRAY_SIZE(softpipe->tex_cache[0]); i++) {
          softpipe->tex_cache[sh][i] = sp_create_tex_tile_cache(&softpipe->pipe);
          if (!softpipe->tex_cache[sh][i])
             goto fail;
       }
    }
 
-   softpipe->fs_machine = tgsi_exec_machine_create();
+   softpipe->fs_machine = tgsi_exec_machine_create(PIPE_SHADER_FRAGMENT);
 
    /* setup quad rendering stages */
    softpipe->quad.shade = sp_quad_shade_stage(softpipe);
@@ -284,17 +278,35 @@ softpipe_create_context( struct pipe_screen *screen,
    if (!softpipe->draw) 
       goto fail;
 
-   draw_texture_samplers(softpipe->draw,
-                         PIPE_SHADER_VERTEX,
-                         PIPE_MAX_SAMPLERS,
-                         (struct tgsi_sampler **)
-                            softpipe->tgsi.samplers_list[PIPE_SHADER_VERTEX]);
+   draw_texture_sampler(softpipe->draw,
+                        PIPE_SHADER_VERTEX,
+                        (struct tgsi_sampler *)
+                           softpipe->tgsi.sampler[PIPE_SHADER_VERTEX]);
 
-   draw_texture_samplers(softpipe->draw,
-                         PIPE_SHADER_GEOMETRY,
-                         PIPE_MAX_SAMPLERS,
-                         (struct tgsi_sampler **)
-                            softpipe->tgsi.samplers_list[PIPE_SHADER_GEOMETRY]);
+   draw_texture_sampler(softpipe->draw,
+                        PIPE_SHADER_GEOMETRY,
+                        (struct tgsi_sampler *)
+                           softpipe->tgsi.sampler[PIPE_SHADER_GEOMETRY]);
+
+   draw_image(softpipe->draw,
+              PIPE_SHADER_VERTEX,
+              (struct tgsi_image *)
+              softpipe->tgsi.image[PIPE_SHADER_VERTEX]);
+
+   draw_image(softpipe->draw,
+              PIPE_SHADER_GEOMETRY,
+              (struct tgsi_image *)
+              softpipe->tgsi.image[PIPE_SHADER_GEOMETRY]);
+
+   draw_buffer(softpipe->draw,
+              PIPE_SHADER_VERTEX,
+              (struct tgsi_buffer *)
+              softpipe->tgsi.buffer[PIPE_SHADER_VERTEX]);
+
+   draw_buffer(softpipe->draw,
+              PIPE_SHADER_GEOMETRY,
+              (struct tgsi_buffer *)
+              softpipe->tgsi.buffer[PIPE_SHADER_GEOMETRY]);
 
    if (debug_get_bool_option( "SOFTPIPE_NO_RAST", FALSE ))
       softpipe->no_rast = TRUE;
@@ -310,6 +322,13 @@ softpipe_create_context( struct pipe_screen *screen,
    draw_set_rasterize_stage(softpipe->draw, softpipe->vbuf);
    draw_set_render(softpipe->draw, softpipe->vbuf_backend);
 
+   softpipe->blitter = util_blitter_create(&softpipe->pipe);
+   if (!softpipe->blitter) {
+      goto fail;
+   }
+
+   /* must be done before installing Draw stages */
+   util_blitter_cache_all_shaders(softpipe->blitter);
 
    /* plug in AA line/point stages */
    draw_install_aaline_stage(softpipe->draw, &softpipe->pipe);

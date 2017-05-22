@@ -7,6 +7,13 @@
 </head>
 <body>
 
+<div class="header">
+  <h1>The Mesa 3D Graphics Library</h1>
+</div>
+
+<iframe src="contents.html"></iframe>
+<div class="content">
+
 <h1>Xlib Software Driver</h1>
 
 <p>
@@ -100,7 +107,7 @@ for your application.
 <p>
 When using Mesa directly or with GLX, it's up to the application
 writer to create a window with an appropriate colormap.  The GLUT
-toolkit tris to minimize colormap <em>flashing</em> by sharing
+toolkit tries to minimize colormap <em>flashing</em> by sharing
 colormaps when possible.  Specifically, if the visual and depth of the
 window matches that of the root window, the root window's colormap
 will be shared by the Mesa window.  Otherwise, a new, private colormap
@@ -143,10 +150,10 @@ Examples:
 	% export MESA_GAMMA="2.0"		// same gamma for R,G,B
 </pre>
 <p>
-The progs/demos/gamma.c program may help you to determine reasonable gamma
-value for your display.  With correct gamma values, the color intensities
-displayed in the top row (drawn by dithering) should nearly match those
-in the bottom row (drawn as grays).
+The <code>demos/gamma.c</code> program in mesa/demos repository may help
+you to determine reasonable gamma value for your display.  With correct
+gamma values, the color intensities displayed in the top row (drawn by
+dithering) should nearly match those in the bottom row (drawn as grays).
 </p>
 
 <p>
@@ -192,7 +199,7 @@ This incurs a small performance penalty.
 
 <h2>Extensions</h2>
 <p>
-The following MESA-specific extensions are implemented in the Xlib driver.
+The following Mesa-specific extensions are implemented in the Xlib driver.
 </p>
 
 <h3>GLX_MESA_pixmap_colormap</h3>
@@ -214,7 +221,7 @@ See the xdemos/glxpixmap.c file for an example of how to use this
 extension.
 </p>
 <p>
-<a href="MESA_pixmap_colormap.spec">GLX_MESA_pixmap_colormap specification</a>
+<a href="specs/MESA_pixmap_colormap.spec">GLX_MESA_pixmap_colormap specification</a>
 </p>
 
 
@@ -243,7 +250,7 @@ just before an X window is destroyed.  For example:
          XDestroyWindow( dpy, window );
 </pre>
 <p>
-<a href="MESA_release_buffers.spec">GLX_MESA_release_buffers specification</a>
+<a href="specs/MESA_release_buffers.spec">GLX_MESA_release_buffers specification</a>
 </p>
 <p>
 This extension was added in Mesa 2.0.
@@ -256,7 +263,7 @@ like glXSwapBuffers() but only copies a sub-region of the window
 instead of the whole window.
 </p>
 <p>
-<a href="MESA_copy_sub_buffer.spec">GLX_MESA_copy_sub_buffer specification</a>
+<a href="specs/MESA_copy_sub_buffer.spec">GLX_MESA_copy_sub_buffer specification</a>
 </p>
 <p>
 This extension was added in Mesa 2.6
@@ -271,6 +278,6 @@ This extension was added in Mesa 2.6
    MESA_GAMMA - gamma correction coefficients (X only)
 </pre>
 
-
+</div>
 </body>
 </html>

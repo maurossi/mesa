@@ -36,7 +36,6 @@
 
 #include "main/bufferobj.h"
 #include "main/context.h"
-#include "main/mfeatures.h"
 #include "main/transformfeedback.h"
 
 #include "st_cb_bufferobjects.h"
@@ -48,8 +47,6 @@
 #include "util/u_inlines.h"
 #include "cso_cache/cso_context.h"
 
-#if FEATURE_EXT_transform_feedback
-
 struct st_transform_feedback_object {
    struct gl_transform_feedback_object base;
 
@@ -57,12 +54,12 @@ struct st_transform_feedback_object {
    struct pipe_stream_output_target *targets[PIPE_MAX_SO_BUFFERS];
 
    /* This encapsulates the count that can be used as a source for draw_vbo.
-    * It contains a stream output target from the last call of
-    * EndTransformFeedback. */
-   struct pipe_stream_output_target *draw_count;
+    * It contains stream output targets from the last call of
+    * EndTransformFeedback for each stream. */
+   struct pipe_stream_output_target *draw_count[MAX_VERTEX_STREAMS];
 };
 
-static INLINE struct st_transform_feedback_object *
+static inline struct st_transform_feedback_object *
 st_transform_feedback_object(struct gl_transform_feedback_object *obj)
 {
    return (struct st_transform_feedback_object *) obj;
@@ -77,8 +74,8 @@ st_new_transform_feedback(struct gl_context *ctx, GLuint name)
    if (!obj)
       return NULL;
 
-   obj->base.Name = name;
-   obj->base.RefCount = 1;
+   _mesa_init_transform_feedback_object(&obj->base, name);
+
    return &obj->base;
 }
 
@@ -91,14 +88,15 @@ st_delete_transform_feedback(struct gl_context *ctx,
          st_transform_feedback_object(obj);
    unsigned i;
 
-   pipe_so_target_reference(&sobj->draw_count, NULL);
+   for (i = 0; i < ARRAY_SIZE(sobj->draw_count); i++)
+      pipe_so_target_reference(&sobj->draw_count[i], NULL);
 
    /* Unreference targets. */
    for (i = 0; i < sobj->num_targets; i++) {
       pipe_so_target_reference(&sobj->targets[i], NULL);
    }
 
-   for (i = 0; i < Elements(sobj->base.Buffers); i++) {
+   for (i = 0; i < ARRAY_SIZE(sobj->base.Buffers); i++) {
       _mesa_reference_buffer_object(ctx, &sobj->base.Buffers[i], NULL);
    }
 
@@ -116,18 +114,22 @@ st_begin_transform_feedback(struct gl_context *ctx, GLenum mode,
    struct st_transform_feedback_object *sobj =
          st_transform_feedback_object(obj);
    unsigned i, max_num_targets;
+   unsigned offsets[PIPE_MAX_SO_BUFFERS] = {0};
 
-   max_num_targets = MIN2(Elements(sobj->base.Buffers),
-                          Elements(sobj->targets));
+   max_num_targets = MIN2(ARRAY_SIZE(sobj->base.Buffers),
+                          ARRAY_SIZE(sobj->targets));
 
    /* Convert the transform feedback state into the gallium representation. */
    for (i = 0; i < max_num_targets; i++) {
       struct st_buffer_object *bo = st_buffer_object(sobj->base.Buffers[i]);
 
-      if (bo) {
+      if (bo && bo->buffer) {
+         unsigned stream = obj->program->sh.LinkedTransformFeedback->
+            Buffers[i].Stream;
+
          /* Check whether we need to recreate the target. */
          if (!sobj->targets[i] ||
-             sobj->targets[i] == sobj->draw_count ||
+             sobj->targets[i] == sobj->draw_count[stream] ||
              sobj->targets[i]->buffer != bo->buffer ||
              sobj->targets[i]->buffer_offset != sobj->base.Offset[i] ||
              sobj->targets[i]->buffer_size != sobj->base.Size[i]) {
@@ -148,8 +150,8 @@ st_begin_transform_feedback(struct gl_context *ctx, GLenum mode,
    }
 
    /* Start writing at the beginning of each target. */
-   cso_set_stream_outputs(st->cso_context, sobj->num_targets, sobj->targets,
-                          0);
+   cso_set_stream_outputs(st->cso_context, sobj->num_targets,
+                          sobj->targets, offsets);
 }
 
 
@@ -158,7 +160,7 @@ st_pause_transform_feedback(struct gl_context *ctx,
                            struct gl_transform_feedback_object *obj)
 {
    struct st_context *st = st_context(ctx);
-   cso_set_stream_outputs(st->cso_context, 0, NULL, 0);
+   cso_set_stream_outputs(st->cso_context, 0, NULL, NULL);
 }
 
 
@@ -168,28 +170,15 @@ st_resume_transform_feedback(struct gl_context *ctx,
 {
    struct st_context *st = st_context(ctx);
    struct st_transform_feedback_object *sobj =
-         st_transform_feedback_object(obj);
-
-   cso_set_stream_outputs(st->cso_context, sobj->num_targets, sobj->targets,
-                          ~0);
-}
-
-
-static struct pipe_stream_output_target *
-st_transform_feedback_get_draw_target(struct gl_transform_feedback_object *obj)
-{
-   struct st_transform_feedback_object *sobj =
-         st_transform_feedback_object(obj);
+      st_transform_feedback_object(obj);
+   unsigned offsets[PIPE_MAX_SO_BUFFERS];
    unsigned i;
 
-   for (i = 0; i < Elements(sobj->targets); i++) {
-      if (sobj->targets[i]) {
-         return sobj->targets[i];
-      }
-   }
+   for (i = 0; i < PIPE_MAX_SO_BUFFERS; i++)
+      offsets[i] = (unsigned)-1;
 
-   assert(0);
-   return NULL;
+   cso_set_stream_outputs(st->cso_context, sobj->num_targets,
+                          sobj->targets, offsets);
 }
 
 
@@ -200,22 +189,41 @@ st_end_transform_feedback(struct gl_context *ctx,
    struct st_context *st = st_context(ctx);
    struct st_transform_feedback_object *sobj =
          st_transform_feedback_object(obj);
+   unsigned i;
 
-   cso_set_stream_outputs(st->cso_context, 0, NULL, 0);
+   cso_set_stream_outputs(st->cso_context, 0, NULL, NULL);
 
-   pipe_so_target_reference(&sobj->draw_count,
-                            st_transform_feedback_get_draw_target(obj));
+   /* The next call to glDrawTransformFeedbackStream should use the vertex
+    * count from the last call to glEndTransformFeedback.
+    * Therefore, save the targets for each stream.
+    *
+    * NULL means the vertex counter is 0 (initial state).
+    */
+   for (i = 0; i < ARRAY_SIZE(sobj->draw_count); i++)
+      pipe_so_target_reference(&sobj->draw_count[i], NULL);
+
+   for (i = 0; i < ARRAY_SIZE(sobj->targets); i++) {
+      unsigned stream = obj->program->sh.LinkedTransformFeedback->
+         Buffers[i].Stream;
+
+      /* Is it not bound or already set for this stream? */
+      if (!sobj->targets[i] || sobj->draw_count[stream])
+         continue;
+
+      pipe_so_target_reference(&sobj->draw_count[stream], sobj->targets[i]);
+   }
 }
 
 
-void
+bool
 st_transform_feedback_draw_init(struct gl_transform_feedback_object *obj,
-                                struct pipe_draw_info *out)
+                                unsigned stream, struct pipe_draw_info *out)
 {
    struct st_transform_feedback_object *sobj =
          st_transform_feedback_object(obj);
 
-   out->count_from_stream_output = sobj->draw_count;
+   out->count_from_stream_output = sobj->draw_count[stream];
+   return out->count_from_stream_output != NULL;
 }
 
 
@@ -229,5 +237,3 @@ st_init_xformfb_functions(struct dd_function_table *functions)
    functions->PauseTransformFeedback = st_pause_transform_feedback;
    functions->ResumeTransformFeedback = st_resume_transform_feedback;
 }
-
-#endif /* FEATURE_EXT_transform_feedback */

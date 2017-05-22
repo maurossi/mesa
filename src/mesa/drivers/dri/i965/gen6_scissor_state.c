@@ -30,18 +30,24 @@
 #include "brw_defines.h"
 #include "intel_batchbuffer.h"
 #include "main/fbobject.h"
+#include "main/framebuffer.h"
 
 static void
 gen6_upload_scissor_state(struct brw_context *brw)
 {
-   struct intel_context *intel = &brw->intel;
-   struct gl_context *ctx = &intel->ctx;
+   struct gl_context *ctx = &brw->ctx;
    const bool render_to_fbo = _mesa_is_user_fbo(ctx->DrawBuffer);
    struct gen6_scissor_rect *scissor;
    uint32_t scissor_state_offset;
+   const unsigned int fb_width= _mesa_geometric_width(ctx->DrawBuffer);
+   const unsigned int fb_height = _mesa_geometric_height(ctx->DrawBuffer);
+
+   /* BRW_NEW_VIEWPORT_COUNT */
+   const unsigned viewport_count = brw->clip.viewport_count;
 
    scissor = brw_state_batch(brw, AUB_TRACE_SCISSOR_STATE,
-			     sizeof(*scissor), 32, &scissor_state_offset);
+			     sizeof(*scissor) * viewport_count, 32,
+                             &scissor_state_offset);
 
    /* _NEW_SCISSOR | _NEW_BUFFERS | _NEW_VIEWPORT */
 
@@ -52,33 +58,41 @@ gen6_upload_scissor_state(struct brw_context *brw)
     * Note that the hardware's coordinates are inclusive, while Mesa's min is
     * inclusive but max is exclusive.
     */
-   if (ctx->DrawBuffer->_Xmin == ctx->DrawBuffer->_Xmax ||
-       ctx->DrawBuffer->_Ymin == ctx->DrawBuffer->_Ymax) {
-      /* If the scissor was out of bounds and got clamped to 0
-       * width/height at the bounds, the subtraction of 1 from
-       * maximums could produce a negative number and thus not clip
-       * anything.  Instead, just provide a min > max scissor inside
-       * the bounds, which produces the expected no rendering.
-       */
-      scissor->xmin = 1;
-      scissor->xmax = 0;
-      scissor->ymin = 1;
-      scissor->ymax = 0;
-   } else if (render_to_fbo) {
-      /* texmemory: Y=0=bottom */
-      scissor->xmin = ctx->DrawBuffer->_Xmin;
-      scissor->xmax = ctx->DrawBuffer->_Xmax - 1;
-      scissor->ymin = ctx->DrawBuffer->_Ymin;
-      scissor->ymax = ctx->DrawBuffer->_Ymax - 1;
-   }
-   else {
-      /* memory: Y=0=top */
-      scissor->xmin = ctx->DrawBuffer->_Xmin;
-      scissor->xmax = ctx->DrawBuffer->_Xmax - 1;
-      scissor->ymin = ctx->DrawBuffer->Height - ctx->DrawBuffer->_Ymax;
-      scissor->ymax = ctx->DrawBuffer->Height - ctx->DrawBuffer->_Ymin - 1;
-   }
+   for (unsigned i = 0; i < viewport_count; i++) {
+      int bbox[4];
 
+      bbox[0] = MAX2(ctx->ViewportArray[i].X, 0);
+      bbox[1] = MIN2(bbox[0] + ctx->ViewportArray[i].Width, fb_width);
+      bbox[2] = MAX2(ctx->ViewportArray[i].Y, 0);
+      bbox[3] = MIN2(bbox[2] + ctx->ViewportArray[i].Height, fb_height);
+      _mesa_intersect_scissor_bounding_box(ctx, i, bbox);
+
+      if (bbox[0] == bbox[1] || bbox[2] == bbox[3]) {
+         /* If the scissor was out of bounds and got clamped to 0 width/height
+          * at the bounds, the subtraction of 1 from maximums could produce a
+          * negative number and thus not clip anything.  Instead, just provide
+          * a min > max scissor inside the bounds, which produces the expected
+          * no rendering.
+          */
+         scissor[i].xmin = 1;
+         scissor[i].xmax = 0;
+         scissor[i].ymin = 1;
+         scissor[i].ymax = 0;
+      } else if (render_to_fbo) {
+         /* texmemory: Y=0=bottom */
+         scissor[i].xmin = bbox[0];
+         scissor[i].xmax = bbox[1] - 1;
+         scissor[i].ymin = bbox[2];
+         scissor[i].ymax = bbox[3] - 1;
+      }
+      else {
+         /* memory: Y=0=top */
+         scissor[i].xmin = bbox[0];
+         scissor[i].xmax = bbox[1] - 1;
+         scissor[i].ymin = fb_height - bbox[3];
+         scissor[i].ymax = fb_height - bbox[2] - 1;
+      }
+   }
    BEGIN_BATCH(2);
    OUT_BATCH(_3DSTATE_SCISSOR_STATE_POINTERS << 16 | (2 - 2));
    OUT_BATCH(scissor_state_offset);
@@ -87,9 +101,12 @@ gen6_upload_scissor_state(struct brw_context *brw)
 
 const struct brw_tracked_state gen6_scissor_state = {
    .dirty = {
-      .mesa = _NEW_SCISSOR | _NEW_BUFFERS | _NEW_VIEWPORT,
-      .brw = BRW_NEW_BATCH,
-      .cache = 0,
+      .mesa = _NEW_BUFFERS |
+              _NEW_SCISSOR |
+              _NEW_VIEWPORT,
+      .brw = BRW_NEW_BATCH |
+             BRW_NEW_BLORP |
+             BRW_NEW_VIEWPORT_COUNT,
    },
    .emit = gen6_upload_scissor_state,
 };

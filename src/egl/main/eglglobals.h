@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright 2009-2010 Chia-I Wu <olvaffe@gmail.com>
  * Copyright 2010-2011 LunarG, Inc.
  * All Rights Reserved.
@@ -31,23 +31,36 @@
 #ifndef EGLGLOBALS_INCLUDED
 #define EGLGLOBALS_INCLUDED
 
+#include <stdbool.h>
+#include "c11/threads.h"
 
 #include "egltypedefs.h"
-#include "eglmutex.h"
 
+enum
+{
+    _EGL_DEBUG_BIT_CRITICAL = 0x1,
+    _EGL_DEBUG_BIT_ERROR = 0x2,
+    _EGL_DEBUG_BIT_WARN = 0x4,
+    _EGL_DEBUG_BIT_INFO = 0x8,
+};
 
 /**
  * Global library data
  */
 struct _egl_global
 {
-   _EGLMutex *Mutex;
+   mtx_t *Mutex;
 
    /* the list of all displays */
    _EGLDisplay *DisplayList;
 
    EGLint NumAtExitCalls;
    void (*AtExitCalls[10])(void);
+
+   const char *ClientExtensionString;
+
+   EGLDEBUGPROCKHR debugCallback;
+   unsigned int debugTypesEnabled;
 };
 
 
@@ -57,5 +70,10 @@ extern struct _egl_global _eglGlobal;
 extern void
 _eglAddAtExitCall(void (*func)(void));
 
+static inline unsigned int DebugBitFromType(EGLenum type)
+{
+   assert(type >= EGL_DEBUG_MSG_CRITICAL_KHR && type <= EGL_DEBUG_MSG_INFO_KHR);
+   return (1 << (type - EGL_DEBUG_MSG_CRITICAL_KHR));
+}
 
 #endif /* EGLGLOBALS_INCLUDED */

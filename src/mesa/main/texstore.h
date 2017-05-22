@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.1
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  * Copyright (c) 2008 VMware, Inc.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -57,7 +57,7 @@
 #define TEXSTORE_PARAMS \
 	struct gl_context *ctx, GLuint dims, \
 	GLenum baseInternalFormat, \
-	gl_format dstFormat, \
+	mesa_format dstFormat, \
         GLint dstRowStride, \
         GLubyte **dstSlices, \
 	GLint srcWidth, GLint srcHeight, GLint srcDepth, \
@@ -69,25 +69,28 @@
 extern GLboolean
 _mesa_texstore(TEXSTORE_PARAMS);
 
+extern GLboolean
+_mesa_texstore_needs_transfer_ops(struct gl_context *ctx,
+                                  GLenum baseInternalFormat,
+                                  mesa_format dstFormat);
 
-extern GLubyte *
-_mesa_make_temp_ubyte_image(struct gl_context *ctx, GLuint dims,
-                           GLenum logicalBaseFormat,
-                           GLenum textureBaseFormat,
-                           GLint srcWidth, GLint srcHeight, GLint srcDepth,
-                           GLenum srcFormat, GLenum srcType,
-                           const GLvoid *srcAddr,
-                           const struct gl_pixelstore_attrib *srcPacking);
+extern void
+_mesa_memcpy_texture(struct gl_context *ctx,
+                     GLuint dimensions,
+                     mesa_format dstFormat,
+                     GLint dstRowStride,
+                     GLubyte **dstSlices,
+                     GLint srcWidth, GLint srcHeight, GLint srcDepth,
+                     GLenum srcFormat, GLenum srcType,
+                     const GLvoid *srcAddr,
+                     const struct gl_pixelstore_attrib *srcPacking);
 
-GLfloat *
-_mesa_make_temp_float_image(struct gl_context *ctx, GLuint dims,
-			    GLenum logicalBaseFormat,
-			    GLenum textureBaseFormat,
-			    GLint srcWidth, GLint srcHeight, GLint srcDepth,
-			    GLenum srcFormat, GLenum srcType,
-			    const GLvoid *srcAddr,
-			    const struct gl_pixelstore_attrib *srcPacking,
-			    GLbitfield transferOps);
+extern GLboolean
+_mesa_texstore_can_use_memcpy(struct gl_context *ctx,
+                              GLenum baseInternalFormat, mesa_format dstFormat,
+                              GLenum srcFormat, GLenum srcType,
+                              const struct gl_pixelstore_attrib *srcPacking);
+
 
 extern void
 _mesa_store_teximage(struct gl_context *ctx,
@@ -107,6 +110,13 @@ _mesa_store_texsubimage(struct gl_context *ctx, GLuint dims,
 
 
 extern void
+_mesa_store_cleartexsubimage(struct gl_context *ctx,
+                             struct gl_texture_image *texImage,
+                             GLint xoffset, GLint yoffset, GLint zoffset,
+                             GLsizei width, GLsizei height, GLsizei depth,
+                             const GLvoid *clearValue);
+
+extern void
 _mesa_store_compressed_teximage(struct gl_context *ctx, GLuint dims,
                                 struct gl_texture_image *texImage,
                                 GLsizei imageSize, const GLvoid *data);
@@ -119,6 +129,24 @@ _mesa_store_compressed_texsubimage(struct gl_context *ctx, GLuint dims,
                                    GLsizei width, GLsizei height, GLsizei depth,
                                    GLenum format,
                                    GLsizei imageSize, const GLvoid *data);
+
+
+struct compressed_pixelstore {
+   int SkipBytes;
+   int CopyBytesPerRow;
+   int CopyRowsPerSlice;
+   int TotalBytesPerRow;
+   int TotalRowsPerSlice;
+   int CopySlices;
+};
+
+
+extern void
+_mesa_compute_compressed_pixelstore(GLuint dims, mesa_format texFormat,
+                                    GLsizei width, GLsizei height,
+                                    GLsizei depth,
+                                    const struct gl_pixelstore_attrib *packing,
+                                    struct compressed_pixelstore *store);
 
 
 #endif

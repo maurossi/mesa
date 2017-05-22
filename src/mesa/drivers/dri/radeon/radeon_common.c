@@ -30,7 +30,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 /*
@@ -83,22 +83,20 @@ void radeonSetCliprects(radeonContextPtr radeon)
 
 	if ((draw_rfb->base.Width != drawable->w) ||
 	    (draw_rfb->base.Height != drawable->h)) {
-		_mesa_resize_framebuffer(radeon->glCtx, &draw_rfb->base,
+		_mesa_resize_framebuffer(&radeon->glCtx, &draw_rfb->base,
 					 drawable->w, drawable->h);
-		draw_rfb->base.Initialized = GL_TRUE;
 	}
 
 	if (drawable != readable) {
 		if ((read_rfb->base.Width != readable->w) ||
 		    (read_rfb->base.Height != readable->h)) {
-			_mesa_resize_framebuffer(radeon->glCtx, &read_rfb->base,
+			_mesa_resize_framebuffer(&radeon->glCtx, &read_rfb->base,
 						 readable->w, readable->h);
-			read_rfb->base.Initialized = GL_TRUE;
 		}
 	}
 
 	if (radeon->state.scissor.enabled)
-		radeonUpdateScissor(radeon->glCtx);
+		radeonUpdateScissor(&radeon->glCtx);
 
 }
 
@@ -107,8 +105,8 @@ void radeonSetCliprects(radeonContextPtr radeon)
 void radeonUpdateScissor( struct gl_context *ctx )
 {
 	radeonContextPtr rmesa = RADEON_CONTEXT(ctx);
-	GLint x = ctx->Scissor.X, y = ctx->Scissor.Y;
-	GLsizei w = ctx->Scissor.Width, h = ctx->Scissor.Height;
+	GLint x = ctx->Scissor.ScissorArray[0].X, y = ctx->Scissor.ScissorArray[0].Y;
+	GLsizei w = ctx->Scissor.ScissorArray[0].Width, h = ctx->Scissor.ScissorArray[0].Height;
 	int x1, y1, x2, y2;
 	int min_x, min_y, max_x, max_y;
 
@@ -144,10 +142,10 @@ void radeonUpdateScissor( struct gl_context *ctx )
  * Scissoring
  */
 
-void radeonScissor(struct gl_context* ctx, GLint x, GLint y, GLsizei w, GLsizei h)
+void radeonScissor(struct gl_context *ctx)
 {
 	radeonContextPtr radeon = RADEON_CONTEXT(ctx);
-	if (ctx->Scissor.Enabled) {
+	if (ctx->Scissor.EnableFlags) {
 		/* We don't pipeline cliprect changes */
 		radeon_firevertices(radeon);
 		radeonUpdateScissor(ctx);
@@ -166,10 +164,10 @@ uint32_t radeonGetAge(radeonContextPtr radeon)
 
 	gp.param = RADEON_PARAM_LAST_CLEAR;
 	gp.value = (int *)&age;
-	ret = drmCommandWriteRead(radeon->dri.fd, DRM_RADEON_GETPARAM,
+	ret = drmCommandWriteRead(radeon->radeonScreen->driScreen->fd, DRM_RADEON_GETPARAM,
 				  &gp, sizeof(gp));
 	if (ret) {
-		fprintf(stderr, "%s: drmRadeonGetParam: %d\n", __FUNCTION__,
+		fprintf(stderr, "%s: drmRadeonGetParam: %d\n", __func__,
 			ret);
 		exit(1);
 	}
@@ -222,9 +220,9 @@ void radeon_draw_buffer(struct gl_context *ctx, struct gl_framebuffer *fb)
 	 */
 	if (ctx->NewState & (_NEW_BUFFERS | _NEW_COLOR | _NEW_PIXEL)) {
 		/* this updates the DrawBuffer->_NumColorDrawBuffers fields, etc */
-		_mesa_update_framebuffer(ctx);
+		_mesa_update_framebuffer(ctx, ctx->ReadBuffer, ctx->DrawBuffer);
 		/* this updates the DrawBuffer's Width/Height if it's a FBO */
-		_mesa_update_draw_buffer_bounds(ctx);
+		_mesa_update_draw_buffer_bounds(ctx, ctx->DrawBuffer);
 	}
 
 	if (fb->_Status != GL_FRAMEBUFFER_COMPLETE_EXT) {
@@ -235,9 +233,9 @@ void radeon_draw_buffer(struct gl_context *ctx, struct gl_framebuffer *fb)
 		return;
 	}
 
-	if (fb->Name)
+	if (fb->Name) {
 		;/* do something depthy/stencily TODO */
-
+        }
 
 		/* none */
 	if (fb->Name == 0) {
@@ -319,15 +317,6 @@ void radeon_draw_buffer(struct gl_context *ctx, struct gl_framebuffer *fb)
 	_mesa_reference_renderbuffer(&radeon->state.color.rb, &rrbColor->base.Base);
 	radeon->state.color.draw_offset = offset;
 
-#if 0
-	/* update viewport since it depends on window size */
-	if (ctx->Driver.Viewport) {
-		ctx->Driver.Viewport(ctx, ctx->Viewport.X, ctx->Viewport.Y,
-				     ctx->Viewport.Width, ctx->Viewport.Height);
-	} else {
-
-	}
-#endif
 	ctx->NewState |= _NEW_VIEWPORT;
 
 	/* Set state we know depends on drawable parameters:
@@ -336,9 +325,7 @@ void radeon_draw_buffer(struct gl_context *ctx, struct gl_framebuffer *fb)
 	radeon->NewGLState |= _NEW_SCISSOR;
 
 	if (ctx->Driver.DepthRange)
-		ctx->Driver.DepthRange(ctx,
-				       ctx->Viewport.Near,
-				       ctx->Viewport.Far);
+		ctx->Driver.DepthRange(ctx);
 
 	/* Update culling direction which changes depending on the
 	 * orientation of the buffer:
@@ -355,8 +342,8 @@ void radeon_draw_buffer(struct gl_context *ctx, struct gl_framebuffer *fb)
 void radeonDrawBuffer( struct gl_context *ctx, GLenum mode )
 {
 	if (RADEON_DEBUG & RADEON_DRI)
-		fprintf(stderr, "%s %s\n", __FUNCTION__,
-			_mesa_lookup_enum_by_nr( mode ));
+		fprintf(stderr, "%s %s\n", __func__,
+			_mesa_enum_to_string( mode ));
 
 	if (_mesa_is_winsys_fbo(ctx->DrawBuffer)) {
 		radeonContextPtr radeon = RADEON_CONTEXT(ctx);
@@ -371,8 +358,8 @@ void radeonDrawBuffer( struct gl_context *ctx, GLenum mode )
        * that the front-buffer has actually been allocated.
        */
 		if (!was_front_buffer_rendering && radeon->is_front_buffer_rendering) {
-			radeon_update_renderbuffers(radeon->dri.context,
-				radeon->dri.context->driDrawablePriv, GL_FALSE);
+			radeon_update_renderbuffers(radeon->driContext,
+				radeon->driContext->driDrawablePriv, GL_FALSE);
       }
 	}
 
@@ -388,8 +375,8 @@ void radeonReadBuffer( struct gl_context *ctx, GLenum mode )
 					|| (mode == GL_FRONT);
 
 		if (!was_front_buffer_reading && rmesa->is_front_buffer_reading) {
-			radeon_update_renderbuffers(rmesa->dri.context,
-						    rmesa->dri.context->driReadablePriv, GL_FALSE);
+			radeon_update_renderbuffers(rmesa->driContext,
+						    rmesa->driContext->driReadablePriv, GL_FALSE);
 	 	}
 	}
 	/* nothing, until we implement h/w glRead/CopyPixels or CopyTexImage */
@@ -409,12 +396,11 @@ void radeon_window_moved(radeonContextPtr radeon)
 	radeonSetCliprects(radeon);
 }
 
-void radeon_viewport(struct gl_context *ctx, GLint x, GLint y, GLsizei width, GLsizei height)
+void radeon_viewport(struct gl_context *ctx)
 {
 	radeonContextPtr radeon = RADEON_CONTEXT(ctx);
-	__DRIcontext *driContext = radeon->dri.context;
-	void (*old_viewport)(struct gl_context *ctx, GLint x, GLint y,
-			     GLsizei w, GLsizei h);
+	__DRIcontext *driContext = radeon->driContext;
+	void (*old_viewport)(struct gl_context *ctx);
 
 	if (_mesa_is_winsys_fbo(ctx->DrawBuffer)) {
 		if (radeon->is_front_buffer_rendering) {
@@ -428,7 +414,7 @@ void radeon_viewport(struct gl_context *ctx, GLint x, GLint y, GLsizei width, GL
 	old_viewport = ctx->Driver.Viewport;
 	ctx->Driver.Viewport = NULL;
 	radeon_window_moved(radeon);
-	radeon_draw_buffer(ctx, radeon->glCtx->DrawBuffer);
+	radeon_draw_buffer(ctx, radeon->glCtx.DrawBuffer);
 	ctx->Driver.Viewport = old_viewport;
 }
 
@@ -440,7 +426,7 @@ static void radeon_print_state_atom(radeonContextPtr radeon, struct radeon_state
 	if (!radeon_is_debug_enabled(RADEON_STATE, RADEON_VERBOSE) )
 		return;
 
-	dwords = (*state->check) (radeon->glCtx, state);
+	dwords = state->check(&radeon->glCtx, state);
 
 	fprintf(stderr, "  emit %s %d/%d\n", state->name, dwords, state->cmd_size);
 
@@ -478,7 +464,7 @@ GLuint radeonCountStateEmitSize(radeonContextPtr radeon)
 			goto out;
 		foreach(atom, &radeon->hw.atomlist) {
 			if (atom->dirty) {
-				const GLuint atom_size = atom->check(radeon->glCtx, atom);
+				const GLuint atom_size = atom->check(&radeon->glCtx, atom);
 				dwords += atom_size;
 				if (RADEON_CMDBUF && atom_size) {
 					radeon_print_state_atom(radeon, atom);
@@ -487,7 +473,7 @@ GLuint radeonCountStateEmitSize(radeonContextPtr radeon)
 		}
 	} else {
 		foreach(atom, &radeon->hw.atomlist) {
-			const GLuint atom_size = atom->check(radeon->glCtx, atom);
+			const GLuint atom_size = atom->check(&radeon->glCtx, atom);
 			dwords += atom_size;
 			if (RADEON_CMDBUF && atom_size) {
 				radeon_print_state_atom(radeon, atom);
@@ -500,20 +486,20 @@ out:
 	return dwords;
 }
 
-static INLINE void radeon_emit_atom(radeonContextPtr radeon, struct radeon_state_atom *atom)
+static inline void radeon_emit_atom(radeonContextPtr radeon, struct radeon_state_atom *atom)
 {
 	BATCH_LOCALS(radeon);
 	int dwords;
 
-	dwords = (*atom->check) (radeon->glCtx, atom);
+	dwords = atom->check(&radeon->glCtx, atom);
 	if (dwords) {
 
 		radeon_print_state_atom(radeon, atom);
 
 		if (atom->emit) {
-			(*atom->emit)(radeon->glCtx, atom);
+			atom->emit(&radeon->glCtx, atom);
 		} else {
-			BEGIN_BATCH_NO_AUTOSTATE(dwords);
+			BEGIN_BATCH(dwords);
 			OUT_BATCH_TABLE(atom->cmd, dwords);
 			END_BATCH();
 		}
@@ -525,12 +511,9 @@ static INLINE void radeon_emit_atom(radeonContextPtr radeon, struct radeon_state
 
 }
 
-static INLINE void radeonEmitAtoms(radeonContextPtr radeon, GLboolean emitAll)
+static inline void radeonEmitAtoms(radeonContextPtr radeon, GLboolean emitAll)
 {
 	struct radeon_state_atom *atom;
-
-	if (radeon->vtbl.pre_emit_atoms)
-		radeon->vtbl.pre_emit_atoms(radeon);
 
 	/* Emit actual atoms */
 	if (radeon->hw.all_dirty || emitAll) {
@@ -546,20 +529,9 @@ static INLINE void radeonEmitAtoms(radeonContextPtr radeon, GLboolean emitAll)
 	COMMIT_BATCH();
 }
 
-static GLboolean radeon_revalidate_bos(struct gl_context *ctx)
-{
-	radeonContextPtr radeon = RADEON_CONTEXT(ctx);
-	int ret;
-
-	ret = radeon_cs_space_check(radeon->cmdbuf.cs);
-	if (ret == RADEON_CS_SPACE_FLUSH)
-		return GL_FALSE;
-	return GL_TRUE;
-}
-
 void radeonEmitState(radeonContextPtr radeon)
 {
-	radeon_print(RADEON_STATE, RADEON_NORMAL, "%s\n", __FUNCTION__);
+	radeon_print(RADEON_STATE, RADEON_NORMAL, "%s\n", __func__);
 
 	if (radeon->vtbl.pre_emit_state)
 		radeon->vtbl.pre_emit_state(radeon);
@@ -590,7 +562,7 @@ void radeonFlush(struct gl_context *ctx)
 {
 	radeonContextPtr radeon = RADEON_CONTEXT(ctx);
 	if (RADEON_DEBUG & RADEON_IOCTL)
-		fprintf(stderr, "%s %d\n", __FUNCTION__, radeon->cmdbuf.cs->cdw);
+		fprintf(stderr, "%s %d\n", __func__, radeon->cmdbuf.cs->cdw);
 
 	/* okay if we have no cmds in the buffer &&
 	   we have no DMA flush &&
@@ -604,7 +576,7 @@ void radeonFlush(struct gl_context *ctx)
 		radeon->dma.flush( ctx );
 
 	if (radeon->cmdbuf.cs->cdw)
-		rcommonFlushCmdBuf(radeon, __FUNCTION__);
+		rcommonFlushCmdBuf(radeon, __func__);
 
 flush_front:
 	if (_mesa_is_winsys_fbo(ctx->DrawBuffer) && radeon->front_buffer_dirty) {
@@ -619,7 +591,7 @@ flush_front:
 			 */
 			radeon->front_buffer_dirty = GL_FALSE;
 
-			(*screen->dri2.loader->flushFrontBuffer)(drawable, drawable->loaderPrivate);
+			screen->dri2.loader->flushFrontBuffer(drawable, drawable->loaderPrivate);
 		}
 	}
 }
@@ -663,10 +635,10 @@ int rcommonFlushCmdBufLocked(radeonContextPtr rmesa, const char *caller)
 	rmesa->cmdbuf.flushing = 1;
 
 	if (RADEON_DEBUG & RADEON_IOCTL) {
-		fprintf(stderr, "%s from %s\n", __FUNCTION__, caller);
+		fprintf(stderr, "%s from %s\n", __func__, caller);
 	}
 
-	radeonEmitQueryEnd(rmesa->glCtx);
+	radeonEmitQueryEnd(&rmesa->glCtx);
 
 	if (rmesa->cmdbuf.cs->cdw) {
 		ret = radeon_cs_emit(rmesa->cmdbuf.cs);
@@ -675,9 +647,8 @@ int rcommonFlushCmdBufLocked(radeonContextPtr rmesa, const char *caller)
 	radeon_cs_erase(rmesa->cmdbuf.cs);
 	rmesa->cmdbuf.flushing = 0;
 
-	if (radeon_revalidate_bos(rmesa->glCtx) == GL_FALSE) {
+	if (!rmesa->vtbl.revalidate_all_buffers(&rmesa->glCtx))
 		fprintf(stderr,"failed to revalidate buffers\n");
-	}
 
 	return ret;
 }
@@ -722,6 +693,7 @@ void rcommonInitCmdBuf(radeonContextPtr rmesa)
 {
 	GLuint size;
 	struct drm_radeon_gem_info mminfo = { 0 };
+	int fd = rmesa->radeonScreen->driScreen->fd;
 
 	/* Initialize command buffer */
 	size = 256 * driQueryOptioni(&rmesa->optionCache,
@@ -740,8 +712,7 @@ void rcommonInitCmdBuf(radeonContextPtr rmesa)
 			"Allocating %d bytes command buffer (max state is %d bytes)\n",
 			size * 4, rmesa->hw.max_state_size * 4);
 
-	rmesa->cmdbuf.csm =
-		radeon_cs_manager_gem_ctor(rmesa->radeonScreen->driScreen->fd);
+	rmesa->cmdbuf.csm = radeon_cs_manager_gem_ctor(fd);
 	if (rmesa->cmdbuf.csm == NULL) {
 		/* FIXME: fatal error */
 		return;
@@ -751,10 +722,10 @@ void rcommonInitCmdBuf(radeonContextPtr rmesa)
 	rmesa->cmdbuf.size = size;
 
 	radeon_cs_space_set_flush(rmesa->cmdbuf.cs,
-				  (void (*)(void *))rmesa->glCtx->Driver.Flush, rmesa->glCtx);
+				  (void (*)(void *))rmesa->glCtx.Driver.Flush, &rmesa->glCtx);
 
 
-	if (!drmCommandWriteRead(rmesa->dri.fd, DRM_RADEON_GEM_INFO,
+	if (!drmCommandWriteRead(fd, DRM_RADEON_GEM_INFO,
 				 &mminfo, sizeof(mminfo))) {
 		radeon_cs_set_limit(rmesa->cmdbuf.cs, RADEON_GEM_DOMAIN_VRAM,
 				    mminfo.vram_visible);
@@ -773,7 +744,6 @@ void rcommonDestroyCmdBuf(radeonContextPtr rmesa)
 }
 
 void rcommonBeginBatch(radeonContextPtr rmesa, int n,
-		       int dostate,
 		       const char *file,
 		       const char *function,
 		       int line)

@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -43,15 +43,15 @@
 
 /* Helper functions for the filters */
 
-void pp_filter_setup_in(struct program *, struct pipe_resource *);
-void pp_filter_setup_out(struct program *, struct pipe_resource *);
-void pp_filter_end_pass(struct program *);
+void pp_filter_setup_in(struct pp_program *, struct pipe_resource *);
+void pp_filter_setup_out(struct pp_program *, struct pipe_resource *);
+void pp_filter_end_pass(struct pp_program *);
 void *pp_tgsi_to_state(struct pipe_context *, const char *, bool,
                        const char *);
-void pp_filter_misc_state(struct program *);
-void pp_filter_draw(struct program *);
-void pp_filter_set_fb(struct program *);
-void pp_filter_set_clear_fb(struct program *);
+void pp_filter_misc_state(struct pp_program *);
+void pp_filter_draw(struct pp_program *);
+void pp_filter_set_fb(struct pp_program *);
+void pp_filter_set_clear_fb(struct pp_program *);
 
 
 #endif

@@ -1,7 +1,7 @@
 #######################################################################
 # Top-level SConstruct
 #
-# For example, invoke scons as 
+# For example, invoke scons as
 #
 #   scons build=debug llvm=yes machine=x86
 #
@@ -12,13 +12,13 @@
 #   build='debug'
 #   llvm=True
 #   machine='x86'
-# 
+#
 # Invoke
 #
 #   scons -h
 #
 # to get the full list of options. See scons manpage for more info.
-#  
+#
 
 import os
 import os.path
@@ -36,7 +36,7 @@ common.AddOptions(opts)
 env = Environment(
 	options = opts,
 	tools = ['gallium'],
-	toolpath = ['#scons'],	
+	toolpath = ['#scons'],
 	ENV = os.environ,
 )
 
@@ -53,21 +53,21 @@ else:
     print 'scons: warning: targets option is deprecated; pass the targets on their own such as'
     print
     print '  scons %s' % ' '.join(targets)
-    print 
+    print
     COMMAND_LINE_TARGETS.append(targets)
 
 
 Help(opts.GenerateHelpText(env))
 
-# fail early for a common error on windows
-if env['gles']:
-    try:
-        import libxml2
-    except ImportError:
-        raise SCons.Errors.UserError, "GLES requires libxml2-python to build"
-
 #######################################################################
 # Environment setup
+
+with open("VERSION") as f:
+  mesa_version = f.read().strip()
+env.Append(CPPDEFINES = [
+    ('PACKAGE_VERSION', '\\"%s\\"' % mesa_version),
+    ('PACKAGE_BUGREPORT', '\\"https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa\\"'),
+])
 
 # Includes
 env.Prepend(CPPPATH = [
@@ -80,16 +80,18 @@ env.Append(CPPPATH = [
 	'#/src/gallium/winsys',
 ])
 
-if env['msvc']:
-    env.Append(CPPPATH = ['#include/c99'])
-
 # for debugging
 #print env.Dump()
 
 
+# Add a check target for running tests
+check = env.Alias('check')
+env.AlwaysBuild(check)
+
+
 #######################################################################
-# Invoke host SConscripts 
-# 
+# Invoke host SConscripts
+#
 # For things that are meant to be run on the native host build machine, instead
 # of the target machine.
 #
@@ -114,9 +116,6 @@ if env['crosscompile'] and not env['embedded']:
 
     host_env['hostonly'] = True
     assert host_env['crosscompile'] == False
-
-    if host_env['msvc']:
-        host_env.Append(CPPPATH = ['#include/c99'])
 
     target_env = env
     env = host_env

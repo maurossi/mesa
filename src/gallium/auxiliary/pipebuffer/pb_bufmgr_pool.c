@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2006 Tungsten Graphics, Inc., Bismarck, ND., USA
+ * Copyright 2006 VMware, Inc., Bismarck, ND., USA
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -30,8 +30,8 @@
  * \file
  * Batch buffer pool management.
  * 
- * \author Jose Fonseca <jrfonseca-at-tungstengraphics-dot-com>
- * \author Thomas Hellström <thomas-at-tungstengraphics-dot-com>
+ * \author Jose Fonseca <jfonseca-at-vmware-dot-com>
+ * \author Thomas Hellström <thellstom-at-vmware-dot-com>
  */
 
 
@@ -40,7 +40,7 @@
 #include "os/os_thread.h"
 #include "pipe/p_defines.h"
 #include "util/u_memory.h"
-#include "util/u_double_list.h"
+#include "util/list.h"
 
 #include "pb_buffer.h"
 #include "pb_bufmgr.h"
@@ -73,7 +73,7 @@ struct pool_pb_manager
 };
 
 
-static INLINE struct pool_pb_manager *
+static inline struct pool_pb_manager *
 pool_pb_manager(struct pb_manager *mgr)
 {
    assert(mgr);
@@ -93,7 +93,7 @@ struct pool_buffer
 };
 
 
-static INLINE struct pool_buffer *
+static inline struct pool_buffer *
 pool_buffer(struct pb_buffer *buf)
 {
    assert(buf);
@@ -261,7 +261,7 @@ pool_bufmgr_create(struct pb_manager *provider,
    struct pool_buffer *pool_buf;
    pb_size i;
 
-   if(!provider)
+   if (!provider)
       return NULL;
    
    pool = CALLOC_STRUCT(pool_pb_manager);
@@ -311,13 +311,11 @@ pool_bufmgr_create(struct pb_manager *provider,
    return SUPER(pool);
    
 failure:
-   if(pool->bufs)
-      FREE(pool->bufs);
+   FREE(pool->bufs);
    if(pool->map)
       pb_unmap(pool->buffer);
    if(pool->buffer)
       pb_reference(&pool->buffer, NULL);
-   if(pool)
-      FREE(pool);
+   FREE(pool);
    return NULL;
 }

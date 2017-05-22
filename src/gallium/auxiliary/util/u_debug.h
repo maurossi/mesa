@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,7 +32,7 @@
  * For now it just has assert and printf replacements, but it might be extended 
  * with stack trace reports and more advanced logging in the near future. 
  * 
- * @author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * @author Jose Fonseca <jfonseca@vmware.com>
  */
 
 #ifndef U_DEBUG_H_
@@ -40,6 +40,14 @@
 
 
 #include "os/os_misc.h"
+
+#if defined(PIPE_OS_HAIKU)
+/* Haiku provides debug_printf in libroot with OS.h */
+#include <OS.h>
+#endif
+
+#include "pipe/p_format.h"
+#include "pipe/p_defines.h"
 
 
 #ifdef	__cplusplus
@@ -56,7 +64,7 @@ extern "C" {
 void _debug_vprintf(const char *format, va_list ap);
    
 
-static INLINE void
+static inline void
 _debug_printf(const char *format, ...)
 {
    va_list ap;
@@ -76,10 +84,10 @@ _debug_printf(const char *format, ...)
  * that is guaranteed to be printed in all platforms)
  */
 #if !defined(PIPE_OS_HAIKU)
-static INLINE void
+static inline void
 debug_printf(const char *format, ...) _util_printf_format(1,2);
 
-static INLINE void
+static inline void
 debug_printf(const char *format, ...)
 {
 #ifdef DEBUG
@@ -91,9 +99,6 @@ debug_printf(const char *format, ...)
    (void) format; /* silence warning */
 #endif
 }
-#else /* is Haiku */
-/* Haiku provides debug_printf in libroot with OS.h */
-#include <OS.h>
 #endif
 
 
@@ -137,6 +142,15 @@ void debug_print_format(const char *msg, unsigned fmt );
 
 
 /**
+ * Disable interactive error message boxes.
+ *
+ * Should be called as soon as possible for effectiveness.
+ */
+void
+debug_disable_error_message_boxes(void);
+
+
+/**
  * Hard-coded breakpoint.
  */
 #ifdef DEBUG
@@ -149,10 +163,17 @@ void debug_print_format(const char *msg, unsigned fmt );
 long
 debug_get_num_option(const char *name, long dfault);
 
+#ifdef _MSC_VER
+__declspec(noreturn)
+#endif
 void _debug_assert_fail(const char *expr, 
                         const char *file, 
                         unsigned line, 
-                        const char *function);
+                        const char *function)
+#ifdef __GNUC__
+   __attribute__((__noreturn__))
+#endif
+;
 
 
 /** 
@@ -167,7 +188,7 @@ void _debug_assert_fail(const char *expr,
 #ifdef DEBUG
 #define debug_assert(expr) ((expr) ? (void)0 : _debug_assert_fail(#expr, __FILE__, __LINE__, __FUNCTION__))
 #else
-#define debug_assert(expr) do { } while (0 && (expr))
+#define debug_assert(expr) (void)(0 && (expr))
 #endif
 
 
@@ -244,6 +265,27 @@ void _debug_assert_fail(const char *expr,
    _debug_printf("error: %s\n", __msg)
 #endif
 
+/**
+ * Output a debug log message to the debug info callback.
+ */
+#define pipe_debug_message(cb, type, fmt, ...) do { \
+   static unsigned id = 0; \
+   if ((cb) && (cb)->debug_message) { \
+      _pipe_debug_message(cb, &id, \
+                          PIPE_DEBUG_TYPE_ ## type, \
+                          fmt, ##__VA_ARGS__); \
+   } \
+} while (0)
+
+struct pipe_debug_callback;
+
+void
+_pipe_debug_message(
+   struct pipe_debug_callback *cb,
+   unsigned *id,
+   enum pipe_debug_type type,
+   const char *fmt, ...) _util_printf_format(4, 5);
+
 
 /**
  * Used by debug_dump_enum and debug_dump_flags to describe symbols.
@@ -251,7 +293,7 @@ void _debug_assert_fail(const char *expr,
 struct debug_named_value
 {
    const char *name;
-   unsigned long value;
+   uint64_t value;
    const char *desc;
 };
 
@@ -275,7 +317,7 @@ struct debug_named_value
  *    ...
  * @endcode
  */
-#define DEBUG_NAMED_VALUE(__symbol) DEBUG_NAMED_VALUE_WITH_DESCRIPTION(__symbol, NULL)
+#define DEBUG_NAMED_VALUE(__symbol) {#__symbol, (unsigned long)__symbol, NULL}
 #define DEBUG_NAMED_VALUE_WITH_DESCRIPTION(__symbol, __desc) {#__symbol, (unsigned long)__symbol, __desc}
 #define DEBUG_NAMED_VALUE_END {NULL, 0, NULL}
 
@@ -359,10 +401,23 @@ debug_get_bool_option(const char *name, boolean dfault);
 long
 debug_get_num_option(const char *name, long dfault);
 
-unsigned long
+uint64_t
 debug_get_flags_option(const char *name, 
                        const struct debug_named_value *flags,
-                       unsigned long dfault);
+                       uint64_t dfault);
+
+#define DEBUG_GET_ONCE_OPTION(suffix, name, dfault) \
+static const char * \
+debug_get_option_ ## suffix (void) \
+{ \
+   static boolean first = TRUE; \
+   static const char * value; \
+   if (first) { \
+      first = FALSE; \
+      value = debug_get_option(name, dfault); \
+   } \
+   return value; \
+}
 
 #define DEBUG_GET_ONCE_BOOL_OPTION(sufix, name, dfault) \
 static boolean \
@@ -411,39 +466,14 @@ void
 debug_memory_end(unsigned long beginning);
 
 
-#ifdef DEBUG
-struct pipe_context;
-struct pipe_surface;
-struct pipe_transfer;
-struct pipe_resource;
+void
+debug_print_transfer_flags(const char *msg, unsigned usage);
 
-void debug_dump_image(const char *prefix,
-                      unsigned format, unsigned cpp,
-                      unsigned width, unsigned height,
-                      unsigned stride,
-                      const void *data);
-void debug_dump_surface(struct pipe_context *pipe,
-			const char *prefix,
-                        struct pipe_surface *surface);   
-void debug_dump_texture(struct pipe_context *pipe,
-			const char *prefix,
-                        struct pipe_resource *texture);
-void debug_dump_surface_bmp(struct pipe_context *pipe,
-                            const char *filename,
-                            struct pipe_surface *surface);
-void debug_dump_transfer_bmp(struct pipe_context *pipe,
-                             const char *filename,
-                             struct pipe_transfer *transfer);
-void debug_dump_float_rgba_bmp(const char *filename,
-                               unsigned width, unsigned height,
-                               float *rgba, unsigned stride);
-#else
-#define debug_dump_image(prefix, format, cpp, width, height, stride, data) ((void)0)
-#define debug_dump_surface(pipe, prefix, surface) ((void)0)
-#define debug_dump_surface_bmp(pipe, filename, surface) ((void)0)
-#define debug_dump_transfer_bmp(filename, transfer) ((void)0)
-#define debug_dump_float_rgba_bmp(filename, width, height, rgba, stride) ((void)0)
-#endif
+void
+debug_print_bind_flags(const char *msg, unsigned usage);
+
+void
+debug_print_usage_enum(const char *msg, enum pipe_resource_usage usage);
 
 
 #ifdef	__cplusplus

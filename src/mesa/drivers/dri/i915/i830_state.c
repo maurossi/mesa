@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -56,8 +56,8 @@ i830StencilFuncSeparate(struct gl_context * ctx, GLenum face, GLenum func, GLint
 
    mask = mask & 0xff;
 
-   DBG("%s : func: %s, ref : 0x%x, mask: 0x%x\n", __FUNCTION__,
-       _mesa_lookup_enum_by_nr(func), ref, mask);
+   DBG("%s : func: %s, ref : 0x%x, mask: 0x%x\n", __func__,
+       _mesa_enum_to_string(func), ref, mask);
 
 
    I830_STATECHANGE(i830, I830_UPLOAD_CTX);
@@ -77,7 +77,7 @@ i830StencilMaskSeparate(struct gl_context * ctx, GLenum face, GLuint mask)
 {
    struct i830_context *i830 = i830_context(ctx);
 
-   DBG("%s : mask 0x%x\n", __FUNCTION__, mask);
+   DBG("%s : mask 0x%x\n", __func__, mask);
    
    mask = mask & 0xff;
 
@@ -94,10 +94,10 @@ i830StencilOpSeparate(struct gl_context * ctx, GLenum face, GLenum fail, GLenum 
    struct i830_context *i830 = i830_context(ctx);
    int fop, dfop, dpop;
 
-   DBG("%s: fail : %s, zfail: %s, zpass : %s\n", __FUNCTION__,
-       _mesa_lookup_enum_by_nr(fail),
-       _mesa_lookup_enum_by_nr(zfail), 
-       _mesa_lookup_enum_by_nr(zpass));
+   DBG("%s: fail : %s, zfail: %s, zpass : %s\n", __func__,
+       _mesa_enum_to_string(fail),
+       _mesa_enum_to_string(zfail), 
+       _mesa_enum_to_string(zpass));
 
    fop = 0;
    dfop = 0;
@@ -219,9 +219,9 @@ i830AlphaFunc(struct gl_context * ctx, GLenum func, GLfloat ref)
 }
 
 /**
- * Makes sure that the proper enables are set for LogicOp, Independant Alpha
+ * Makes sure that the proper enables are set for LogicOp, Independent Alpha
  * Blend, and Blending.  It needs to be called from numerous places where we
- * could change the LogicOp or Independant Alpha Blend without subsequent
+ * could change the LogicOp or Independent Alpha Blend without subsequent
  * calls to glEnable.
  * 
  * \todo
@@ -261,7 +261,7 @@ i830BlendColor(struct gl_context * ctx, const GLfloat color[4])
    struct i830_context *i830 = i830_context(ctx);
    GLubyte r, g, b, a;
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    UNCLAMPED_FLOAT_TO_UBYTE(r, color[RCOMP]);
    UNCLAMPED_FLOAT_TO_UBYTE(g, color[GCOMP]);
@@ -315,7 +315,7 @@ i830_set_blend_state(struct gl_context * ctx)
       break;
    default:
       fprintf(stderr, "[%s:%u] Invalid RGB blend equation (0x%04x).\n",
-              __FUNCTION__, __LINE__, ctx->Color.Blend[0].EquationRGB);
+              __func__, __LINE__, ctx->Color.Blend[0].EquationRGB);
       return;
    }
 
@@ -343,7 +343,7 @@ i830_set_blend_state(struct gl_context * ctx)
       break;
    default:
       fprintf(stderr, "[%s:%u] Invalid alpha blend equation (0x%04x).\n",
-              __FUNCTION__, __LINE__, ctx->Color.Blend[0].EquationA);
+              __func__, __LINE__, ctx->Color.Blend[0].EquationA);
       return;
    }
 
@@ -369,7 +369,7 @@ i830_set_blend_state(struct gl_context * ctx)
    }
 
    /* This will catch a logicop blend equation.  It will also ensure
-    * independant alpha blend is really in the correct state (either enabled
+    * independent alpha blend is really in the correct state (either enabled
     * or disabled) if blending is already enabled.
     */
 
@@ -378,7 +378,7 @@ i830_set_blend_state(struct gl_context * ctx)
    if (0) {
       fprintf(stderr,
               "[%s:%u] STATE1: 0x%08x IALPHAB: 0x%08x blend is %sabled\n",
-              __FUNCTION__, __LINE__, i830->state.Ctx[I830_CTXREG_STATE1],
+              __func__, __LINE__, i830->state.Ctx[I830_CTXREG_STATE1],
               i830->state.Ctx[I830_CTXREG_IALPHAB],
               (ctx->Color.BlendEnabled) ? "en" : "dis");
    }
@@ -388,9 +388,9 @@ i830_set_blend_state(struct gl_context * ctx)
 static void
 i830BlendEquationSeparate(struct gl_context * ctx, GLenum modeRGB, GLenum modeA)
 {
-   DBG("%s -> %s, %s\n", __FUNCTION__,
-       _mesa_lookup_enum_by_nr(modeRGB),
-       _mesa_lookup_enum_by_nr(modeA));
+   DBG("%s -> %s, %s\n", __func__,
+       _mesa_enum_to_string(modeRGB),
+       _mesa_enum_to_string(modeA));
 
    (void) modeRGB;
    (void) modeA;
@@ -402,11 +402,11 @@ static void
 i830BlendFuncSeparate(struct gl_context * ctx, GLenum sfactorRGB,
                       GLenum dfactorRGB, GLenum sfactorA, GLenum dfactorA)
 {
-   DBG("%s -> RGB(%s, %s) A(%s, %s)\n", __FUNCTION__,
-       _mesa_lookup_enum_by_nr(sfactorRGB),
-       _mesa_lookup_enum_by_nr(dfactorRGB),
-       _mesa_lookup_enum_by_nr(sfactorA),
-       _mesa_lookup_enum_by_nr(dfactorA));
+   DBG("%s -> RGB(%s, %s) A(%s, %s)\n", __func__,
+       _mesa_enum_to_string(sfactorRGB),
+       _mesa_enum_to_string(dfactorRGB),
+       _mesa_enum_to_string(sfactorA),
+       _mesa_enum_to_string(dfactorA));
 
    (void) sfactorRGB;
    (void) dfactorRGB;
@@ -423,7 +423,7 @@ i830DepthFunc(struct gl_context * ctx, GLenum func)
    struct i830_context *i830 = i830_context(ctx);
    int test = intel_translate_compare_func(func);
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    I830_STATECHANGE(i830, I830_UPLOAD_CTX);
    i830->state.Ctx[I830_CTXREG_STATE3] &= ~DEPTH_TEST_FUNC_MASK;
@@ -436,7 +436,7 @@ i830DepthMask(struct gl_context * ctx, GLboolean flag)
 {
    struct i830_context *i830 = i830_context(ctx);
 
-   DBG("%s flag (%d)\n", __FUNCTION__, flag);
+   DBG("%s flag (%d)\n", __func__, flag);
 
    if (!ctx->DrawBuffer || !ctx->DrawBuffer->Visual.depthBits)
       flag = false;
@@ -451,18 +451,9 @@ i830DepthMask(struct gl_context * ctx, GLboolean flag)
       i830->state.Ctx[I830_CTXREG_ENABLES_2] |= DISABLE_DEPTH_WRITE;
 }
 
-/** Called from ctx->Driver.Viewport() */
-static void
-i830Viewport(struct gl_context * ctx,
-              GLint x, GLint y, GLsizei width, GLsizei height)
-{
-   intelCalcViewport(ctx);
-}
-
-
 /** Called from ctx->Driver.DepthRange() */
 static void
-i830DepthRange(struct gl_context * ctx, GLclampd nearval, GLclampd farval)
+i830DepthRange(struct gl_context *ctx)
 {
    intelCalcViewport(ctx);
 }
@@ -536,7 +527,7 @@ i830PolygonStipple(struct gl_context * ctx, const GLubyte * mask)
  * Hardware clipping
  */
 static void
-i830Scissor(struct gl_context * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
+i830Scissor(struct gl_context * ctx)
 {
    struct i830_context *i830 = i830_context(ctx);
    int x1, y1, x2, y2;
@@ -544,23 +535,29 @@ i830Scissor(struct gl_context * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
    if (!ctx->DrawBuffer)
       return;
 
-   DBG("%s %d,%d %dx%d\n", __FUNCTION__, x, y, w, h);
+   DBG("%s %d,%d %dx%d\n", __func__,
+       ctx->Scissor.ScissorArray[0].X,     ctx->Scissor.ScissorArray[0].Y,
+       ctx->Scissor.ScissorArray[0].Width, ctx->Scissor.ScissorArray[0].Height);
 
    if (_mesa_is_winsys_fbo(ctx->DrawBuffer)) {
-      x1 = x;
-      y1 = ctx->DrawBuffer->Height - (y + h);
-      x2 = x + w - 1;
-      y2 = y1 + h - 1;
-      DBG("%s %d..%d,%d..%d (inverted)\n", __FUNCTION__, x1, x2, y1, y2);
+      x1 = ctx->Scissor.ScissorArray[0].X;
+      y1 = ctx->DrawBuffer->Height - (ctx->Scissor.ScissorArray[0].Y
+                                      + ctx->Scissor.ScissorArray[0].Height);
+      x2 = ctx->Scissor.ScissorArray[0].X
+         + ctx->Scissor.ScissorArray[0].Width - 1;
+      y2 = y1 + ctx->Scissor.ScissorArray[0].Height - 1;
+      DBG("%s %d..%d,%d..%d (inverted)\n", __func__, x1, x2, y1, y2);
    }
    else {
       /* FBO - not inverted
        */
-      x1 = x;
-      y1 = y;
-      x2 = x + w - 1;
-      y2 = y + h - 1;
-      DBG("%s %d..%d,%d..%d (not inverted)\n", __FUNCTION__, x1, x2, y1, y2);
+      x1 = ctx->Scissor.ScissorArray[0].X;
+      y1 = ctx->Scissor.ScissorArray[0].Y;
+      x2 = ctx->Scissor.ScissorArray[0].X
+         + ctx->Scissor.ScissorArray[0].Width - 1;
+      y2 = ctx->Scissor.ScissorArray[0].Y
+         + ctx->Scissor.ScissorArray[0].Height - 1;
+      DBG("%s %d..%d,%d..%d (not inverted)\n", __func__, x1, x2, y1, y2);
    }
 
    x1 = CLAMP(x1, 0, ctx->DrawBuffer->Width - 1);
@@ -568,7 +565,7 @@ i830Scissor(struct gl_context * ctx, GLint x, GLint y, GLsizei w, GLsizei h)
    x2 = CLAMP(x2, 0, ctx->DrawBuffer->Width - 1);
    y2 = CLAMP(y2, 0, ctx->DrawBuffer->Height - 1);
    
-   DBG("%s %d..%d,%d..%d (clamped)\n", __FUNCTION__, x1, x2, y1, y2);
+   DBG("%s %d..%d,%d..%d (clamped)\n", __func__, x1, x2, y1, y2);
 
    I830_STATECHANGE(i830, I830_UPLOAD_BUFFERS);
    i830->state.Buffer[I830_DESTREG_SR1] = (y1 << 16) | (x1 & 0xffff);
@@ -581,7 +578,7 @@ i830LogicOp(struct gl_context * ctx, GLenum opcode)
    struct i830_context *i830 = i830_context(ctx);
    int tmp = intel_translate_logic_op(opcode);
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    I830_STATECHANGE(i830, I830_UPLOAD_CTX);
    i830->state.Ctx[I830_CTXREG_STATE4] &= ~LOGICOP_MASK;
@@ -596,7 +593,7 @@ i830CullFaceFrontFace(struct gl_context * ctx, GLenum unused)
    struct i830_context *i830 = i830_context(ctx);
    GLuint mode;
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    if (!ctx->Polygon.CullFlag) {
       mode = CULLMODE_NONE;
@@ -604,6 +601,8 @@ i830CullFaceFrontFace(struct gl_context * ctx, GLenum unused)
    else if (ctx->Polygon.CullFaceMode != GL_FRONT_AND_BACK) {
       mode = CULLMODE_CW;
 
+      if (ctx->DrawBuffer && _mesa_is_user_fbo(ctx->DrawBuffer))
+         mode ^= (CULLMODE_CW ^ CULLMODE_CCW);
       if (ctx->Polygon.CullFaceMode == GL_FRONT)
          mode ^= (CULLMODE_CW ^ CULLMODE_CCW);
       if (ctx->Polygon.FrontFace != GL_CCW)
@@ -625,7 +624,7 @@ i830LineWidth(struct gl_context * ctx, GLfloat widthf)
    int width;
    int state5;
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    width = (int) (widthf * 2);
    width = CLAMP(width, 1, 15);
@@ -645,7 +644,7 @@ i830PointSize(struct gl_context * ctx, GLfloat size)
    struct i830_context *i830 = i830_context(ctx);
    GLint point_size = (int) size;
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    point_size = CLAMP(point_size, 1, 256);
    I830_STATECHANGE(i830, I830_UPLOAD_CTX);
@@ -666,7 +665,7 @@ i830ColorMask(struct gl_context * ctx,
    struct i830_context *i830 = i830_context(ctx);
    GLuint tmp = 0;
 
-   DBG("%s r(%d) g(%d) b(%d) a(%d)\n", __FUNCTION__, r, g, b, a);
+   DBG("%s r(%d) g(%d) b(%d) a(%d)\n", __func__, r, g, b, a);
 
    tmp = ((i830->state.Ctx[I830_CTXREG_ENABLES_2] & ~WRITEMASK_MASK) |
           ENABLE_COLOR_MASK |
@@ -698,7 +697,7 @@ update_specular(struct gl_context * ctx)
 static void
 i830LightModelfv(struct gl_context * ctx, GLenum pname, const GLfloat * param)
 {
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    if (pname == GL_LIGHT_MODEL_COLOR_CONTROL) {
       update_specular(ctx);
@@ -741,7 +740,7 @@ i830Fogfv(struct gl_context * ctx, GLenum pname, const GLfloat * param)
 {
    struct i830_context *i830 = i830_context(ctx);
 
-   DBG("%s\n", __FUNCTION__);
+   DBG("%s\n", __func__);
    
    if (pname == GL_FOG_COLOR) {
       GLuint color = (((GLubyte) (ctx->Fog.Color[0] * 255.0F) << 16) |
@@ -1072,11 +1071,11 @@ i830_init_packets(struct i830_context *i830)
    i830->state.Stipple[I830_STPREG_ST0] = _3DSTATE_STIPPLE;
 
    i830->state.Buffer[I830_DESTREG_DV0] = _3DSTATE_DST_BUF_VARS_CMD;
-   i830->state.Buffer[I830_DESTREG_SENABLE] = (_3DSTATE_SCISSOR_ENABLE_CMD |
-                                               DISABLE_SCISSOR_RECT);
    i830->state.Buffer[I830_DESTREG_SR0] = _3DSTATE_SCISSOR_RECT_0_CMD;
    i830->state.Buffer[I830_DESTREG_SR1] = 0;
    i830->state.Buffer[I830_DESTREG_SR2] = 0;
+   i830->state.Buffer[I830_DESTREG_SENABLE] = (_3DSTATE_SCISSOR_ENABLE_CMD |
+                                               DISABLE_SCISSOR_RECT);
 }
 
 void
@@ -1136,7 +1135,6 @@ i830InitStateFuncs(struct dd_function_table *functions)
    functions->StencilMaskSeparate = i830StencilMaskSeparate;
    functions->StencilOpSeparate = i830StencilOpSeparate;
    functions->DepthRange = i830DepthRange;
-   functions->Viewport = i830Viewport;
 }
 
 void

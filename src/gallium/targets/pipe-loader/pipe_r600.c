@@ -1,26 +1,40 @@
 #include "state_tracker/drm_driver.h"
 #include "target-helpers/inline_debug_helper.h"
 #include "radeon/drm/radeon_drm_public.h"
+#include "radeon/radeon_winsys.h"
 #include "r600/r600_public.h"
 
 static struct pipe_screen *
 create_screen(int fd)
 {
    struct radeon_winsys *rw;
-   struct pipe_screen *screen;
 
-   rw = radeon_drm_winsys_create(fd);
-   if (!rw)
-      return NULL;
+   rw = radeon_drm_winsys_create(fd, r600_screen_create);
+   return rw ? debug_screen_wrap(rw->screen) : NULL;
+}
 
-   screen = r600_screen_create(rw);
-   if (!screen)
-      return NULL;
+static const struct drm_conf_ret throttle_ret = {
+   .type = DRM_CONF_INT,
+   .val.val_int = 2,
+};
 
-   screen = debug_screen_wrap(screen);
+static const struct drm_conf_ret share_fd_ret = {
+   .type = DRM_CONF_BOOL,
+   .val.val_int = true,
+};
 
-   return screen;
+static const struct drm_conf_ret *drm_configuration(enum drm_conf conf)
+{
+   switch (conf) {
+   case DRM_CONF_THROTTLE:
+      return &throttle_ret;
+   case DRM_CONF_SHARE_FD:
+      return &share_fd_ret;
+   default:
+      break;
+   }
+   return NULL;
 }
 
 PUBLIC
-DRM_DRIVER_DESCRIPTOR("r600", "radeon", create_screen, NULL)
+DRM_DRIVER_DESCRIPTOR("r600", create_screen, drm_configuration)

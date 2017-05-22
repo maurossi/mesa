@@ -31,11 +31,16 @@
 #ifndef GLX_GLXEXTENSIONS_H
 #define GLX_GLXEXTENSIONS_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 enum
 {
    ARB_create_context_bit = 0,
    ARB_create_context_profile_bit,
    ARB_create_context_robustness_bit,
+   ARB_fbconfig_float_bit,
    ARB_get_proc_address_bit,
    ARB_multisample_bit,
    ATI_pixel_format_float_bit,
@@ -43,10 +48,13 @@ enum
    EXT_visual_rating_bit,
    EXT_import_context_bit,
    EXT_framebuffer_sRGB_bit,
+   EXT_fbconfig_packed_float_bit,
+   EXT_create_context_es_profile_bit,
    EXT_create_context_es2_profile_bit,
    MESA_copy_sub_buffer_bit,
    MESA_depth_float_bit,
    MESA_multithread_makecurrent_bit,
+   MESA_query_renderer_bit,
    MESA_swap_control_bit,
    MESA_swap_frame_usage_bit,
    NV_float_buffer_bit,
@@ -63,7 +71,13 @@ enum
    SGIX_visual_select_group_bit,
    EXT_texture_from_pixmap_bit,
    INTEL_swap_event_bit,
+   EXT_buffer_age_bit,
 };
+
+/* From the GLX perspective, the ARB and EXT extensions are identical.  Use a
+ * single bit for both.
+ */
+#define ARB_framebuffer_sRGB_bit EXT_framebuffer_sRGB_bit
 
 enum
 {
@@ -137,6 +151,7 @@ enum
    GL_EXT_texture_env_combine_bit,
    GL_EXT_texture_env_dot3_bit,
    GL_EXT_texture_filter_anisotropic_bit,
+   GL_EXT_texture_integer_bit,
    GL_EXT_texture_lod_bit,
    GL_EXT_texture_lod_bias_bit,
    GL_EXT_texture_mirror_clamp_bit,
@@ -266,16 +281,18 @@ typedef void (*PFNGLXDISABLEEXTENSIONPROC) (const char *name);
 
 /* GLX_ALIAS should be used for functions with a non-void return type.
    GLX_ALIAS_VOID is for functions with a void return type. */
-#ifdef GLX_NO_STATIC_EXTENSION_FUNCTIONS
-# define GLX_ALIAS(return_type, real_func, proto_args, args, aliased_func)
-# define GLX_ALIAS_VOID(real_func, proto_args, args, aliased_func)
-#else
-# if defined(__GNUC__) && !defined(GLX_ALIAS_UNSUPPORTED)
-#  define GLX_ALIAS(return_type, real_func, proto_args, args, aliased_func) \
+# ifdef HAVE_FUNC_ATTRIBUTE_ALIAS
+/* GLX_ALIAS and GLX_ALIAS_VOID both expand to the macro GLX_ALIAS2. Using the
+ * extra expansion means that the name mangling macros in glx_mangle.h will
+ * apply before stringification, so the alias attribute will have a string like
+ * "mglXFoo" instead of "glXFoo". */
+#  define GLX_ALIAS2(return_type, real_func, proto_args, args, aliased_func) \
    return_type  real_func  proto_args                                   \
    __attribute__ ((alias( # aliased_func ) ));
+#  define GLX_ALIAS(return_type, real_func, proto_args, args, aliased_func) \
+   GLX_ALIAS2(return_type, real_func, proto_args, args, aliased_func)
 #  define GLX_ALIAS_VOID(real_func, proto_args, args, aliased_func) \
-   GLX_ALIAS(void, real_func, proto_args, args, aliased_func)
+   GLX_ALIAS2(void, real_func, proto_args, args, aliased_func)
 # else
 #  define GLX_ALIAS(return_type, real_func, proto_args, args, aliased_func) \
    return_type  real_func  proto_args                                   \
@@ -283,7 +300,10 @@ typedef void (*PFNGLXDISABLEEXTENSIONPROC) (const char *name);
 #  define GLX_ALIAS_VOID(real_func, proto_args, args, aliased_func) \
    void  real_func  proto_args                                      \
    { aliased_func args ; }
-# endif /* __GNUC__ */
-#endif /* GLX_NO_STATIC_EXTENSION_FUNCTIONS */
+# endif /* HAVE_FUNC_ATTRIBUTE_ALIAS */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* GLX_GLXEXTENSIONS_H */

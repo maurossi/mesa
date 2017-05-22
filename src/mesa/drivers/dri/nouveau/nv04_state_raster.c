@@ -30,6 +30,7 @@
 #include "nv_object.xml.h"
 #include "nv04_3d.xml.h"
 #include "nv04_driver.h"
+#include "main/stencil.h"
 
 static unsigned
 get_comparison_op(unsigned op)
@@ -122,6 +123,7 @@ void
 nv04_emit_control(struct gl_context *ctx, int emit)
 {
 	struct nv04_context *nv04 = to_nv04_context(ctx);
+	struct gl_framebuffer *fb = ctx->DrawBuffer;
 	int cull = ctx->Polygon.CullFaceMode;
 	int front = ctx->Polygon.FrontFace;
 
@@ -145,9 +147,9 @@ nv04_emit_control(struct gl_context *ctx, int emit)
 				 NV04_TEXTURED_TRIANGLE_CONTROL_CULL_MODE_CCW;
 
 	/* Depth test. */
-	if (ctx->Depth.Test)
+	if (ctx->Depth.Test && fb->Visual.depthBits > 0)
 		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_Z_ENABLE;
-	if (ctx->Depth.Mask)
+	if (ctx->Depth.Mask && fb->Visual.depthBits > 0)
 		nv04->ctrl[0] |= NV04_TEXTURED_TRIANGLE_CONTROL_Z_WRITE;
 
 	nv04->ctrl[0] |= get_comparison_op(ctx->Depth.Func) << 16;
@@ -173,11 +175,11 @@ nv04_emit_control(struct gl_context *ctx, int emit)
 	if (ctx->Stencil.WriteMask[0])
 		nv04->ctrl[0] |= NV04_MULTITEX_TRIANGLE_CONTROL0_STENCIL_WRITE;
 
-	if (ctx->Stencil.Enabled)
+	if (ctx->Stencil._Enabled)
 		nv04->ctrl[1] |= NV04_MULTITEX_TRIANGLE_CONTROL1_STENCIL_ENABLE;
 
 	nv04->ctrl[1] |= get_comparison_op(ctx->Stencil.Function[0]) << 4 |
-			 ctx->Stencil.Ref[0] << 8 |
+			 _mesa_get_stencil_ref(ctx, 0) << 8 |
 			 ctx->Stencil.ValueMask[0] << 16 |
 			 ctx->Stencil.WriteMask[0] << 24;
 
@@ -221,6 +223,6 @@ nv04_emit_blend(struct gl_context *ctx, int emit)
 	/* Fog. */
 	if (ctx->Fog.Enabled) {
 		nv04->blend |= NV04_TEXTURED_TRIANGLE_BLEND_FOG_ENABLE;
-		nv04->fog = pack_rgba_f(MESA_FORMAT_ARGB8888, ctx->Fog.Color);
+		nv04->fog = pack_rgba_f(MESA_FORMAT_B8G8R8A8_UNORM, ctx->Fog.Color);
 	}
 }

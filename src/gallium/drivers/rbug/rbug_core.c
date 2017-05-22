@@ -31,7 +31,7 @@
 #include "util/u_string.h"
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
-#include "util/u_simple_list.h"
+#include "util/simple_list.h"
 #include "util/u_network.h"
 #include "os/os_time.h"
 
@@ -204,6 +204,7 @@ rbug_texture_info(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32_
    struct rbug_proto_texture_info *gpti = (struct rbug_proto_texture_info *)header;
    struct rbug_list *ptr;
    struct pipe_resource *t;
+   unsigned num_layers;
 
    pipe_mutex_lock(rb_screen->list_mutex);
    foreach(ptr, &rb_screen->resources) {
@@ -219,11 +220,13 @@ rbug_texture_info(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32_
    }
 
    t = tr_tex->resource;
+   num_layers = util_max_layer(t, 0) + 1;
+
    rbug_send_texture_info_reply(tr_rbug->con, serial,
                                t->target, t->format,
                                &t->width0, 1,
                                &t->height0, 1,
-                               &t->depth0, 1,
+                               &num_layers, 1,
                                util_format_get_blockwidth(t->format),
                                util_format_get_blockheight(t->format),
                                util_format_get_blocksize(t->format),
@@ -266,12 +269,10 @@ rbug_texture_read(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32_
    }
 
    tex = tr_tex->resource;
-   t = pipe_get_transfer(context, tex,
-                         gptr->level, gptr->face + gptr->zslice,
-                         PIPE_TRANSFER_READ,
-                         gptr->x, gptr->y, gptr->w, gptr->h);
-
-   map = context->transfer_map(context, t);
+   map = pipe_transfer_map(context, tex,
+                           gptr->level, gptr->face + gptr->zslice,
+                           PIPE_TRANSFER_READ,
+                           gptr->x, gptr->y, gptr->w, gptr->h, &t);
 
    rbug_send_texture_read_reply(tr_rbug->con, serial,
                                 t->resource->format,
@@ -285,7 +286,6 @@ rbug_texture_read(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32_
                                 NULL);
 
    context->transfer_unmap(context, t);
-   context->transfer_destroy(context, t);
 
    pipe_mutex_unlock(rb_screen->list_mutex);
 
@@ -323,8 +323,8 @@ rbug_context_info(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32_
    struct rbug_screen *rb_screen = tr_rbug->rb_screen;
    struct rbug_context *rb_context = NULL;
    rbug_texture_t cbufs[PIPE_MAX_COLOR_BUFS];
-   rbug_texture_t texs[PIPE_MAX_SAMPLERS];
-   int i;
+   rbug_texture_t texs[PIPE_MAX_SHADER_SAMPLER_VIEWS];
+   unsigned i;
 
    pipe_mutex_lock(rb_screen->list_mutex);
    rb_context = rbug_get_context_locked(rb_screen, info->context);
@@ -500,7 +500,7 @@ rbug_context_flush(struct rbug_rbug *tr_rbug, struct rbug_header *header, uint32
    /* protect the pipe context */
    pipe_mutex_lock(rb_context->call_mutex);
 
-   rb_context->pipe->flush(rb_context->pipe, NULL);
+   rb_context->pipe->flush(rb_context->pipe, NULL, 0);
 
    pipe_mutex_unlock(rb_context->call_mutex);
    pipe_mutex_unlock(rb_screen->list_mutex);
@@ -813,7 +813,7 @@ PIPE_THREAD_ROUTINE(rbug_thread, void_tr_rbug)
 
    if (s < 0) {
       debug_printf("rbug_rbug - failed to listen\n");
-      return NULL;
+      return 0;
    }
 
    u_socket_block(s, false);
@@ -839,7 +839,7 @@ PIPE_THREAD_ROUTINE(rbug_thread, void_tr_rbug)
 
    u_socket_stop();
 
-   return NULL;
+   return 0;
 }
 
 /**********************************************************

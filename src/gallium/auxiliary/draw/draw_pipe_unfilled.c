@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,13 +30,14 @@
  * Convert triangles to points or lines as needed.
  */
 
-/* Authors:  Keith Whitwell <keith@tungstengraphics.com>
+/* Authors:  Keith Whitwell <keithw@vmware.com>
  */
 
 #include "util/u_memory.h"
 #include "pipe/p_defines.h"
 #include "draw_private.h"
 #include "draw_pipe.h"
+#include "draw_fs.h"
 
 
 struct unfilled_stage {
@@ -47,61 +48,113 @@ struct unfilled_stage {
     * and PIPE_POLYGON_MODE_POINT,
     */
    unsigned mode[2];
+
+   int face_slot;
 };
 
 
-static INLINE struct unfilled_stage *unfilled_stage( struct draw_stage *stage )
+static inline struct unfilled_stage *unfilled_stage( struct draw_stage *stage )
 {
    return (struct unfilled_stage *)stage;
 }
 
-
-
-static void point( struct draw_stage *stage,
-		   struct vertex_header *v0 )
+static void
+inject_front_face_info(struct draw_stage *stage,
+                       struct prim_header *header)
 {
-   struct prim_header tmp;
-   tmp.v[0] = v0;
-   stage->next->point( stage->next, &tmp );
+   struct unfilled_stage *unfilled = unfilled_stage(stage);
+   unsigned ccw = header->det < 0.0;
+   boolean is_front_face = (
+      (stage->draw->rasterizer->front_ccw && ccw) ||
+      (!stage->draw->rasterizer->front_ccw && !ccw));
+   int slot = unfilled->face_slot;
+   unsigned i;
+
+   /* In case the backend doesn't care about it */
+   if (slot < 0) {
+      return;
+   }
+
+   for (i = 0; i < 3; ++i) {
+      struct vertex_header *v = header->v[i];
+      v->data[slot][0] = is_front_face;
+      v->data[slot][1] = is_front_face;
+      v->data[slot][2] = is_front_face;
+      v->data[slot][3] = is_front_face;
+      v->vertex_id = UNDEFINED_VERTEX_ID;
+   }
 }
 
-static void line( struct draw_stage *stage,
-		  struct vertex_header *v0,
-		  struct vertex_header *v1 )
+   
+static void point(struct draw_stage *stage,
+                  struct prim_header *header,
+                  struct vertex_header *v0)
 {
    struct prim_header tmp;
+   tmp.det = header->det;
+   tmp.flags = 0;
+   tmp.v[0] = v0;
+   stage->next->point(stage->next, &tmp);
+}
+
+static void line(struct draw_stage *stage,
+                 struct prim_header *header,
+                 struct vertex_header *v0,
+                 struct vertex_header *v1)
+{
+   struct prim_header tmp;
+   tmp.det = header->det;
+   tmp.flags = 0;
    tmp.v[0] = v0;
    tmp.v[1] = v1;
-   stage->next->line( stage->next, &tmp );
+   stage->next->line(stage->next, &tmp);
 }
 
 
-static void points( struct draw_stage *stage,
-		    struct prim_header *header )
+static void points(struct draw_stage *stage,
+                   struct prim_header *header)
 {
    struct vertex_header *v0 = header->v[0];
    struct vertex_header *v1 = header->v[1];
    struct vertex_header *v2 = header->v[2];
 
-   if ((header->flags & DRAW_PIPE_EDGE_FLAG_0) && v0->edgeflag) point( stage, v0 );
-   if ((header->flags & DRAW_PIPE_EDGE_FLAG_1) && v1->edgeflag) point( stage, v1 );
-   if ((header->flags & DRAW_PIPE_EDGE_FLAG_2) && v2->edgeflag) point( stage, v2 );
+   inject_front_face_info(stage, header);
+
+   if ((header->flags & DRAW_PIPE_EDGE_FLAG_0) && v0->edgeflag)
+      point(stage, header, v0);
+   if ((header->flags & DRAW_PIPE_EDGE_FLAG_1) && v1->edgeflag)
+      point(stage, header, v1);
+   if ((header->flags & DRAW_PIPE_EDGE_FLAG_2) && v2->edgeflag)
+      point(stage, header, v2);
 }
 
 
-static void lines( struct draw_stage *stage,
-		   struct prim_header *header )
+static void lines(struct draw_stage *stage,
+                  struct prim_header *header)
 {
    struct vertex_header *v0 = header->v[0];
    struct vertex_header *v1 = header->v[1];
    struct vertex_header *v2 = header->v[2];
 
    if (header->flags & DRAW_PIPE_RESET_STIPPLE)
-      stage->next->reset_stipple_counter( stage->next );
+      /*
+       * XXX could revisit this. The only stage which cares is the line
+       * stipple stage. Could just emit correct reset flags here and not
+       * bother about all the calling through reset_stipple_counter
+       * stages. Though technically it is necessary if line stipple is
+       * handled by the driver, but this is not actually hooked up when
+       * using vbuf (vbuf stage reset_stipple_counter does nothing).
+       */
+      stage->next->reset_stipple_counter(stage->next);
 
-   if ((header->flags & DRAW_PIPE_EDGE_FLAG_2) && v2->edgeflag) line( stage, v2, v0 );
-   if ((header->flags & DRAW_PIPE_EDGE_FLAG_0) && v0->edgeflag) line( stage, v0, v1 );
-   if ((header->flags & DRAW_PIPE_EDGE_FLAG_1) && v1->edgeflag) line( stage, v1, v2 );
+   inject_front_face_info(stage, header);
+
+   if ((header->flags & DRAW_PIPE_EDGE_FLAG_2) && v2->edgeflag)
+      line(stage, header, v2, v0);
+   if ((header->flags & DRAW_PIPE_EDGE_FLAG_0) && v0->edgeflag)
+      line(stage, header, v0, v1);
+   if ((header->flags & DRAW_PIPE_EDGE_FLAG_1) && v1->edgeflag)
+      line(stage, header, v1, v2);
 }
 
 
@@ -192,6 +245,29 @@ static void unfilled_destroy( struct draw_stage *stage )
    FREE( stage );
 }
 
+/*
+ * Try to allocate an output slot which we can use
+ * to preserve the front face information.
+ */
+void
+draw_unfilled_prepare_outputs( struct draw_context *draw,
+                               struct draw_stage *stage )
+{
+   struct unfilled_stage *unfilled = unfilled_stage(stage);
+   const struct pipe_rasterizer_state *rast = draw ? draw->rasterizer : 0;
+   boolean is_unfilled = (rast &&
+                          (rast->fill_front != PIPE_POLYGON_MODE_FILL ||
+                           rast->fill_back != PIPE_POLYGON_MODE_FILL));
+   const struct draw_fragment_shader *fs = draw ? draw->fs.fragment_shader : 0;
+
+   if (is_unfilled && fs && fs->info.uses_frontface)  {
+      unfilled->face_slot = draw_alloc_extra_vertex_attrib(
+         stage->draw, TGSI_SEMANTIC_FACE, 0);
+   } else {
+      unfilled->face_slot = -1;
+   }
+}
+
 
 /**
  * Create unfilled triangle stage.
@@ -199,7 +275,7 @@ static void unfilled_destroy( struct draw_stage *stage )
 struct draw_stage *draw_unfilled_stage( struct draw_context *draw )
 {
    struct unfilled_stage *unfilled = CALLOC_STRUCT(unfilled_stage);
-   if (unfilled == NULL)
+   if (!unfilled)
       goto fail;
 
    unfilled->stage.draw = draw;
@@ -212,6 +288,8 @@ struct draw_stage *draw_unfilled_stage( struct draw_context *draw )
    unfilled->stage.flush = unfilled_flush;
    unfilled->stage.reset_stipple_counter = unfilled_reset_stipple_counter;
    unfilled->stage.destroy = unfilled_destroy;
+
+   unfilled->face_slot = -1;
 
    if (!draw_alloc_temp_verts( &unfilled->stage, 0 ))
       goto fail;

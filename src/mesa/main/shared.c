@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 2009  VMware, Inc.  All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -28,22 +28,20 @@
  */
 
 #include "imports.h"
-#include "mfeatures.h"
 #include "mtypes.h"
 #include "hash.h"
-#if FEATURE_ATI_fragment_shader
 #include "atifragshader.h"
-#endif
 #include "bufferobj.h"
 #include "shared.h"
 #include "program/program.h"
 #include "dlist.h"
-#if FEATURE_ARB_sampler_objects
 #include "samplerobj.h"
-#endif
+#include "shaderapi.h"
 #include "shaderobj.h"
 #include "syncobj.h"
 
+#include "util/hash_table.h"
+#include "util/set.h"
 
 /**
  * Allocate and initialize a shared context state structure.
@@ -64,47 +62,38 @@ _mesa_alloc_shared_state(struct gl_context *ctx)
    if (!shared)
       return NULL;
 
-   _glthread_INIT_MUTEX(shared->Mutex);
+   mtx_init(&shared->Mutex, mtx_plain);
 
    shared->DisplayList = _mesa_NewHashTable();
+   shared->BitmapAtlas = _mesa_NewHashTable();
    shared->TexObjects = _mesa_NewHashTable();
    shared->Programs = _mesa_NewHashTable();
 
-#if FEATURE_ARB_vertex_program
    shared->DefaultVertexProgram =
-      gl_vertex_program(ctx->Driver.NewProgram(ctx,
-                                               GL_VERTEX_PROGRAM_ARB, 0));
-#endif
-
-#if FEATURE_ARB_fragment_program
+      ctx->Driver.NewProgram(ctx, GL_VERTEX_PROGRAM_ARB, 0, true);
    shared->DefaultFragmentProgram =
-      gl_fragment_program(ctx->Driver.NewProgram(ctx,
-                                                 GL_FRAGMENT_PROGRAM_ARB, 0));
-#endif
+      ctx->Driver.NewProgram(ctx, GL_FRAGMENT_PROGRAM_ARB, 0, true);
 
-#if FEATURE_ATI_fragment_shader
    shared->ATIShaders = _mesa_NewHashTable();
    shared->DefaultFragmentShader = _mesa_new_ati_fragment_shader(ctx, 0);
-#endif
 
-#if FEATURE_ARB_shader_objects
    shared->ShaderObjects = _mesa_NewHashTable();
-#endif
 
    shared->BufferObjects = _mesa_NewHashTable();
 
-#if FEATURE_ARB_sampler_objects
    /* GL_ARB_sampler_objects */
    shared->SamplerObjects = _mesa_NewHashTable();
-#endif
 
    /* Allocate the default buffer object */
-   shared->NullBufferObj = ctx->Driver.NewBufferObject(ctx, 0, 0);
+   shared->NullBufferObj = ctx->Driver.NewBufferObject(ctx, 0);
 
    /* Create default texture objects */
    for (i = 0; i < NUM_TEXTURE_TARGETS; i++) {
       /* NOTE: the order of these enums matches the TEXTURE_x_INDEX values */
-      static const GLenum targets[NUM_TEXTURE_TARGETS] = {
+      static const GLenum targets[] = {
+         GL_TEXTURE_2D_MULTISAMPLE,
+         GL_TEXTURE_2D_MULTISAMPLE_ARRAY,
+         GL_TEXTURE_CUBE_MAP_ARRAY,
          GL_TEXTURE_BUFFER,
          GL_TEXTURE_2D_ARRAY_EXT,
          GL_TEXTURE_1D_ARRAY_EXT,
@@ -115,23 +104,27 @@ _mesa_alloc_shared_state(struct gl_context *ctx)
          GL_TEXTURE_2D,
          GL_TEXTURE_1D
       };
-      STATIC_ASSERT(Elements(targets) == NUM_TEXTURE_TARGETS);
+      STATIC_ASSERT(ARRAY_SIZE(targets) == NUM_TEXTURE_TARGETS);
       shared->DefaultTex[i] = ctx->Driver.NewTextureObject(ctx, 0, targets[i]);
+      /* Need to explicitly set/overwrite the TargetIndex field here since
+       * the call to _mesa_tex_target_to_index() in NewTextureObject() may
+       * fail if the texture target is not supported.
+       */
+      shared->DefaultTex[i]->TargetIndex = i;
    }
 
    /* sanity check */
    assert(shared->DefaultTex[TEXTURE_1D_INDEX]->RefCount == 1);
 
    /* Mutex and timestamp for texobj state validation */
-   _glthread_INIT_MUTEX(shared->TexMutex);
+   mtx_init(&shared->TexMutex, mtx_recursive);
    shared->TextureStateStamp = 0;
 
-#if FEATURE_EXT_framebuffer_object
    shared->FrameBuffers = _mesa_NewHashTable();
    shared->RenderBuffers = _mesa_NewHashTable();
-#endif
 
-   make_empty_list(& shared->SyncObjects);
+   shared->SyncObjects = _mesa_set_create(NULL, _mesa_hash_pointer,
+                                          _mesa_key_pointer_equal);
 
    return shared;
 }
@@ -146,6 +139,18 @@ delete_displaylist_cb(GLuint id, void *data, void *userData)
    struct gl_display_list *list = (struct gl_display_list *) data;
    struct gl_context *ctx = (struct gl_context *) userData;
    _mesa_delete_list(ctx, list);
+}
+
+
+/**
+ * Callback for deleting a bitmap atlas.  Called by _mesa_HashDeleteAll().
+ */
+static void
+delete_bitmap_atlas_cb(GLuint id, void *data, void *userData)
+{
+   struct gl_bitmap_atlas *atlas = (struct gl_bitmap_atlas *) data;
+   struct gl_context *ctx = (struct gl_context *) userData;
+   _mesa_delete_bitmap_atlas(ctx, atlas);
 }
 
 
@@ -170,14 +175,13 @@ delete_program_cb(GLuint id, void *data, void *userData)
    struct gl_program *prog = (struct gl_program *) data;
    struct gl_context *ctx = (struct gl_context *) userData;
    if(prog != &_mesa_DummyProgram) {
-      ASSERT(prog->RefCount == 1); /* should only be referenced by hash table */
+      assert(prog->RefCount == 1); /* should only be referenced by hash table */
       prog->RefCount = 0;  /* now going away */
       ctx->Driver.DeleteProgram(ctx, prog);
    }
 }
 
 
-#if FEATURE_ATI_fragment_shader
 /**
  * Callback for deleting an ATI fragment shader object.
  * Called by _mesa_HashDeleteAll().
@@ -189,7 +193,6 @@ delete_fragshader_cb(GLuint id, void *data, void *userData)
    struct gl_context *ctx = (struct gl_context *) userData;
    _mesa_delete_ati_fragment_shader(ctx, shader);
 }
-#endif
 
 
 /**
@@ -200,10 +203,8 @@ delete_bufferobj_cb(GLuint id, void *data, void *userData)
 {
    struct gl_buffer_object *bufObj = (struct gl_buffer_object *) data;
    struct gl_context *ctx = (struct gl_context *) userData;
-   if (_mesa_bufferobj_mapped(bufObj)) {
-      ctx->Driver.UnmapBuffer(ctx, bufObj);
-      bufObj->Pointer = NULL;
-   }
+
+   _mesa_buffer_unmap_all_mappings(ctx, bufObj);
    _mesa_reference_buffer_object(ctx, &bufObj, NULL);
 }
 
@@ -233,13 +234,13 @@ delete_shader_cb(GLuint id, void *data, void *userData)
 {
    struct gl_context *ctx = (struct gl_context *) userData;
    struct gl_shader *sh = (struct gl_shader *) data;
-   if (sh->Type == GL_FRAGMENT_SHADER || sh->Type == GL_VERTEX_SHADER) {
-      ctx->Driver.DeleteShader(ctx, sh);
+   if (_mesa_validate_shader_target(ctx, sh->Type)) {
+      _mesa_delete_shader(ctx, sh);
    }
    else {
       struct gl_shader_program *shProg = (struct gl_shader_program *) data;
-      ASSERT(shProg->Type == GL_SHADER_PROGRAM_MESA);
-      ctx->Driver.DeleteShaderProgram(ctx, shProg);
+      assert(shProg->Type == GL_SHADER_PROGRAM_MESA);
+      _mesa_delete_shader_program(ctx, shProg);
    }
 }
 
@@ -279,7 +280,6 @@ delete_renderbuffer_cb(GLuint id, void *data, void *userData)
 }
 
 
-#if FEATURE_ARB_sampler_objects
 /**
  * Callback for deleting a sampler object. Called by _mesa_HashDeleteAll()
  */
@@ -290,7 +290,6 @@ delete_sampler_object_cb(GLuint id, void *data, void *userData)
    struct gl_sampler_object *sampObj = (struct gl_sampler_object *) data;
    _mesa_reference_sampler_object(ctx, &sampObj, NULL);
 }
-#endif
 
 
 /**
@@ -321,61 +320,50 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
     */
    _mesa_HashDeleteAll(shared->DisplayList, delete_displaylist_cb, ctx);
    _mesa_DeleteHashTable(shared->DisplayList);
+   _mesa_HashDeleteAll(shared->BitmapAtlas, delete_bitmap_atlas_cb, ctx);
+   _mesa_DeleteHashTable(shared->BitmapAtlas);
 
-#if FEATURE_ARB_shader_objects
    _mesa_HashWalk(shared->ShaderObjects, free_shader_program_data_cb, ctx);
    _mesa_HashDeleteAll(shared->ShaderObjects, delete_shader_cb, ctx);
    _mesa_DeleteHashTable(shared->ShaderObjects);
-#endif
 
    _mesa_HashDeleteAll(shared->Programs, delete_program_cb, ctx);
    _mesa_DeleteHashTable(shared->Programs);
 
-#if FEATURE_ARB_vertex_program
-   _mesa_reference_vertprog(ctx, &shared->DefaultVertexProgram, NULL);
-#endif
+   _mesa_reference_program(ctx, &shared->DefaultVertexProgram, NULL);
+   _mesa_reference_program(ctx, &shared->DefaultFragmentProgram, NULL);
 
-#if FEATURE_ARB_fragment_program
-   _mesa_reference_fragprog(ctx, &shared->DefaultFragmentProgram, NULL);
-#endif
-
-#if FEATURE_ATI_fragment_shader
    _mesa_HashDeleteAll(shared->ATIShaders, delete_fragshader_cb, ctx);
    _mesa_DeleteHashTable(shared->ATIShaders);
    _mesa_delete_ati_fragment_shader(ctx, shared->DefaultFragmentShader);
-#endif
 
    _mesa_HashDeleteAll(shared->BufferObjects, delete_bufferobj_cb, ctx);
    _mesa_DeleteHashTable(shared->BufferObjects);
 
-#if FEATURE_EXT_framebuffer_object
    _mesa_HashDeleteAll(shared->FrameBuffers, delete_framebuffer_cb, ctx);
    _mesa_DeleteHashTable(shared->FrameBuffers);
    _mesa_HashDeleteAll(shared->RenderBuffers, delete_renderbuffer_cb, ctx);
    _mesa_DeleteHashTable(shared->RenderBuffers);
-#endif
 
    _mesa_reference_buffer_object(ctx, &shared->NullBufferObj, NULL);
 
    {
-      struct simple_node *node;
-      struct simple_node *temp;
+      struct set_entry *entry;
 
-      foreach_s(node, temp, & shared->SyncObjects) {
-	 _mesa_unref_sync_object(ctx, (struct gl_sync_object *) node);
+      set_foreach(shared->SyncObjects, entry) {
+         _mesa_unref_sync_object(ctx, (struct gl_sync_object *) entry->key, 1);
       }
    }
+   _mesa_set_destroy(shared->SyncObjects, NULL);
 
-#if FEATURE_ARB_sampler_objects
    _mesa_HashDeleteAll(shared->SamplerObjects, delete_sampler_object_cb, ctx);
    _mesa_DeleteHashTable(shared->SamplerObjects);
-#endif
 
    /*
     * Free texture objects (after FBOs since some textures might have
     * been bound to FBOs).
     */
-   ASSERT(ctx->Driver.DeleteTexture);
+   assert(ctx->Driver.DeleteTexture);
    /* the default textures */
    for (i = 0; i < NUM_TEXTURE_TARGETS; i++) {
       ctx->Driver.DeleteTexture(ctx, shared->DefaultTex[i]);
@@ -385,8 +373,8 @@ free_shared_state(struct gl_context *ctx, struct gl_shared_state *shared)
    _mesa_HashDeleteAll(shared->TexObjects, delete_texture_cb, ctx);
    _mesa_DeleteHashTable(shared->TexObjects);
 
-   _glthread_DESTROY_MUTEX(shared->Mutex);
-   _glthread_DESTROY_MUTEX(shared->TexMutex);
+   mtx_destroy(&shared->Mutex);
+   mtx_destroy(&shared->TexMutex);
 
    free(shared);
 }
@@ -409,11 +397,11 @@ _mesa_reference_shared_state(struct gl_context *ctx,
       struct gl_shared_state *old = *ptr;
       GLboolean delete;
 
-      _glthread_LOCK_MUTEX(old->Mutex);
+      mtx_lock(&old->Mutex);
       assert(old->RefCount >= 1);
       old->RefCount--;
       delete = (old->RefCount == 0);
-      _glthread_UNLOCK_MUTEX(old->Mutex);
+      mtx_unlock(&old->Mutex);
 
       if (delete) {
          free_shared_state(ctx, old);
@@ -424,9 +412,9 @@ _mesa_reference_shared_state(struct gl_context *ctx,
 
    if (state) {
       /* reference new state */
-      _glthread_LOCK_MUTEX(state->Mutex);
+      mtx_lock(&state->Mutex);
       state->RefCount++;
       *ptr = state;
-      _glthread_UNLOCK_MUTEX(state->Mutex);
+      mtx_unlock(&state->Mutex);
    }
 }

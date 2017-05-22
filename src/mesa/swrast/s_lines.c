@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,15 +16,15 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
 #include "main/glheader.h"
 #include "main/context.h"
-#include "main/colormac.h"
 #include "main/macros.h"
 #include "s_aaline.h"
 #include "s_context.h"
@@ -67,7 +66,7 @@ draw_wide_line( struct gl_context *ctx, SWspan *span, GLboolean xMajor )
                                      ctx->Const.MaxLineWidth);
    GLint start;
 
-   ASSERT(span->end < SWRAST_MAX_WIDTH);
+   assert(span->end < SWRAST_MAX_WIDTH);
 
    if (width & 1)
       start = width / 2;
@@ -172,16 +171,16 @@ _swrast_add_spec_terms_line(struct gl_context *ctx,
    COPY_CHAN4(cSave[0], ncv0->color);
    COPY_CHAN4(cSave[1], ncv1->color);
    /* sum v0 */
-   rSum = CHAN_TO_FLOAT(ncv0->color[0]) + ncv0->attrib[FRAG_ATTRIB_COL1][0];
-   gSum = CHAN_TO_FLOAT(ncv0->color[1]) + ncv0->attrib[FRAG_ATTRIB_COL1][1];
-   bSum = CHAN_TO_FLOAT(ncv0->color[2]) + ncv0->attrib[FRAG_ATTRIB_COL1][2];
+   rSum = CHAN_TO_FLOAT(ncv0->color[0]) + ncv0->attrib[VARYING_SLOT_COL1][0];
+   gSum = CHAN_TO_FLOAT(ncv0->color[1]) + ncv0->attrib[VARYING_SLOT_COL1][1];
+   bSum = CHAN_TO_FLOAT(ncv0->color[2]) + ncv0->attrib[VARYING_SLOT_COL1][2];
    UNCLAMPED_FLOAT_TO_CHAN(ncv0->color[0], rSum);
    UNCLAMPED_FLOAT_TO_CHAN(ncv0->color[1], gSum);
    UNCLAMPED_FLOAT_TO_CHAN(ncv0->color[2], bSum);
    /* sum v1 */
-   rSum = CHAN_TO_FLOAT(ncv1->color[0]) + ncv1->attrib[FRAG_ATTRIB_COL1][0];
-   gSum = CHAN_TO_FLOAT(ncv1->color[1]) + ncv1->attrib[FRAG_ATTRIB_COL1][1];
-   bSum = CHAN_TO_FLOAT(ncv1->color[2]) + ncv1->attrib[FRAG_ATTRIB_COL1][2];
+   rSum = CHAN_TO_FLOAT(ncv1->color[0]) + ncv1->attrib[VARYING_SLOT_COL1][0];
+   gSum = CHAN_TO_FLOAT(ncv1->color[1]) + ncv1->attrib[VARYING_SLOT_COL1][1];
+   bSum = CHAN_TO_FLOAT(ncv1->color[2]) + ncv1->attrib[VARYING_SLOT_COL1][2];
    UNCLAMPED_FLOAT_TO_CHAN(ncv1->color[0], rSum);
    UNCLAMPED_FLOAT_TO_CHAN(ncv1->color[1], gSum);
    UNCLAMPED_FLOAT_TO_CHAN(ncv1->color[2], bSum);
@@ -233,7 +232,7 @@ _swrast_choose_line( struct gl_context *ctx )
       if (ctx->Line.SmoothFlag) {
          /* antialiased lines */
          _swrast_choose_aa_line_function(ctx);
-         ASSERT(swrast->Line);
+         assert(swrast->Line);
       }
       else if (ctx->Texture._EnabledCoordUnits
                || _swrast_use_fragment_program(ctx)
@@ -242,7 +241,7 @@ _swrast_choose_line( struct gl_context *ctx )
          USE(general_line);
       }
       else if (ctx->Depth.Test
-               || ctx->Line.Width != 1.0
+               || ctx->Line.Width != 1.0F
                || ctx->Line.StippleFlag) {
          /* no texture, but Z, fog, width>1, stipple, etc. */
 #if CHAN_BITS == 32
@@ -252,8 +251,8 @@ _swrast_choose_line( struct gl_context *ctx )
 #endif
       }
       else {
-         ASSERT(!ctx->Depth.Test);
-         ASSERT(ctx->Line.Width == 1.0);
+         assert(!ctx->Depth.Test);
+         assert(ctx->Line.Width == 1.0F);
          /* simple lines */
          USE(simple_no_z_rgba_line);
       }
@@ -262,7 +261,7 @@ _swrast_choose_line( struct gl_context *ctx )
       USE(_swrast_feedback_line);
    }
    else {
-      ASSERT(ctx->RenderMode == GL_SELECT);
+      assert(ctx->RenderMode == GL_SELECT);
       USE(_swrast_select_line);
    }
 }

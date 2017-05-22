@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -32,6 +32,7 @@
 #include "pipe/p_compiler.h"
 #include "pipe/p_context.h"
 
+#include "util/u_draw.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -40,12 +41,11 @@ extern "C" {
 struct pipe_resource;
 struct cso_context;
 
-#include "util/u_draw.h"
-
 extern void 
 util_draw_vertex_buffer(struct pipe_context *pipe, struct cso_context *cso,
-                        struct pipe_resource *vbuf, uint offset,
-                        uint num_attribs, uint num_verts, uint prim_type);
+                        struct pipe_resource *vbuf, uint vbuf_slot,
+                        uint offset, uint prim_type, uint num_attribs,
+                        uint num_verts);
 
 void
 util_draw_user_vertex_buffer(struct cso_context *cso, void *buffer,
@@ -53,6 +53,7 @@ util_draw_user_vertex_buffer(struct cso_context *cso, void *buffer,
 
 extern void 
 util_draw_texquad(struct pipe_context *pipe, struct cso_context *cso,
+                  uint vbuf_slot,
                   float x0, float y0, float x1, float y1, float z);
 
 

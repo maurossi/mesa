@@ -48,7 +48,7 @@ get_bufferobj_map(struct gl_context *ctx, struct gl_buffer_object *obj,
 }
 
 static struct gl_buffer_object *
-nouveau_bufferobj_new(struct gl_context *ctx, GLuint buffer, GLenum target)
+nouveau_bufferobj_new(struct gl_context *ctx, GLuint buffer)
 {
 	struct nouveau_bufferobj *nbo;
 
@@ -56,7 +56,7 @@ nouveau_bufferobj_new(struct gl_context *ctx, GLuint buffer, GLenum target)
 	if (!nbo)
 		return NULL;
 
-	_mesa_initialize_buffer_object(ctx, &nbo->base, buffer, target);
+	_mesa_initialize_buffer_object(ctx, &nbo->base, buffer);
 
 	return &nbo->base;
 }
@@ -67,13 +67,13 @@ nouveau_bufferobj_del(struct gl_context *ctx, struct gl_buffer_object *obj)
 	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
 
 	nouveau_bo_ref(NULL, &nbo->bo);
-	FREE(nbo->sys);
-	FREE(nbo);
+	free(nbo->sys);
+	free(nbo);
 }
 
 static GLboolean
 nouveau_bufferobj_data(struct gl_context *ctx, GLenum target, GLsizeiptrARB size,
-		       const GLvoid *data, GLenum usage,
+		       const GLvoid *data, GLenum usage, GLbitfield storageFlags,
 		       struct gl_buffer_object *obj)
 {
 	struct nouveau_bufferobj *nbo = to_nouveau_bufferobj(obj);
@@ -81,21 +81,24 @@ nouveau_bufferobj_data(struct gl_context *ctx, GLenum target, GLsizeiptrARB size
 
 	obj->Size = size;
 	obj->Usage = usage;
+        obj->StorageFlags = storageFlags;
 
 	/* Free previous storage */
 	nouveau_bo_ref(NULL, &nbo->bo);
-	FREE(nbo->sys);
+	free(nbo->sys);
+	nbo->sys = NULL;
 
 	if (target == GL_ELEMENT_ARRAY_BUFFER_ARB ||
 	    (size < 512 && usage == GL_DYNAMIC_DRAW_ARB) ||
 	    context_chipset(ctx) < 0x10) {
 		/* Heuristic: keep it in system ram */
-		nbo->sys = MALLOC(size);
+		nbo->sys = malloc(size);
 
 	} else {
 		/* Get a hardware BO */
 		ret = nouveau_bo_new(context_dev(ctx),
-				     NOUVEAU_BO_GART | NOUVEAU_BO_MAP, 0,
+				     NOUVEAU_BO_GART | NOUVEAU_BO_MAP,
+				     ctx->Const.MinMapBufferAlignment,
 				     size, NULL, &nbo->bo);
 		assert(!ret);
 	}
@@ -125,12 +128,13 @@ nouveau_bufferobj_get_subdata(struct gl_context *ctx, GLintptrARB offset,
 static void *
 nouveau_bufferobj_map_range(struct gl_context *ctx, GLintptr offset,
 			    GLsizeiptr length, GLbitfield access,
-			    struct gl_buffer_object *obj)
+			    struct gl_buffer_object *obj,
+                            gl_map_buffer_index index)
 {
 	unsigned flags = 0;
 	char *map;
 
-	assert(!obj->Pointer);
+	assert(!obj->Mappings[index].Pointer);
 
 	if (!(access & GL_MAP_UNSYNCHRONIZED_BIT)) {
 		if (access & GL_MAP_READ_BIT)
@@ -143,23 +147,24 @@ nouveau_bufferobj_map_range(struct gl_context *ctx, GLintptr offset,
 	if (!map)
 		return NULL;
 
-	obj->Pointer = map + offset;
-	obj->Offset = offset;
-	obj->Length = length;
-	obj->AccessFlags = access;
+	obj->Mappings[index].Pointer = map + offset;
+	obj->Mappings[index].Offset = offset;
+	obj->Mappings[index].Length = length;
+	obj->Mappings[index].AccessFlags = access;
 
-	return obj->Pointer;
+	return obj->Mappings[index].Pointer;
 }
 
 static GLboolean
-nouveau_bufferobj_unmap(struct gl_context *ctx, struct gl_buffer_object *obj)
+nouveau_bufferobj_unmap(struct gl_context *ctx, struct gl_buffer_object *obj,
+                        gl_map_buffer_index index)
 {
-	assert(obj->Pointer);
+	assert(obj->Mappings[index].Pointer);
 
-	obj->Pointer = NULL;
-	obj->Offset = 0;
-	obj->Length = 0;
-	obj->AccessFlags = 0;
+	obj->Mappings[index].Pointer = NULL;
+	obj->Mappings[index].Offset = 0;
+	obj->Mappings[index].Length = 0;
+	obj->Mappings[index].AccessFlags = 0;
 
 	return GL_TRUE;
 }

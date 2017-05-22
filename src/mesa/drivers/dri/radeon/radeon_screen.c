@@ -44,9 +44,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "main/fbobject.h"
 #include "swrast/s_renderbuffer.h"
 
-#define STANDALONE_MMIO
 #include "radeon_chipset.h"
-#include "radeon_macros.h"
 #include "radeon_screen.h"
 #include "radeon_common.h"
 #include "radeon_common_context.h"
@@ -73,64 +71,61 @@ DRI_CONF_OPT_BEGIN_V(command_buffer_size,int,def, # min ":" # max ) \
 DRI_CONF_OPT_END
 
 #if defined(RADEON_R100)	/* R100 */
-PUBLIC const char __driConfigOptions[] =
+static const __DRIconfigOptionsExtension radeon_config_options = {
+   .base = { __DRI_CONFIG_OPTIONS, 1 },
+   .xml =
 DRI_CONF_BEGIN
     DRI_CONF_SECTION_PERFORMANCE
         DRI_CONF_TCL_MODE(DRI_CONF_TCL_CODEGEN)
         DRI_CONF_FTHROTTLE_MODE(DRI_CONF_FTHROTTLE_IRQS)
         DRI_CONF_VBLANK_MODE(DRI_CONF_VBLANK_DEF_INTERVAL_0)
         DRI_CONF_MAX_TEXTURE_UNITS(3,2,3)
-        DRI_CONF_HYPERZ(false)
+        DRI_CONF_HYPERZ("false")
         DRI_CONF_COMMAND_BUFFER_SIZE(8, 8, 32)
     DRI_CONF_SECTION_END
     DRI_CONF_SECTION_QUALITY
         DRI_CONF_TEXTURE_DEPTH(DRI_CONF_TEXTURE_DEPTH_FB)
         DRI_CONF_DEF_MAX_ANISOTROPY(1.0,"1.0,2.0,4.0,8.0,16.0")
-        DRI_CONF_NO_NEG_LOD_BIAS(false)
-        DRI_CONF_FORCE_S3TC_ENABLE(false)
+        DRI_CONF_NO_NEG_LOD_BIAS("false")
+        DRI_CONF_FORCE_S3TC_ENABLE("false")
         DRI_CONF_COLOR_REDUCTION(DRI_CONF_COLOR_REDUCTION_DITHER)
         DRI_CONF_ROUND_MODE(DRI_CONF_ROUND_TRUNC)
         DRI_CONF_DITHER_MODE(DRI_CONF_DITHER_XERRORDIFF)
-        DRI_CONF_ALLOW_LARGE_TEXTURES(2)
     DRI_CONF_SECTION_END
     DRI_CONF_SECTION_DEBUG
-        DRI_CONF_NO_RAST(false)
+        DRI_CONF_NO_RAST("false")
     DRI_CONF_SECTION_END
-DRI_CONF_END;
-static const GLuint __driNConfigOptions = 15;
+DRI_CONF_END
+};
 
 #elif defined(RADEON_R200)
-
-PUBLIC const char __driConfigOptions[] =
+static const __DRIconfigOptionsExtension radeon_config_options = {
+   .base = { __DRI_CONFIG_OPTIONS, 1 },
+   .xml =
 DRI_CONF_BEGIN
     DRI_CONF_SECTION_PERFORMANCE
         DRI_CONF_TCL_MODE(DRI_CONF_TCL_CODEGEN)
         DRI_CONF_FTHROTTLE_MODE(DRI_CONF_FTHROTTLE_IRQS)
         DRI_CONF_VBLANK_MODE(DRI_CONF_VBLANK_DEF_INTERVAL_0)
         DRI_CONF_MAX_TEXTURE_UNITS(6,2,6)
-        DRI_CONF_HYPERZ(false)
+        DRI_CONF_HYPERZ("false")
         DRI_CONF_COMMAND_BUFFER_SIZE(8, 8, 32)
     DRI_CONF_SECTION_END
     DRI_CONF_SECTION_QUALITY
         DRI_CONF_TEXTURE_DEPTH(DRI_CONF_TEXTURE_DEPTH_FB)
         DRI_CONF_DEF_MAX_ANISOTROPY(1.0,"1.0,2.0,4.0,8.0,16.0")
-        DRI_CONF_NO_NEG_LOD_BIAS(false)
-        DRI_CONF_FORCE_S3TC_ENABLE(false)
+        DRI_CONF_NO_NEG_LOD_BIAS("false")
+        DRI_CONF_FORCE_S3TC_ENABLE("false")
         DRI_CONF_COLOR_REDUCTION(DRI_CONF_COLOR_REDUCTION_DITHER)
         DRI_CONF_ROUND_MODE(DRI_CONF_ROUND_TRUNC)
         DRI_CONF_DITHER_MODE(DRI_CONF_DITHER_XERRORDIFF)
-        DRI_CONF_ALLOW_LARGE_TEXTURES(2)
         DRI_CONF_TEXTURE_BLEND_QUALITY(1.0,"0.0:1.0")
     DRI_CONF_SECTION_END
     DRI_CONF_SECTION_DEBUG
-        DRI_CONF_NO_RAST(false)
+        DRI_CONF_NO_RAST("false")
     DRI_CONF_SECTION_END
-    DRI_CONF_SECTION_SOFTWARE
-        DRI_CONF_NV_VERTEX_PROGRAM(false)
-    DRI_CONF_SECTION_END
-DRI_CONF_END;
-static const GLuint __driNConfigOptions = 17;
-
+DRI_CONF_END
+};
 #endif
 
 #ifndef RADEON_INFO_TILE_CONFIG
@@ -140,49 +135,43 @@ static const GLuint __driNConfigOptions = 17;
 static int
 radeonGetParam(__DRIscreen *sPriv, int param, void *value)
 {
-  int ret;
-  drm_radeon_getparam_t gp = { 0 };
   struct drm_radeon_info info = { 0 };
 
-  if (sPriv->drm_version.major >= 2) {
-      info.value = (uint64_t)(uintptr_t)value;
-      switch (param) {
-      case RADEON_PARAM_DEVICE_ID:
-          info.request = RADEON_INFO_DEVICE_ID;
-          break;
-      case RADEON_PARAM_NUM_GB_PIPES:
-          info.request = RADEON_INFO_NUM_GB_PIPES;
-          break;
-      case RADEON_PARAM_NUM_Z_PIPES:
-          info.request = RADEON_INFO_NUM_Z_PIPES;
-          break;
-      case RADEON_INFO_TILE_CONFIG:
-	  info.request = RADEON_INFO_TILE_CONFIG;
-          break;
-      default:
-          return -EINVAL;
-      }
-      ret = drmCommandWriteRead(sPriv->fd, DRM_RADEON_INFO, &info, sizeof(info));
-  } else {
-      gp.param = param;
-      gp.value = value;
-
-      ret = drmCommandWriteRead(sPriv->fd, DRM_RADEON_GETPARAM, &gp, sizeof(gp));
+  info.value = (uint64_t)(uintptr_t)value;
+  switch (param) {
+  case RADEON_PARAM_DEVICE_ID:
+    info.request = RADEON_INFO_DEVICE_ID;
+    break;
+  case RADEON_PARAM_NUM_GB_PIPES:
+    info.request = RADEON_INFO_NUM_GB_PIPES;
+    break;
+  case RADEON_PARAM_NUM_Z_PIPES:
+    info.request = RADEON_INFO_NUM_Z_PIPES;
+    break;
+  case RADEON_INFO_TILE_CONFIG:
+    info.request = RADEON_INFO_TILE_CONFIG;
+    break;
+  default:
+    return -EINVAL;
   }
-  return ret;
+  return drmCommandWriteRead(sPriv->fd, DRM_RADEON_INFO, &info, sizeof(info));
 }
 
 #if defined(RADEON_R100)
 static const __DRItexBufferExtension radeonTexBufferExtension = {
-    { __DRI_TEX_BUFFER, __DRI_TEX_BUFFER_VERSION },
-   radeonSetTexBuffer,
-   radeonSetTexBuffer2,
+   .base = { __DRI_TEX_BUFFER, 3 },
+
+   .setTexBuffer        = radeonSetTexBuffer,
+   .setTexBuffer2       = radeonSetTexBuffer2,
+   .releaseTexBuffer    = NULL,
 };
 #elif defined(RADEON_R200)
 static const __DRItexBufferExtension r200TexBufferExtension = {
-    { __DRI_TEX_BUFFER, __DRI_TEX_BUFFER_VERSION },
-   r200SetTexBuffer,
-   r200SetTexBuffer2,
+   .base = { __DRI_TEX_BUFFER, 3 },
+
+   .setTexBuffer        = r200SetTexBuffer,
+   .setTexBuffer2       = r200SetTexBuffer2,
+   .releaseTexBuffer    = NULL,
 };
 #endif
 
@@ -192,13 +181,14 @@ radeonDRI2Flush(__DRIdrawable *drawable)
     radeonContextPtr rmesa;
 
     rmesa = (radeonContextPtr) drawable->driContextPriv->driverPrivate;
-    radeonFlush(rmesa->glCtx);
+    radeonFlush(&rmesa->glCtx);
 }
 
 static const struct __DRI2flushExtensionRec radeonFlushExtension = {
-    { __DRI2_FLUSH, __DRI2_FLUSH_VERSION },
-    radeonDRI2Flush,
-    dri2InvalidateDrawable,
+   .base = { __DRI2_FLUSH, 3 },
+
+   .flush               = radeonDRI2Flush,
+   .invalidate          = dri2InvalidateDrawable,
 };
 
 static __DRIimage *
@@ -212,23 +202,23 @@ radeon_create_image_from_name(__DRIscreen *screen,
    if (name == 0)
       return NULL;
 
-   image = CALLOC(sizeof *image);
+   image = calloc(1, sizeof *image);
    if (image == NULL)
       return NULL;
 
    switch (format) {
    case __DRI_IMAGE_FORMAT_RGB565:
-      image->format = MESA_FORMAT_RGB565;
+      image->format = MESA_FORMAT_B5G6R5_UNORM;
       image->internal_format = GL_RGB;
       image->data_type = GL_UNSIGNED_BYTE;
       break;
    case __DRI_IMAGE_FORMAT_XRGB8888:
-      image->format = MESA_FORMAT_XRGB8888;
+      image->format = MESA_FORMAT_B8G8R8X8_UNORM;
       image->internal_format = GL_RGB;
       image->data_type = GL_UNSIGNED_BYTE;
       break;
    case __DRI_IMAGE_FORMAT_ARGB8888:
-      image->format = MESA_FORMAT_ARGB8888;
+      image->format = MESA_FORMAT_B8G8R8A8_UNORM;
       image->internal_format = GL_RGBA;
       image->data_type = GL_UNSIGNED_BYTE;
       break;
@@ -251,7 +241,7 @@ radeon_create_image_from_name(__DRIscreen *screen,
                               0);
 
    if (image->bo == NULL) {
-      FREE(image);
+      free(image);
       return NULL;
    }
 
@@ -267,15 +257,15 @@ radeon_create_image_from_renderbuffer(__DRIcontext *context,
    struct gl_renderbuffer *rb;
    struct radeon_renderbuffer *rrb;
 
-   rb = _mesa_lookup_renderbuffer(radeon->glCtx, renderbuffer);
+   rb = _mesa_lookup_renderbuffer(&radeon->glCtx, renderbuffer);
    if (!rb) {
-      _mesa_error(radeon->glCtx,
+      _mesa_error(&radeon->glCtx,
                   GL_INVALID_OPERATION, "glRenderbufferExternalMESA");
       return NULL;
    }
 
    rrb = radeon_renderbuffer(rb);
-   image = CALLOC(sizeof *image);
+   image = calloc(1, sizeof *image);
    if (image == NULL)
       return NULL;
 
@@ -298,7 +288,7 @@ static void
 radeon_destroy_image(__DRIimage *image)
 {
    radeon_bo_unref(image->bo);
-   FREE(image);
+   free(image);
 }
 
 static __DRIimage *
@@ -310,7 +300,7 @@ radeon_create_image(__DRIscreen *screen,
    __DRIimage *image;
    radeonScreenPtr radeonScreen = screen->driverPrivate;
 
-   image = CALLOC(sizeof *image);
+   image = calloc(1, sizeof *image);
    if (image == NULL)
       return NULL;
 
@@ -318,17 +308,17 @@ radeon_create_image(__DRIscreen *screen,
 
    switch (format) {
    case __DRI_IMAGE_FORMAT_RGB565:
-      image->format = MESA_FORMAT_RGB565;
+      image->format = MESA_FORMAT_B5G6R5_UNORM;
       image->internal_format = GL_RGB;
       image->data_type = GL_UNSIGNED_BYTE;
       break;
    case __DRI_IMAGE_FORMAT_XRGB8888:
-      image->format = MESA_FORMAT_XRGB8888;
+      image->format = MESA_FORMAT_B8G8R8X8_UNORM;
       image->internal_format = GL_RGB;
       image->data_type = GL_UNSIGNED_BYTE;
       break;
    case __DRI_IMAGE_FORMAT_ARGB8888:
-      image->format = MESA_FORMAT_ARGB8888;
+      image->format = MESA_FORMAT_B8G8R8A8_UNORM;
       image->internal_format = GL_RGBA;
       image->data_type = GL_UNSIGNED_BYTE;
       break;
@@ -351,7 +341,7 @@ radeon_create_image(__DRIscreen *screen,
                               0);
 
    if (image->bo == NULL) {
-      FREE(image);
+      free(image);
       return NULL;
    }
 
@@ -376,13 +366,14 @@ radeon_query_image(__DRIimage *image, int attrib, int *value)
    }
 }
 
-static struct __DRIimageExtensionRec radeonImageExtension = {
-    { __DRI_IMAGE, 1 },
-   radeon_create_image_from_name,
-   radeon_create_image_from_renderbuffer,
-   radeon_destroy_image,
-   radeon_create_image,
-   radeon_query_image
+static const __DRIimageExtension radeonImageExtension = {
+   .base = { __DRI_IMAGE, 1 },
+
+   .createImageFromName         = radeon_create_image_from_name,
+   .createImageFromRenderbuffer = radeon_create_image_from_renderbuffer,
+   .destroyImage                = radeon_destroy_image,
+   .createImage                 = radeon_create_image,
+   .queryImage                  = radeon_query_image
 };
 
 static int radeon_set_screen_flags(radeonScreenPtr screen, int device_id)
@@ -479,18 +470,98 @@ static int radeon_set_screen_flags(radeonScreenPtr screen, int device_id)
    return 0;
 }
 
+static int
+radeonQueryRendererInteger(__DRIscreen *psp, int param,
+			       unsigned int *value)
+{
+   radeonScreenPtr screen = (radeonScreenPtr)psp->driverPrivate;
+
+   switch (param) {
+   case __DRI2_RENDERER_VENDOR_ID:
+      value[0] = 0x1002;
+      return 0;
+   case __DRI2_RENDERER_DEVICE_ID:
+      value[0] = screen->device_id;
+      return 0;
+   case __DRI2_RENDERER_ACCELERATED:
+      value[0] = 1;
+      return 0;
+   case __DRI2_RENDERER_VIDEO_MEMORY: {
+      struct drm_radeon_gem_info gem_info;
+      int retval;
+      memset(&gem_info, 0, sizeof(gem_info));
+
+      /* Get GEM info. */
+      retval = drmCommandWriteRead(psp->fd, DRM_RADEON_GEM_INFO, &gem_info,
+				   sizeof(gem_info));
+
+      if (retval) {
+         fprintf(stderr, "radeon: Failed to get MM info, error number %d\n",
+                retval);
+         return -1;
+
+      }
+      /* XXX: Do we want to return vram_size or vram_visible ? */
+      value[0] = gem_info.vram_size >> 20;
+      return 0;
+   }
+   case __DRI2_RENDERER_UNIFIED_MEMORY_ARCHITECTURE:
+      value[0] = 0;
+      return 0;
+   default:
+      return driQueryRendererIntegerCommon(psp, param, value);
+   }
+}
+
+static int
+radeonQueryRendererString(__DRIscreen *psp, int param, const char **value)
+{
+   radeonScreenPtr screen = (radeonScreenPtr)psp->driverPrivate;
+
+   switch (param) {
+   case __DRI2_RENDERER_VENDOR_ID:
+      value[0] = radeonVendorString;
+      return 0;
+   case __DRI2_RENDERER_DEVICE_ID:
+      value[0] = radeonGetRendererString(screen);
+      return 0;
+   default:
+      return -1;
+   }
+}
+
+static const __DRI2rendererQueryExtension radeonRendererQueryExtension = {
+   .base = { __DRI2_RENDERER_QUERY, 1 },
+
+   .queryInteger        = radeonQueryRendererInteger,
+   .queryString         = radeonQueryRendererString
+};
+
+
+static const __DRIextension *radeon_screen_extensions[] = {
+    &dri2ConfigQueryExtension.base,
+#if defined(RADEON_R100)
+    &radeonTexBufferExtension.base,
+#elif defined(RADEON_R200)
+    &r200TexBufferExtension.base,
+#endif
+    &radeonFlushExtension.base,
+    &radeonImageExtension.base,
+    &radeonRendererQueryExtension.base,
+    NULL
+};
+
 static radeonScreenPtr
 radeonCreateScreen2(__DRIscreen *sPriv)
 {
    radeonScreenPtr screen;
-   int i;
    int ret;
    uint32_t device_id = 0;
 
    /* Allocate the private area */
-   screen = (radeonScreenPtr) CALLOC( sizeof(*screen) );
+   screen = calloc(1, sizeof(*screen));
    if ( !screen ) {
-      fprintf(stderr, "%s: Could not allocate memory for screen structure", __FUNCTION__);
+      fprintf(stderr, "%s: Could not allocate memory for screen structure", __func__);
       fprintf(stderr, "leaving here\n");
       return NULL;
    }
@@ -498,8 +569,7 @@ radeonCreateScreen2(__DRIscreen *sPriv)
    radeon_init_debug();
 
    /* parse information in __driConfigOptions */
-   driParseOptionInfo (&screen->optionCache,
-		       __driConfigOptions, __driNConfigOptions);
+   driParseOptionInfo (&screen->optionCache, radeon_config_options.xml);
 
    screen->chip_flags = 0;
 
@@ -507,32 +577,21 @@ radeonCreateScreen2(__DRIscreen *sPriv)
 
    ret = radeonGetParam(sPriv, RADEON_PARAM_DEVICE_ID, &device_id);
    if (ret) {
-     FREE( screen );
+     free( screen );
      fprintf(stderr, "drm_radeon_getparam_t (RADEON_PARAM_DEVICE_ID): %d\n", ret);
      return NULL;
    }
 
    ret = radeon_set_screen_flags(screen, device_id);
-   if (ret == -1)
+   if (ret == -1) {
+     free(screen);
      return NULL;
+   }
 
    if (getenv("RADEON_NO_TCL"))
 	   screen->chip_flags &= ~RADEON_CHIPSET_TCL;
 
-   i = 0;
-   screen->extensions[i++] = &dri2ConfigQueryExtension.base;
-
-#if defined(RADEON_R100)
-   screen->extensions[i++] = &radeonTexBufferExtension.base;
-#elif defined(RADEON_R200)
-   screen->extensions[i++] = &r200TexBufferExtension.base;
-#endif
-
-   screen->extensions[i++] = &radeonFlushExtension.base;
-   screen->extensions[i++] = &radeonImageExtension.base;
-
-   screen->extensions[i++] = NULL;
-   sPriv->extensions = screen->extensions;
+   sPriv->extensions = radeon_screen_extensions;
 
    screen->driScreen = sPriv;
    screen->bom = radeon_bo_manager_gem_ctor(sPriv->fd);
@@ -561,7 +620,7 @@ radeonDestroyScreen( __DRIscreen *sPriv )
     /* free all option information */
     driDestroyOptionInfo (&screen->optionCache);
 
-    FREE( screen );
+    free( screen );
     sPriv->driverPrivate = NULL;
 }
 
@@ -601,7 +660,7 @@ radeonCreateBuffer( __DRIscreen *driScrnPriv,
     const GLboolean swAccum = mesaVis->accumRedBits > 0;
     const GLboolean swStencil = mesaVis->stencilBits > 0 &&
 	mesaVis->depthBits != 24;
-    gl_format rgbFormat;
+    mesa_format rgbFormat;
     struct radeon_framebuffer *rfb;
 
     if (isPixmap)
@@ -614,11 +673,11 @@ radeonCreateBuffer( __DRIscreen *driScrnPriv,
     _mesa_initialize_window_framebuffer(&rfb->base, mesaVis);
 
     if (mesaVis->redBits == 5)
-        rgbFormat = _mesa_little_endian() ? MESA_FORMAT_RGB565 : MESA_FORMAT_RGB565_REV;
+        rgbFormat = _mesa_little_endian() ? MESA_FORMAT_B5G6R5_UNORM : MESA_FORMAT_R5G6B5_UNORM;
     else if (mesaVis->alphaBits == 0)
-        rgbFormat = _mesa_little_endian() ? MESA_FORMAT_XRGB8888 : MESA_FORMAT_XRGB8888_REV;
+        rgbFormat = _mesa_little_endian() ? MESA_FORMAT_B8G8R8X8_UNORM : MESA_FORMAT_X8R8G8B8_UNORM;
     else
-        rgbFormat = _mesa_little_endian() ? MESA_FORMAT_ARGB8888 : MESA_FORMAT_ARGB8888_REV;
+        rgbFormat = _mesa_little_endian() ? MESA_FORMAT_B8G8R8A8_UNORM : MESA_FORMAT_A8R8G8B8_UNORM;
 
     /* front color renderbuffer */
     rfb->color_rb[0] = radeon_create_renderbuffer(rgbFormat, driDrawPriv);
@@ -635,21 +694,21 @@ radeonCreateBuffer( __DRIscreen *driScrnPriv,
     if (mesaVis->depthBits == 24) {
       if (mesaVis->stencilBits == 8) {
 	struct radeon_renderbuffer *depthStencilRb =
-           radeon_create_renderbuffer(MESA_FORMAT_S8_Z24, driDrawPriv);
+           radeon_create_renderbuffer(MESA_FORMAT_Z24_UNORM_S8_UINT, driDrawPriv);
 	_mesa_add_renderbuffer(&rfb->base, BUFFER_DEPTH, &depthStencilRb->base.Base);
 	_mesa_add_renderbuffer(&rfb->base, BUFFER_STENCIL, &depthStencilRb->base.Base);
 	depthStencilRb->has_surface = screen->depthHasSurface;
       } else {
 	/* depth renderbuffer */
 	struct radeon_renderbuffer *depth =
-           radeon_create_renderbuffer(MESA_FORMAT_X8_Z24, driDrawPriv);
+           radeon_create_renderbuffer(MESA_FORMAT_Z24_UNORM_X8_UINT, driDrawPriv);
 	_mesa_add_renderbuffer(&rfb->base, BUFFER_DEPTH, &depth->base.Base);
 	depth->has_surface = screen->depthHasSurface;
       }
     } else if (mesaVis->depthBits == 16) {
         /* just 16-bit depth buffer, no hw stencil */
 	struct radeon_renderbuffer *depth =
-           radeon_create_renderbuffer(MESA_FORMAT_Z16, driDrawPriv);
+           radeon_create_renderbuffer(MESA_FORMAT_Z_UNORM16, driDrawPriv);
 	_mesa_add_renderbuffer(&rfb->base, BUFFER_DEPTH, &depth->base.Base);
 	depth->has_surface = screen->depthHasSurface;
     }
@@ -702,8 +761,6 @@ radeonDestroyBuffer(__DRIdrawable *driDrawPriv)
     _mesa_reference_framebuffer((struct gl_framebuffer **)(&(driDrawPriv->driverPrivate)), NULL);
 }
 
-#define ARRAY_SIZE(a) (sizeof (a) / sizeof ((a)[0]))
-
 /**
  * This is the driver specific part of the createNewScreen entry point.
  * Called when using DRI2.
@@ -713,8 +770,11 @@ radeonDestroyBuffer(__DRIdrawable *driDrawPriv)
 static const
 __DRIconfig **radeonInitScreen2(__DRIscreen *psp)
 {
-   GLenum fb_format[3];
-   GLenum fb_type[3];
+   static const mesa_format formats[3] = {
+      MESA_FORMAT_B5G6R5_UNORM,
+      MESA_FORMAT_B8G8R8X8_UNORM,
+      MESA_FORMAT_B8G8R8A8_UNORM
+   };
    /* GLX_SWAP_COPY_OML is only supported because the Intel driver doesn't
     * support pageflipping at all.
     */
@@ -724,6 +784,9 @@ __DRIconfig **radeonInitScreen2(__DRIscreen *psp)
    uint8_t depth_bits[4], stencil_bits[4], msaa_samples_array[1];
    int color;
    __DRIconfig **configs = NULL;
+
+   psp->max_gl_compat_version = 13;
+   psp->max_gl_es1_version = 11;
 
    if (!radeonInitDriver(psp)) {
        return NULL;
@@ -739,19 +802,10 @@ __DRIconfig **radeonInitScreen2(__DRIscreen *psp)
 
    msaa_samples_array[0] = 0;
 
-   fb_format[0] = GL_RGB;
-   fb_type[0] = GL_UNSIGNED_SHORT_5_6_5;
-
-   fb_format[1] = GL_BGR;
-   fb_type[1] = GL_UNSIGNED_INT_8_8_8_8_REV;
-
-   fb_format[2] = GL_BGRA;
-   fb_type[2] = GL_UNSIGNED_INT_8_8_8_8_REV;
-
-   for (color = 0; color < ARRAY_SIZE(fb_format); color++) {
+   for (color = 0; color < ARRAY_SIZE(formats); color++) {
       __DRIconfig **new_configs;
 
-      new_configs = driCreateConfigs(fb_format[color], fb_type[color],
+      new_configs = driCreateConfigs(formats[color],
 				     depth_bits,
 				     stencil_bits,
 				     ARRAY_SIZE(depth_bits),
@@ -759,7 +813,7 @@ __DRIconfig **radeonInitScreen2(__DRIscreen *psp)
 				     ARRAY_SIZE(back_buffer_modes),
 				     msaa_samples_array,
 				     ARRAY_SIZE(msaa_samples_array),
-				     GL_TRUE);
+				     GL_TRUE, GL_FALSE);
       configs = driConcatConfigs(configs, new_configs);
    }
 
@@ -772,7 +826,7 @@ __DRIconfig **radeonInitScreen2(__DRIscreen *psp)
    return (const __DRIconfig **)configs;
 }
 
-const struct __DriverAPIRec driDriverAPI = {
+static const struct __DriverAPIRec radeon_driver_api = {
    .InitScreen      = radeonInitScreen2,
    .DestroyScreen   = radeonDestroyScreen,
 #if defined(RADEON_R200)
@@ -788,9 +842,32 @@ const struct __DriverAPIRec driDriverAPI = {
    .UnbindContext   = radeonUnbindContext,
 };
 
+static const struct __DRIDriverVtableExtensionRec radeon_vtable = {
+   .base = { __DRI_DRIVER_VTABLE, 1 },
+   .vtable = &radeon_driver_api,
+};
+
 /* This is the table of extensions that the loader will dlsym() for. */
-PUBLIC const __DRIextension *__driDriverExtensions[] = {
+static const __DRIextension *radeon_driver_extensions[] = {
     &driCoreExtension.base,
     &driDRI2Extension.base,
+    &radeon_config_options.base,
+    &radeon_vtable.base,
     NULL
 };
+
+#ifdef RADEON_R200
+PUBLIC const __DRIextension **__driDriverGetExtensions_r200(void)
+{
+   globalDriverAPI = &radeon_driver_api;
+
+   return radeon_driver_extensions;
+}
+#else
+PUBLIC const __DRIextension **__driDriverGetExtensions_radeon(void)
+{
+   globalDriverAPI = &radeon_driver_api;
+
+   return radeon_driver_extensions;
+}
+#endif

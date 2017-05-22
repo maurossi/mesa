@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -110,7 +110,7 @@ Status XvMCSetAttribute(Display *dpy, XvMCContext *context, Atom attribute, int 
       context_priv->color_standard,
       &context_priv->procamp, true, &csc
    );
-   vl_compositor_set_csc_matrix(&context_priv->cstate, (const vl_csc_matrix *)&csc);
+   vl_compositor_set_csc_matrix(&context_priv->cstate, (const vl_csc_matrix *)&csc, 1.0f, 0.0f);
 
    XVMC_MSG(XVMC_TRACE, "[XvMC] Set attribute %s to value %d.\n", attr, value);
 

@@ -41,13 +41,9 @@
  * we do retain the vector types in that case.
  */
 
-extern "C" {
-#include "main/core.h"
-#include "brw_wm.h"
-}
-#include "glsl/ir.h"
-#include "glsl/ir_expression_flattening.h"
-#include "glsl/glsl_types.h"
+#include "compiler/glsl/ir.h"
+#include "compiler/glsl/ir_expression_flattening.h"
+#include "compiler/glsl_types.h"
 
 class ir_channel_expressions_visitor : public ir_hierarchical_visitor {
 public:
@@ -74,6 +70,26 @@ channel_expressions_predicate(ir_instruction *ir)
 
    if (!expr)
       return false;
+
+   switch (expr->operation) {
+      case ir_unop_pack_half_2x16:
+      case ir_unop_pack_snorm_2x16:
+      case ir_unop_pack_snorm_4x8:
+      case ir_unop_pack_unorm_2x16:
+      case ir_unop_pack_unorm_4x8:
+         return false;
+
+      /* these opcodes need to act on the whole vector,
+       * just like texturing.
+       */
+      case ir_unop_interpolate_at_centroid:
+      case ir_binop_interpolate_at_offset:
+      case ir_binop_interpolate_at_sample:
+      case ir_unop_pack_double_2x32:
+         return false;
+      default:
+         break;
+   }
 
    for (i = 0; i < expr->get_num_operands(); i++) {
       if (expr->operands[i]->type->is_vector())
@@ -135,7 +151,7 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
    ir_expression *expr = ir->rhs->as_expression();
    bool found_vector = false;
    unsigned int i, vector_elements = 1;
-   ir_variable *op_var[2];
+   ir_variable *op_var[4];
 
    if (!expr)
       return visit_continue;
@@ -152,6 +168,23 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
    }
    if (!found_vector)
       return visit_continue;
+
+   switch (expr->operation) {
+      case ir_unop_pack_half_2x16:
+      case ir_unop_pack_snorm_2x16:
+      case ir_unop_pack_snorm_4x8:
+      case ir_unop_pack_unorm_2x16:
+      case ir_unop_pack_unorm_4x8:
+      case ir_unop_interpolate_at_centroid:
+      case ir_binop_interpolate_at_offset:
+      case ir_binop_interpolate_at_sample:
+      /* We scalarize these in NIR, so no need to do it here */
+      case ir_unop_pack_double_2x32:
+         return visit_continue;
+
+      default:
+         break;
+   }
 
    /* Store the expression operands in temps so we can use them
     * multiple times.
@@ -205,6 +238,13 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
    case ir_unop_i2b:
    case ir_unop_b2i:
    case ir_unop_u2f:
+   case ir_unop_d2f:
+   case ir_unop_f2d:
+   case ir_unop_d2i:
+   case ir_unop_i2d:
+   case ir_unop_d2u:
+   case ir_unop_u2d:
+   case ir_unop_d2b:
    case ir_unop_trunc:
    case ir_unop_ceil:
    case ir_unop_floor:
@@ -212,10 +252,18 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
    case ir_unop_round_even:
    case ir_unop_sin:
    case ir_unop_cos:
-   case ir_unop_sin_reduced:
-   case ir_unop_cos_reduced:
    case ir_unop_dFdx:
+   case ir_unop_dFdx_coarse:
+   case ir_unop_dFdx_fine:
    case ir_unop_dFdy:
+   case ir_unop_dFdy_coarse:
+   case ir_unop_dFdy_fine:
+   case ir_unop_bitfield_reverse:
+   case ir_unop_bit_count:
+   case ir_unop_find_msb:
+   case ir_unop_find_lsb:
+   case ir_unop_saturate:
+   case ir_unop_subroutine_to_int:
       for (i = 0; i < vector_elements; i++) {
 	 ir_rvalue *op0 = get_element(op_var[0], i);
 
@@ -229,7 +277,10 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
    case ir_binop_add:
    case ir_binop_sub:
    case ir_binop_mul:
+   case ir_binop_imul_high:
    case ir_binop_div:
+   case ir_binop_carry:
+   case ir_binop_borrow:
    case ir_binop_mod:
    case ir_binop_min:
    case ir_binop_max:
@@ -239,12 +290,16 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
    case ir_binop_bit_and:
    case ir_binop_bit_xor:
    case ir_binop_bit_or:
+   case ir_binop_logic_and:
+   case ir_binop_logic_xor:
+   case ir_binop_logic_or:
    case ir_binop_less:
    case ir_binop_greater:
    case ir_binop_lequal:
    case ir_binop_gequal:
    case ir_binop_equal:
    case ir_binop_nequal:
+   case ir_binop_ldexp:
       for (i = 0; i < vector_elements; i++) {
 	 ir_rvalue *op0 = get_element(op_var[0], i);
 	 ir_rvalue *op1 = get_element(op_var[1], i);
@@ -255,23 +310,6 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
 						  op1));
       }
       break;
-
-   case ir_unop_any: {
-      ir_expression *temp;
-      temp = new(mem_ctx) ir_expression(ir_binop_logic_or,
-					element_type,
-					get_element(op_var[0], 0),
-					get_element(op_var[0], 1));
-
-      for (i = 2; i < vector_elements; i++) {
-	 temp = new(mem_ctx) ir_expression(ir_binop_logic_or,
-					   element_type,
-					   get_element(op_var[0], i),
-					   temp);
-      }
-      assign(ir, 0, temp);
-      break;
-   }
 
    case ir_binop_dot: {
       ir_expression *last = NULL;
@@ -297,13 +335,6 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
       break;
    }
 
-   case ir_binop_logic_and:
-   case ir_binop_logic_xor:
-   case ir_binop_logic_or:
-      ir->print();
-      printf("\n");
-      assert(!"not reached: expression operates on scalars only");
-      break;
    case ir_binop_all_equal:
    case ir_binop_any_nequal: {
       ir_expression *last = NULL;
@@ -335,16 +366,78 @@ ir_channel_expressions_visitor::visit_leave(ir_assignment *ir)
       break;
    }
    case ir_unop_noise:
-      assert(!"noise should have been broken down to function call");
-      break;
+      unreachable("noise should have been broken down to function call");
 
    case ir_binop_ubo_load:
-      assert(!"not yet supported");
+   case ir_unop_get_buffer_size:
+      unreachable("not yet supported");
+
+   case ir_triop_fma:
+   case ir_triop_lrp:
+   case ir_triop_csel:
+   case ir_triop_bitfield_extract:
+      for (i = 0; i < vector_elements; i++) {
+	 ir_rvalue *op0 = get_element(op_var[0], i);
+	 ir_rvalue *op1 = get_element(op_var[1], i);
+	 ir_rvalue *op2 = get_element(op_var[2], i);
+
+	 assign(ir, i, new(mem_ctx) ir_expression(expr->operation,
+						  element_type,
+						  op0,
+						  op1,
+						  op2));
+      }
       break;
 
-   case ir_quadop_vector:
-      assert(!"should have been lowered");
+   case ir_quadop_bitfield_insert:
+      for (i = 0; i < vector_elements; i++) {
+         ir_rvalue *op0 = get_element(op_var[0], i);
+         ir_rvalue *op1 = get_element(op_var[1], i);
+         ir_rvalue *op2 = get_element(op_var[2], i);
+         ir_rvalue *op3 = get_element(op_var[3], i);
+
+         assign(ir, i, new(mem_ctx) ir_expression(expr->operation,
+                                                  element_type,
+                                                  op0,
+                                                  op1,
+                                                  op2,
+                                                  op3));
+      }
       break;
+
+   case ir_unop_pack_snorm_2x16:
+   case ir_unop_pack_snorm_4x8:
+   case ir_unop_pack_unorm_2x16:
+   case ir_unop_pack_unorm_4x8:
+   case ir_unop_pack_half_2x16:
+   case ir_unop_unpack_snorm_2x16:
+   case ir_unop_unpack_snorm_4x8:
+   case ir_unop_unpack_unorm_2x16:
+   case ir_unop_unpack_unorm_4x8:
+   case ir_unop_unpack_half_2x16:
+   case ir_binop_vector_extract:
+   case ir_triop_vector_insert:
+   case ir_quadop_vector:
+   case ir_unop_ssbo_unsized_array_length:
+      unreachable("should have been lowered");
+
+   case ir_unop_interpolate_at_centroid:
+   case ir_binop_interpolate_at_offset:
+   case ir_binop_interpolate_at_sample:
+   case ir_unop_unpack_double_2x32:
+      unreachable("not reached: expression operates on scalars only");
+
+   case ir_unop_pack_double_2x32:
+      unreachable("not reached: to be lowered in NIR, should've been skipped");
+
+   case ir_unop_frexp_sig:
+   case ir_unop_frexp_exp:
+      unreachable("should have been lowered by lower_instructions");
+
+   case ir_unop_vote_any:
+   case ir_unop_vote_all:
+   case ir_unop_vote_eq:
+      unreachable("unsupported");
    }
 
    ir->remove();

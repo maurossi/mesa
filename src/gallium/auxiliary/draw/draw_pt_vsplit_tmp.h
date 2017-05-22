@@ -1,8 +1,7 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.9
  *
- * Copyright 2007-2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007-2008 VMware, Inc.
  * Copyright (C) 2010 LunarG Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -45,8 +44,14 @@ CONCAT(vsplit_primitive_, ELT_TYPE)(struct vsplit_frontend *vsplit,
    unsigned fetch_start, fetch_count;
    const ushort *draw_elts = NULL;
    unsigned i;
+   const unsigned start = istart;
+   const unsigned end = istart + icount;
 
-   ib += istart;
+   /* If the index buffer overflows we'll need to run
+    * through the normal paths */
+   if (end >= draw->pt.user.eltMax ||
+       end < istart)
+      return FALSE;
 
    /* use the ib directly */
    if (min_index == 0 && sizeof(ib[0]) == sizeof(draw_elts[0])) {
@@ -54,12 +59,12 @@ CONCAT(vsplit_primitive_, ELT_TYPE)(struct vsplit_frontend *vsplit,
          return FALSE;
 
       for (i = 0; i < icount; i++) {
-         ELT_TYPE idx = ib[i];
-            if (idx < min_index || idx > max_index) {
+         ELT_TYPE idx = DRAW_GET_IDX(ib, start + i);
+         if (idx < min_index || idx > max_index) {
             debug_printf("warning: index out of range\n");
          }
       }
-      draw_elts = (const ushort *) ib;
+      draw_elts = (const ushort *) (ib + istart);
    }
    else {
       /* have to go through vsplit->draw_elts */
@@ -71,7 +76,7 @@ CONCAT(vsplit_primitive_, ELT_TYPE)(struct vsplit_frontend *vsplit,
    if (max_index - min_index > icount - 1)
       return FALSE;
 
-   if (elt_bias < 0 && min_index < -elt_bias)
+   if (elt_bias < 0 && (int) min_index < -elt_bias)
       return FALSE;
 
    /* why this check? */
@@ -83,24 +88,28 @@ CONCAT(vsplit_primitive_, ELT_TYPE)(struct vsplit_frontend *vsplit,
    fetch_start = min_index + elt_bias;
    fetch_count = max_index - min_index + 1;
 
+   /* Check for overflow in the fetch_start */
+   if (fetch_start < min_index || fetch_start < elt_bias)
+      return FALSE;
+
    if (!draw_elts) {
       if (min_index == 0) {
          for (i = 0; i < icount; i++) {
-            ELT_TYPE idx = ib[i];
+            ELT_TYPE idx = DRAW_GET_IDX(ib, i + start);
 
             if (idx < min_index || idx > max_index) {
                debug_printf("warning: index out of range\n");
-	    }
+            }
             vsplit->draw_elts[i] = (ushort) idx;
          }
       }
       else {
          for (i = 0; i < icount; i++) {
-            ELT_TYPE idx = ib[i];
+            ELT_TYPE idx = DRAW_GET_IDX(ib, i + start);
 
             if (idx < min_index || idx > max_index) {
                debug_printf("warning: index out of range\n");
-	    }
+            }
             vsplit->draw_elts[i] = (ushort) (idx - min_index);
          }
       }
@@ -119,7 +128,7 @@ CONCAT(vsplit_primitive_, ELT_TYPE)(struct vsplit_frontend *vsplit,
  * When spoken is TRUE, ispoken replaces istart;  When close is TRUE, iclose is
  * appended.
  */
-static INLINE void
+static inline void
 CONCAT(vsplit_segment_cache_, ELT_TYPE)(struct vsplit_frontend *vsplit,
                                         unsigned flags,
                                         unsigned istart, unsigned icount,
@@ -138,42 +147,24 @@ CONCAT(vsplit_segment_cache_, ELT_TYPE)(struct vsplit_frontend *vsplit,
    spoken = !!spoken;
    if (ibias == 0) {
       if (spoken)
-         ADD_CACHE(vsplit, ib[ispoken]);
-
-      for (i = spoken; i < icount; i++)
-         ADD_CACHE(vsplit, ib[istart + i]);
-
-      if (close)
-         ADD_CACHE(vsplit, ib[iclose]);
-   }
-   else if (ibias > 0) {
-      if (spoken)
-         ADD_CACHE(vsplit, (uint) ib[ispoken] + ibias);
-
-      for (i = spoken; i < icount; i++)
-         ADD_CACHE(vsplit, (uint) ib[istart + i] + ibias);
-
-      if (close)
-         ADD_CACHE(vsplit, (uint) ib[iclose] + ibias);
-   }
-   else {
-      if (spoken) {
-         if (ib[ispoken] < -ibias)
-            return;
-         ADD_CACHE(vsplit, ib[ispoken] + ibias);
-      }
+         ADD_CACHE(vsplit, ib, 0, ispoken, 0);
 
       for (i = spoken; i < icount; i++) {
-         if (ib[istart + i] < -ibias)
-            return;
-         ADD_CACHE(vsplit, ib[istart + i] + ibias);
+         ADD_CACHE(vsplit, ib, istart, i, 0);
       }
 
-      if (close) {
-         if (ib[iclose] < -ibias)
-            return;
-         ADD_CACHE(vsplit, ib[iclose] + ibias);
-      }
+      if (close)
+         ADD_CACHE(vsplit, ib, 0, iclose, 0);
+   }
+   else {
+      if (spoken)
+         ADD_CACHE(vsplit, ib, 0, ispoken, ibias);
+
+      for (i = spoken; i < icount; i++)
+         ADD_CACHE(vsplit, ib, istart, i, ibias);
+
+      if (close)
+         ADD_CACHE(vsplit, ib, 0, iclose, ibias);
    }
 
    vsplit_flush_cache(vsplit, flags);
@@ -243,6 +234,9 @@ vsplit_segment_loop_linear(struct vsplit_frontend *vsplit, unsigned flags,
    unsigned nr;
 
    assert(icount + !!close_loop <= vsplit->segment_size);
+
+   /* need to draw the sections of the line loop as line strips */
+   flags |= DRAW_LINE_LOOP_AS_STRIP;
 
    if (close_loop) {
       for (nr = 0; nr < icount; nr++)

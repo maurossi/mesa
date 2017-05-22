@@ -135,7 +135,7 @@ get_input_source(struct combiner_state *rc, int source)
 /* Get the RC input mapping for the specified texture_env_combine
  * operand, possibly inverted or biased. */
 #define INVERT 0x1
-#define HALF_BIAS 0x2
+#define NORMALIZE 0x2
 
 static uint32_t
 get_input_mapping(struct combiner_state *rc, int operand, int flags)
@@ -148,12 +148,12 @@ get_input_mapping(struct combiner_state *rc, int operand, int flags)
 		map |= RC_IN_USAGE(ALPHA);
 
 	if (is_negative_operand(operand) == !(flags & INVERT))
-		map |= flags & HALF_BIAS ?
-			RC_IN_MAPPING(HALF_BIAS_NEGATE) :
+		map |= flags & NORMALIZE ?
+			RC_IN_MAPPING(EXPAND_NEGATE) :
 			RC_IN_MAPPING(UNSIGNED_INVERT);
 	else
-		map |= flags & HALF_BIAS ?
-			RC_IN_MAPPING(HALF_BIAS_NORMAL) :
+		map |= flags & NORMALIZE ?
+			RC_IN_MAPPING(EXPAND_NORMAL) :
 			RC_IN_MAPPING(UNSIGNED_IDENTITY);
 
 	return map;
@@ -170,22 +170,22 @@ get_input_arg(struct combiner_state *rc, int arg, int flags)
 		int i = (source == GL_TEXTURE ?
 			 rc->unit : source - GL_TEXTURE0);
 		struct gl_texture_object *t = rc->ctx->Texture.Unit[i]._Current;
-		gl_format format = t->Image[0][t->BaseLevel]->TexFormat;
+		mesa_format format = t->Image[0][t->BaseLevel]->TexFormat;
 
-		if (format == MESA_FORMAT_A8) {
+		if (format == MESA_FORMAT_A_UNORM8) {
 			/* Emulated using I8. */
 			if (is_color_operand(operand))
 				return RC_IN_SOURCE(ZERO) |
 					get_input_mapping(rc, operand, flags);
 
-		} else if (format == MESA_FORMAT_L8) {
+		} else if (format == MESA_FORMAT_L_UNORM8) {
 			/* Sometimes emulated using I8. */
 			if (!is_color_operand(operand))
 				return RC_IN_SOURCE(ZERO) |
 					get_input_mapping(rc, operand,
 							  flags ^ INVERT);
 
-		} else if (format == MESA_FORMAT_XRGB8888) {
+		} else if (format == MESA_FORMAT_B8G8R8X8_UNORM) {
 			/* Sometimes emulated using ARGB8888. */
 			if (!is_color_operand(operand))
 				return RC_IN_SOURCE(ZERO) |
@@ -270,12 +270,24 @@ setup_combiner(struct combiner_state *rc)
 
 	case GL_DOT3_RGB:
 	case GL_DOT3_RGBA:
-		INPUT_ARG(rc, A, 0, HALF_BIAS);
-		INPUT_ARG(rc, B, 1, HALF_BIAS);
+		INPUT_ARG(rc, A, 0, NORMALIZE);
+		INPUT_ARG(rc, B, 1, NORMALIZE);
 
-		rc->out = RC_OUT_DOT_AB | RC_OUT_SCALE_4;
+		rc->out = RC_OUT_DOT_AB;
+		break;
 
-		assert(!rc->logscale);
+	case GL_DOT3_RGB_EXT:
+	case GL_DOT3_RGBA_EXT:
+		INPUT_ARG(rc, A, 0, NORMALIZE);
+		INPUT_ARG(rc, B, 1, NORMALIZE);
+
+		rc->out = RC_OUT_DOT_AB;
+
+		/* The EXT version of the DOT3 extension does not support the
+		 * scale factor, but the ARB version (and the version in
+		 * OpenGL 1.3) does.
+		 */
+		rc->logscale = 0;
 		break;
 
 	default:
@@ -304,10 +316,10 @@ nv10_get_general_combiner(struct gl_context *ctx, int i,
 {
 	struct combiner_state rc_a, rc_c;
 
-	if (ctx->Texture.Unit[i]._ReallyEnabled) {
+	if (ctx->Texture.Unit[i]._Current) {
 		INIT_COMBINER(RGB, ctx, &rc_c, i);
 
-		if (rc_c.mode == GL_DOT3_RGBA)
+		if (rc_c.mode == GL_DOT3_RGBA || rc_c.mode == GL_DOT3_RGBA_EXT)
 			rc_a = rc_c;
 		else
 			INIT_COMBINER(A, ctx, &rc_a, i);
@@ -319,7 +331,7 @@ nv10_get_general_combiner(struct gl_context *ctx, int i,
 		rc_a.in = rc_a.out = rc_c.in = rc_c.out = 0;
 	}
 
-	*k = pack_rgba_f(MESA_FORMAT_ARGB8888,
+	*k = pack_rgba_f(MESA_FORMAT_B8G8R8A8_UNORM,
 			 ctx->Texture.Unit[i].EnvColor);
 	*a_in = rc_a.in;
 	*a_out = rc_a.out;
@@ -353,7 +365,7 @@ nv10_get_final_combiner(struct gl_context *ctx, uint64_t *in, int *n)
 		INPUT_ONE(&rc, E, 0);
 	}
 
-	if (ctx->Texture._EnabledUnits) {
+	if (ctx->Texture._MaxEnabledTexImageUnit != -1) {
 		INPUT_SRC(&rc, B, SPARE0, RGB);
 		INPUT_SRC(&rc, G, SPARE0, ALPHA);
 	} else {
@@ -362,7 +374,7 @@ nv10_get_final_combiner(struct gl_context *ctx, uint64_t *in, int *n)
 	}
 
 	*in = rc.in;
-	*n = log2i(ctx->Texture._EnabledUnits) + 1;
+	*n = ctx->Texture._MaxEnabledTexImageUnit + 1;
 }
 
 void

@@ -1,7 +1,7 @@
 /**************************************************************************
 
 Copyright 2000, 2001 ATI Technologies Inc., Ontario, Canada, and
-                     Tungsten Graphics Inc., Austin, Texas.
+                     VMware, Inc.
 
 All Rights Reserved.
 
@@ -29,7 +29,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /*
  * Authors:
- *   Keith Whitwell <keith@tungstengraphics.com>
+ *   Keith Whitwell <keithw@vmware.com>
  */
 
 #include "main/glheader.h"
@@ -37,6 +37,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "main/mtypes.h"
 #include "main/light.h"
 #include "main/enums.h"
+#include "main/state.h"
 
 #include "vbo/vbo.h"
 #include "tnl/tnl.h"
@@ -64,7 +65,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define HAVE_LINE_STRIPS 1
 #define HAVE_TRIANGLES   1
 #define HAVE_TRI_STRIPS  1
-#define HAVE_TRI_STRIP_1 0
 #define HAVE_TRI_FANS    1
 #define HAVE_QUADS       0
 #define HAVE_QUAD_STRIPS 0
@@ -147,7 +147,7 @@ static GLboolean discrete_prim[0x10] = {
 static GLushort *radeonAllocElts( r100ContextPtr rmesa, GLuint nr ) 
 {
       if (rmesa->radeon.dma.flush)
-	 rmesa->radeon.dma.flush( rmesa->radeon.glCtx );
+	 rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );
 
       radeonEmitAOS( rmesa,
 		     rmesa->radeon.tcl.aos_count, 0 );
@@ -314,7 +314,7 @@ static GLuint radeonEnsureEmitSize( struct gl_context * ctx , GLuint inputs )
     state_size = radeonCountStateEmitSize( &rmesa->radeon );
     /* tcl may be changed in radeonEmitArrays so account for it if not dirty */
     if (!rmesa->hw.tcl.dirty)
-      state_size += rmesa->hw.tcl.check( rmesa->radeon.glCtx, &rmesa->hw.tcl );
+      state_size += rmesa->hw.tcl.check( &rmesa->radeon.glCtx, &rmesa->hw.tcl );
     /* predict size for elements */
     for (i = 0; i < VB->PrimitiveCount; ++i)
     {
@@ -338,7 +338,7 @@ static GLuint radeonEnsureEmitSize( struct gl_context * ctx , GLuint inputs )
     space_required += SCISSOR_BUFSZ;
   }
   /* flush the buffer in case we need more than is left. */
-  if (rcommonEnsureCmdBufSpace(&rmesa->radeon, space_required, __FUNCTION__))
+  if (rcommonEnsureCmdBufSpace(&rmesa->radeon, space_required, __func__))
     return space_required + radeonCountStateEmitSize( &rmesa->radeon );
   else
     return space_required + state_size;
@@ -376,7 +376,7 @@ static GLboolean radeon_run_tcl_render( struct gl_context *ctx,
       inputs |= VERT_BIT_NORMAL;
    }
 
-   if (ctx->_TriangleCaps & DD_SEPARATE_SPECULAR) {
+   if (_mesa_need_secondary_color(ctx)) {
       inputs |= VERT_BIT_COLOR1;
    }
 
@@ -385,7 +385,7 @@ static GLboolean radeon_run_tcl_render( struct gl_context *ctx,
    }
 
    for (i = 0 ; i < ctx->Const.MaxTextureUnits; i++) {
-      if (ctx->Texture.Unit[i]._ReallyEnabled) {
+      if (ctx->Texture.Unit[i]._Current) {
       /* TODO: probably should not emit texture coords when texgen is enabled */
 	 if (rmesa->TexGenNeedNormals[i]) {
 	    inputs |= VERT_BIT_NORMAL;
@@ -500,14 +500,14 @@ static void transition_to_hwtnl( struct gl_context *ctx )
    tnl->Driver.NotifyMaterialChange = radeonUpdateMaterial;
 
    if ( rmesa->radeon.dma.flush )			
-      rmesa->radeon.dma.flush( rmesa->radeon.glCtx );	
+      rmesa->radeon.dma.flush( &rmesa->radeon.glCtx );	
 
    rmesa->radeon.dma.flush = NULL;
    rmesa->swtcl.vertex_format = 0;
    
    //   if (rmesa->swtcl.indexed_verts.buf) 
    //      radeonReleaseDmaRegion( rmesa, &rmesa->swtcl.indexed_verts, 
-   //			      __FUNCTION__ );
+   //			      __func__ );
 
    if (RADEON_DEBUG & RADEON_FALLBACKS)
       fprintf(stderr, "Radeon end tcl fallback\n");

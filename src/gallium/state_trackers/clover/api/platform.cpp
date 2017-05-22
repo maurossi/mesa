@@ -14,55 +14,128 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-// THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 //
 
 #include "api/util.hpp"
+#include "core/platform.hpp"
+#include "git_sha1.h"
 
 using namespace clover;
 
-PUBLIC cl_int
-clGetPlatformIDs(cl_uint num_entries, cl_platform_id *platforms,
-                 cl_uint *num_platforms) {
-   if ((!num_entries && platforms) ||
-       (!num_platforms && !platforms))
+namespace {
+   platform _clover_platform;
+}
+
+CLOVER_API cl_int
+clGetPlatformIDs(cl_uint num_entries, cl_platform_id *rd_platforms,
+                 cl_uint *rnum_platforms) {
+   if ((!num_entries && rd_platforms) ||
+       (!rnum_platforms && !rd_platforms))
       return CL_INVALID_VALUE;
 
-   if (num_platforms)
-      *num_platforms = 1;
-   if (platforms)
-      *platforms = NULL;
+   if (rnum_platforms)
+      *rnum_platforms = 1;
+   if (rd_platforms)
+      *rd_platforms = desc(_clover_platform);
 
    return CL_SUCCESS;
 }
 
-PUBLIC cl_int
-clGetPlatformInfo(cl_platform_id platform, cl_platform_info param_name,
-                  size_t size, void *buf, size_t *size_ret) {
-   if (platform != NULL)
-      return CL_INVALID_PLATFORM;
+cl_int
+clover::GetPlatformInfo(cl_platform_id d_platform, cl_platform_info param,
+                        size_t size, void *r_buf, size_t *r_size) try {
+   property_buffer buf { r_buf, size, r_size };
 
-   switch (param_name) {
+   obj(d_platform);
+
+   switch (param) {
    case CL_PLATFORM_PROFILE:
-      return string_property(buf, size, size_ret, "FULL_PROFILE");
+      buf.as_string() = "FULL_PROFILE";
+      break;
 
    case CL_PLATFORM_VERSION:
-      return string_property(buf, size, size_ret,
-                             "OpenCL 1.1 MESA " MESA_VERSION);
+      buf.as_string() = "OpenCL 1.1 Mesa " PACKAGE_VERSION
+#ifdef MESA_GIT_SHA1
+                        " (" MESA_GIT_SHA1 ")"
+#endif
+                        ;
+      break;
 
    case CL_PLATFORM_NAME:
-      return string_property(buf, size, size_ret, "Default");
+      buf.as_string() = "Clover";
+      break;
 
    case CL_PLATFORM_VENDOR:
-      return string_property(buf, size, size_ret, "Mesa");
+      buf.as_string() = "Mesa";
+      break;
 
    case CL_PLATFORM_EXTENSIONS:
-      return string_property(buf, size, size_ret, "");
+      buf.as_string() = "cl_khr_icd";
+      break;
+
+   case CL_PLATFORM_ICD_SUFFIX_KHR:
+      buf.as_string() = "MESA";
+      break;
 
    default:
-      return CL_INVALID_VALUE;
+      throw error(CL_INVALID_VALUE);
    }
+
+   return CL_SUCCESS;
+
+} catch (error &e) {
+   return e.get();
+}
+
+void *
+clover::GetExtensionFunctionAddressForPlatform(cl_platform_id d_platform,
+                                               const char *p_name) try {
+   obj(d_platform);
+   return GetExtensionFunctionAddress(p_name);
+
+} catch (error &e) {
+   return NULL;
+}
+
+void *
+clover::GetExtensionFunctionAddress(const char *p_name) {
+   std::string name { p_name };
+
+   if (name == "clIcdGetPlatformIDsKHR")
+      return reinterpret_cast<void *>(IcdGetPlatformIDsKHR);
+   else
+      return NULL;
+}
+
+cl_int
+clover::IcdGetPlatformIDsKHR(cl_uint num_entries, cl_platform_id *rd_platforms,
+                             cl_uint *rnum_platforms) {
+   return clGetPlatformIDs(num_entries, rd_platforms, rnum_platforms);
+}
+
+CLOVER_ICD_API cl_int
+clGetPlatformInfo(cl_platform_id d_platform, cl_platform_info param,
+                  size_t size, void *r_buf, size_t *r_size) {
+   return GetPlatformInfo(d_platform, param, size, r_buf, r_size);
+}
+
+CLOVER_ICD_API void *
+clGetExtensionFunctionAddress(const char *p_name) {
+   return GetExtensionFunctionAddress(p_name);
+}
+
+CLOVER_ICD_API void *
+clGetExtensionFunctionAddressForPlatform(cl_platform_id d_platform,
+                                         const char *p_name) {
+   return GetExtensionFunctionAddressForPlatform(d_platform, p_name);
+}
+
+CLOVER_ICD_API cl_int
+clIcdGetPlatformIDsKHR(cl_uint num_entries, cl_platform_id *rd_platforms,
+                       cl_uint *rnum_platforms) {
+   return IcdGetPlatformIDsKHR(num_entries, rd_platforms, rnum_platforms);
 }

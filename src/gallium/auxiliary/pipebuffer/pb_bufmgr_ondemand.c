@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,7 +30,7 @@
  * A variation of malloc buffers which get transferred to real graphics memory
  * when there is an attempt to validate them. 
  * 
- * @author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * @author Jose Fonseca <jfonseca@vmware.com>
  */
 
 
@@ -70,7 +70,7 @@ struct pb_ondemand_manager
 
 extern const struct pb_vtbl pb_ondemand_buffer_vtbl;
 
-static INLINE struct pb_ondemand_buffer *
+static inline struct pb_ondemand_buffer *
 pb_ondemand_buffer(struct pb_buffer *buf)
 {
    assert(buf);
@@ -80,7 +80,7 @@ pb_ondemand_buffer(struct pb_buffer *buf)
    return (struct pb_ondemand_buffer *)buf;
 }
 
-static INLINE struct pb_ondemand_manager *
+static inline struct pb_ondemand_manager *
 pb_ondemand_manager(struct pb_manager *mgr)
 {
    assert(mgr);
@@ -151,7 +151,7 @@ pb_ondemand_buffer_instantiate(struct pb_ondemand_buffer *buf)
          return PIPE_ERROR_OUT_OF_MEMORY;
       
       map = pb_map(buf->buffer, PB_USAGE_CPU_READ, NULL);
-      if(!map) {
+      if (!map) {
          pb_reference(&buf->buffer, NULL);
          return PIPE_ERROR;
       }
@@ -241,7 +241,7 @@ pb_ondemand_manager_create_buffer(struct pb_manager *_mgr,
    struct pb_ondemand_buffer *buf;
    
    buf = CALLOC_STRUCT(pb_ondemand_buffer);
-   if(!buf)
+   if (!buf)
       return NULL;
 
    pipe_reference_init(&buf->base.reference, 1);
@@ -288,11 +288,11 @@ pb_ondemand_manager_create(struct pb_manager *provider)
 {
    struct pb_ondemand_manager *mgr;
 
-   if(!provider)
+   if (!provider)
       return NULL;
    
    mgr = CALLOC_STRUCT(pb_ondemand_manager);
-   if(!mgr)
+   if (!mgr)
       return NULL;
    
    mgr->base.destroy = pb_ondemand_manager_destroy;

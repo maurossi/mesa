@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright 2009-2010 Chia-I Wu <olvaffe@gmail.com>
  * Copyright 2010 LunarG, Inc.
  * All Rights Reserved.
@@ -38,24 +38,25 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+#include "c11/threads.h"
 
 #include "egllog.h"
-#include "eglstring.h"
-#include "eglmutex.h"
 
 #define MAXSTRING 1000
 #define FALLBACK_LOG_LEVEL _EGL_WARNING
 
 
 static struct {
-   _EGLMutex mutex;
+   mtx_t mutex;
 
    EGLBoolean initialized;
    EGLint level;
    _EGLLogProc logger;
    EGLint num_messages;
 } logging = {
-   _EGL_MUTEX_INITIALIZER,
+   _MTX_INITIALIZER_NP,
    EGL_FALSE,
    FALLBACK_LOG_LEVEL,
    NULL,
@@ -82,7 +83,7 @@ _eglSetLogProc(_EGLLogProc logger)
 {
    EGLint num_messages = 0;
 
-   _eglLockMutex(&logging.mutex);
+   mtx_lock(&logging.mutex);
 
    if (logging.logger != logger) {
       logging.logger = logger;
@@ -91,7 +92,7 @@ _eglSetLogProc(_EGLLogProc logger)
       logging.num_messages = 0;
    }
 
-   _eglUnlockMutex(&logging.mutex);
+   mtx_unlock(&logging.mutex);
 
    if (num_messages)
       _eglLog(_EGL_DEBUG,
@@ -111,9 +112,9 @@ _eglSetLogLevel(EGLint level)
    case _EGL_WARNING:
    case _EGL_INFO:
    case _EGL_DEBUG:
-      _eglLockMutex(&logging.mutex);
+      mtx_lock(&logging.mutex);
       logging.level = level;
-      _eglUnlockMutex(&logging.mutex);
+      mtx_unlock(&logging.mutex);
       break;
    default:
       break;
@@ -146,7 +147,7 @@ _eglInitLogger(void)
    log_env = getenv("EGL_LOG_LEVEL");
    if (log_env) {
       for (i = 0; level_strings[i]; i++) {
-         if (_eglstrcasecmp(log_env, level_strings[i]) == 0) {
+         if (strcasecmp(log_env, level_strings[i]) == 0) {
             level = i;
             break;
          }
@@ -188,7 +189,7 @@ _eglLog(EGLint level, const char *fmtStr, ...)
    if (level > logging.level || level < 0)
       return;
 
-   _eglLockMutex(&logging.mutex);
+   mtx_lock(&logging.mutex);
 
    if (logging.logger) {
       va_start(args, fmtStr);
@@ -201,7 +202,7 @@ _eglLog(EGLint level, const char *fmtStr, ...)
       logging.num_messages++;
    }
 
-   _eglUnlockMutex(&logging.mutex);
+   mtx_unlock(&logging.mutex);
 
    if (level == _EGL_FATAL)
       exit(1); /* or abort()? */

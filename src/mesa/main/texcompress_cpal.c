@@ -1,7 +1,7 @@
 /*
  * Mesa 3-D graphics library
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -16,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -31,16 +32,12 @@
 
 
 #include "glheader.h"
-#include "compiler.h" /* for ASSERT */
 #include "context.h"
-#include "mfeatures.h"
 #include "mtypes.h"
 #include "imports.h"
 #include "pixelstore.h"
 #include "texcompress_cpal.h"
 #include "teximage.h"
-
-#if FEATURE_ES
 
 
 static const struct cpal_format_info {
@@ -122,7 +119,7 @@ _mesa_cpal_compressed_size(int level, GLenum internalFormat,
    }
 
    info = &formats[internalFormat - GL_PALETTE4_RGB8_OES];
-   ASSERT(info->cpal_format == internalFormat);
+   assert(info->cpal_format == internalFormat);
 
    expect_size = info->palette_size * info->size;
    for (lvl = 0; lvl < num_levels; lvl++) {
@@ -142,21 +139,6 @@ _mesa_cpal_compressed_size(int level, GLenum internalFormat,
    return expect_size;
 }
 
-void
-_mesa_cpal_compressed_format_type(GLenum internalFormat, GLenum *format,
-				  GLenum *type)
-{
-   const struct cpal_format_info *info;
-
-   if (internalFormat < GL_PALETTE4_RGB8_OES
-       || internalFormat > GL_PALETTE8_RGB5_A1_OES) {
-      return;
-   }
-
-   info = &formats[internalFormat - GL_PALETTE4_RGB8_OES];
-   *format = info->format;
-   *type = info->type;
-}
 
 /**
  * Convert a call to glCompressedTexImage2D() where internalFormat is a
@@ -208,14 +190,13 @@ _mesa_cpal_compressed_teximage2d(GLenum target, GLint level,
 
       /* allocate and fill dest image buffer */
       if (palette) {
-         image = (GLubyte *) malloc(num_texels * info->size);
+         image = malloc(num_texels * info->size);
          paletted_to_color(info, palette, indices, num_texels, image);
       }
 
       _mesa_TexImage2D(target, lvl, info->format, w, h, 0,
                        info->format, info->type, image);
-      if (image)
-         free(image);
+      free(image);
 
       /* advance index pointer to point to next src mipmap */
       if (info->palette_size == 16)
@@ -227,5 +208,3 @@ _mesa_cpal_compressed_teximage2d(GLenum target, GLint level,
    if (saved_align != align)
       _mesa_PixelStorei(GL_UNPACK_ALIGNMENT, saved_align);
 }
-
-#endif

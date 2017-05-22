@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.3
  *
  * Copyright (C) 1999-2005  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -122,8 +122,8 @@ _math_matrix_frustum( GLmatrix *mat,
 		      GLfloat nearval, GLfloat farval );
 
 extern void
-_math_matrix_viewport(GLmatrix *m, GLint x, GLint y, GLint width, GLint height,
-                      GLfloat zNear, GLfloat zFar, GLfloat depthMax);
+_math_matrix_viewport( GLmatrix *m, const float scale[3],
+                       const float translate[3], double depthMax );
 
 extern void
 _math_matrix_set_identity( GLmatrix *dest );

@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -34,14 +34,21 @@
 #include <vdpau/vdpau_x11.h>
 
 #include "pipe/p_compiler.h"
-#include "pipe/p_video_decoder.h"
+#include "pipe/p_video_codec.h"
+
+#include "state_tracker/vdpau_interop.h"
+#include "state_tracker/vdpau_dmabuf.h"
+#include "state_tracker/vdpau_funcs.h"
 
 #include "util/u_debug.h"
 #include "util/u_rect.h"
 #include "os/os_thread.h"
 
+#include "vl/vl_video_buffer.h"
+#include "vl/vl_bicubic_filter.h"
 #include "vl/vl_compositor.h"
 #include "vl/vl_csc.h"
+#include "vl/vl_deint_filter.h"
 #include "vl/vl_matrix_filter.h"
 #include "vl/vl_median_filter.h"
 #include "vl/vl_winsys.h"
@@ -53,7 +60,6 @@
 #define QUOTEME(x) #x
 #define TOSTRING(x) QUOTEME(x)
 #define INFORMATION_STRING TOSTRING(INFORMATION)
-#define VL_HANDLES
 
 static inline enum pipe_video_chroma_format
 ChromaToPipe(VdpChromaType vdpau_type)
@@ -87,6 +93,29 @@ PipeToChroma(enum pipe_video_chroma_format pipe_type)
    }
 
    return -1;
+}
+
+static inline enum pipe_video_chroma_format
+FormatYCBCRToPipeChroma(VdpYCbCrFormat vdpau_format)
+{
+   switch (vdpau_format) {
+      case VDP_YCBCR_FORMAT_NV12:
+         return PIPE_VIDEO_CHROMA_FORMAT_420;
+      case VDP_YCBCR_FORMAT_YV12:
+         return PIPE_VIDEO_CHROMA_FORMAT_420;
+      case VDP_YCBCR_FORMAT_UYVY:
+         return PIPE_VIDEO_CHROMA_FORMAT_422;
+      case VDP_YCBCR_FORMAT_YUYV:
+         return PIPE_VIDEO_CHROMA_FORMAT_422;
+      case VDP_YCBCR_FORMAT_Y8U8V8A8:
+         return PIPE_VIDEO_CHROMA_FORMAT_444;
+      case VDP_YCBCR_FORMAT_V8U8Y8A8:
+         return PIPE_VIDEO_CHROMA_FORMAT_444;
+      default:
+         assert(0);
+   }
+
+   return PIPE_FORMAT_NONE;
 }
 
 static inline enum pipe_format
@@ -135,27 +164,6 @@ PipeToFormatYCBCR(enum pipe_format p_format)
    return -1;
 }
 
-static inline enum pipe_format
-FormatRGBAToPipe(VdpRGBAFormat vdpau_format)
-{
-   switch (vdpau_format) {
-      case VDP_RGBA_FORMAT_A8:
-         return PIPE_FORMAT_A8_UNORM;
-      case VDP_RGBA_FORMAT_B10G10R10A2:
-         return PIPE_FORMAT_B10G10R10A2_UNORM;
-      case VDP_RGBA_FORMAT_B8G8R8A8:
-         return PIPE_FORMAT_B8G8R8A8_UNORM;
-      case VDP_RGBA_FORMAT_R10G10B10A2:
-         return PIPE_FORMAT_R10G10B10A2_UNORM;
-      case VDP_RGBA_FORMAT_R8G8B8A8:
-         return PIPE_FORMAT_R8G8B8A8_UNORM;
-      default:
-         assert(0);
-   }
-
-   return PIPE_FORMAT_NONE;
-}
-
 static inline VdpRGBAFormat
 PipeToFormatRGBA(enum pipe_format p_format)
 {
@@ -182,9 +190,9 @@ FormatIndexedToPipe(VdpRGBAFormat vdpau_format)
 {
    switch (vdpau_format) {
       case VDP_INDEXED_FORMAT_A4I4:
-         return PIPE_FORMAT_A4R4_UNORM;
-      case VDP_INDEXED_FORMAT_I4A4:
          return PIPE_FORMAT_R4A4_UNORM;
+      case VDP_INDEXED_FORMAT_I4A4:
+         return PIPE_FORMAT_A4R4_UNORM;
       case VDP_INDEXED_FORMAT_A8I8:
          return PIPE_FORMAT_A8R8_UNORM;
       case VDP_INDEXED_FORMAT_I8A8:
@@ -235,6 +243,16 @@ ProfileToPipe(VdpDecoderProfile vdpau_profile)
          return PIPE_VIDEO_PROFILE_VC1_MAIN;
       case VDP_DECODER_PROFILE_VC1_ADVANCED:
          return PIPE_VIDEO_PROFILE_VC1_ADVANCED;
+      case VDP_DECODER_PROFILE_HEVC_MAIN:
+         return PIPE_VIDEO_PROFILE_HEVC_MAIN;
+      case VDP_DECODER_PROFILE_HEVC_MAIN_10:
+         return PIPE_VIDEO_PROFILE_HEVC_MAIN_10;
+      case VDP_DECODER_PROFILE_HEVC_MAIN_STILL:
+         return PIPE_VIDEO_PROFILE_HEVC_MAIN_STILL;
+      case VDP_DECODER_PROFILE_HEVC_MAIN_12:
+         return PIPE_VIDEO_PROFILE_HEVC_MAIN_12;
+      case VDP_DECODER_PROFILE_HEVC_MAIN_444:
+         return PIPE_VIDEO_PROFILE_HEVC_MAIN_444;
       default:
          return PIPE_VIDEO_PROFILE_UNKNOWN;
    }
@@ -266,6 +284,16 @@ PipeToProfile(enum pipe_video_profile p_profile)
          return VDP_DECODER_PROFILE_VC1_MAIN;
       case PIPE_VIDEO_PROFILE_VC1_ADVANCED:
          return VDP_DECODER_PROFILE_VC1_ADVANCED;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN:
+         return VDP_DECODER_PROFILE_HEVC_MAIN;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN_10:
+         return VDP_DECODER_PROFILE_HEVC_MAIN_10;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN_STILL:
+         return VDP_DECODER_PROFILE_HEVC_MAIN_STILL;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN_12:
+         return VDP_DECODER_PROFILE_HEVC_MAIN_12;
+      case PIPE_VIDEO_PROFILE_HEVC_MAIN_444:
+         return VDP_DECODER_PROFILE_HEVC_MAIN_444;
       default:
          assert(0);
          return -1;
@@ -307,36 +335,43 @@ RectToPipeBox(const VdpRect *rect, struct pipe_resource *res)
    return box;
 }
 
+static inline bool
+CheckSurfaceParams(struct pipe_screen *screen,
+                   const struct pipe_resource *templ)
+{
+   return screen->is_format_supported(
+         screen, templ->format, templ->target, templ->nr_samples, templ->bind);
+}
+
 typedef struct
 {
+   struct pipe_reference reference;
    struct vl_screen *vscreen;
    struct pipe_context *context;
    struct vl_compositor compositor;
+   struct pipe_sampler_view *dummy_sv;
    pipe_mutex mutex;
-
-   struct {
-      struct vl_compositor_state *cstate;
-      VdpOutputSurface surface;
-   } delayed_rendering;
 } vlVdpDevice;
 
 typedef struct
 {
    vlVdpDevice *device;
-   Drawable drawable;
-} vlVdpPresentationQueueTarget;
-
-typedef struct
-{
-   vlVdpDevice *device;
-   Drawable drawable;
    struct vl_compositor_state cstate;
-} vlVdpPresentationQueue;
 
-typedef struct
-{
-   vlVdpDevice *device;
-   struct vl_compositor_state cstate;
+   struct {
+       bool supported, enabled;
+       float luma_min, luma_max;
+   } luma_key;
+
+   struct {
+	  bool supported, enabled, spatial;
+	  struct vl_deint_filter *filter;
+   } deint;
+
+   struct {
+	  bool supported, enabled;
+	  struct vl_bicubic_filter *filter;
+   } bicubic;
 
    struct {
       bool supported, enabled;
@@ -353,7 +388,6 @@ typedef struct
    unsigned video_width, video_height;
    enum pipe_video_chroma_format chroma_format;
    unsigned max_layers, skip_chroma_deint;
-   float luma_key_min, luma_key_max;
 
    bool custom_csc;
    vl_csc_matrix csc;
@@ -375,19 +409,34 @@ typedef uint64_t vlVdpTime;
 
 typedef struct
 {
-   vlVdpTime timestamp;
    vlVdpDevice *device;
    struct pipe_surface *surface;
    struct pipe_sampler_view *sampler_view;
    struct pipe_fence_handle *fence;
    struct vl_compositor_state cstate;
    struct u_rect dirty_area;
+   bool send_to_X;
 } vlVdpOutputSurface;
 
 typedef struct
 {
    vlVdpDevice *device;
-   struct pipe_video_decoder *decoder;
+   Drawable drawable;
+} vlVdpPresentationQueueTarget;
+
+typedef struct
+{
+   vlVdpDevice *device;
+   Drawable drawable;
+   struct vl_compositor_state cstate;
+   vlVdpOutputSurface *last_surf;
+} vlVdpPresentationQueue;
+
+typedef struct
+{
+   vlVdpDevice *device;
+   pipe_mutex mutex;
+   struct pipe_video_codec *decoder;
 } vlVdpDecoder;
 
 typedef uint32_t vlHandle;
@@ -402,17 +451,13 @@ boolean vlGetFuncFTAB(VdpFuncId function_id, void **func);
 
 /* Public functions */
 VdpDeviceCreateX11 vdp_imp_device_create_x11;
-VdpPresentationQueueTargetCreateX11 vlVdpPresentationQueueTargetCreateX11;
 
 void vlVdpDefaultSamplerViewTemplate(struct pipe_sampler_view *templ, struct pipe_resource *res);
-
-/* Delayed rendering funtionality */
-void vlVdpResolveDelayedRendering(vlVdpDevice *dev, struct pipe_surface *surface, struct u_rect *dirty_area);
-void vlVdpSave4DelayedRendering(vlVdpDevice *dev, VdpOutputSurface surface, struct vl_compositor_state *cstate);
 
 /* Internal function pointers */
 VdpGetErrorString vlVdpGetErrorString;
 VdpDeviceDestroy vlVdpDeviceDestroy;
+void vlVdpDeviceFree(vlVdpDevice *dev);
 VdpGetProcAddress vlVdpGetProcAddress;
 VdpGetApiVersion vlVdpGetApiVersion;
 VdpGetInformationString vlVdpGetInformationString;
@@ -473,6 +518,15 @@ VdpVideoMixerGetParameterValues vlVdpVideoMixerGetParameterValues;
 VdpVideoMixerGetAttributeValues vlVdpVideoMixerGetAttributeValues;
 VdpVideoMixerDestroy vlVdpVideoMixerDestroy;
 VdpGenerateCSCMatrix vlVdpGenerateCSCMatrix;
+/* Winsys specific internal function pointers */
+VdpPresentationQueueTargetCreateX11 vlVdpPresentationQueueTargetCreateX11;
+
+
+/* interop to mesa state tracker */
+VdpVideoSurfaceGallium vlVdpVideoSurfaceGallium;
+VdpOutputSurfaceGallium vlVdpOutputSurfaceGallium;
+VdpVideoSurfaceDMABuf vlVdpVideoSurfaceDMABuf;
+VdpOutputSurfaceDMABuf vlVdpOutputSurfaceDMABuf;
 
 #define VDPAU_OUT   0
 #define VDPAU_ERR   1
@@ -493,6 +547,16 @@ static inline void VDPAU_MSG(unsigned int level, const char *fmt, ...)
       _debug_vprintf(fmt, ap);
       va_end(ap);
    }
+}
+
+static inline void
+DeviceReference(vlVdpDevice **ptr, vlVdpDevice *dev)
+{
+   vlVdpDevice *old_dev = *ptr;
+
+   if (pipe_reference(&(*ptr)->reference, &dev->reference))
+      vlVdpDeviceFree(old_dev);
+   *ptr = dev;
 }
 
 #endif /* VDPAU_PRIVATE_H */

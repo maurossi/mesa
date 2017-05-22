@@ -16,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /**
@@ -58,6 +59,26 @@ _swrast_delete_texture_image(struct gl_context *ctx,
    _mesa_delete_texture_image(ctx, texImage);
 }
 
+static unsigned int
+texture_slices(const struct gl_texture_image *texImage)
+{
+   if (texImage->TexObject->Target == GL_TEXTURE_1D_ARRAY)
+      return texImage->Height;
+   else
+      return texImage->Depth;
+}
+
+unsigned int
+_swrast_teximage_slice_height(struct gl_texture_image *texImage)
+{
+   /* For 1D array textures, the slices are all 1 pixel high, and Height is
+    * the number of slices.
+    */
+   if (texImage->TexObject->Target == GL_TEXTURE_1D_ARRAY)
+      return 1;
+   else
+      return texImage->Height;
+}
 
 /**
  * Called via ctx->Driver.AllocTextureImageBuffer()
@@ -67,31 +88,28 @@ _swrast_alloc_texture_image_buffer(struct gl_context *ctx,
                                    struct gl_texture_image *texImage)
 {
    struct swrast_texture_image *swImg = swrast_texture_image(texImage);
-   GLuint bytes = _mesa_format_image_size(texImage->TexFormat, texImage->Width,
-                                          texImage->Height, texImage->Depth);
+   GLuint bytesPerSlice;
+   GLuint slices = texture_slices(texImage);
    GLuint i;
 
+   if (!_swrast_init_texture_image(texImage))
+      return GL_FALSE;
+
+   bytesPerSlice = _mesa_format_image_size(texImage->TexFormat, texImage->Width,
+                                           _swrast_teximage_slice_height(texImage), 1);
+
    assert(!swImg->Buffer);
-   swImg->Buffer = _mesa_align_malloc(bytes, 512);
+   swImg->Buffer = _mesa_align_malloc(bytesPerSlice * slices, 512);
    if (!swImg->Buffer)
       return GL_FALSE;
 
-   /* RowStride and ImageOffsets[] describe how to address texels in 'Data' */
-   swImg->RowStride = texImage->Width;
+   /* RowStride and ImageSlices[] describe how to address texels in 'Data' */
+   swImg->RowStride = _mesa_format_row_stride(texImage->TexFormat,
+                                              texImage->Width);
 
-   /* Allocate the ImageOffsets array and initialize to typical values.
-    * We allocate the array for 1D/2D textures too in order to avoid special-
-    * case code in the texstore routines.
-    */
-   swImg->ImageOffsets = (GLuint *) malloc(texImage->Depth * sizeof(GLuint));
-   if (!swImg->ImageOffsets)
-      return GL_FALSE;
-
-   for (i = 0; i < texImage->Depth; i++) {
-      swImg->ImageOffsets[i] = i * texImage->Width * texImage->Height;
+   for (i = 0; i < slices; i++) {
+      swImg->ImageSlices[i] = swImg->Buffer + bytesPerSlice * i;
    }
-
-   _swrast_init_texture_image(texImage);
 
    return GL_TRUE;
 }
@@ -100,11 +118,11 @@ _swrast_alloc_texture_image_buffer(struct gl_context *ctx,
 /**
  * Code that overrides ctx->Driver.AllocTextureImageBuffer may use this to
  * initialize the fields of swrast_texture_image without allocating the image
- * buffer or initializing ImageOffsets or RowStride.
+ * buffer or initializing RowStride or the contents of ImageSlices.
  *
  * Returns GL_TRUE on success, GL_FALSE on memory allocation failure.
  */
-void
+GLboolean
 _swrast_init_texture_image(struct gl_texture_image *texImage)
 {
    struct swrast_texture_image *swImg = swrast_texture_image(texImage);
@@ -128,6 +146,13 @@ _swrast_init_texture_image(struct gl_texture_image *texImage)
       swImg->HeightScale = (GLfloat) texImage->Height;
       swImg->DepthScale = (GLfloat) texImage->Depth;
    }
+
+   assert(!swImg->ImageSlices);
+   swImg->ImageSlices = calloc(texture_slices(texImage), sizeof(void *));
+   if (!swImg->ImageSlices)
+      return GL_FALSE;
+
+   return GL_TRUE;
 }
 
 
@@ -139,15 +164,12 @@ _swrast_free_texture_image_buffer(struct gl_context *ctx,
                                   struct gl_texture_image *texImage)
 {
    struct swrast_texture_image *swImage = swrast_texture_image(texImage);
-   if (swImage->Buffer) {
-      _mesa_align_free(swImage->Buffer);
-      swImage->Buffer = NULL;
-   }
 
-   if (swImage->ImageOffsets) {
-      free(swImage->ImageOffsets);
-      swImage->ImageOffsets = NULL;
-   }
+   _mesa_align_free(swImage->Buffer);
+   swImage->Buffer = NULL;
+
+   free(swImage->ImageSlices);
+   swImage->ImageSlices = NULL;
 }
 
 
@@ -155,8 +177,8 @@ _swrast_free_texture_image_buffer(struct gl_context *ctx,
  * Error checking for debugging only.
  */
 static void
-_mesa_check_map_teximage(struct gl_texture_image *texImage,
-                         GLuint slice, GLuint x, GLuint y, GLuint w, GLuint h)
+check_map_teximage(const struct gl_texture_image *texImage,
+                   GLuint slice, GLuint x, GLuint y, GLuint w, GLuint h)
 {
 
    if (texImage->TexObject->Target == GL_TEXTURE_1D)
@@ -166,6 +188,7 @@ _mesa_check_map_teximage(struct gl_texture_image *texImage,
    assert(y < texImage->Height || texImage->Height == 0);
    assert(x + w <= texImage->Width);
    assert(y + h <= texImage->Height);
+   assert(slice < texture_slices(texImage));
 }
 
 /**
@@ -194,7 +217,16 @@ _swrast_map_teximage(struct gl_context *ctx,
    GLint stride, texelSize;
    GLuint bw, bh;
 
-   _mesa_check_map_teximage(texImage, slice, x, y, w, h);
+   check_map_teximage(texImage, slice, x, y, w, h);
+
+   if (!swImage->Buffer) {
+      /* Either glTexImage was called with a NULL <pixels> argument or
+       * we ran out of memory when allocating texture memory,
+       */
+      *mapOut = NULL;
+      *rowStrideOut = 0;
+      return;
+   }
 
    texelSize = _mesa_get_format_bytes(texImage->TexFormat);
    stride = _mesa_format_row_stride(texImage->TexFormat, texImage->Width);
@@ -203,30 +235,13 @@ _swrast_map_teximage(struct gl_context *ctx,
    assert(x % bw == 0);
    assert(y % bh == 0);
 
-   if (!swImage->Buffer) {
-      /* probably ran out of memory when allocating tex mem */
-      *mapOut = NULL;
-      return;
-   }
-      
-   map = swImage->Buffer;
+   /* This function can only be used with a swrast-allocated buffer, in which
+    * case ImageSlices is populated with pointers into Buffer.
+    */
+   assert(swImage->Buffer);
+   assert(swImage->Buffer == swImage->ImageSlices[0]);
 
-   if (texImage->TexObject->Target == GL_TEXTURE_3D ||
-       texImage->TexObject->Target == GL_TEXTURE_2D_ARRAY) {
-      GLuint sliceSize = _mesa_format_image_size(texImage->TexFormat,
-                                                 texImage->Width,
-                                                 texImage->Height,
-                                                 1);
-      assert(slice < texImage->Depth);
-      map += slice * sliceSize;
-   } else if (texImage->TexObject->Target == GL_TEXTURE_1D_ARRAY) {
-      GLuint sliceSize = _mesa_format_image_size(texImage->TexFormat,
-                                                 texImage->Width,
-                                                 1,
-                                                 1);
-      assert(slice < texImage->Height);
-      map += slice * sliceSize;
-   }
+   map = swImage->ImageSlices[slice];
 
    /* apply x/y offset to map address */
    map += stride * (y / bh) + texelSize * (x / bw);
@@ -253,12 +268,51 @@ _swrast_map_texture(struct gl_context *ctx, struct gl_texture_object *texObj)
    for (face = 0; face < faces; face++) {
       for (level = texObj->BaseLevel; level < MAX_TEXTURE_LEVELS; level++) {
          struct gl_texture_image *texImage = texObj->Image[face][level];
-         if (texImage) {
-            struct swrast_texture_image *swImage =
-               swrast_texture_image(texImage);
+         struct swrast_texture_image *swImage = swrast_texture_image(texImage);
+         unsigned int i, slices;
 
-            /* XXX we'll eventually call _swrast_map_teximage() here */
-            swImage->Map = swImage->Buffer;
+         if (!texImage)
+            continue;
+
+         /* In the case of a swrast-allocated texture buffer, the ImageSlices
+          * and RowStride are always available.
+          */
+         if (swImage->Buffer) {
+            assert(swImage->ImageSlices[0] == swImage->Buffer);
+            continue;
+         }
+
+         if (!swImage->ImageSlices) {
+            swImage->ImageSlices =
+               calloc(texture_slices(texImage), sizeof(void *));
+            if (!swImage->ImageSlices)
+               continue;
+         }
+
+         slices = texture_slices(texImage);
+
+         for (i = 0; i < slices; i++) {
+            GLubyte *map;
+            GLint rowStride;
+
+            if (swImage->ImageSlices[i])
+               continue;
+
+            ctx->Driver.MapTextureImage(ctx, texImage, i,
+                                        0, 0,
+                                        texImage->Width, texImage->Height,
+                                        GL_MAP_READ_BIT | GL_MAP_WRITE_BIT,
+                                        &map, &rowStride);
+
+            swImage->ImageSlices[i] = map;
+            /* A swrast-using driver has to return the same rowstride for
+             * every slice of the same texture, since we don't track them
+             * separately.
+             */
+            if (i == 0)
+               swImage->RowStride = rowStride;
+            else
+               assert(swImage->RowStride == rowStride);
          }
       }
    }
@@ -274,12 +328,25 @@ _swrast_unmap_texture(struct gl_context *ctx, struct gl_texture_object *texObj)
    for (face = 0; face < faces; face++) {
       for (level = texObj->BaseLevel; level < MAX_TEXTURE_LEVELS; level++) {
          struct gl_texture_image *texImage = texObj->Image[face][level];
-         if (texImage) {
-            struct swrast_texture_image *swImage
-               = swrast_texture_image(texImage);
+         struct swrast_texture_image *swImage = swrast_texture_image(texImage);
+         unsigned int i, slices;
 
-            /* XXX we'll eventually call _swrast_unmap_teximage() here */
-            swImage->Map = NULL;
+         if (!texImage)
+            continue;
+
+         if (swImage->Buffer)
+            return;
+
+         if (!swImage->ImageSlices)
+            continue;
+
+         slices = texture_slices(texImage);
+
+         for (i = 0; i < slices; i++) {
+            if (swImage->ImageSlices[i]) {
+               ctx->Driver.UnmapTextureImage(ctx, texImage, i);
+               swImage->ImageSlices[i] = NULL;
+            }
          }
       }
    }
@@ -292,16 +359,13 @@ _swrast_unmap_texture(struct gl_context *ctx, struct gl_texture_object *texObj)
 void
 _swrast_map_textures(struct gl_context *ctx)
 {
-   GLbitfield enabledUnits = ctx->Texture._EnabledUnits;
+   int unit;
 
-   /* loop over enabled texture units */
-   while (enabledUnits) {
-      GLuint unit = ffs(enabledUnits) - 1;
+   for (unit = 0; unit <= ctx->Texture._MaxEnabledTexImageUnit; unit++) {
       struct gl_texture_object *texObj = ctx->Texture.Unit[unit]._Current;
-      
-      _swrast_map_texture(ctx, texObj);
 
-      enabledUnits &= ~(1 << unit);
+      if (texObj)
+         _swrast_map_texture(ctx, texObj);
    }
 }
 
@@ -312,42 +376,11 @@ _swrast_map_textures(struct gl_context *ctx)
 void
 _swrast_unmap_textures(struct gl_context *ctx)
 {
-   GLbitfield enabledUnits = ctx->Texture._EnabledUnits;
-
-   /* loop over enabled texture units */
-   while (enabledUnits) {
-      GLuint unit = ffs(enabledUnits) - 1;
+   int unit;
+   for (unit = 0; unit <= ctx->Texture._MaxEnabledTexImageUnit; unit++) {
       struct gl_texture_object *texObj = ctx->Texture.Unit[unit]._Current;
-      
-      _swrast_unmap_texture(ctx, texObj);
 
-      enabledUnits &= ~(1 << unit);
+      if (texObj)
+         _swrast_unmap_texture(ctx, texObj);
    }
 }
-
-
-/**
- * Called via ctx->Driver.AllocTextureStorage()
- * Just have to allocate memory for the texture images.
- */
-GLboolean
-_swrast_AllocTextureStorage(struct gl_context *ctx,
-                            struct gl_texture_object *texObj,
-                            GLsizei levels, GLsizei width,
-                            GLsizei height, GLsizei depth)
-{
-   const GLint numFaces = (texObj->Target == GL_TEXTURE_CUBE_MAP) ? 6 : 1;
-   GLint face, level;
-
-   for (face = 0; face < numFaces; face++) {
-      for (level = 0; level < levels; level++) {
-         struct gl_texture_image *texImage = texObj->Image[face][level];
-         if (!_swrast_alloc_texture_image_buffer(ctx, texImage)) {
-            return GL_FALSE;
-         }
-      }
-   }
-
-   return GL_TRUE;
-}
-

@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -27,12 +27,13 @@
 #define XMESAP_H
 
 
+#include "c11/threads.h"
 #include "xmesa.h"
 #include "main/mtypes.h"
 #include "swrast/s_context.h"
 
 
-extern _glthread_Mutex _xmesa_lock;
+extern mtx_t _xmesa_lock;
 
 extern XMesaBuffer XMesaBufferList;
 
@@ -77,7 +78,6 @@ struct xmesa_visual {
    int screen, visualID;
    int visualType;
    XMesaVisualInfo visinfo;	/* X's visual info (pointer to private copy) */
-   XVisualInfo *vishandle;	/* Only used in fakeglx.c */
    GLint BitsPerPixel;		/* True bits per pixel for XImages */
 
    GLboolean ximage_flag;	/* Use XImage for back buffer (not pixmap)? */
@@ -374,7 +374,7 @@ xmesa_destroy_buffers_on_display(XMesaDisplay *dpy);
 /**
  * Using a function instead of an ordinary cast is safer.
  */
-static INLINE struct xmesa_renderbuffer *
+static inline struct xmesa_renderbuffer *
 xmesa_renderbuffer(struct gl_renderbuffer *rb)
 {
    return (struct xmesa_renderbuffer *) rb;
@@ -385,7 +385,7 @@ xmesa_renderbuffer(struct gl_renderbuffer *rb)
  * Return pointer to XMesaContext corresponding to a Mesa struct gl_context.
  * Since we're using structure containment, it's just a cast!.
  */
-static INLINE XMesaContext
+static inline XMesaContext
 XMESA_CONTEXT(struct gl_context *ctx)
 {
    return (XMesaContext) ctx;
@@ -396,7 +396,7 @@ XMESA_CONTEXT(struct gl_context *ctx)
  * Return pointer to XMesaBuffer corresponding to a Mesa struct gl_framebuffer.
  * Since we're using structure containment, it's just a cast!.
  */
-static INLINE XMesaBuffer
+static inline XMesaBuffer
 XMESA_BUFFER(struct gl_framebuffer *b)
 {
    return (XMesaBuffer) b;

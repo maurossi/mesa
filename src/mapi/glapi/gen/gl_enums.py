@@ -1,8 +1,8 @@
 #!/usr/bin/python2
-# -*- Mode: Python; py-indent-offset: 8 -*-
 
-# (C) Copyright Zack Rusin 2005
-# All Rights Reserved.
+# (C) Copyright Zack Rusin 2005. All Rights Reserved.
+# Copyright (C) 2015 Intel Corporation
+# Copyright (C) 2015 Broadcom Corporation
 # 
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -26,83 +26,79 @@
 # Authors:
 #    Zack Rusin <zack@kde.org>
 
+import argparse
+
 import license
 import gl_XML
+import xml.etree.ElementTree as ET
 import sys, getopt
+import re
 
 class PrintGlEnums(gl_XML.gl_print_base):
 
-	def __init__(self):
-		gl_XML.gl_print_base.__init__(self)
+    def __init__(self):
+        gl_XML.gl_print_base.__init__(self)
 
-		self.name = "gl_enums.py (from Mesa)"
-		self.license = license.bsd_license_template % ( \
+        self.name = "gl_enums.py (from Mesa)"
+        self.license = license.bsd_license_template % ( \
 """Copyright (C) 1999-2005 Brian Paul All Rights Reserved.""", "BRIAN PAUL")
-		self.enum_table = {}
+        # Mapping from enum value to (name, priority) tuples.
+        self.enum_table = {}
+        # Mapping from enum name to value
+        self.string_to_int = {}
 
 
-	def printRealHeader(self):
-		print '#include "main/glheader.h"'
-		print '#include "main/mfeatures.h"'
-		print '#include "main/enums.h"'
-		print '#include "main/imports.h"'
-		print '#include "main/mtypes.h"'
-		print ''
-		print 'typedef struct {'
-		print '   size_t offset;'
-		print '   int n;'
-		print '} enum_elt;'
-		print ''
-		return
+    def printRealHeader(self):
+        print '#include "main/glheader.h"'
+        print '#include "main/enums.h"'
+        print '#include "main/imports.h"'
+        print '#include "main/mtypes.h"'
+        print ''
+        print 'typedef struct PACKED {'
+        print '   uint32_t offset;'
+        print '   int n;'
+        print '} enum_elt;'
+        print ''
+        return
 
-	def print_code(self):
-		print """
+    def print_code(self):
+        print """
 typedef int (*cfunc)(const void *, const void *);
 
 /**
- * Compare a key name to an element in the \c all_enums array.
+ * Compare a key enum value to an element in the \c enum_string_table_offsets array.
  *
  * \c bsearch always passes the key as the first parameter and the pointer
  * to the array element as the second parameter.  We can elimiate some
  * extra work by taking advantage of that fact.
  *
  * \param a  Pointer to the desired enum name.
- * \param b  Pointer to an element of the \c all_enums array.
+ * \param b  Pointer into the \c enum_string_table_offsets array.
  */
-static int compar_name( const char *a, const enum_elt *b )
+static int compar_nr( const int *a, enum_elt *b )
 {
-   return strcmp( a, & enum_string_table[ b->offset ] );
-}
-
-/**
- * Compare a key enum value to an element in the \c all_enums array.
- *
- * \c bsearch always passes the key as the first parameter and the pointer
- * to the array element as the second parameter.  We can elimiate some
- * extra work by taking advantage of that fact.
- *
- * \param a  Pointer to the desired enum name.
- * \param b  Pointer to an index into the \c all_enums array.
- */
-static int compar_nr( const int *a, const unsigned *b )
-{
-   return a[0] - all_enums[*b].n;
+   return a[0] - b->n;
 }
 
 
 static char token_tmp[20];
 
-const char *_mesa_lookup_enum_by_nr( int nr )
+/**
+ * This function always returns a string. If the number is a valid enum, it
+ * returns the enum name. Otherwise, it returns a numeric string.
+ */
+const char *
+_mesa_enum_to_string(int nr)
 {
-   unsigned * i;
+   enum_elt *elt;
 
-   i = (unsigned *) _mesa_bsearch(& nr, reduced_enums,
-                                  Elements(reduced_enums),
-                                  sizeof(reduced_enums[0]),
-                                  (cfunc) compar_nr);
+   elt = bsearch(& nr, enum_string_table_offsets,
+                 ARRAY_SIZE(enum_string_table_offsets),
+                 sizeof(enum_string_table_offsets[0]),
+                 (cfunc) compar_nr);
 
-   if ( i != NULL ) {
-      return & enum_string_table[ all_enums[ *i ].offset ];
+   if (elt != NULL) {
+      return &enum_string_table[elt->offset];
    }
    else {
       /* this is not re-entrant safe, no big deal here */
@@ -115,7 +111,7 @@ const char *_mesa_lookup_enum_by_nr( int nr )
 /**
  * Primitive names
  */
-static const char *prim_names[PRIM_UNKNOWN + 1] = {
+static const char *prim_names[PRIM_MAX+3] = {
    "GL_POINTS",
    "GL_LINES",
    "GL_LINE_LOOP",
@@ -126,8 +122,12 @@ static const char *prim_names[PRIM_UNKNOWN + 1] = {
    "GL_QUADS",
    "GL_QUAD_STRIP",
    "GL_POLYGON",
+   "GL_LINES_ADJACENCY",
+   "GL_LINE_STRIP_ADJACENCY",
+   "GL_TRIANGLES_ADJACENCY",
+   "GL_TRIANGLE_STRIP_ADJACENCY",
+   "GL_PATCHES",
    "outside begin/end",
-   "inside unknown primitive",
    "unknown state"
 };
 
@@ -138,122 +138,155 @@ static const char *prim_names[PRIM_UNKNOWN + 1] = {
 const char *
 _mesa_lookup_prim_by_nr(GLuint nr)
 {
-   if (nr < Elements(prim_names))
+   if (nr < ARRAY_SIZE(prim_names))
       return prim_names[nr];
    else
       return "invalid mode";
 }
 
 
-int _mesa_lookup_enum_by_name( const char *symbol )
-{
-   enum_elt * f = NULL;
-
-   if ( symbol != NULL ) {
-      f = (enum_elt *) _mesa_bsearch(symbol, all_enums,
-                                     Elements(all_enums),
-                                     sizeof( enum_elt ),
-                                     (cfunc) compar_name);
-   }
-
-   return (f != NULL) ? f->n : -1;
-}
-
 """
-		return
+        return
 
 
-	def printBody(self, api_list):
-		self.enum_table = {}
-		for api in api_list:
-			self.process_enums( api )
+    def printBody(self, xml):
+        self.process_enums(xml)
 
-		keys = self.enum_table.keys()
-		keys.sort()
+        sorted_enum_values = sorted(self.enum_table.keys())
+        string_offsets = {}
+        i = 0;
+        print '#if defined(__GNUC__)'
+        print '# define LONGSTRING __extension__'
+        print '#else'
+        print '# define LONGSTRING'
+        print '#endif'
+        print ''
+        print 'LONGSTRING static const char enum_string_table[] = {'
+        # We express the very long concatenation of enum strings as an array
+        # of characters rather than as a string literal to work-around MSVC's
+        # 65535 character limit.
+        for enum in sorted_enum_values:
+            (name, pri) = self.enum_table[enum]
+            print "  ",
+            for ch in name:
+                print "'%c'," % ch,
+            print "'\\0',"
 
-		name_table = []
-		enum_table = {}
+            string_offsets[ enum ] = i
+            i += len(name) + 1
 
-		for enum in keys:
-			low_pri = 9
-			for [name, pri] in self.enum_table[ enum ]:
-				name_table.append( [name, enum] )
-
-				if pri < low_pri:
-					low_pri = pri
-					enum_table[enum] = name
-						
-
-		name_table.sort()
-
-		string_offsets = {}
-		i = 0;
-		print 'LONGSTRING static const char enum_string_table[] = '
-		for [name, enum] in name_table:
-			print '   "%s\\0"' % (name)
-			string_offsets[ name ] = i
-			i += len(name) + 1
-
-		print '   ;'
-		print ''
+        print '};'
+        print ''
 
 
-		print 'static const enum_elt all_enums[%u] =' % (len(name_table))
-		print '{'
-		for [name, enum] in name_table:
-			print '   { %5u, 0x%08X }, /* %s */' % (string_offsets[name], enum, name)
-		print '};'
-		print ''
+        print 'static const enum_elt enum_string_table_offsets[%u] =' % (len(self.enum_table))
+        print '{'
+        for enum in sorted_enum_values:
+            (name, pri) = self.enum_table[enum]
+            print '   { %5u, 0x%08X }, /* %s */' % (string_offsets[enum], enum, name)
+        print '};'
+        print ''
 
-		print 'static const unsigned reduced_enums[%u] =' % (len(keys))
-		print '{'
-		for enum in keys:
-			name = enum_table[ enum ]
-			if [name, enum] not in name_table:
-				print '      /* Error! %s, 0x%04x */ 0,' % (name, enum)
-			else:
-				i = name_table.index( [name, enum] )
+        self.print_code()
+        return
 
-				print '      %4u, /* %s */' % (i, name)
-		print '};'
+    def add_enum_provider(self, name, priority):
+        value = self.string_to_int[name]
+
+        # We don't want the weird GL_SKIP_COMPONENTS1_NV enums.
+        if value < 0:
+            return
+        # We don't want the 64-bit GL_TIMEOUT_IGNORED "enums"
+        if value > 0xffffffff:
+            return
+
+        # We don't want bitfields in the enum-to-string table --
+        # individual bits have so many names, it's pointless.  Note
+        # that we check for power-of-two, since some getters have
+        # "_BITS" in their name, but none have a power-of-two enum
+        # number.
+        if not (value & (value - 1)) and '_BIT' in name:
+            return
+
+        # Also drop the GL_*_ATTRIB_BITS bitmasks.
+        if value == 0xffffffff:
+                return
+
+        if value in self.enum_table:
+            (n, p) = self.enum_table[value]
+            if priority < p:
+                self.enum_table[value] = (name, priority)
+        else:
+            self.enum_table[value] = (name, priority)
+
+    def process_extension(self, extension):
+        if extension.get('name').startswith('GL_ARB_'):
+            extension_prio = 400
+        elif extension.get('name').startswith('GL_EXT_'):
+            extension_prio = 600
+        else:
+            extension_prio = 800
+
+        for enum in extension.findall('require/enum'):
+            self.add_enum_provider(enum.get('name'), extension_prio)
+
+    def process_enums(self, xml):
+        # First, process the XML entries that define the hex values
+        # for all of the enum names.
+        for enum in xml.findall('enums/enum'):
+            name = enum.get('name')
+            value = int(enum.get('value'), base=16)
+
+            # If the same name ever maps to multiple values, that can
+            # confuse us.  GL_ACTIVE_PROGRAM_EXT is OK to lose because
+            # we choose GL_ACTIVE PROGRAM instead.
+            if name in self.string_to_int and name != "GL_ACTIVE_PROGRAM_EXT":
+                print "#error Renumbering {0} from {1} to {2}".format(name, self.string_to_int[name], value)
+
+            self.string_to_int[name] = value
+
+        # Now, process all of the API versions and extensions that
+        # provide enums, so we can decide what name to call any hex
+        # value.
+        for feature in xml.findall('feature'):
+            feature_name = feature.get('name')
+
+            # When an enum gets renamed in a newer version (generally
+            # because of some generalization of the functionality),
+            # prefer the newer name.  Also, prefer desktop GL names to
+            # ES.
+            m = re.match('GL_VERSION_([0-9])_([0-9])', feature_name)
+            if m:
+                feature_prio = 100 - int(m.group(1) + m.group(2))
+            else:
+                m = re.match('GL_ES_VERSION_([0-9])_([0-9])', feature_name)
+                if m:
+                    feature_prio = 200 - int(m.group(1) + m.group(2))
+                else:
+                    feature_prio = 200
+
+            for enum in feature.findall('require/enum'):
+                self.add_enum_provider(enum.get('name'), feature_prio)
+
+        for extension in xml.findall('extensions/extension'):
+            self.process_extension(extension)
 
 
-		self.print_code()
-		return
+def _parser():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-f', '--input_file',
+                        required=True,
+                        help="Choose an xml file to parse.")
+    return parser.parse_args()
 
 
-	def process_enums(self, api):
-		for obj in api.enumIterateByName():
-			if obj.value not in self.enum_table:
-				self.enum_table[ obj.value ] = []
+def main():
+    args = _parser()
+    xml = ET.parse(args.input_file)
 
+    printer = PrintGlEnums()
+    printer.Print(xml)
 
-			enum = self.enum_table[ obj.value ]
-			name = "GL_" + obj.name
-			priority = obj.priority()
-			already_in = False;
-			for n, p in enum:
-				if n == name:
-					already_in = True
-			if not already_in:
-				enum.append( [name, priority] )
-
-
-def show_usage():
-	print "Usage: %s [-f input_file_name]" % sys.argv[0]
-	sys.exit(1)
 
 if __name__ == '__main__':
-	try:
-		(args, trail) = getopt.getopt(sys.argv[1:], "f:")
-	except Exception,e:
-		show_usage()
-
-	api_list = []
-	for (arg,val) in args:
-		if arg == "-f":
-			api = gl_XML.parse_GL_API( val )
-			api_list.append(api);
-
-	printer = PrintGlEnums()
-	printer.Print( api_list )
+    main()

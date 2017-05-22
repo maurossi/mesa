@@ -127,6 +127,12 @@ offset_tri
 
 offset_units
     Specifies the polygon offset bias
+offset_units_unscaled
+    Specifies the unit of the polygon offset bias. If false, use the
+    GL/D3D1X behaviour. If true, offset_units is a floating point offset
+    which isn't scaled (D3D9). Note that GL/D3D1X behaviour has different
+    formula whether the depth buffer is unorm or float, which is not
+    the case for D3D9.
 offset_scale
     Specifies the polygon offset scale
 offset_clamp
@@ -159,12 +165,17 @@ Points
 
 sprite_coord_enable
 ^^^^^^^^^^^^^^^^^^^
+The effect of this state depends on PIPE_CAP_TGSI_TEXCOORD !
 
 Controls automatic texture coordinate generation for rendering sprite points.
 
+If PIPE_CAP_TGSI_TEXCOORD is false:
 When bit k in the sprite_coord_enable bitfield is set, then generic
 input k to the fragment shader will get an automatically computed
 texture coordinate.
+
+If PIPE_CAP_TGSI_TEXCOORD is true:
+The bitfield refers to inputs with TEXCOORD semantic instead of generic inputs.
 
 The texture coordinate will be of the form (s, t, 0, 1) where s varies
 from 0 to 1 from left to right while t varies from 0 to 1 according to
@@ -195,10 +206,11 @@ point_quad_rasterization
 Determines if points should be rasterized according to quad or point
 rasterization rules.
 
-OpenGL actually has quite different rasterization rules for points and
-point sprites - hence this indicates if points should be rasterized as
-points or according to point sprite (which decomposes them into quads,
-basically) rules.
+(Legacy-only) OpenGL actually has quite different rasterization rules
+for points and point sprites - hence this indicates if points should be
+rasterized as points or according to point sprite (which decomposes them
+into quads, basically) rules. Newer GL versions no longer support the old
+point rules at all.
 
 Additionally Direct3D will always use quad rasterization rules for
 points, regardless of whether point sprites are enabled or not.
@@ -212,6 +224,12 @@ generated.
    Some renderers always internally translate points into quads; this state
    still affects those renderers by overriding other rasterization state.
 
+point_tri_clip
+    Determines if clipping of points should happen after they are converted
+    to "rectangles" (required by d3d) or before (required by OpenGL, though
+    this rule is ignored by some IHVs).
+    It is not valid to set this to enabled but have point_quad_rasterization
+    disabled.
 point_smooth
     Whether points should be smoothed. Point smoothing turns rectangular
     points into circles or ovals.
@@ -233,9 +251,80 @@ scissor
 multisample
     Whether :term:`MSAA` is enabled.
 
-gl_rasterization_rules
-    Whether the rasterizer should use (0.5, 0.5) pixel centers. When not set,
-    the rasterizer will use (0, 0) for pixel centers.
+half_pixel_center
+    When true, the rasterizer should use (0.5, 0.5) pixel centers for
+    determining pixel ownership (e.g, OpenGL, D3D10 and higher)::
+
+           0 0.5 1
+        0  +-----+
+           |     |
+       0.5 |  X  |
+           |     |
+        1  +-----+
+
+    When false, the rasterizer should use (0, 0) pixel centers for determining
+    pixel ownership (e.g., D3D9 or ealier)::
+
+         -0.5 0 0.5
+      -0.5 +-----+
+           |     |
+        0  |  X  |
+           |     |
+       0.5 +-----+
+
+bottom_edge_rule
+    Determines what happens when a pixel sample lies precisely on a triangle
+    edge.
+
+    When true, a pixel sample is considered to lie inside of a triangle if it
+    lies on the *bottom edge* or *left edge* (e.g., OpenGL drawables)::
+
+        0                    x
+      0 +--------------------->
+        |
+        |  +-------------+
+        |  |             |
+        |  |             |
+        |  |             |
+        |  +=============+
+        |
+      y V
+
+    When false, a pixel sample is considered to lie inside of a triangle if it
+    lies on the *top edge* or *left edge* (e.g., OpenGL FBOs, D3D)::
+
+        0                    x
+      0 +--------------------->
+        |
+        |  +=============+
+        |  |             |
+        |  |             |
+        |  |             |
+        |  +-------------+
+        |
+      y V
+
+    Where:
+     - a *top edge* is an edge that is horizontal and is above the other edges;
+     - a *bottom edge* is an edge that is horizontal and is below the other
+       edges;
+     - a *left edge* is an edge that is not horizontal and is on the left side of
+       the triangle.
+
+    .. note::
+
+        Actually all graphics APIs use a top-left rasterization rule for pixel
+        ownership, but their notion of top varies with the axis origin (which
+        can be either at y = 0 or at y = height).  Gallium instead always
+        assumes that top is always at y=0.
+
+    See also:
+     - http://msdn.microsoft.com/en-us/library/windows/desktop/cc627092.aspx
+     - http://msdn.microsoft.com/en-us/library/windows/desktop/bb147314.aspx
+
+clip_halfz
+    When true clip space in the z axis goes from [0..1] (D3D).  When false
+    [-1, 1] (GL)
 
 depth_clip
     When false, the near and far depth clipping planes of the view volume are

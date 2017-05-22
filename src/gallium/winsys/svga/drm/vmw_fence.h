@@ -1,5 +1,5 @@
 /**********************************************************
- * Copyright 2009 VMware, Inc.  All rights reserved.
+ * Copyright 2009-2015 VMware, Inc.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation
@@ -29,7 +29,7 @@
 
 
 #include "pipe/p_compiler.h"
-
+#include "pipebuffer/pb_buffer_fenced.h"
 
 struct pipe_fence_handle;
 struct pb_fence_ops;
@@ -37,7 +37,8 @@ struct vmw_winsys_screen;
 
 
 struct pipe_fence_handle *
-vmw_fence_create(uint32_t handle, uint32_t mask);
+vmw_fence_create(struct pb_fence_ops *fence_ops,
+		 uint32_t handle, uint32_t seqno, uint32_t mask);
 
 int
 vmw_fence_finish(struct vmw_winsys_screen *vws,

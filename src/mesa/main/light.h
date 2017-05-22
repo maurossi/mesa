@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.5
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  * Copyright (C) 2009  VMware, Inc.  All Rights Reserved.
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -29,7 +29,6 @@
 
 
 #include "glheader.h"
-#include "mfeatures.h"
 
 struct gl_context;
 struct gl_light;
@@ -39,10 +38,9 @@ extern void GLAPIENTRY
 _mesa_ShadeModel( GLenum mode );
 
 extern void GLAPIENTRY
-_mesa_ProvokingVertexEXT(GLenum mode);
+_mesa_ProvokingVertex(GLenum mode);
 
 
-#if _HAVE_FULL_GL
 extern void GLAPIENTRY
 _mesa_ColorMaterial( GLenum face, GLenum mode );
 
@@ -104,18 +102,6 @@ extern void _mesa_update_color_material( struct gl_context *ctx,
 
 extern void _mesa_init_lighting( struct gl_context *ctx );
 
-extern void _mesa_free_lighting_data( struct gl_context *ctx );
-
 extern void _mesa_allow_light_in_model( struct gl_context *ctx, GLboolean flag );
-
-#else
-#define _mesa_update_color_material( c, r ) ((void)0)
-#define _mesa_material_bitmask( c, f, p, l, s ) 0
-#define _mesa_init_lighting( c ) ((void)0)
-#define _mesa_free_lighting_data( c ) ((void)0)
-#define _mesa_update_lighting( c ) ((void)0)
-#define _mesa_update_tnl_spaces( c, n ) ((void)0)
-#define GET_SHINE_TAB_ENTRY( table, dp, result )  ((result)=0)
-#endif
 
 #endif

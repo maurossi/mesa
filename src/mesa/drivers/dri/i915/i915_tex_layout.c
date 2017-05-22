@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2006 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2006 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -114,9 +114,9 @@ static GLint bottom_offsets[6] = {
 static void
 i915_miptree_layout_cube(struct intel_mipmap_tree * mt)
 {
-   const GLuint dim = mt->width0;
+   const GLuint dim = mt->physical_width0;
    GLuint face;
-   GLuint lvlWidth = mt->width0, lvlHeight = mt->height0;
+   GLuint lvlWidth = mt->physical_width0, lvlHeight = mt->physical_height0;
    GLint level;
 
    assert(lvlWidth == lvlHeight); /* cubemap images are square */
@@ -156,14 +156,14 @@ i915_miptree_layout_cube(struct intel_mipmap_tree * mt)
 static void
 i915_miptree_layout_3d(struct intel_mipmap_tree * mt)
 {
-   GLuint width = mt->width0;
-   GLuint height = mt->height0;
-   GLuint depth = mt->depth0;
+   GLuint width = mt->physical_width0;
+   GLuint height = mt->physical_height0;
+   GLuint depth = mt->physical_depth0;
    GLuint stack_height = 0;
    GLint level;
 
    /* Calculate the size of a single slice. */
-   mt->total_width = mt->width0;
+   mt->total_width = mt->physical_width0;
 
    /* XXX: hardware expects/requires 9 levels at minimum. */
    for (level = mt->first_level; level <= MAX2(8, mt->last_level); level++) {
@@ -172,13 +172,13 @@ i915_miptree_layout_3d(struct intel_mipmap_tree * mt)
 
       stack_height += MAX2(2, height);
 
-      width = minify(width);
-      height = minify(height);
-      depth = minify(depth);
+      width = minify(width, 1);
+      height = minify(height, 1);
+      depth = minify(depth, 1);
    }
 
    /* Fixup depth image_offsets: */
-   depth = mt->depth0;
+   depth = mt->physical_depth0;
    for (level = mt->first_level; level <= mt->last_level; level++) {
       GLuint i;
       for (i = 0; i < depth; i++) {
@@ -186,25 +186,25 @@ i915_miptree_layout_3d(struct intel_mipmap_tree * mt)
 					0, i * stack_height);
       }
 
-      depth = minify(depth);
+      depth = minify(depth, 1);
    }
 
    /* Multiply slice size by texture depth for total size.  It's
     * remarkable how wasteful of memory the i915 texture layouts
     * are.  They are largely fixed in the i945.
     */
-   mt->total_height = stack_height * mt->depth0;
+   mt->total_height = stack_height * mt->physical_depth0;
 }
 
 static void
 i915_miptree_layout_2d(struct intel_mipmap_tree * mt)
 {
-   GLuint width = mt->width0;
-   GLuint height = mt->height0;
+   GLuint width = mt->physical_width0;
+   GLuint height = mt->physical_height0;
    GLuint img_height;
    GLint level;
 
-   mt->total_width = mt->width0;
+   mt->total_width = mt->physical_width0;
    mt->total_height = 0;
 
    for (level = mt->first_level; level <= mt->last_level; level++) {
@@ -219,8 +219,8 @@ i915_miptree_layout_2d(struct intel_mipmap_tree * mt)
 
       mt->total_height += img_height;
 
-      width = minify(width);
-      height = minify(height);
+      width = minify(width, 1);
+      height = minify(height, 1);
    }
 }
 
@@ -244,7 +244,7 @@ i915_miptree_layout(struct intel_mipmap_tree * mt)
       break;
    }
 
-   DBG("%s: %dx%dx%d\n", __FUNCTION__,
+   DBG("%s: %dx%dx%d\n", __func__,
        mt->total_width, mt->total_height, mt->cpp);
 }
 
@@ -312,9 +312,9 @@ i915_miptree_layout(struct intel_mipmap_tree * mt)
 static void
 i945_miptree_layout_cube(struct intel_mipmap_tree * mt)
 {
-   const GLuint dim = mt->width0;
+   const GLuint dim = mt->physical_width0;
    GLuint face;
-   GLuint lvlWidth = mt->width0, lvlHeight = mt->height0;
+   GLuint lvlWidth = mt->physical_width0, lvlHeight = mt->physical_height0;
    GLint level;
 
    assert(lvlWidth == lvlHeight); /* cubemap images are square */
@@ -402,17 +402,17 @@ i945_miptree_layout_cube(struct intel_mipmap_tree * mt)
 static void
 i945_miptree_layout_3d(struct intel_mipmap_tree * mt)
 {
-   GLuint width = mt->width0;
-   GLuint height = mt->height0;
-   GLuint depth = mt->depth0;
+   GLuint width = mt->physical_width0;
+   GLuint height = mt->physical_height0;
+   GLuint depth = mt->physical_depth0;
    GLuint pack_x_pitch, pack_x_nr;
    GLuint pack_y_pitch;
    GLuint level;
 
-   mt->total_width = mt->width0;
+   mt->total_width = mt->physical_width0;
    mt->total_height = 0;
 
-   pack_y_pitch = MAX2(mt->height0, 2);
+   pack_y_pitch = MAX2(mt->physical_height0, 2);
    pack_x_pitch = mt->total_width;
    pack_x_nr = 1;
 
@@ -447,9 +447,9 @@ i945_miptree_layout_3d(struct intel_mipmap_tree * mt)
 	 pack_y_pitch >>= 1;
       }
 
-      width = minify(width);
-      height = minify(height);
-      depth = minify(depth);
+      width = minify(width, 1);
+      height = minify(height, 1);
+      depth = minify(depth, 1);
    }
 }
 
@@ -476,6 +476,6 @@ i945_miptree_layout(struct intel_mipmap_tree * mt)
       break;
    }
 
-   DBG("%s: %dx%dx%d\n", __FUNCTION__,
+   DBG("%s: %dx%dx%d\n", __func__,
        mt->total_width, mt->total_height, mt->cpp);
 }

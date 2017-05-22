@@ -1,8 +1,8 @@
 /*
  Copyright (C) Intel Corp.  2006.  All Rights Reserved.
- Intel funded Tungsten Graphics (http://www.tungstengraphics.com) to
+ Intel funded Tungsten Graphics to
  develop this 3D driver.
- 
+
  Permission is hereby granted, free of charge, to any person obtaining
  a copy of this software and associated documentation files (the
  "Software"), to deal in the Software without restriction, including
@@ -10,11 +10,11 @@
  distribute, sublicense, and/or sell copies of the Software, and to
  permit persons to whom the Software is furnished to do so, subject to
  the following conditions:
- 
+
  The above copyright notice and this permission notice (including the
  next paragraph) shall be included in all copies or substantial
  portions of the Software.
- 
+
  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
  EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
@@ -22,18 +22,19 @@
  LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
  OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
  WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- 
+
  **********************************************************************/
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
-   
+
 
 
 #include "main/mtypes.h"
 #include "main/macros.h"
 #include "main/fbobject.h"
+#include "main/viewport.h"
 #include "brw_context.h"
 #include "brw_state.h"
 #include "brw_defines.h"
@@ -41,17 +42,21 @@
 
 static void upload_sf_vp(struct brw_context *brw)
 {
-   struct intel_context *intel = &brw->intel;
-   struct gl_context *ctx = &intel->ctx;
-   const GLfloat depth_scale = 1.0F / ctx->DrawBuffer->_DepthMaxF;
+   struct gl_context *ctx = &brw->ctx;
    struct brw_sf_viewport *sfv;
    GLfloat y_scale, y_bias;
+   float scale[3], translate[3];
    const bool render_to_fbo = _mesa_is_user_fbo(ctx->DrawBuffer);
-   const GLfloat *v = ctx->Viewport._WindowMap.m;
 
    sfv = brw_state_batch(brw, AUB_TRACE_SF_VP_STATE,
 			 sizeof(*sfv), 32, &brw->sf.vp_offset);
    memset(sfv, 0, sizeof(*sfv));
+
+   /* Accessing the fields Width and Height of gl_framebuffer to produce the
+    * values to program the viewport and scissor is fine as long as the
+    * gl_framebuffer has atleast one attachment.
+    */
+   assert(ctx->DrawBuffer->_HasAttachments);
 
    if (render_to_fbo) {
       y_scale = 1.0;
@@ -64,12 +69,13 @@ static void upload_sf_vp(struct brw_context *brw)
 
    /* _NEW_VIEWPORT */
 
-   sfv->viewport.m00 = v[MAT_SX];
-   sfv->viewport.m11 = v[MAT_SY] * y_scale;
-   sfv->viewport.m22 = v[MAT_SZ] * depth_scale;
-   sfv->viewport.m30 = v[MAT_TX];
-   sfv->viewport.m31 = v[MAT_TY] * y_scale + y_bias;
-   sfv->viewport.m32 = v[MAT_TZ] * depth_scale;
+   _mesa_get_viewport_xform(ctx, 0, scale, translate);
+   sfv->viewport.m00 = scale[0];
+   sfv->viewport.m11 = scale[1] * y_scale;
+   sfv->viewport.m22 = scale[2];
+   sfv->viewport.m30 = translate[0];
+   sfv->viewport.m31 = translate[1] * y_scale + y_bias;
+   sfv->viewport.m32 = translate[2];
 
    /* _NEW_SCISSOR | _NEW_BUFFERS | _NEW_VIEWPORT
     * for DrawBuffer->_[XY]{min,max}
@@ -110,48 +116,34 @@ static void upload_sf_vp(struct brw_context *brw)
       sfv->scissor.ymax = ctx->DrawBuffer->Height - ctx->DrawBuffer->_Ymin - 1;
    }
 
-   brw->state.dirty.cache |= CACHE_NEW_SF_VP;
+   brw->ctx.NewDriverState |= BRW_NEW_SF_VP;
 }
 
 const struct brw_tracked_state brw_sf_vp = {
    .dirty = {
-      .mesa  = (_NEW_VIEWPORT | 
-		_NEW_SCISSOR |
-		_NEW_BUFFERS),
-      .brw   = BRW_NEW_BATCH,
-      .cache = 0
+      .mesa  = _NEW_BUFFERS |
+               _NEW_SCISSOR |
+               _NEW_VIEWPORT,
+      .brw   = BRW_NEW_BATCH |
+               BRW_NEW_BLORP,
    },
    .emit = upload_sf_vp
 };
 
-/**
- * Compute the offset within the URB (expressed in 256-bit register
- * increments) that should be used to read the VUE in th efragment shader.
- */
-int
-brw_sf_compute_urb_entry_read_offset(struct intel_context *intel)
-{
-   if (intel->gen == 5)
-      return 3;
-   else
-      return 1;
-}
-
 static void upload_sf_unit( struct brw_context *brw )
 {
-   struct intel_context *intel = &brw->intel;
-   struct gl_context *ctx = &intel->ctx;
+   struct gl_context *ctx = &brw->ctx;
    struct brw_sf_unit_state *sf;
-   drm_intel_bo *bo = intel->batch.bo;
+   drm_intel_bo *bo = brw->batch.bo;
    int chipset_max_threads;
-   bool render_to_fbo = _mesa_is_user_fbo(brw->intel.ctx.DrawBuffer);
+   bool render_to_fbo = _mesa_is_user_fbo(ctx->DrawBuffer);
 
    sf = brw_state_batch(brw, AUB_TRACE_SF_STATE,
 			sizeof(*sf), 64, &brw->sf.state_offset);
 
    memset(sf, 0, sizeof(*sf));
 
-   /* BRW_NEW_PROGRAM_CACHE | CACHE_NEW_SF_PROG */
+   /* BRW_NEW_PROGRAM_CACHE | BRW_NEW_SF_PROG_DATA */
    sf->thread0.grf_reg_count = ALIGN(brw->sf.prog_data->total_grf, 16) / 16 - 1;
    sf->thread0.kernel_start_pointer =
       brw_program_reloc(brw,
@@ -163,11 +155,9 @@ static void upload_sf_unit( struct brw_context *brw )
    sf->thread1.floating_point_mode = BRW_FLOATING_POINT_NON_IEEE_754;
 
    sf->thread3.dispatch_grf_start_reg = 3;
+   sf->thread3.urb_entry_read_offset = BRW_SF_URB_ENTRY_READ_OFFSET;
 
-   sf->thread3.urb_entry_read_offset =
-      brw_sf_compute_urb_entry_read_offset(intel);
-
-   /* CACHE_NEW_SF_PROG */
+   /* BRW_NEW_SF_PROG_DATA */
    sf->thread3.urb_entry_read_length = brw->sf.prog_data->urb_read_length;
 
    /* BRW_NEW_URB_FENCE */
@@ -177,7 +167,7 @@ static void upload_sf_unit( struct brw_context *brw )
    /* Each SF thread produces 1 PUE, and there can be up to 24 (Pre-Ironlake) or
     * 48 (Ironlake) threads.
     */
-   if (intel->gen == 5)
+   if (brw->gen == 5)
       chipset_max_threads = 48;
    else
       chipset_max_threads = 24;
@@ -189,21 +179,21 @@ static void upload_sf_unit( struct brw_context *brw )
    if (unlikely(INTEL_DEBUG & DEBUG_STATS))
       sf->thread4.stats_enable = 1;
 
-   /* CACHE_NEW_SF_VP */
-   sf->sf5.sf_viewport_state_offset = (intel->batch.bo->offset +
+   /* BRW_NEW_SF_VP */
+   sf->sf5.sf_viewport_state_offset = (brw->batch.bo->offset64 +
 				       brw->sf.vp_offset) >> 5; /* reloc */
 
    sf->sf5.viewport_transform = 1;
 
    /* _NEW_SCISSOR */
-   if (ctx->Scissor.Enabled)
+   if (ctx->Scissor.EnableFlags)
       sf->sf6.scissor = 1;
 
    /* _NEW_POLYGON */
-   if (ctx->Polygon.FrontFace == GL_CCW)
-      sf->sf5.front_winding = BRW_FRONTWINDING_CCW;
-   else
+   if (ctx->Polygon._FrontBit)
       sf->sf5.front_winding = BRW_FRONTWINDING_CW;
+   else
+      sf->sf5.front_winding = BRW_FRONTWINDING_CCW;
 
    /* _NEW_BUFFERS
     * The viewport is inverted for rendering to a FBO, and that inverts
@@ -226,13 +216,12 @@ static void upload_sf_unit( struct brw_context *brw )
       sf->sf6.cull_mode = BRW_CULLMODE_NONE;
       break;
    default:
-      assert(0);
-      break;
+      unreachable("not reached");
    }
 
    /* _NEW_LINE */
-   /* XXX use ctx->Const.Min/MaxLineWidth here */
-   sf->sf6.line_width = CLAMP(ctx->Line.Width, 1.0, 5.0) * (1<<1);
+   sf->sf6.line_width =
+      CLAMP(ctx->Line.Width, 1.0f, ctx->Const.MaxLineWidth) * (1<<1);
 
    sf->sf6.line_endcap_aa_region_width = 1;
    if (ctx->Line.SmoothFlag)
@@ -255,8 +244,8 @@ static void upload_sf_unit( struct brw_context *brw )
        * "Intel® 965 Express Chipset Family and Intel® G35 Express
        * Chipset Graphics Controller Programmer's Reference Manual,
        * Volume 2: 3D/Media", Revision 1.0b as of January 2008,
-       * available at 
-       *     http://intellinuxgraphics.org/documentation.html
+       * available at
+       *     https://01.org/linuxgraphics/documentation/hardware-specification-prms
        * at the time of this writing).
        *
        * It does work on at least some devices, if not all;
@@ -271,9 +260,10 @@ static void upload_sf_unit( struct brw_context *brw )
 
    /* _NEW_POINT */
    sf->sf7.sprite_point = ctx->Point.PointSprite;
-   sf->sf7.point_size = CLAMP(rint(CLAMP(ctx->Point.Size,
-					 ctx->Point.MinSize,
-					 ctx->Point.MaxSize)), 1, 255) * (1<<3);
+   sf->sf7.point_size = CLAMP(rintf(CLAMP(ctx->Point.Size,
+                                          ctx->Point.MinSize,
+                                          ctx->Point.MaxSize)), 1.0f, 255.0f) *
+                        (1<<3);
    /* _NEW_PROGRAM | _NEW_POINT */
    sf->sf7.use_point_size_state = !(ctx->VertexProgram.PointSizeEnabled ||
 				    ctx->Point._Attenuated);
@@ -305,28 +295,29 @@ static void upload_sf_unit( struct brw_context *brw )
    /* Emit SF viewport relocation */
    drm_intel_bo_emit_reloc(bo, (brw->sf.state_offset +
 				offsetof(struct brw_sf_unit_state, sf5)),
-			   intel->batch.bo, (brw->sf.vp_offset |
+			   brw->batch.bo, (brw->sf.vp_offset |
 					     sf->sf5.front_winding |
 					     (sf->sf5.viewport_transform << 1)),
 			   I915_GEM_DOMAIN_INSTRUCTION, 0);
 
-   brw->state.dirty.cache |= CACHE_NEW_SF_UNIT;
+   brw->ctx.NewDriverState |= BRW_NEW_GEN4_UNIT_STATE;
 }
 
 const struct brw_tracked_state brw_sf_unit = {
    .dirty = {
-      .mesa  = (_NEW_POLYGON | 
-		_NEW_PROGRAM |
-		_NEW_LIGHT |
-		_NEW_LINE | 
-		_NEW_POINT | 
-		_NEW_SCISSOR |
-		_NEW_BUFFERS),
-      .brw   = (BRW_NEW_BATCH |
-		BRW_NEW_PROGRAM_CACHE |
-		BRW_NEW_URB_FENCE),
-      .cache = (CACHE_NEW_SF_VP |
-		CACHE_NEW_SF_PROG)
+      .mesa  = _NEW_BUFFERS |
+               _NEW_LIGHT |
+               _NEW_LINE |
+               _NEW_POINT |
+               _NEW_POLYGON |
+               _NEW_PROGRAM |
+               _NEW_SCISSOR,
+      .brw   = BRW_NEW_BATCH |
+               BRW_NEW_BLORP |
+               BRW_NEW_PROGRAM_CACHE |
+               BRW_NEW_SF_PROG_DATA |
+               BRW_NEW_SF_VP |
+               BRW_NEW_URB_FENCE,
    },
    .emit = upload_sf_unit,
 };

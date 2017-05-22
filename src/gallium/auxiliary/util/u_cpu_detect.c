@@ -52,7 +52,7 @@
 #include <machine/cpu.h>
 #endif
 
-#if defined(PIPE_OS_FREEBSD)
+#if defined(PIPE_OS_FREEBSD) || defined(PIPE_OS_DRAGONFLY)
 #include <sys/types.h>
 #include <sys/sysctl.h>
 #endif
@@ -67,7 +67,7 @@
 
 #if defined(PIPE_OS_WINDOWS)
 #include <windows.h>
-#if defined(MSVC)
+#if defined(PIPE_CC_MSVC)
 #include <intrin.h>
 #endif
 #endif
@@ -179,7 +179,7 @@ static int has_cpuid(void)
  * @sa cpuid.h included in gcc-4.3 onwards.
  * @sa http://msdn.microsoft.com/en-us/library/hskdteyh.aspx
  */
-static INLINE void
+static inline void
 cpuid(uint32_t ax, uint32_t *p)
 {
 #if defined(PIPE_CC_GCC) && defined(PIPE_ARCH_X86)
@@ -211,6 +211,87 @@ cpuid(uint32_t ax, uint32_t *p)
    p[3] = 0;
 #endif
 }
+
+/**
+ * @sa cpuid.h included in gcc-4.4 onwards.
+ * @sa http://msdn.microsoft.com/en-us/library/hskdteyh%28v=vs.90%29.aspx
+ */
+static inline void
+cpuid_count(uint32_t ax, uint32_t cx, uint32_t *p)
+{
+#if defined(PIPE_CC_GCC) && defined(PIPE_ARCH_X86)
+   __asm __volatile (
+     "xchgl %%ebx, %1\n\t"
+     "cpuid\n\t"
+     "xchgl %%ebx, %1"
+     : "=a" (p[0]),
+       "=S" (p[1]),
+       "=c" (p[2]),
+       "=d" (p[3])
+     : "0" (ax), "2" (cx)
+   );
+#elif defined(PIPE_CC_GCC) && defined(PIPE_ARCH_X86_64)
+   __asm __volatile (
+     "cpuid\n\t"
+     : "=a" (p[0]),
+       "=b" (p[1]),
+       "=c" (p[2]),
+       "=d" (p[3])
+     : "0" (ax), "2" (cx)
+   );
+#elif defined(PIPE_CC_MSVC)
+   __cpuidex(p, ax, cx);
+#else
+   p[0] = 0;
+   p[1] = 0;
+   p[2] = 0;
+   p[3] = 0;
+#endif
+}
+
+
+static inline uint64_t xgetbv(void)
+{
+#if defined(PIPE_CC_GCC)
+   uint32_t eax, edx;
+
+   __asm __volatile (
+     ".byte 0x0f, 0x01, 0xd0" // xgetbv isn't supported on gcc < 4.4
+     : "=a"(eax),
+       "=d"(edx)
+     : "c"(0)
+   );
+
+   return ((uint64_t)edx << 32) | eax;
+#elif defined(PIPE_CC_MSVC) && defined(_MSC_FULL_VER) && defined(_XCR_XFEATURE_ENABLED_MASK)
+   return _xgetbv(_XCR_XFEATURE_ENABLED_MASK);
+#else
+   return 0;
+#endif
+}
+
+
+#if defined(PIPE_ARCH_X86)
+PIPE_ALIGN_STACK static inline boolean sse2_has_daz(void)
+{
+   struct {
+      uint32_t pad1[7];
+      uint32_t mxcsr_mask;
+      uint32_t pad2[128-8];
+   } PIPE_ALIGN_VAR(16) fxarea;
+
+   fxarea.mxcsr_mask = 0;
+#if defined(PIPE_CC_GCC)
+   __asm __volatile ("fxsave %0" : "+m" (fxarea));
+#elif defined(PIPE_CC_MSVC) || defined(PIPE_CC_ICL)
+   _fxsave(&fxarea);
+#else
+   fxarea.mxcsr_mask = 0;
+#endif
+   return !!(fxarea.mxcsr_mask & (1 << 6));
+}
+#endif
+
 #endif /* X86 or X86_64 */
 
 void
@@ -232,7 +313,7 @@ util_cpu_detect(void)
    }
 #elif defined(PIPE_OS_UNIX) && defined(_SC_NPROCESSORS_ONLN)
    util_cpu_caps.nr_cpus = sysconf(_SC_NPROCESSORS_ONLN);
-   if (util_cpu_caps.nr_cpus == -1)
+   if (util_cpu_caps.nr_cpus == ~0u)
       util_cpu_caps.nr_cpus = 1;
 #elif defined(PIPE_OS_BSD)
    {
@@ -249,6 +330,11 @@ util_cpu_detect(void)
 #else
    util_cpu_caps.nr_cpus = 1;
 #endif
+
+   /* Make the fallback cacheline size nonzero so that it can be
+    * safely passed to align().
+    */
+   util_cpu_caps.cacheline = sizeof(void *);
 
 #if defined(PIPE_ARCH_X86) || defined(PIPE_ARCH_X86_64)
    if (has_cpuid()) {
@@ -270,7 +356,7 @@ util_cpu_detect(void)
              util_cpu_caps.x86_cpu_type = 8 + ((regs2[0] >> 20) & 255); /* use extended family (P4, IA64) */
 
          /* general feature flags */
-         util_cpu_caps.has_tsc    = (regs2[3] >>  8) & 1; /* 0x0000010 */
+         util_cpu_caps.has_tsc    = (regs2[3] >>  4) & 1; /* 0x0000010 */
          util_cpu_caps.has_mmx    = (regs2[3] >> 23) & 1; /* 0x0800000 */
          util_cpu_caps.has_sse    = (regs2[3] >> 25) & 1; /* 0x2000000 */
          util_cpu_caps.has_sse2   = (regs2[3] >> 26) & 1; /* 0x4000000 */
@@ -278,12 +364,50 @@ util_cpu_detect(void)
          util_cpu_caps.has_ssse3  = (regs2[2] >>  9) & 1; /* 0x0000020 */
          util_cpu_caps.has_sse4_1 = (regs2[2] >> 19) & 1;
          util_cpu_caps.has_sse4_2 = (regs2[2] >> 20) & 1;
-         util_cpu_caps.has_avx    = (regs2[2] >> 28) & 1;
+         util_cpu_caps.has_popcnt = (regs2[2] >> 23) & 1;
+         util_cpu_caps.has_avx    = ((regs2[2] >> 28) & 1) && // AVX
+                                    ((regs2[2] >> 27) & 1) && // OSXSAVE
+                                    ((xgetbv() & 6) == 6);    // XMM & YMM
+         util_cpu_caps.has_f16c   = ((regs2[2] >> 29) & 1) && util_cpu_caps.has_avx;
+         util_cpu_caps.has_fma    = ((regs2[2] >> 12) & 1) && util_cpu_caps.has_avx;
          util_cpu_caps.has_mmx2   = util_cpu_caps.has_sse; /* SSE cpus supports mmxext too */
+#if defined(PIPE_ARCH_X86_64)
+         util_cpu_caps.has_daz = 1;
+#else
+         util_cpu_caps.has_daz = util_cpu_caps.has_sse3 ||
+            (util_cpu_caps.has_sse2 && sse2_has_daz());
+#endif
 
          cacheline = ((regs2[1] >> 8) & 0xFF) * 8;
          if (cacheline > 0)
             util_cpu_caps.cacheline = cacheline;
+      }
+      if (util_cpu_caps.has_avx && regs[0] >= 0x00000007) {
+         uint32_t regs7[4];
+         cpuid_count(0x00000007, 0x00000000, regs7);
+         util_cpu_caps.has_avx2 = (regs7[1] >> 5) & 1;
+      }
+
+      // check for avx512
+      if (((regs2[2] >> 27) & 1) && // OSXSAVE
+          (xgetbv() & (0x7 << 5)) && // OPMASK: upper-256 enabled by OS
+          ((xgetbv() & 6) == 6)) { // XMM/YMM enabled by OS
+         uint32_t regs3[4];
+         cpuid(0x00000007, regs3);
+         util_cpu_caps.has_avx512f    = (regs3[1] >> 16) & 1;
+         util_cpu_caps.has_avx512dq   = (regs3[1] >> 17) & 1;
+         util_cpu_caps.has_avx512ifma = (regs3[1] >> 21) & 1;
+         util_cpu_caps.has_avx512pf   = (regs3[1] >> 26) & 1;
+         util_cpu_caps.has_avx512er   = (regs3[1] >> 27) & 1;
+         util_cpu_caps.has_avx512cd   = (regs3[1] >> 28) & 1;
+         util_cpu_caps.has_avx512bw   = (regs3[1] >> 30) & 1;
+         util_cpu_caps.has_avx512vl   = (regs3[1] >> 31) & 1;
+         util_cpu_caps.has_avx512vbmi = (regs3[2] >>  1) & 1;
+      }
+
+      if (regs[1] == 0x756e6547 && regs[2] == 0x6c65746e && regs[3] == 0x49656e69) {
+         /* GenuineIntel */
+         util_cpu_caps.has_intel = 1;
       }
 
       cpuid(0x80000000, regs);
@@ -296,11 +420,18 @@ util_cpu_detect(void)
          util_cpu_caps.has_mmx2 |= (regs2[3] >> 22) & 1;
          util_cpu_caps.has_3dnow = (regs2[3] >> 31) & 1;
          util_cpu_caps.has_3dnow_ext = (regs2[3] >> 30) & 1;
+
+         util_cpu_caps.has_xop = util_cpu_caps.has_avx &&
+                                 ((regs2[2] >> 11) & 1);
       }
 
       if (regs[0] >= 0x80000006) {
+         /* should we really do this if the clflush size above worked? */
+         unsigned int cacheline;
          cpuid(0x80000006, regs2);
-         util_cpu_caps.cacheline = regs2[2] & 0xFF;
+         cacheline = regs2[2] & 0xFF;
+         if (cacheline > 0)
+            util_cpu_caps.cacheline = cacheline;
       }
 
       if (!util_cpu_caps.has_sse) {
@@ -333,9 +464,23 @@ util_cpu_detect(void)
       debug_printf("util_cpu_caps.has_sse4_1 = %u\n", util_cpu_caps.has_sse4_1);
       debug_printf("util_cpu_caps.has_sse4_2 = %u\n", util_cpu_caps.has_sse4_2);
       debug_printf("util_cpu_caps.has_avx = %u\n", util_cpu_caps.has_avx);
+      debug_printf("util_cpu_caps.has_avx2 = %u\n", util_cpu_caps.has_avx2);
+      debug_printf("util_cpu_caps.has_f16c = %u\n", util_cpu_caps.has_f16c);
+      debug_printf("util_cpu_caps.has_popcnt = %u\n", util_cpu_caps.has_popcnt);
       debug_printf("util_cpu_caps.has_3dnow = %u\n", util_cpu_caps.has_3dnow);
       debug_printf("util_cpu_caps.has_3dnow_ext = %u\n", util_cpu_caps.has_3dnow_ext);
+      debug_printf("util_cpu_caps.has_xop = %u\n", util_cpu_caps.has_xop);
       debug_printf("util_cpu_caps.has_altivec = %u\n", util_cpu_caps.has_altivec);
+      debug_printf("util_cpu_caps.has_daz = %u\n", util_cpu_caps.has_daz);
+      debug_printf("util_cpu_caps.has_avx512f = %u\n", util_cpu_caps.has_avx512f);
+      debug_printf("util_cpu_caps.has_avx512dq = %u\n", util_cpu_caps.has_avx512dq);
+      debug_printf("util_cpu_caps.has_avx512ifma = %u\n", util_cpu_caps.has_avx512ifma);
+      debug_printf("util_cpu_caps.has_avx512pf = %u\n", util_cpu_caps.has_avx512pf);
+      debug_printf("util_cpu_caps.has_avx512er = %u\n", util_cpu_caps.has_avx512er);
+      debug_printf("util_cpu_caps.has_avx512cd = %u\n", util_cpu_caps.has_avx512cd);
+      debug_printf("util_cpu_caps.has_avx512bw = %u\n", util_cpu_caps.has_avx512bw);
+      debug_printf("util_cpu_caps.has_avx512vl = %u\n", util_cpu_caps.has_avx512vl);
+      debug_printf("util_cpu_caps.has_avx512vbmi = %u\n", util_cpu_caps.has_avx512vbmi);
    }
 #endif
 

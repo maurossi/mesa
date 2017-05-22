@@ -1,7 +1,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  3.5
  *
  * Copyright (C) 1999-2001  Brian Paul   All Rights Reserved.
  *
@@ -18,9 +17,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /*
@@ -54,7 +54,7 @@ DECLARE_XFORM_GROUP( x86, 3 )
 DECLARE_XFORM_GROUP( x86, 4 )
 
 
-extern GLvector4f * _ASMAPI
+extern GLvector4f *
 _mesa_x86_cliptest_points4( GLvector4f *clip_vec,
 			    GLvector4f *proj_vec,
 			    GLubyte clipMask[],
@@ -62,7 +62,7 @@ _mesa_x86_cliptest_points4( GLvector4f *clip_vec,
 			    GLubyte *andMask,
 			    GLboolean viewport_z_clip );
 
-extern GLvector4f * _ASMAPI
+extern GLvector4f *
 _mesa_x86_cliptest_points4_np( GLvector4f *clip_vec,
 			       GLvector4f *proj_vec,
 			       GLubyte clipMask[],
@@ -70,7 +70,7 @@ _mesa_x86_cliptest_points4_np( GLvector4f *clip_vec,
 			       GLubyte *andMask,
 			       GLboolean viewport_z_clip );
 
-extern void _ASMAPI
+extern void
 _mesa_v16_x86_cliptest_points4( GLfloat *first_vert,
 				GLfloat *last_vert,
 				GLubyte *or_mask,
@@ -78,7 +78,7 @@ _mesa_v16_x86_cliptest_points4( GLfloat *first_vert,
 				GLubyte *clip_mask,
 				GLboolean viewport_z_clip );
 
-extern void _ASMAPI
+extern void
 _mesa_v16_x86_general_xform( GLfloat *dest,
 			     const GLfloat *m,
 			     const GLfloat *src,

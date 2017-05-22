@@ -10,6 +10,8 @@ struct pipe_resource;
 
 #define DRM_API_HANDLE_TYPE_SHARED 0
 #define DRM_API_HANDLE_TYPE_KMS    1
+#define DRM_API_HANDLE_TYPE_FD     2
+
 
 /**
  * For use with pipe_screen::{texture_from_handle|texture_get_handle}.
@@ -17,11 +19,17 @@ struct pipe_resource;
 struct winsys_handle
 {
    /**
-    * Unused for texture_from_handle, always
-    * DRM_API_HANDLE_TYPE_SHARED.  Input to texture_get_handle,
-    * use TEXTURE_USAGE to select handle for kms or ipc.
+    * Input for texture_from_handle, valid values are
+    * DRM_API_HANDLE_TYPE_SHARED or DRM_API_HANDLE_TYPE_FD.
+    * Input to texture_get_handle,
+    * to select handle for kms, flink, or prime.
     */
    unsigned type;
+   /**
+    * Input for texture_get_handle, allows to export the offset
+    * of a specific layer of an array texture.
+    */
+   unsigned layer;
    /**
     * Input to texture_from_handle.
     * Output for texture_get_handle.
@@ -32,6 +40,11 @@ struct winsys_handle
     * Output for texture_get_handle.
     */
    unsigned stride;
+   /**
+    * Input to texture_from_handle.
+    * Output for texture_get_handle.
+    */
+   unsigned offset;
 };
 
 
@@ -42,6 +55,8 @@ struct winsys_handle
 enum drm_conf {
    /* How many frames to allow before throttling. Or -1 to indicate any number */
    DRM_CONF_THROTTLE, /* DRM_CONF_INT. */
+   /* Can this driver, running on this kernel, import and export dma-buf fds? */
+   DRM_CONF_SHARE_FD, /* DRM_CONF_BOOL. */
    DRM_CONF_MAX
 };
 
@@ -71,12 +86,7 @@ struct drm_conf_ret {
 struct drm_driver_descriptor
 {
    /**
-    * Identifying sufix/prefix of the binary, used by egl.
-    */
-   const char *name;
-
-   /**
-    * Kernel driver name, as accepted by drmOpenByName.
+    * Identifying prefix/suffix of the binary, used by the pipe-loader.
     */
    const char *driver_name;
 
@@ -88,7 +98,6 @@ struct drm_driver_descriptor
     */
    struct pipe_screen* (*create_screen)(int drm_fd);
 
-
    /**
     * Return a configuration value.
     *
@@ -99,14 +108,13 @@ struct drm_driver_descriptor
    const struct drm_conf_ret *(*configuration) (enum drm_conf conf);
 };
 
-extern struct drm_driver_descriptor driver_descriptor;
+extern const struct drm_driver_descriptor driver_descriptor;
 
 /**
  * Instantiate a drm_driver_descriptor struct.
  */
-#define DRM_DRIVER_DESCRIPTOR(name_str, driver_name_str, func, conf) \
-struct drm_driver_descriptor driver_descriptor = {             \
-   .name = name_str,                                           \
+#define DRM_DRIVER_DESCRIPTOR(driver_name_str, func, conf) \
+const struct drm_driver_descriptor driver_descriptor = {       \
    .driver_name = driver_name_str,                             \
    .create_screen = func,                                      \
    .configuration = (conf),				       \

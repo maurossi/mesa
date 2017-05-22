@@ -140,7 +140,7 @@ add_conv_test(struct gallivm_state *gallivm,
       LLVMBuildStore(builder, dst[i], ptr);
    }
 
-   LLVMBuildRetVoid(builder);;
+   LLVMBuildRetVoid(builder);
 
    gallivm_verify_function(gallivm, func);
 
@@ -155,6 +155,7 @@ test_one(unsigned verbose,
          struct lp_type src_type,
          struct lp_type dst_type)
 {
+   LLVMContextRef context;
    struct gallivm_state *gallivm;
    LLVMValueRef func = NULL;
    conv_test_ptr_t conv_test_ptr;
@@ -211,13 +212,16 @@ test_one(unsigned verbose,
 
    eps = MAX2(lp_const_eps(src_type), lp_const_eps(dst_type));
 
-   gallivm = gallivm_create();
+   context = LLVMContextCreate();
+   gallivm = gallivm_create("test_module", context);
 
    func = add_conv_test(gallivm, src_type, num_srcs, dst_type, num_dsts);
 
    gallivm_compile_module(gallivm);
 
    conv_test_ptr = (conv_test_ptr_t)gallivm_jit_function(gallivm, func);
+
+   gallivm_free_ir(gallivm);
 
    success = TRUE;
    for(i = 0; i < n && success; ++i) {
@@ -319,9 +323,8 @@ test_one(unsigned verbose,
    if(fp)
       write_tsv_row(fp, src_type, dst_type, cycles_avg, success);
 
-   gallivm_free_function(gallivm, func, conv_test_ptr);
-
    gallivm_destroy(gallivm);
+   LLVMContextDispose(context);
 
    return success;
 }
@@ -377,10 +380,12 @@ const struct lp_type conv_types[] = {
    {  FALSE, FALSE,  TRUE, FALSE,     8,   4 },
    {  FALSE, FALSE, FALSE,  TRUE,     8,   4 },
    {  FALSE, FALSE, FALSE, FALSE,     8,   4 },
+
+   {  FALSE, FALSE,  FALSE,  TRUE,    8,   8 },
 };
 
 
-const unsigned num_types = sizeof(conv_types)/sizeof(conv_types[0]);
+const unsigned num_types = ARRAY_SIZE(conv_types);
 
 
 boolean
