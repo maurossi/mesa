@@ -25,9 +25,10 @@
 #define R300_SCREEN_H
 
 #include "r300_chipset.h"
-#include "../../winsys/radeon/drm/radeon_winsys.h"
+#include "radeon/radeon_winsys.h"
 #include "pipe/p_screen.h"
-#include "util/u_slab.h"
+#include "util/slab.h"
+#include "os/os_thread.h"
 #include <stdio.h>
 
 struct r300_screen {
@@ -42,15 +43,21 @@ struct r300_screen {
 
     /** Combination of DBG_xxx flags */
     unsigned debug;
+
+    struct slab_parent_pool pool_transfers;
+
+    /* The MSAA texture with CMASK access; */
+    struct pipe_resource *cmask_resource;
+    pipe_mutex cmask_mutex;
 };
 
 
 /* Convenience cast wrappers. */
-static INLINE struct r300_screen* r300_screen(struct pipe_screen* screen) {
+static inline struct r300_screen* r300_screen(struct pipe_screen* screen) {
     return (struct r300_screen*)screen;
 }
 
-static INLINE struct radeon_winsys *
+static inline struct radeon_winsys *
 radeon_winsys(struct pipe_screen *screen) {
     return r300_screen(screen)->rws;
 }
@@ -83,6 +90,7 @@ radeon_winsys(struct pipe_screen *screen) {
 #define DBG_HYPERZ      (1 << 11)
 #define DBG_SCISSOR     (1 << 12)
 #define DBG_INFO        (1 << 13)
+#define DBG_MSAA        (1 << 14)
 /* Features. */
 #define DBG_ANISOHQ     (1 << 16)
 #define DBG_NO_TILING   (1 << 17)
@@ -91,16 +99,17 @@ radeon_winsys(struct pipe_screen *screen) {
 #define DBG_NO_CBZB     (1 << 20)
 #define DBG_NO_ZMASK    (1 << 21)
 #define DBG_NO_HIZ      (1 << 22)
+#define DBG_NO_CMASK    (1 << 23)
 /* Statistics. */
 #define DBG_P_STAT      (1 << 25)
 /*@}*/
 
-static INLINE boolean SCREEN_DBG_ON(struct r300_screen * screen, unsigned flags)
+static inline boolean SCREEN_DBG_ON(struct r300_screen * screen, unsigned flags)
 {
     return (screen->debug & flags) ? TRUE : FALSE;
 }
 
-static INLINE void SCREEN_DBG(struct r300_screen * screen, unsigned flags,
+static inline void SCREEN_DBG(struct r300_screen * screen, unsigned flags,
                               const char * fmt, ...)
 {
     if (SCREEN_DBG_ON(screen, flags)) {

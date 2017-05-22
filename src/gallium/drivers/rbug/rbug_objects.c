@@ -27,7 +27,7 @@
 
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
-#include "util/u_simple_list.h"
+#include "util/simple_list.h"
 
 #include "tgsi/tgsi_parse.h"
 
@@ -43,13 +43,13 @@ rbug_resource_create(struct rbug_screen *rb_screen,
 {
    struct rbug_resource *rb_resource;
 
-   if(!resource)
+   if (!resource)
       goto error;
 
    assert(resource->screen == rb_screen->screen);
 
    rb_resource = CALLOC_STRUCT(rbug_resource);
-   if(!rb_resource)
+   if (!rb_resource)
       goto error;
 
    memcpy(&rb_resource->base, resource, sizeof(struct pipe_resource));
@@ -58,7 +58,8 @@ rbug_resource_create(struct rbug_screen *rb_screen,
    rb_resource->base.screen = &rb_screen->base;
    rb_resource->resource = resource;
 
-   rbug_screen_add_to_list(rb_screen, resources, rb_resource);
+   if (resource->target != PIPE_BUFFER)
+      rbug_screen_add_to_list(rb_screen, resources, rb_resource);
 
    return &rb_resource->base;
 
@@ -71,7 +72,9 @@ void
 rbug_resource_destroy(struct rbug_resource *rb_resource)
 {
    struct rbug_screen *rb_screen = rbug_screen(rb_resource->base.screen);
-   rbug_screen_remove_from_list(rb_screen, resources, rb_resource);
+
+   if (rb_resource->base.target != PIPE_BUFFER)
+      rbug_screen_remove_from_list(rb_screen, resources, rb_resource);
 
    pipe_resource_reference(&rb_resource->resource, NULL);
    FREE(rb_resource);
@@ -85,13 +88,13 @@ rbug_surface_create(struct rbug_context *rb_context,
 {
    struct rbug_surface *rb_surface;
 
-   if(!surface)
+   if (!surface)
       goto error;
 
    assert(surface->texture == rb_resource->resource);
 
    rb_surface = CALLOC_STRUCT(rbug_surface);
-   if(!rb_surface)
+   if (!rb_surface)
       goto error;
 
    memcpy(&rb_surface->base, surface, sizeof(struct pipe_surface));
@@ -137,7 +140,7 @@ rbug_sampler_view_create(struct rbug_context *rb_context,
    rb_view->base.reference.count = 1;
    rb_view->base.texture = NULL;
    pipe_resource_reference(&rb_view->base.texture, &rb_resource->base);
-   rb_view->base.context = rb_context->pipe;
+   rb_view->base.context = &rb_context->base;
    rb_view->sampler_view = view;
 
    return &rb_view->base;
@@ -150,8 +153,7 @@ rbug_sampler_view_destroy(struct rbug_context *rb_context,
                           struct rbug_sampler_view *rb_view)
 {
    pipe_resource_reference(&rb_view->base.texture, NULL);
-   rb_context->pipe->sampler_view_destroy(rb_context->pipe,
-                                          rb_view->sampler_view);
+   pipe_sampler_view_reference(&rb_view->sampler_view, NULL);
    FREE(rb_view);
 }
 
@@ -163,13 +165,13 @@ rbug_transfer_create(struct rbug_context *rb_context,
 {
    struct rbug_transfer *rb_transfer;
 
-   if(!transfer)
+   if (!transfer)
       goto error;
 
    assert(transfer->resource == rb_resource->resource);
 
    rb_transfer = CALLOC_STRUCT(rbug_transfer);
-   if(!rb_transfer)
+   if (!rb_transfer)
       goto error;
 
    memcpy(&rb_transfer->base, transfer, sizeof(struct pipe_transfer));
@@ -184,7 +186,7 @@ rbug_transfer_create(struct rbug_context *rb_context,
    return &rb_transfer->base;
 
 error:
-   rb_context->pipe->transfer_destroy(rb_context->pipe, transfer);
+   rb_context->pipe->transfer_unmap(rb_context->pipe, transfer);
    return NULL;
 }
 
@@ -193,8 +195,6 @@ rbug_transfer_destroy(struct rbug_context *rb_context,
                       struct rbug_transfer *rb_transfer)
 {
    pipe_resource_reference(&rb_transfer->base.resource, NULL);
-   rb_transfer->pipe->transfer_destroy(rb_context->pipe,
-                                       rb_transfer->transfer);
    FREE(rb_transfer);
 }
 

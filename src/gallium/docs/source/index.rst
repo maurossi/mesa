@@ -16,9 +16,11 @@ Contents:
    tgsi
    screen
    resources
+   format
    context
    cso
    distro
+   drivers
    glossary
 
 Indices and tables

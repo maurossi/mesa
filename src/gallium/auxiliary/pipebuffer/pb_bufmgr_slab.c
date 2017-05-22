@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2006-2008 Tungsten Graphics, Inc., Cedar Park, TX., USA
+ * Copyright 2006-2008 VMware, Inc., USA
  * All Rights Reserved.
  *
  * Permission is hereby granted, FREE of charge, to any person obtaining a
@@ -32,8 +32,8 @@
  * 
  * @sa http://en.wikipedia.org/wiki/Slab_allocation
  * 
- * @author Thomas Hellstrom <thomas-at-tungstengraphics-dot-com>
- * @author Jose Fonseca <jrfonseca@tungstengraphics.com>
+ * @author Thomas Hellstrom <thellstom-at-vmware-dot-com>
+ * @author Jose Fonseca <jfonseca@vmware.com>
  */
 
 #include "pipe/p_compiler.h"
@@ -41,7 +41,7 @@
 #include "os/os_thread.h"
 #include "pipe/p_defines.h"
 #include "util/u_memory.h"
-#include "util/u_double_list.h"
+#include "util/list.h"
 #include "util/u_time.h"
 
 #include "pb_buffer.h"
@@ -163,7 +163,7 @@ struct pb_slab_range_manager
 };
 
 
-static INLINE struct pb_slab_buffer *
+static inline struct pb_slab_buffer *
 pb_slab_buffer(struct pb_buffer *buf)
 {
    assert(buf);
@@ -171,7 +171,7 @@ pb_slab_buffer(struct pb_buffer *buf)
 }
 
 
-static INLINE struct pb_slab_manager *
+static inline struct pb_slab_manager *
 pb_slab_manager(struct pb_manager *mgr)
 {
    assert(mgr);
@@ -179,7 +179,7 @@ pb_slab_manager(struct pb_manager *mgr)
 }
 
 
-static INLINE struct pb_slab_range_manager *
+static inline struct pb_slab_range_manager *
 pb_slab_range_manager(struct pb_manager *mgr)
 {
    assert(mgr);
@@ -542,7 +542,7 @@ pb_slab_range_manager_create(struct pb_manager *provider,
    pb_size bufSize;
    unsigned i;
 
-   if(!provider)
+   if (!provider)
       return NULL;
    
    mgr = CALLOC_STRUCT(pb_slab_range_manager);

@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   *   Brian Paul
   *   Zack  Rusin
   */
@@ -40,6 +40,9 @@
 #include "pipe/p_context.h"
 #include "pipe/p_defines.h"
 #include "cso_cache/cso_context.h"
+
+#include "main/core.h"
+#include "main/stencil.h"
 
 
 /**
@@ -102,10 +105,17 @@ update_depth_stencil_alpha(struct st_context *st)
    memset(dsa, 0, sizeof(*dsa));
    memset(&sr, 0, sizeof(sr));
 
-   if (ctx->Depth.Test && ctx->DrawBuffer->Visual.depthBits > 0) {
-      dsa->depth.enabled = 1;
-      dsa->depth.writemask = ctx->Depth.Mask;
-      dsa->depth.func = st_compare_func_to_pipe(ctx->Depth.Func);
+   if (ctx->DrawBuffer->Visual.depthBits > 0) {
+      if (ctx->Depth.Test) {
+         dsa->depth.enabled = 1;
+         dsa->depth.writemask = ctx->Depth.Mask;
+         dsa->depth.func = st_compare_func_to_pipe(ctx->Depth.Func);
+      }
+      if (ctx->Depth.BoundsTest) {
+         dsa->depth.bounds_test = 1;
+         dsa->depth.bounds_min = ctx->Depth.BoundsMin;
+         dsa->depth.bounds_max = ctx->Depth.BoundsMax;
+      }
    }
 
    if (ctx->Stencil.Enabled && ctx->DrawBuffer->Visual.stencilBits > 0) {
@@ -116,7 +126,7 @@ update_depth_stencil_alpha(struct st_context *st)
       dsa->stencil[0].zpass_op = gl_stencil_op_to_pipe(ctx->Stencil.ZPassFunc[0]);
       dsa->stencil[0].valuemask = ctx->Stencil.ValueMask[0] & 0xff;
       dsa->stencil[0].writemask = ctx->Stencil.WriteMask[0] & 0xff;
-      sr.ref_value[0] = ctx->Stencil.Ref[0] & 0xff;
+      sr.ref_value[0] = _mesa_get_stencil_ref(ctx, 0);
 
       if (ctx->Stencil._TestTwoSide) {
          const GLuint back = ctx->Stencil._BackFace;
@@ -127,7 +137,7 @@ update_depth_stencil_alpha(struct st_context *st)
          dsa->stencil[1].zpass_op = gl_stencil_op_to_pipe(ctx->Stencil.ZPassFunc[back]);
          dsa->stencil[1].valuemask = ctx->Stencil.ValueMask[back] & 0xff;
          dsa->stencil[1].writemask = ctx->Stencil.WriteMask[back] & 0xff;
-         sr.ref_value[1] = ctx->Stencil.Ref[back] & 0xff;
+         sr.ref_value[1] = _mesa_get_stencil_ref(ctx, back);
       }
       else {
          /* This should be unnecessary. Drivers must not expect this to
@@ -139,7 +149,8 @@ update_depth_stencil_alpha(struct st_context *st)
       }
    }
 
-   if (ctx->Color.AlphaEnabled) {
+   if (ctx->Color.AlphaEnabled &&
+       !(ctx->DrawBuffer->_IntegerBuffers & 0x1)) {
       dsa->alpha.enabled = 1;
       dsa->alpha.func = st_compare_func_to_pipe(ctx->Color.AlphaFunc);
       dsa->alpha.ref_value = ctx->Color.AlphaRefUnclamped;
@@ -151,10 +162,5 @@ update_depth_stencil_alpha(struct st_context *st)
 
 
 const struct st_tracked_state st_update_depth_stencil_alpha = {
-   "st_update_depth_stencil",				/* name */
-   {							/* dirty */
-      (_NEW_DEPTH|_NEW_STENCIL|_NEW_COLOR),		/* mesa */
-      0,						/* st */
-   },
    update_depth_stencil_alpha				/* update */
 };

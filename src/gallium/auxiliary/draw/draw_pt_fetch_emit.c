@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
 
 #include "util/u_memory.h"
@@ -169,7 +169,7 @@ static void fetch_emit_prepare( struct draw_pt_middle_end *middle,
    for (i = 0; i < draw->pt.nr_vertex_buffers; i++) {
       feme->translate->set_buffer(feme->translate,
                                   i,
-                                  ((char *)draw->pt.user.vbuffer[i] +
+                                  ((char *)draw->pt.user.vbuffer[i].map +
                                    draw->pt.vertex_buffer[i].buffer_offset),
                                   draw->pt.vertex_buffer[i].stride,
                                   draw->pt.max_index);
@@ -177,6 +177,13 @@ static void fetch_emit_prepare( struct draw_pt_middle_end *middle,
 
    *max_vertices = (draw->render->max_vertex_buffer_bytes /
                     (vinfo->size * 4));
+}
+
+
+static void
+fetch_emit_bind_parameters(struct draw_pt_middle_end *middle)
+{
+   /* No-op? */
 }
 
 
@@ -210,6 +217,7 @@ static void fetch_emit_run( struct draw_pt_middle_end *middle,
    feme->translate->run_elts( feme->translate,
 			      fetch_elts,
 			      fetch_count,
+                              draw->start_instance,
                               draw->instance_id,
 			      hw_verts );
 
@@ -267,6 +275,7 @@ static void fetch_emit_run_linear( struct draw_pt_middle_end *middle,
    feme->translate->run( feme->translate,
                          start,
                          count,
+                         draw->start_instance,
                          draw->instance_id,
                          hw_verts );
 
@@ -326,6 +335,7 @@ static boolean fetch_emit_run_linear_elts( struct draw_pt_middle_end *middle,
    feme->translate->run( feme->translate,
                          start,
                          count,
+                         draw->start_instance,
                          draw->instance_id,
                          hw_verts );
 
@@ -366,7 +376,7 @@ static void fetch_emit_destroy( struct draw_pt_middle_end *middle )
 struct draw_pt_middle_end *draw_pt_fetch_emit( struct draw_context *draw )
 {
    struct fetch_emit_middle_end *fetch_emit = CALLOC_STRUCT( fetch_emit_middle_end );
-   if (fetch_emit == NULL)
+   if (!fetch_emit)
       return NULL;
 
    fetch_emit->cache = translate_cache_create();
@@ -376,6 +386,7 @@ struct draw_pt_middle_end *draw_pt_fetch_emit( struct draw_context *draw )
    }
 
    fetch_emit->base.prepare    = fetch_emit_prepare;
+   fetch_emit->base.bind_parameters = fetch_emit_bind_parameters;
    fetch_emit->base.run        = fetch_emit_run;
    fetch_emit->base.run_linear = fetch_emit_run_linear;
    fetch_emit->base.run_linear_elts = fetch_emit_run_linear_elts;

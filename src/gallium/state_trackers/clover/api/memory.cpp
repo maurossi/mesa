@@ -14,175 +14,248 @@
 // THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 // IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 // FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
-// THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
-// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
-// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-// SOFTWARE.
+// THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+// OTHER DEALINGS IN THE SOFTWARE.
 //
 
+#include "util/u_math.h"
 #include "api/util.hpp"
 #include "core/memory.hpp"
 #include "core/format.hpp"
 
 using namespace clover;
 
-PUBLIC cl_mem
-clCreateBuffer(cl_context ctx, cl_mem_flags flags, size_t size,
-               void *host_ptr, cl_int *errcode_ret) try {
-   if (!ctx)
-      throw error(CL_INVALID_CONTEXT);
+namespace {
+   cl_mem_flags
+   validate_flags(cl_mem d_parent, cl_mem_flags d_flags) {
+      const cl_mem_flags dev_access_flags =
+         CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY | CL_MEM_READ_ONLY;
+      const cl_mem_flags host_ptr_flags =
+         CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR | CL_MEM_COPY_HOST_PTR;
+      const cl_mem_flags host_access_flags =
+         CL_MEM_HOST_WRITE_ONLY | CL_MEM_HOST_READ_ONLY | CL_MEM_HOST_NO_ACCESS;
+      const cl_mem_flags valid_flags =
+         dev_access_flags | host_access_flags | (d_parent ? 0 : host_ptr_flags);
+
+      if ((d_flags & ~valid_flags) ||
+          util_bitcount(d_flags & dev_access_flags) > 1 ||
+          util_bitcount(d_flags & host_access_flags) > 1)
+         throw error(CL_INVALID_VALUE);
+
+      if ((d_flags & CL_MEM_USE_HOST_PTR) &&
+          (d_flags & (CL_MEM_COPY_HOST_PTR | CL_MEM_ALLOC_HOST_PTR)))
+         throw error(CL_INVALID_VALUE);
+
+      if (d_parent) {
+         const auto &parent = obj(d_parent);
+         const cl_mem_flags flags = (d_flags |
+                                     (d_flags & dev_access_flags ? 0 :
+                                      parent.flags() & dev_access_flags) |
+                                     (d_flags & host_access_flags ? 0 :
+                                      parent.flags() & host_access_flags) |
+                                     (parent.flags() & host_ptr_flags));
+
+         if (~flags & parent.flags() &
+             ((dev_access_flags & ~CL_MEM_READ_WRITE) | host_access_flags))
+            throw error(CL_INVALID_VALUE);
+
+         return flags;
+
+      } else {
+         return d_flags | (d_flags & dev_access_flags ? 0 : CL_MEM_READ_WRITE);
+      }
+   }
+}
+
+CLOVER_API cl_mem
+clCreateBuffer(cl_context d_ctx, cl_mem_flags d_flags, size_t size,
+               void *host_ptr, cl_int *r_errcode) try {
+   const cl_mem_flags flags = validate_flags(NULL, d_flags);
+   auto &ctx = obj(d_ctx);
 
    if (bool(host_ptr) != bool(flags & (CL_MEM_USE_HOST_PTR |
                                        CL_MEM_COPY_HOST_PTR)))
       throw error(CL_INVALID_HOST_PTR);
 
-   if (!size)
+   if (!size ||
+       size > fold(maximum(), cl_ulong(0),
+                   map(std::mem_fn(&device::max_mem_alloc_size), ctx.devices())
+          ))
       throw error(CL_INVALID_BUFFER_SIZE);
 
-   if (flags & ~(CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY | CL_MEM_READ_ONLY |
-                 CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR |
-                 CL_MEM_COPY_HOST_PTR))
-      throw error(CL_INVALID_VALUE);
-
-   ret_error(errcode_ret, CL_SUCCESS);
-   return new root_buffer(*ctx, flags, size, host_ptr);
+   ret_error(r_errcode, CL_SUCCESS);
+   return new root_buffer(ctx, flags, size, host_ptr);
 
 } catch (error &e) {
-   ret_error(errcode_ret, e);
+   ret_error(r_errcode, e);
    return NULL;
 }
 
-PUBLIC cl_mem
-clCreateSubBuffer(cl_mem obj, cl_mem_flags flags, cl_buffer_create_type op,
-                  const void *op_info, cl_int *errcode_ret) try {
-   root_buffer *parent = dynamic_cast<root_buffer *>(obj);
-
-   if (!parent)
-      throw error(CL_INVALID_MEM_OBJECT);
-
-   if ((flags & (CL_MEM_USE_HOST_PTR |
-                 CL_MEM_ALLOC_HOST_PTR |
-                 CL_MEM_COPY_HOST_PTR)) ||
-       (~flags & parent->flags() & (CL_MEM_READ_ONLY |
-                                    CL_MEM_WRITE_ONLY)))
-      throw error(CL_INVALID_VALUE);
+CLOVER_API cl_mem
+clCreateSubBuffer(cl_mem d_mem, cl_mem_flags d_flags,
+                  cl_buffer_create_type op,
+                  const void *op_info, cl_int *r_errcode) try {
+   auto &parent = obj<root_buffer>(d_mem);
+   const cl_mem_flags flags = validate_flags(d_mem, d_flags);
 
    if (op == CL_BUFFER_CREATE_TYPE_REGION) {
-      const cl_buffer_region *reg = (const cl_buffer_region *)op_info;
+      auto reg = reinterpret_cast<const cl_buffer_region *>(op_info);
 
       if (!reg ||
-          reg->origin > parent->size() ||
-          reg->origin + reg->size > parent->size())
+          reg->origin > parent.size() ||
+          reg->origin + reg->size > parent.size())
          throw error(CL_INVALID_VALUE);
 
       if (!reg->size)
          throw error(CL_INVALID_BUFFER_SIZE);
 
-      ret_error(errcode_ret, CL_SUCCESS);
-      return new sub_buffer(*parent, flags, reg->origin, reg->size);
+      ret_error(r_errcode, CL_SUCCESS);
+      return new sub_buffer(parent, flags, reg->origin, reg->size);
 
    } else {
       throw error(CL_INVALID_VALUE);
    }
 
 } catch (error &e) {
-   ret_error(errcode_ret, e);
+   ret_error(r_errcode, e);
    return NULL;
 }
 
-PUBLIC cl_mem
-clCreateImage2D(cl_context ctx, cl_mem_flags flags,
-                const cl_image_format *format,
-                size_t width, size_t height, size_t row_pitch,
-                void *host_ptr, cl_int *errcode_ret) try {
-   if (!ctx)
-      throw error(CL_INVALID_CONTEXT);
+CLOVER_API cl_mem
+clCreateImage(cl_context d_ctx, cl_mem_flags d_flags,
+              const cl_image_format *format,
+              const cl_image_desc *desc,
+              void *host_ptr, cl_int *r_errcode) try {
+   auto &ctx = obj(d_ctx);
 
-   if (flags & ~(CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY | CL_MEM_READ_ONLY |
-                 CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR |
-                 CL_MEM_COPY_HOST_PTR))
-      throw error(CL_INVALID_VALUE);
+   if (!any_of(std::mem_fn(&device::image_support), ctx.devices()))
+      throw error(CL_INVALID_OPERATION);
 
    if (!format)
       throw error(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR);
 
-   if (width < 1 || height < 1)
-      throw error(CL_INVALID_IMAGE_SIZE);
+   if (!desc)
+      throw error(CL_INVALID_IMAGE_DESCRIPTOR);
 
-   if (bool(host_ptr) != bool(flags & (CL_MEM_USE_HOST_PTR |
-                                       CL_MEM_COPY_HOST_PTR)))
+   if (desc->image_array_size == 0 &&
+       (desc->image_type == CL_MEM_OBJECT_IMAGE1D_ARRAY ||
+        desc->image_type == CL_MEM_OBJECT_IMAGE2D_ARRAY))
+      throw error(CL_INVALID_IMAGE_DESCRIPTOR);
+
+   if (!host_ptr &&
+       (desc->image_row_pitch || desc->image_slice_pitch))
+      throw error(CL_INVALID_IMAGE_DESCRIPTOR);
+
+   if (desc->num_mip_levels || desc->num_samples)
+      throw error(CL_INVALID_IMAGE_DESCRIPTOR);
+
+   if (bool(desc->buffer) != (desc->image_type == CL_MEM_OBJECT_IMAGE1D_BUFFER))
+      throw error(CL_INVALID_IMAGE_DESCRIPTOR);
+
+   if (bool(host_ptr) != bool(d_flags & (CL_MEM_USE_HOST_PTR |
+                                         CL_MEM_COPY_HOST_PTR)))
       throw error(CL_INVALID_HOST_PTR);
 
-   if (!supported_formats(ctx, CL_MEM_OBJECT_IMAGE2D).count(*format))
+   const cl_mem_flags flags = validate_flags(desc->buffer, d_flags);
+
+   if (!supported_formats(ctx, desc->image_type).count(*format))
       throw error(CL_IMAGE_FORMAT_NOT_SUPPORTED);
 
-   ret_error(errcode_ret, CL_SUCCESS);
-   return new image2d(*ctx, flags, format, width, height,
-                      row_pitch, host_ptr);
+   ret_error(r_errcode, CL_SUCCESS);
+
+   switch (desc->image_type) {
+   case CL_MEM_OBJECT_IMAGE2D:
+      if (!desc->image_width || !desc->image_height)
+         throw error(CL_INVALID_IMAGE_SIZE);
+
+      if (all_of([=](const device &dev) {
+               const size_t max = 1 << dev.max_image_levels_2d();
+               return (desc->image_width > max ||
+                       desc->image_height > max);
+            }, ctx.devices()))
+         throw error(CL_INVALID_IMAGE_SIZE);
+
+      return new image2d(ctx, flags, format,
+                         desc->image_width, desc->image_height,
+                         desc->image_row_pitch, host_ptr);
+
+   case CL_MEM_OBJECT_IMAGE3D:
+      if (!desc->image_width || !desc->image_height || !desc->image_depth)
+         throw error(CL_INVALID_IMAGE_SIZE);
+
+      if (all_of([=](const device &dev) {
+               const size_t max = 1 << dev.max_image_levels_3d();
+               return (desc->image_width > max ||
+                       desc->image_height > max ||
+                       desc->image_depth > max);
+            }, ctx.devices()))
+         throw error(CL_INVALID_IMAGE_SIZE);
+
+      return new image3d(ctx, flags, format,
+                         desc->image_width, desc->image_height,
+                         desc->image_depth, desc->image_row_pitch,
+                         desc->image_slice_pitch, host_ptr);
+
+   case CL_MEM_OBJECT_IMAGE1D:
+   case CL_MEM_OBJECT_IMAGE1D_ARRAY:
+   case CL_MEM_OBJECT_IMAGE1D_BUFFER:
+   case CL_MEM_OBJECT_IMAGE2D_ARRAY:
+      // XXX - Not implemented.
+      throw error(CL_IMAGE_FORMAT_NOT_SUPPORTED);
+
+   default:
+      throw error(CL_INVALID_IMAGE_DESCRIPTOR);
+   }
 
 } catch (error &e) {
-   ret_error(errcode_ret, e);
+   ret_error(r_errcode, e);
    return NULL;
 }
 
-PUBLIC cl_mem
-clCreateImage3D(cl_context ctx, cl_mem_flags flags,
+CLOVER_API cl_mem
+clCreateImage2D(cl_context d_ctx, cl_mem_flags d_flags,
+                const cl_image_format *format,
+                size_t width, size_t height, size_t row_pitch,
+                void *host_ptr, cl_int *r_errcode) {
+   const cl_image_desc desc = { CL_MEM_OBJECT_IMAGE2D, width, height, 0, 0,
+                                row_pitch, 0, 0, 0, NULL };
+
+   return clCreateImage(d_ctx, d_flags, format, &desc, host_ptr, r_errcode);
+}
+
+CLOVER_API cl_mem
+clCreateImage3D(cl_context d_ctx, cl_mem_flags d_flags,
                 const cl_image_format *format,
                 size_t width, size_t height, size_t depth,
                 size_t row_pitch, size_t slice_pitch,
-                void *host_ptr, cl_int *errcode_ret) try {
-   if (!ctx)
-      throw error(CL_INVALID_CONTEXT);
+                void *host_ptr, cl_int *r_errcode) {
+   const cl_image_desc desc = { CL_MEM_OBJECT_IMAGE3D, width, height, depth, 0,
+                                row_pitch, slice_pitch, 0, 0, NULL };
 
-   if (flags & ~(CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY | CL_MEM_READ_ONLY |
-                 CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR |
-                 CL_MEM_COPY_HOST_PTR))
-      throw error(CL_INVALID_VALUE);
-
-   if (!format)
-      throw error(CL_INVALID_IMAGE_FORMAT_DESCRIPTOR);
-
-   if (width < 1 || height < 1 || depth < 2)
-      throw error(CL_INVALID_IMAGE_SIZE);
-
-   if (bool(host_ptr) != bool(flags & (CL_MEM_USE_HOST_PTR |
-                                       CL_MEM_COPY_HOST_PTR)))
-      throw error(CL_INVALID_HOST_PTR);
-
-   if (!supported_formats(ctx, CL_MEM_OBJECT_IMAGE3D).count(*format))
-      throw error(CL_IMAGE_FORMAT_NOT_SUPPORTED);
-
-   ret_error(errcode_ret, CL_SUCCESS);
-   return new image3d(*ctx, flags, format, width, height, depth,
-                      row_pitch, slice_pitch, host_ptr);
-
-} catch (error &e) {
-   ret_error(errcode_ret, e);
-   return NULL;
+   return clCreateImage(d_ctx, d_flags, format, &desc, host_ptr, r_errcode);
 }
 
-PUBLIC cl_int
-clGetSupportedImageFormats(cl_context ctx, cl_mem_flags flags,
+CLOVER_API cl_int
+clGetSupportedImageFormats(cl_context d_ctx, cl_mem_flags flags,
                            cl_mem_object_type type, cl_uint count,
-                           cl_image_format *buf, cl_uint *count_ret) try {
-   if (!ctx)
-      throw error(CL_INVALID_CONTEXT);
-
-   if (flags & ~(CL_MEM_READ_WRITE | CL_MEM_WRITE_ONLY | CL_MEM_READ_ONLY |
-                 CL_MEM_USE_HOST_PTR | CL_MEM_ALLOC_HOST_PTR |
-                 CL_MEM_COPY_HOST_PTR))
-      throw error(CL_INVALID_VALUE);
-
-   if (!count && buf)
-      throw error(CL_INVALID_VALUE);
-
+                           cl_image_format *r_buf, cl_uint *r_count) try {
+   auto &ctx = obj(d_ctx);
    auto formats = supported_formats(ctx, type);
 
-   if (buf)
-      std::copy_n(formats.begin(), std::min((cl_uint)formats.size(), count),
-                  buf);
-   if (count_ret)
-      *count_ret = formats.size();
+   validate_flags(NULL, flags);
+
+   if (r_buf && !r_count)
+      throw error(CL_INVALID_VALUE);
+
+   if (r_buf)
+      std::copy_n(formats.begin(),
+                  std::min((cl_uint)formats.size(), count),
+                  r_buf);
+
+   if (r_count)
+      *r_count = formats.size();
 
    return CL_SUCCESS;
 
@@ -190,116 +263,161 @@ clGetSupportedImageFormats(cl_context ctx, cl_mem_flags flags,
    return e.get();
 }
 
-PUBLIC cl_int
-clGetMemObjectInfo(cl_mem obj, cl_mem_info param,
-                   size_t size, void *buf, size_t *size_ret) {
-   if (!obj)
-      return CL_INVALID_MEM_OBJECT;
+CLOVER_API cl_int
+clGetMemObjectInfo(cl_mem d_mem, cl_mem_info param,
+                   size_t size, void *r_buf, size_t *r_size) try {
+   property_buffer buf { r_buf, size, r_size };
+   auto &mem = obj(d_mem);
 
    switch (param) {
    case CL_MEM_TYPE:
-      return scalar_property<cl_mem_object_type>(buf, size, size_ret,
-                                                 obj->type());
+      buf.as_scalar<cl_mem_object_type>() = mem.type();
+      break;
 
    case CL_MEM_FLAGS:
-      return scalar_property<cl_mem_flags>(buf, size, size_ret, obj->flags());
+      buf.as_scalar<cl_mem_flags>() = mem.flags();
+      break;
 
    case CL_MEM_SIZE:
-      return scalar_property<size_t>(buf, size, size_ret, obj->size());
+      buf.as_scalar<size_t>() = mem.size();
+      break;
 
    case CL_MEM_HOST_PTR:
-      return scalar_property<void *>(buf, size, size_ret, obj->host_ptr());
+      buf.as_scalar<void *>() = mem.host_ptr();
+      break;
 
    case CL_MEM_MAP_COUNT:
-      return scalar_property<cl_uint>(buf, size, size_ret, 0);
+      buf.as_scalar<cl_uint>() = 0;
+      break;
 
    case CL_MEM_REFERENCE_COUNT:
-      return scalar_property<cl_uint>(buf, size, size_ret, obj->ref_count());
+      buf.as_scalar<cl_uint>() = mem.ref_count();
+      break;
 
    case CL_MEM_CONTEXT:
-      return scalar_property<cl_context>(buf, size, size_ret, &obj->ctx);
+      buf.as_scalar<cl_context>() = desc(mem.context());
+      break;
 
    case CL_MEM_ASSOCIATED_MEMOBJECT: {
-      sub_buffer *sub = dynamic_cast<sub_buffer *>(obj);
-      return scalar_property<cl_mem>(buf, size, size_ret,
-                                     (sub ? &sub->parent : NULL));
+      sub_buffer *sub = dynamic_cast<sub_buffer *>(&mem);
+      buf.as_scalar<cl_mem>() = (sub ? desc(sub->parent()) : NULL);
+      break;
    }
    case CL_MEM_OFFSET: {
-      sub_buffer *sub = dynamic_cast<sub_buffer *>(obj);
-      return scalar_property<size_t>(buf, size, size_ret,
-                                     (sub ? sub->offset() : 0));
+      sub_buffer *sub = dynamic_cast<sub_buffer *>(&mem);
+      buf.as_scalar<size_t>() = (sub ? sub->offset() : 0);
+      break;
    }
    default:
-      return CL_INVALID_VALUE;
+      throw error(CL_INVALID_VALUE);
    }
+
+   return CL_SUCCESS;
+
+} catch (error &e) {
+   return e.get();
 }
 
-PUBLIC cl_int
-clGetImageInfo(cl_mem obj, cl_image_info param,
-               size_t size, void *buf, size_t *size_ret) {
-   image *img = dynamic_cast<image *>(obj);
-   if (!img)
-      return CL_INVALID_MEM_OBJECT;
+CLOVER_API cl_int
+clGetImageInfo(cl_mem d_mem, cl_image_info param,
+               size_t size, void *r_buf, size_t *r_size) try {
+   property_buffer buf { r_buf, size, r_size };
+   auto &img = obj<image>(d_mem);
 
    switch (param) {
    case CL_IMAGE_FORMAT:
-      return scalar_property<cl_image_format>(buf, size, size_ret,
-                                              img->format());
+      buf.as_scalar<cl_image_format>() = img.format();
+      break;
 
    case CL_IMAGE_ELEMENT_SIZE:
-      return scalar_property<size_t>(buf, size, size_ret, 0);
+      buf.as_scalar<size_t>() = 0;
+      break;
 
    case CL_IMAGE_ROW_PITCH:
-      return scalar_property<size_t>(buf, size, size_ret, img->row_pitch());
+      buf.as_scalar<size_t>() = img.row_pitch();
+      break;
 
    case CL_IMAGE_SLICE_PITCH:
-      return scalar_property<size_t>(buf, size, size_ret, img->slice_pitch());
+      buf.as_scalar<size_t>() = img.slice_pitch();
+      break;
 
    case CL_IMAGE_WIDTH:
-      return scalar_property<size_t>(buf, size, size_ret, img->width());
+      buf.as_scalar<size_t>() = img.width();
+      break;
 
    case CL_IMAGE_HEIGHT:
-      return scalar_property<size_t>(buf, size, size_ret, img->height());
+      buf.as_scalar<size_t>() = img.height();
+      break;
 
    case CL_IMAGE_DEPTH:
-      return scalar_property<size_t>(buf, size, size_ret, img->depth());
+      buf.as_scalar<size_t>() = img.depth();
+      break;
 
    default:
-      return CL_INVALID_VALUE;
+      throw error(CL_INVALID_VALUE);
    }
-}
-
-PUBLIC cl_int
-clRetainMemObject(cl_mem obj) {
-   if (!obj)
-      return CL_INVALID_MEM_OBJECT;
-
-   obj->retain();
-   return CL_SUCCESS;
-}
-
-PUBLIC cl_int
-clReleaseMemObject(cl_mem obj) {
-   if (!obj)
-      return CL_INVALID_MEM_OBJECT;
-
-   if (obj->release())
-      delete obj;
 
    return CL_SUCCESS;
+
+} catch (error &e) {
+   return e.get();
 }
 
-PUBLIC cl_int
-clSetMemObjectDestructorCallback(cl_mem obj,
+CLOVER_API cl_int
+clRetainMemObject(cl_mem d_mem) try {
+   obj(d_mem).retain();
+   return CL_SUCCESS;
+
+} catch (error &e) {
+   return e.get();
+}
+
+CLOVER_API cl_int
+clReleaseMemObject(cl_mem d_mem) try {
+   if (obj(d_mem).release())
+      delete pobj(d_mem);
+
+   return CL_SUCCESS;
+
+} catch (error &e) {
+   return e.get();
+}
+
+CLOVER_API cl_int
+clSetMemObjectDestructorCallback(cl_mem d_mem,
                                  void (CL_CALLBACK *pfn_notify)(cl_mem, void *),
-                                 void *user_data) {
-   if (!obj)
-      return CL_INVALID_MEM_OBJECT;
+                                 void *user_data) try {
+   auto &mem = obj(d_mem);
 
    if (!pfn_notify)
       return CL_INVALID_VALUE;
 
-   obj->destroy_notify([=]{ pfn_notify(obj, user_data); });
+   mem.destroy_notify([=]{ pfn_notify(d_mem, user_data); });
 
    return CL_SUCCESS;
+
+} catch (error &e) {
+   return e.get();
+}
+
+CLOVER_API cl_int
+clEnqueueFillBuffer(cl_command_queue command_queue, cl_mem buffer,
+                    const void *pattern, size_t pattern_size,
+                    size_t offset, size_t size,
+                    cl_uint num_events_in_wait_list,
+                    const cl_event *event_wait_list,
+                    cl_event *event) {
+   CLOVER_NOT_SUPPORTED_UNTIL("1.2");
+   return CL_INVALID_VALUE;
+}
+
+CLOVER_API cl_int
+clEnqueueFillImage(cl_command_queue command_queue, cl_mem image,
+                   const void *fill_color,
+                   const size_t *origin, const size_t *region,
+                   cl_uint num_events_in_wait_list,
+                   const cl_event *event_wait_list,
+                   cl_event *event) {
+   CLOVER_NOT_SUPPORTED_UNTIL("1.2");
+   return CL_INVALID_VALUE;
 }

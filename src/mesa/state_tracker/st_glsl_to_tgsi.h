@@ -22,17 +22,18 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
+#include "pipe/p_defines.h"
+#include "main/mtypes.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#include "main/glheader.h"
-#include "tgsi/tgsi_ureg.h"
 
 struct gl_context;
 struct gl_shader;
 struct gl_shader_program;
 struct glsl_to_tgsi_visitor;
+struct ureg_program;
 
 enum pipe_error st_translate_program(
    struct gl_context *ctx,
@@ -42,29 +43,17 @@ enum pipe_error st_translate_program(
    const struct gl_program *proginfo,
    GLuint numInputs,
    const GLuint inputMapping[],
+   const GLuint inputSlotToAttr[],
    const ubyte inputSemanticName[],
    const ubyte inputSemanticIndex[],
    const GLuint interpMode[],
-   const GLboolean is_centroid[],
    GLuint numOutputs,
    const GLuint outputMapping[],
+   const GLuint outputSlotToAttr[],
    const ubyte outputSemanticName[],
-   const ubyte outputSemanticIndex[],
-   boolean passthrough_edgeflags,
-   boolean clamp_color);
+   const ubyte outputSemanticIndex[]);
 
 void free_glsl_to_tgsi_visitor(struct glsl_to_tgsi_visitor *v);
-void get_pixel_transfer_visitor(struct st_fragment_program *fp,
-                                struct glsl_to_tgsi_visitor *original,
-                                int scale_and_bias, int pixel_maps);
-void get_bitmap_visitor(struct st_fragment_program *fp,
-                        struct glsl_to_tgsi_visitor *original,
-                        int samplerIndex);
-
-struct gl_shader *st_new_shader(struct gl_context *ctx, GLuint name, GLuint type);
-
-struct gl_shader_program *
-st_new_shader_program(struct gl_context *ctx, GLuint name);
 
 GLboolean st_link_shader(struct gl_context *ctx, struct gl_shader_program *prog);
 
@@ -73,6 +62,13 @@ st_translate_stream_output_info(struct glsl_to_tgsi_visitor *glsl_to_tgsi,
                                 const GLuint outputMapping[],
                                 struct pipe_stream_output_info *so);
 
+void
+st_translate_stream_output_info2(struct gl_transform_feedback_info *info,
+                                const GLuint outputMapping[],
+                                struct pipe_stream_output_info *so);
+
+unsigned
+_mesa_sysval_to_semantic(unsigned sysval);
 
 #ifdef __cplusplus
 }

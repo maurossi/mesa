@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * Copyright 2009-2010 Chia-I Wu <olvaffe@gmail.com>
  * Copyright 2010-2011 LunarG, Inc.
  * All Rights Reserved.
@@ -32,9 +32,16 @@
 #define EGLDRIVER_INCLUDED
 
 
+#include "c99_compat.h"
+
 #include "egltypedefs.h"
 #include "eglapi.h"
 #include <stddef.h>
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * Define an inline driver typecast function.
@@ -43,7 +50,7 @@
  * semicolon when used.
  */
 #define _EGL_DRIVER_TYPECAST(drvtype, egltype, code)           \
-   static INLINE struct drvtype *drvtype(const egltype *obj)   \
+   static inline struct drvtype *drvtype(const egltype *obj)   \
    { return (struct drvtype *) code; }
 
 
@@ -85,19 +92,11 @@ struct _egl_driver
 
 
 extern _EGLDriver *
-_eglBuiltInDriverGALLIUM(const char *args);
-
-
-extern _EGLDriver *
 _eglBuiltInDriverDRI2(const char *args);
 
 
-extern _EGLDriver *
-_eglBuiltInDriverGLX(const char *args);
-
-
-PUBLIC _EGLDriver *
-_eglMain(const char *args);
+extern _EGLDriver*
+_eglBuiltInDriverHaiku(const char* args);
 
 
 extern _EGLDriver *
@@ -113,13 +112,18 @@ _eglUnloadDrivers(void);
 
 
 /* defined in eglfallbacks.c */
-PUBLIC void
+extern void
 _eglInitDriverFallbacks(_EGLDriver *drv);
 
 
-PUBLIC void
+extern void
 _eglSearchPathForEach(EGLBoolean (*callback)(const char *, size_t, void *),
                       void *callback_data);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 
 #endif /* EGLDRIVER_INCLUDED */

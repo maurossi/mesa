@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.5.2
  *
  * Copyright (C) 1999-2006  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -31,27 +31,27 @@
 
 struct gl_context;
 
-extern void _ASMAPI
+extern void
 _mesa_mmx_blend_transparency( struct gl_context *ctx, GLuint n, const GLubyte mask[],
                               GLvoid *rgba, const GLvoid *dest,
                               GLenum chanType );
 
-extern void _ASMAPI
+extern void
 _mesa_mmx_blend_add( struct gl_context *ctx, GLuint n, const GLubyte mask[],
                      GLvoid *rgba, const GLvoid *dest,
                      GLenum chanType );
 
-extern void _ASMAPI
+extern void
 _mesa_mmx_blend_min( struct gl_context *ctx, GLuint n, const GLubyte mask[],
                      GLvoid *rgba, const GLvoid *dest,
                      GLenum chanType );
 
-extern void _ASMAPI
+extern void
 _mesa_mmx_blend_max( struct gl_context *ctx, GLuint n, const GLubyte mask[],
                      GLvoid *rgba, const GLvoid *dest,
                      GLenum chanType );
 
-extern void _ASMAPI
+extern void
 _mesa_mmx_blend_modulate( struct gl_context *ctx, GLuint n, const GLubyte mask[],
                           GLvoid *rgba, const GLvoid *dest,
                           GLenum chanType );

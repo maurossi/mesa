@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   *   Brian Paul
   */
 
@@ -44,11 +44,10 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "util/u_gen_mipmap.h"
-#include "util/u_blit.h"
 
 
 /** Check if we have a front color buffer and if it's been drawn to. */
-static INLINE GLboolean
+static inline GLboolean
 is_front_buffer_dirty(struct st_context *st)
 {
    struct gl_framebuffer *fb = st->ctx->DrawBuffer;
@@ -76,14 +75,16 @@ display_front_buffer(struct st_context *st)
 }
 
 
-void st_flush( struct st_context *st,
-               struct pipe_fence_handle **fence )
+void st_flush(struct st_context *st,
+              struct pipe_fence_handle **fence,
+              unsigned flags)
 {
+   FLUSH_VERTICES(st->ctx, 0);
    FLUSH_CURRENT(st->ctx, 0);
 
    st_flush_bitmap_cache(st);
 
-   st->pipe->flush( st->pipe, fence );
+   st->pipe->flush(st->pipe, fence, flags);
 }
 
 
@@ -94,10 +95,10 @@ void st_finish( struct st_context *st )
 {
    struct pipe_fence_handle *fence = NULL;
 
-   st_flush(st, &fence);
+   st_flush(st, &fence, 0);
 
    if(fence) {
-      st->pipe->screen->fence_finish(st->pipe->screen, fence,
+      st->pipe->screen->fence_finish(st->pipe->screen, NULL, fence,
                                      PIPE_TIMEOUT_INFINITE);
       st->pipe->screen->fence_reference(st->pipe->screen, &fence, NULL);
    }
@@ -117,7 +118,7 @@ static void st_glFlush(struct gl_context *ctx)
     * synchronization issues.  Calling finish() here will just hide
     * problems that need to be fixed elsewhere.
     */
-   st_flush(st, NULL);
+   st_flush(st, NULL, 0);
 
    if (is_front_buffer_dirty(st)) {
       display_front_buffer(st);
@@ -140,10 +141,79 @@ static void st_glFinish(struct gl_context *ctx)
 }
 
 
-void st_init_flush_functions(struct dd_function_table *functions)
+static GLenum
+gl_reset_status_from_pipe_reset_status(enum pipe_reset_status status)
+{
+   switch (status) {
+   case PIPE_NO_RESET:
+      return GL_NO_ERROR;
+   case PIPE_GUILTY_CONTEXT_RESET:
+      return GL_GUILTY_CONTEXT_RESET_ARB;
+   case PIPE_INNOCENT_CONTEXT_RESET:
+      return GL_INNOCENT_CONTEXT_RESET_ARB;
+   case PIPE_UNKNOWN_CONTEXT_RESET:
+      return GL_UNKNOWN_CONTEXT_RESET_ARB;
+   default:
+      assert(0);
+      return GL_NO_ERROR;
+   }
+}
+
+
+/**
+ * Query information about GPU resets observed by this context
+ *
+ * Called via \c dd_function_table::GetGraphicsResetStatus.
+ */
+static GLenum
+st_get_graphics_reset_status(struct gl_context *ctx)
+{
+   struct st_context *st = st_context(ctx);
+   enum pipe_reset_status status;
+
+   if (st->reset_status != PIPE_NO_RESET) {
+      status = st->reset_status;
+      st->reset_status = PIPE_NO_RESET;
+   } else {
+      status = st->pipe->get_device_reset_status(st->pipe);
+   }
+
+   return gl_reset_status_from_pipe_reset_status(status);
+}
+
+
+static void
+st_device_reset_callback(void *data, enum pipe_reset_status status)
+{
+   struct st_context *st = data;
+
+   assert(status != PIPE_NO_RESET);
+
+   st->reset_status = status;
+   _mesa_set_context_lost_dispatch(st->ctx);
+}
+
+
+void
+st_install_device_reset_callback(struct st_context *st)
+{
+   if (st->pipe->set_device_reset_callback) {
+      struct pipe_device_reset_callback cb;
+      cb.reset = st_device_reset_callback;
+      cb.data = st;
+      st->pipe->set_device_reset_callback(st->pipe, &cb);
+   }
+}
+
+
+void st_init_flush_functions(struct pipe_screen *screen,
+                             struct dd_function_table *functions)
 {
    functions->Flush = st_glFlush;
    functions->Finish = st_glFinish;
+
+   if (screen->get_param(screen, PIPE_CAP_DEVICE_RESET_STATUS_QUERY))
+      functions->GetGraphicsResetStatus = st_get_graphics_reset_status;
 
    /* Windows opengl32.dll calls glFinish prior to every swapbuffers.
     * This is unnecessary and degrades performance.  Luckily we have some
@@ -151,7 +221,7 @@ void st_init_flush_functions(struct dd_function_table *functions)
     * Finish() is identical to Flush() in all cases - no differences in
     * rendering or ReadPixels are visible if we opt not to wait here.
     *
-    * Only set this up on windows to avoid suprise elsewhere.
+    * Only set this up on Windows to avoid surprise elsewhere.
     */
 #ifdef PIPE_OS_WINDOWS
    functions->Finish = st_glFlush;

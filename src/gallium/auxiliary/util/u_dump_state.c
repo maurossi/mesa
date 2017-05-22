@@ -39,7 +39,7 @@
  * Dump primitives
  */
 
-static INLINE void
+static inline void
 util_stream_writef(FILE *stream, const char *format, ...)
 {
    static char buf[1024];
@@ -247,6 +247,42 @@ util_dump_enum_func(FILE *stream, unsigned value)
    util_dump_enum(stream, util_dump_func(value, TRUE));
 }
 
+static void
+util_dump_enum_prim_mode(FILE *stream, unsigned value)
+{
+   util_dump_enum(stream, util_dump_prim_mode(value, TRUE));
+}
+
+static void
+util_dump_enum_tex_target(FILE *stream, unsigned value)
+{
+   util_dump_enum(stream, util_dump_tex_target(value, TRUE));
+}
+
+static void
+util_dump_enum_tex_filter(FILE *stream, unsigned value)
+{
+   util_dump_enum(stream, util_dump_tex_filter(value, TRUE));
+}
+
+static void
+util_dump_enum_tex_mipfilter(FILE *stream, unsigned value)
+{
+   util_dump_enum(stream, util_dump_tex_mipfilter(value, TRUE));
+}
+
+static void
+util_dump_enum_tex_wrap(FILE *stream, unsigned value)
+{
+   util_dump_enum(stream, util_dump_tex_wrap(value, TRUE));
+}
+
+static void
+util_dump_enum_stencil_op(FILE *stream, unsigned value)
+{
+   util_dump_enum(stream, util_dump_stencil_op(value, TRUE));
+}
+
 
 /*
  * Public functions
@@ -254,38 +290,28 @@ util_dump_enum_func(FILE *stream, unsigned value)
 
 
 void
-util_dump_template(FILE *stream, const struct pipe_resource *templat)
+util_dump_resource(FILE *stream, const struct pipe_resource *state)
 {
-   if(!templat) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
 
    util_dump_struct_begin(stream, "pipe_resource");
 
-   util_dump_member(stream, int, templat, target);
-   util_dump_member(stream, format, templat, format);
+   util_dump_member(stream, enum_tex_target, state, target);
+   util_dump_member(stream, format, state, format);
 
-   util_dump_member_begin(stream, "width");
-   util_dump_uint(stream, templat->width0);
-   util_dump_member_end(stream);
+   util_dump_member(stream, uint, state, width0);
+   util_dump_member(stream, uint, state, height0);
+   util_dump_member(stream, uint, state, depth0);
+   util_dump_member(stream, uint, state, array_size);
 
-   util_dump_member_begin(stream, "height");
-   util_dump_uint(stream, templat->height0);
-   util_dump_member_end(stream);
-
-   util_dump_member_begin(stream, "depth");
-   util_dump_uint(stream, templat->depth0);
-   util_dump_member_end(stream);
-
-   util_dump_member_begin(stream, "array_size");
-   util_dump_uint(stream, templat->array_size);
-   util_dump_member_end(stream);
-
-   util_dump_member(stream, uint, templat, last_level);
-   util_dump_member(stream, uint, templat, usage);
-   util_dump_member(stream, uint, templat, bind);
-   util_dump_member(stream, uint, templat, flags);
+   util_dump_member(stream, uint, state, last_level);
+   util_dump_member(stream, uint, state, nr_samples);
+   util_dump_member(stream, uint, state, usage);
+   util_dump_member(stream, uint, state, bind);
+   util_dump_member(stream, uint, state, flags);
 
    util_dump_struct_end(stream);
 }
@@ -294,7 +320,7 @@ util_dump_template(FILE *stream, const struct pipe_resource *templat)
 void
 util_dump_rasterizer_state(FILE *stream, const struct pipe_rasterizer_state *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -319,6 +345,7 @@ util_dump_rasterizer_state(FILE *stream, const struct pipe_rasterizer_state *sta
    util_dump_member(stream, uint, state, sprite_coord_enable);
    util_dump_member(stream, bool, state, sprite_coord_mode);
    util_dump_member(stream, bool, state, point_quad_rasterization);
+   util_dump_member(stream, bool, state, point_tri_clip);
    util_dump_member(stream, bool, state, point_size_per_vertex);
    util_dump_member(stream, bool, state, multisample);
    util_dump_member(stream, bool, state, line_smooth);
@@ -327,9 +354,11 @@ util_dump_rasterizer_state(FILE *stream, const struct pipe_rasterizer_state *sta
    util_dump_member(stream, uint, state, line_stipple_pattern);
    util_dump_member(stream, bool, state, line_last_pixel);
    util_dump_member(stream, bool, state, flatshade_first);
-   util_dump_member(stream, bool, state, gl_rasterization_rules);
+   util_dump_member(stream, bool, state, half_pixel_center);
+   util_dump_member(stream, bool, state, bottom_edge_rule);
    util_dump_member(stream, bool, state, rasterizer_discard);
    util_dump_member(stream, bool, state, depth_clip);
+   util_dump_member(stream, bool, state, clip_halfz);
    util_dump_member(stream, uint, state, clip_plane_enable);
 
    util_dump_member(stream, float, state, line_width);
@@ -345,7 +374,7 @@ util_dump_rasterizer_state(FILE *stream, const struct pipe_rasterizer_state *sta
 void
 util_dump_poly_stipple(FILE *stream, const struct pipe_poly_stipple *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -363,7 +392,7 @@ util_dump_poly_stipple(FILE *stream, const struct pipe_poly_stipple *state)
 void
 util_dump_viewport_state(FILE *stream, const struct pipe_viewport_state *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -380,7 +409,7 @@ util_dump_viewport_state(FILE *stream, const struct pipe_viewport_state *state)
 void
 util_dump_scissor_state(FILE *stream, const struct pipe_scissor_state *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -401,7 +430,7 @@ util_dump_clip_state(FILE *stream, const struct pipe_clip_state *state)
 {
    unsigned i;
 
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -425,41 +454,42 @@ util_dump_clip_state(FILE *stream, const struct pipe_clip_state *state)
 void
 util_dump_shader_state(FILE *stream, const struct pipe_shader_state *state)
 {
-   char str[8192];
    unsigned i;
 
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
 
-   tgsi_dump_str(state->tokens, 0, str, sizeof(str));
-
    util_dump_struct_begin(stream, "pipe_shader_state");
 
    util_dump_member_begin(stream, "tokens");
-   util_dump_string(stream, str);
+   fprintf(stream, "\"\n");
+   tgsi_dump_to_file(state->tokens, 0, stream);
+   fprintf(stream, "\"");
    util_dump_member_end(stream);
 
-   util_dump_member_begin(stream, "stream_output");
-   util_dump_struct_begin(stream, "pipe_stream_output_info");
-   util_dump_member(stream, uint, &state->stream_output, num_outputs);
-   util_dump_array(stream, uint, state->stream_output.stride,
-                   Elements(state->stream_output.stride));
-   util_dump_array_begin(stream);
-   for(i = 0; i < state->stream_output.num_outputs; ++i) {
-      util_dump_elem_begin(stream);
-      util_dump_struct_begin(stream, ""); /* anonymous */
-      util_dump_member(stream, uint, &state->stream_output.output[i], register_index);
-      util_dump_member(stream, uint, &state->stream_output.output[i], start_component);
-      util_dump_member(stream, uint, &state->stream_output.output[i], num_components);
-      util_dump_member(stream, uint, &state->stream_output.output[i], output_buffer);
+   if (state->stream_output.num_outputs) {
+      util_dump_member_begin(stream, "stream_output");
+      util_dump_struct_begin(stream, "pipe_stream_output_info");
+      util_dump_member(stream, uint, &state->stream_output, num_outputs);
+      util_dump_array(stream, uint, state->stream_output.stride,
+                      ARRAY_SIZE(state->stream_output.stride));
+      util_dump_array_begin(stream);
+      for(i = 0; i < state->stream_output.num_outputs; ++i) {
+         util_dump_elem_begin(stream);
+         util_dump_struct_begin(stream, ""); /* anonymous */
+         util_dump_member(stream, uint, &state->stream_output.output[i], register_index);
+         util_dump_member(stream, uint, &state->stream_output.output[i], start_component);
+         util_dump_member(stream, uint, &state->stream_output.output[i], num_components);
+         util_dump_member(stream, uint, &state->stream_output.output[i], output_buffer);
+         util_dump_struct_end(stream);
+         util_dump_elem_end(stream);
+      }
+      util_dump_array_end(stream);
       util_dump_struct_end(stream);
-      util_dump_elem_end(stream);
+      util_dump_member_end(stream);
    }
-   util_dump_array_end(stream);
-   util_dump_struct_end(stream);
-   util_dump_member_end(stream);
 
    util_dump_struct_end(stream);
 }
@@ -470,7 +500,7 @@ util_dump_depth_stencil_alpha_state(FILE *stream, const struct pipe_depth_stenci
 {
    unsigned i;
 
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -489,15 +519,18 @@ util_dump_depth_stencil_alpha_state(FILE *stream, const struct pipe_depth_stenci
 
    util_dump_member_begin(stream, "stencil");
    util_dump_array_begin(stream);
-   for(i = 0; i < Elements(state->stencil); ++i) {
+   for(i = 0; i < ARRAY_SIZE(state->stencil); ++i) {
       util_dump_elem_begin(stream);
       util_dump_struct_begin(stream, "pipe_stencil_state");
       util_dump_member(stream, bool, &state->stencil[i], enabled);
       if (state->stencil[i].enabled) {
          util_dump_member(stream, enum_func, &state->stencil[i], func);
-         util_dump_member(stream, uint, &state->stencil[i], fail_op);
-         util_dump_member(stream, uint, &state->stencil[i], zpass_op);
-         util_dump_member(stream, uint, &state->stencil[i], zfail_op);
+         util_dump_member(stream, enum_stencil_op,
+                          &state->stencil[i], fail_op);
+         util_dump_member(stream, enum_stencil_op,
+                          &state->stencil[i], zpass_op);
+         util_dump_member(stream, enum_stencil_op,
+                          &state->stencil[i], zfail_op);
          util_dump_member(stream, uint, &state->stencil[i], valuemask);
          util_dump_member(stream, uint, &state->stencil[i], writemask);
       }
@@ -546,7 +579,7 @@ util_dump_blend_state(FILE *stream, const struct pipe_blend_state *state)
 {
    unsigned valid_entries = 1;
 
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -554,6 +587,8 @@ util_dump_blend_state(FILE *stream, const struct pipe_blend_state *state)
    util_dump_struct_begin(stream, "pipe_blend_state");
 
    util_dump_member(stream, bool, state, dither);
+   util_dump_member(stream, bool, state, alpha_to_coverage);
+   util_dump_member(stream, bool, state, alpha_to_one);
 
    util_dump_member(stream, bool, state, logicop_enable);
    if (state->logicop_enable) {
@@ -576,7 +611,7 @@ util_dump_blend_state(FILE *stream, const struct pipe_blend_state *state)
 void
 util_dump_blend_color(FILE *stream, const struct pipe_blend_color *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -591,7 +626,7 @@ util_dump_blend_color(FILE *stream, const struct pipe_blend_color *state)
 void
 util_dump_stencil_ref(FILE *stream, const struct pipe_stencil_ref *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -610,6 +645,8 @@ util_dump_framebuffer_state(FILE *stream, const struct pipe_framebuffer_state *s
 
    util_dump_member(stream, uint, state, width);
    util_dump_member(stream, uint, state, height);
+   util_dump_member(stream, uint, state, samples);
+   util_dump_member(stream, uint, state, layers);
    util_dump_member(stream, uint, state, nr_cbufs);
    util_dump_member_array(stream, ptr, state, cbufs);
    util_dump_member(stream, ptr, state, zsbuf);
@@ -621,23 +658,24 @@ util_dump_framebuffer_state(FILE *stream, const struct pipe_framebuffer_state *s
 void
 util_dump_sampler_state(FILE *stream, const struct pipe_sampler_state *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
 
    util_dump_struct_begin(stream, "pipe_sampler_state");
 
-   util_dump_member(stream, uint, state, wrap_s);
-   util_dump_member(stream, uint, state, wrap_t);
-   util_dump_member(stream, uint, state, wrap_r);
-   util_dump_member(stream, uint, state, min_img_filter);
-   util_dump_member(stream, uint, state, min_mip_filter);
-   util_dump_member(stream, uint, state, mag_img_filter);
+   util_dump_member(stream, enum_tex_wrap, state, wrap_s);
+   util_dump_member(stream, enum_tex_wrap, state, wrap_t);
+   util_dump_member(stream, enum_tex_wrap, state, wrap_r);
+   util_dump_member(stream, enum_tex_filter, state, min_img_filter);
+   util_dump_member(stream, enum_tex_mipfilter, state, min_mip_filter);
+   util_dump_member(stream, enum_tex_filter, state, mag_img_filter);
    util_dump_member(stream, uint, state, compare_mode);
    util_dump_member(stream, enum_func, state, compare_func);
    util_dump_member(stream, bool, state, normalized_coords);
    util_dump_member(stream, uint, state, max_anisotropy);
+   util_dump_member(stream, bool, state, seamless_cube_map);
    util_dump_member(stream, float, state, lod_bias);
    util_dump_member(stream, float, state, min_lod);
    util_dump_member(stream, float, state, max_lod);
@@ -650,7 +688,7 @@ util_dump_sampler_state(FILE *stream, const struct pipe_sampler_state *state)
 void
 util_dump_surface(FILE *stream, const struct pipe_surface *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -660,8 +698,6 @@ util_dump_surface(FILE *stream, const struct pipe_surface *state)
    util_dump_member(stream, format, state, format);
    util_dump_member(stream, uint, state, width);
    util_dump_member(stream, uint, state, height);
-
-   util_dump_member(stream, uint, state, usage);
 
    util_dump_member(stream, ptr, state, texture);
    util_dump_member(stream, uint, state, u.tex.level);
@@ -673,9 +709,89 @@ util_dump_surface(FILE *stream, const struct pipe_surface *state)
 
 
 void
+util_dump_image_view(FILE *stream, const struct pipe_image_view *state)
+{
+   if (!state) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_image_view");
+
+   util_dump_member(stream, ptr, state, resource);
+   util_dump_member(stream, format, state, format);
+
+   if (state->resource->target == PIPE_BUFFER) {
+      util_dump_member(stream, uint, state, u.buf.offset);
+      util_dump_member(stream, uint, state, u.buf.size);
+   }
+   else {
+      util_dump_member(stream, uint, state, u.tex.first_layer);
+      util_dump_member(stream, uint, state, u.tex.last_layer);
+      util_dump_member(stream, uint, state, u.tex.level);
+   }
+
+   util_dump_struct_end(stream);
+}
+
+
+void
+util_dump_shader_buffer(FILE *stream, const struct pipe_shader_buffer *state)
+{
+   if (!state) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_shader_buffer");
+
+   util_dump_member(stream, ptr, state, buffer);
+   util_dump_member(stream, uint, state, buffer_offset);
+   util_dump_member(stream, uint, state, buffer_size);
+
+   util_dump_struct_end(stream);
+
+}
+
+
+void
+util_dump_sampler_view(FILE *stream, const struct pipe_sampler_view *state)
+{
+   if (!state) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_sampler_view");
+
+   util_dump_member(stream, enum_tex_target, state, target);
+   util_dump_member(stream, format, state, format);
+   util_dump_member(stream, ptr, state, texture);
+
+   if (state->target == PIPE_BUFFER) {
+      util_dump_member(stream, uint, state, u.buf.offset);
+      util_dump_member(stream, uint, state, u.buf.size);
+   }
+   else {
+      util_dump_member(stream, uint, state, u.tex.first_layer);
+      util_dump_member(stream, uint, state, u.tex.last_layer);
+      util_dump_member(stream, uint, state, u.tex.last_level);
+      util_dump_member(stream, uint, state, u.tex.last_level);
+   }
+
+   util_dump_member(stream, uint, state, swizzle_r);
+   util_dump_member(stream, uint, state, swizzle_g);
+   util_dump_member(stream, uint, state, swizzle_b);
+   util_dump_member(stream, uint, state, swizzle_a);
+
+   util_dump_struct_end(stream);
+}
+
+
+void
 util_dump_transfer(FILE *stream, const struct pipe_transfer *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -683,12 +799,52 @@ util_dump_transfer(FILE *stream, const struct pipe_transfer *state)
    util_dump_struct_begin(stream, "pipe_transfer");
 
    util_dump_member(stream, ptr, state, resource);
-   /*util_dump_member(stream, uint, state, box);*/
-
+   util_dump_member(stream, uint, state, level);
+   util_dump_member(stream, uint, state, usage);
+   util_dump_member_begin(stream, "box");
+   util_dump_box(stream, &state->box);
+   util_dump_member_end(stream);
    util_dump_member(stream, uint, state, stride);
    util_dump_member(stream, uint, state, layer_stride);
 
-   /*util_dump_member(stream, ptr, state, data);*/
+   util_dump_struct_end(stream);
+}
+
+
+void
+util_dump_constant_buffer(FILE *stream,
+                          const struct pipe_constant_buffer *state)
+{
+   if (!state) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_constant_buffer");
+
+   util_dump_member(stream, ptr, state, buffer);
+   util_dump_member(stream, uint, state, buffer_offset);
+   util_dump_member(stream, uint, state, buffer_size);
+   util_dump_member(stream, ptr, state, user_buffer);
+
+   util_dump_struct_end(stream);
+}
+
+
+void
+util_dump_index_buffer(FILE *stream, const struct pipe_index_buffer *state)
+{
+   if (!state) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_index_buffer");
+
+   util_dump_member(stream, uint, state, index_size);
+   util_dump_member(stream, uint, state, offset);
+   util_dump_member(stream, ptr, state, buffer);
+   util_dump_member(stream, ptr, state, user_buffer);
 
    util_dump_struct_end(stream);
 }
@@ -697,7 +853,7 @@ util_dump_transfer(FILE *stream, const struct pipe_transfer *state)
 void
 util_dump_vertex_buffer(FILE *stream, const struct pipe_vertex_buffer *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -707,6 +863,7 @@ util_dump_vertex_buffer(FILE *stream, const struct pipe_vertex_buffer *state)
    util_dump_member(stream, uint, state, stride);
    util_dump_member(stream, uint, state, buffer_offset);
    util_dump_member(stream, ptr, state, buffer);
+   util_dump_member(stream, ptr, state, user_buffer);
 
    util_dump_struct_end(stream);
 }
@@ -715,7 +872,7 @@ util_dump_vertex_buffer(FILE *stream, const struct pipe_vertex_buffer *state)
 void
 util_dump_vertex_element(FILE *stream, const struct pipe_vertex_element *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -723,10 +880,28 @@ util_dump_vertex_element(FILE *stream, const struct pipe_vertex_element *state)
    util_dump_struct_begin(stream, "pipe_vertex_element");
 
    util_dump_member(stream, uint, state, src_offset);
-
+   util_dump_member(stream, uint, state, instance_divisor);
    util_dump_member(stream, uint, state, vertex_buffer_index);
-
    util_dump_member(stream, format, state, src_format);
+
+   util_dump_struct_end(stream);
+}
+
+
+void
+util_dump_stream_output_target(FILE *stream,
+                               const struct pipe_stream_output_target *state)
+{
+   if (!state) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_stream_output_target");
+
+   util_dump_member(stream, ptr, state, buffer);
+   util_dump_member(stream, uint, state, buffer_offset);
+   util_dump_member(stream, uint, state, buffer_size);
 
    util_dump_struct_end(stream);
 }
@@ -735,7 +910,7 @@ util_dump_vertex_element(FILE *stream, const struct pipe_vertex_element *state)
 void
 util_dump_draw_info(FILE *stream, const struct pipe_draw_info *state)
 {
-   if(!state) {
+   if (!state) {
       util_dump_null(stream);
       return;
    }
@@ -744,12 +919,14 @@ util_dump_draw_info(FILE *stream, const struct pipe_draw_info *state)
 
    util_dump_member(stream, bool, state, indexed);
 
-   util_dump_member(stream, uint, state, mode);
+   util_dump_member(stream, enum_prim_mode, state, mode);
    util_dump_member(stream, uint, state, start);
    util_dump_member(stream, uint, state, count);
 
    util_dump_member(stream, uint, state, start_instance);
    util_dump_member(stream, uint, state, instance_count);
+
+   util_dump_member(stream, uint, state, vertices_per_patch);
 
    util_dump_member(stream, int,  state, index_bias);
    util_dump_member(stream, uint, state, min_index);
@@ -759,6 +936,84 @@ util_dump_draw_info(FILE *stream, const struct pipe_draw_info *state)
    util_dump_member(stream, uint, state, restart_index);
 
    util_dump_member(stream, ptr, state, count_from_stream_output);
+
+   util_dump_member(stream, ptr, state, indirect);
+   util_dump_member(stream, uint, state, indirect_offset);
+
+   util_dump_struct_end(stream);
+}
+
+void util_dump_box(FILE *stream, const struct pipe_box *box)
+{
+   if (!box) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_box");
+
+   util_dump_member(stream, int, box, x);
+   util_dump_member(stream, int, box, y);
+   util_dump_member(stream, int, box, z);
+   util_dump_member(stream, int, box, width);
+   util_dump_member(stream, int, box, height);
+   util_dump_member(stream, int, box, depth);
+
+   util_dump_struct_end(stream);
+}
+
+void util_dump_blit_info(FILE *stream, const struct pipe_blit_info *info)
+{
+   char mask[7];
+
+   if (!info) {
+      util_dump_null(stream);
+      return;
+   }
+
+   util_dump_struct_begin(stream, "pipe_blit_info");
+
+   util_dump_member_begin(stream, "dst");
+   util_dump_struct_begin(stream, "dst");
+   util_dump_member(stream, ptr, &info->dst, resource);
+   util_dump_member(stream, uint, &info->dst, level);
+   util_dump_member(stream, format, &info->dst, format);
+   util_dump_member_begin(stream, "box");
+   util_dump_box(stream, &info->dst.box);
+   util_dump_member_end(stream);
+   util_dump_struct_end(stream);
+   util_dump_member_end(stream);
+
+   util_dump_member_begin(stream, "src");
+   util_dump_struct_begin(stream, "src");
+   util_dump_member(stream, ptr, &info->src, resource);
+   util_dump_member(stream, uint, &info->src, level);
+   util_dump_member(stream, format, &info->src, format);
+   util_dump_member_begin(stream, "box");
+   util_dump_box(stream, &info->src.box);
+   util_dump_member_end(stream);
+   util_dump_struct_end(stream);
+   util_dump_member_end(stream);
+
+   mask[0] = (info->mask & PIPE_MASK_R) ? 'R' : '-';
+   mask[1] = (info->mask & PIPE_MASK_G) ? 'G' : '-';
+   mask[2] = (info->mask & PIPE_MASK_B) ? 'B' : '-';
+   mask[3] = (info->mask & PIPE_MASK_A) ? 'A' : '-';
+   mask[4] = (info->mask & PIPE_MASK_Z) ? 'Z' : '-';
+   mask[5] = (info->mask & PIPE_MASK_S) ? 'S' : '-';
+   mask[6] = 0;
+
+   util_dump_member_begin(stream, "mask");
+   util_dump_string(stream, mask);
+   util_dump_member_end(stream);
+   util_dump_member(stream, enum_tex_filter, info, filter);
+
+   util_dump_member(stream, bool, info, scissor_enable);
+   util_dump_member_begin(stream, "scissor");
+   util_dump_scissor_state(stream, &info->scissor);
+   util_dump_member_end(stream);
+
+   util_dump_member(stream, bool, info, render_condition_enable);
 
    util_dump_struct_end(stream);
 }

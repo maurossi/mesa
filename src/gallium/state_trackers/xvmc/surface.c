@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,10 +30,11 @@
 
 #include <X11/Xlibint.h>
 
-#include "pipe/p_video_decoder.h"
+#include "pipe/p_video_codec.h"
 #include "pipe/p_video_state.h"
 #include "pipe/p_state.h"
 
+#include "util/macros.h"
 #include "util/u_inlines.h"
 #include "util/u_memory.h"
 #include "util/u_math.h"
@@ -57,7 +58,7 @@ MacroBlocksToPipe(XvMCContextPrivate *context,
    assert(num_macroblocks);
 
    for (; num_macroblocks > 0; --num_macroblocks) {
-      mb->base.codec = PIPE_VIDEO_CODEC_MPEG12;
+      mb->base.codec = PIPE_VIDEO_FORMAT_MPEG12;
       mb->x = xvmc_mb->x;
       mb->y = xvmc_mb->y;
       mb->macroblock_type = xvmc_mb->macroblock_type;
@@ -177,7 +178,8 @@ Status XvMCCreateSurface(Display *dpy, XvMCContext *context, XvMCSurface *surfac
    tmpl.buffer_format = pipe->screen->get_video_param
    (
       pipe->screen,
-      PIPE_VIDEO_PROFILE_MPEG2_MAIN,
+      context_priv->decoder->profile,
+      context_priv->decoder->entrypoint,
       PIPE_VIDEO_CAP_PREFERED_FORMAT
    );
    tmpl.chroma_format = context_priv->decoder->chroma_format;
@@ -186,11 +188,16 @@ Status XvMCCreateSurface(Display *dpy, XvMCContext *context, XvMCSurface *surfac
    tmpl.interlaced = pipe->screen->get_video_param
    (
       pipe->screen,
-      PIPE_VIDEO_PROFILE_MPEG2_MAIN,
+      context_priv->decoder->profile,
+      context_priv->decoder->entrypoint,
       PIPE_VIDEO_CAP_PREFERS_INTERLACED
    );
 
    surface_priv->video_buffer = pipe->create_video_buffer(pipe, &tmpl);
+   if (!surface_priv->video_buffer) {
+      FREE(surface_priv);
+      return BadAlloc;
+   }
    surface_priv->context = context;
 
    surface->surface_id = XAllocID(dpy);
@@ -215,13 +222,13 @@ Status XvMCRenderSurface(Display *dpy, XvMCContext *context, unsigned int pictur
 )
 {
    struct pipe_mpeg12_macroblock mb[num_macroblocks];
-   struct pipe_video_decoder *decoder;
+   struct pipe_video_codec *decoder;
    struct pipe_mpeg12_picture_desc desc;
 
    XvMCContextPrivate *context_priv;
    XvMCSurfacePrivate *target_surface_priv;
-   XvMCSurfacePrivate *past_surface_priv;
-   XvMCSurfacePrivate *future_surface_priv;
+   MAYBE_UNUSED XvMCSurfacePrivate *past_surface_priv;
+   MAYBE_UNUSED XvMCSurfacePrivate *future_surface_priv;
    XvMCMacroBlock *xvmc_mb;
 
    XVMC_MSG(XVMC_TRACE, "[XvMC] Rendering to surface %p, with past %p and future %p\n",
@@ -349,6 +356,7 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
    struct pipe_context *pipe;
    struct vl_compositor *compositor;
    struct vl_compositor_state *cstate;
+   struct vl_screen *vscreen;
 
    XvMCSurfacePrivate *surface_priv;
    XvMCContextPrivate *context_priv;
@@ -380,13 +388,13 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
    pipe = context_priv->pipe;
    compositor = &context_priv->compositor;
    cstate = &context_priv->cstate;
+   vscreen = context_priv->vscreen;
 
-   tex = vl_screen_texture_from_drawable(context_priv->vscreen, drawable);
-   dirty_area = vl_screen_get_dirty_area(context_priv->vscreen);
+   tex = vscreen->texture_from_drawable(vscreen, (void *)drawable);
+   dirty_area = vscreen->get_dirty_area(vscreen);
 
    memset(&surf_templ, 0, sizeof(surf_templ));
    surf_templ.format = tex->format;
-   surf_templ.usage = PIPE_BIND_RENDER_TARGET;
    surf = pipe->create_surface(pipe, tex, &surf_templ);
 
    if (!surf)
@@ -433,17 +441,14 @@ Status XvMCPutSurface(Display *dpy, XvMCSurface *surface, Drawable drawable,
 
    vl_compositor_set_layer_dst_area(cstate, 0, &dst_rect);
    vl_compositor_set_layer_dst_area(cstate, 1, &dst_rect);
-   vl_compositor_render(cstate, compositor, surf, dirty_area);
+   vl_compositor_render(cstate, compositor, surf, dirty_area, true);
 
-   pipe->flush(pipe, &surface_priv->fence);
+   pipe->flush(pipe, &surface_priv->fence, 0);
 
    XVMC_MSG(XVMC_TRACE, "[XvMC] Submitted surface %p for display. Pushing to front buffer.\n", surface);
 
-   pipe->screen->flush_frontbuffer
-   (
-      pipe->screen, tex, 0, 0,
-      vl_screen_get_private(context_priv->vscreen)
-   );
+   pipe->screen->flush_frontbuffer(pipe->screen, tex, 0, 0,
+                                   vscreen->get_private(vscreen), NULL);
 
    if(dump_window == -1) {
       dump_window = debug_get_num_option("XVMC_DUMP", 0);
@@ -484,7 +489,7 @@ Status XvMCGetSurfaceStatus(Display *dpy, XvMCSurface *surface, int *status)
    *status = 0;
 
    if (surface_priv->fence)
-      if (!pipe->screen->fence_signalled(pipe->screen, surface_priv->fence))
+      if (!pipe->screen->fence_finish(pipe->screen, NULL, surface_priv->fence, 0))
          *status |= XVMC_RENDERING;
 
    return Success;

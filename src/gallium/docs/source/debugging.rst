@@ -21,17 +21,13 @@ This option controls if the debug variables should be printed to stderr. This
 is probably the most useful variable, since it allows you to find which
 variables a driver uses.
 
-.. envvar:: GALLIUM_GALAHAD <bool> (false)
-
-Controls if the :ref:`galahad` sanity checker module should be used.
-
 .. envvar:: GALLIUM_RBUG <bool> (false)
 
 Controls if the :ref:`rbug` should be used.
 
 .. envvar:: GALLIUM_TRACE <string> ("")
 
-If set, this variable will cause the :ref:`Trace` output to be written to the
+If set, this variable will cause the :ref:`trace` output to be written to the
 specified file. Paths may be relative or absolute; relative paths are relative
 to the working directory.  For example, setting it to "trace.xml" will cause
 the trace to be written to a file of the same name in the working directory.
@@ -80,6 +76,10 @@ Debug :ref:`flags` for the llvmpipe driver.
 .. envvar:: LP_NUM_THREADS <int> (number of CPUs)
 
 Number of threads that the llvmpipe driver should use.
+
+.. envvar:: FD_MESA_DEBUG <flags> (0x0)
+
+Debug :ref:`flags` for the freedreno driver.
 
 
 .. _flags:

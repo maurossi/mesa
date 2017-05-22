@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -17,24 +16,22 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
+#include "bufferobj.h"
 #include "glheader.h"
 #include "context.h"
 #include "enums.h"
 #include "hash.h"
 #include "imports.h"
 #include "queryobj.h"
-#include "mfeatures.h"
 #include "mtypes.h"
 #include "main/dispatch.h"
-
-
-#if FEATURE_queryobj
 
 
 /**
@@ -47,13 +44,26 @@
 static struct gl_query_object *
 _mesa_new_query_object(struct gl_context *ctx, GLuint id)
 {
-   struct gl_query_object *q = MALLOC_STRUCT(gl_query_object);
+   struct gl_query_object *q = CALLOC_STRUCT(gl_query_object);
    (void) ctx;
    if (q) {
       q->Id = id;
       q->Result = 0;
       q->Active = GL_FALSE;
-      q->Ready = GL_TRUE;   /* correct, see spec */
+
+      /* This is to satisfy the language of the specification: "In the initial
+       * state of a query object, the result is available" (OpenGL 3.1 §
+       * 2.13).
+       */
+      q->Ready = GL_TRUE;
+
+      /* OpenGL 3.1 § 2.13 says about GenQueries, "These names are marked as
+       * used, but no object is associated with them until the first time they
+       * are used by BeginQuery." Since our implementation actually does
+       * allocate an object at this point, use a flag to indicate that this
+       * object has not yet been bound so should not be considered a query.
+       */
+      q->EverBound = GL_FALSE;
    }
    return q;
 }
@@ -66,7 +76,7 @@ _mesa_new_query_object(struct gl_context *ctx, GLuint id)
 static void
 _mesa_begin_query(struct gl_context *ctx, struct gl_query_object *q)
 {
-   /* no-op */
+   ctx->NewState |= _NEW_DEPTH; /* for swrast */
 }
 
 
@@ -77,6 +87,7 @@ _mesa_begin_query(struct gl_context *ctx, struct gl_query_object *q)
 static void
 _mesa_end_query(struct gl_context *ctx, struct gl_query_object *q)
 {
+   ctx->NewState |= _NEW_DEPTH; /* for swrast */
    q->Ready = GL_TRUE;
 }
 
@@ -116,6 +127,7 @@ _mesa_check_query(struct gl_context *ctx, struct gl_query_object *q)
 static void
 _mesa_delete_query(struct gl_context *ctx, struct gl_query_object *q)
 {
+   free(q->Label);
    free(q);
 }
 
@@ -131,13 +143,27 @@ _mesa_init_query_object_functions(struct dd_function_table *driver)
    driver->CheckQuery = _mesa_check_query;
 }
 
+static struct gl_query_object **
+get_pipe_stats_binding_point(struct gl_context *ctx,
+                             GLenum target)
+{
+   const int which = target - GL_VERTICES_SUBMITTED_ARB;
+   assert(which < MAX_PIPELINE_STATISTICS);
+
+   if (!_mesa_is_desktop_gl(ctx) ||
+       !ctx->Extensions.ARB_pipeline_statistics_query)
+      return NULL;
+
+   return &ctx->Query.pipeline_stats[which];
+}
 
 /**
- * Return pointer to the query object binding point for the given target.
+ * Return pointer to the query object binding point for the given target and
+ * index.
  * \return NULL if invalid target, else the address of binding point
  */
 static struct gl_query_object **
-get_query_binding_point(struct gl_context *ctx, GLenum target)
+get_query_binding_point(struct gl_context *ctx, GLenum target, GLuint index)
 {
    switch (target) {
    case GL_SAMPLES_PASSED_ARB:
@@ -150,48 +176,80 @@ get_query_binding_point(struct gl_context *ctx, GLenum target)
          return &ctx->Query.CurrentOcclusionObject;
       else
          return NULL;
+   case GL_ANY_SAMPLES_PASSED_CONSERVATIVE:
+      if (ctx->Extensions.ARB_ES3_compatibility
+          || (ctx->API == API_OPENGLES2 && ctx->Version >= 30))
+         return &ctx->Query.CurrentOcclusionObject;
+      else
+         return NULL;
    case GL_TIME_ELAPSED_EXT:
       if (ctx->Extensions.EXT_timer_query)
          return &ctx->Query.CurrentTimerObject;
       else
          return NULL;
-#if FEATURE_EXT_transform_feedback
    case GL_PRIMITIVES_GENERATED:
       if (ctx->Extensions.EXT_transform_feedback)
-         return &ctx->Query.PrimitivesGenerated;
+         return &ctx->Query.PrimitivesGenerated[index];
       else
          return NULL;
    case GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN:
       if (ctx->Extensions.EXT_transform_feedback)
-         return &ctx->Query.PrimitivesWritten;
+         return &ctx->Query.PrimitivesWritten[index];
       else
          return NULL;
-#endif
+
+   case GL_VERTICES_SUBMITTED_ARB:
+   case GL_PRIMITIVES_SUBMITTED_ARB:
+   case GL_VERTEX_SHADER_INVOCATIONS_ARB:
+   case GL_FRAGMENT_SHADER_INVOCATIONS_ARB:
+   case GL_CLIPPING_INPUT_PRIMITIVES_ARB:
+   case GL_CLIPPING_OUTPUT_PRIMITIVES_ARB:
+         return get_pipe_stats_binding_point(ctx, target);
+
+   case GL_GEOMETRY_SHADER_INVOCATIONS:
+      /* GL_GEOMETRY_SHADER_INVOCATIONS is defined in a non-sequential order */
+      target = GL_VERTICES_SUBMITTED_ARB + MAX_PIPELINE_STATISTICS - 1;
+      /* fallthrough */
+   case GL_GEOMETRY_SHADER_PRIMITIVES_EMITTED_ARB:
+      if (_mesa_has_geometry_shaders(ctx))
+         return get_pipe_stats_binding_point(ctx, target);
+      else
+         return NULL;
+
+   case GL_TESS_CONTROL_SHADER_PATCHES_ARB:
+   case GL_TESS_EVALUATION_SHADER_INVOCATIONS_ARB:
+      if (_mesa_has_tessellation(ctx))
+         return get_pipe_stats_binding_point(ctx, target);
+      else
+         return NULL;
+
+   case GL_COMPUTE_SHADER_INVOCATIONS_ARB:
+      if (_mesa_has_compute_shaders(ctx))
+         return get_pipe_stats_binding_point(ctx, target);
+      else
+         return NULL;
+
    default:
       return NULL;
    }
 }
 
-
-static void GLAPIENTRY
-_mesa_GenQueriesARB(GLsizei n, GLuint *ids)
+/**
+ * Create $n query objects and store them in *ids. Make them of type $target
+ * if dsa is set. Called from _mesa_GenQueries() and _mesa_CreateQueries().
+ */
+static void
+create_queries(struct gl_context *ctx, GLenum target, GLsizei n, GLuint *ids,
+               bool dsa)
 {
+   const char *func = dsa ? "glGenQueries" : "glCreateQueries";
    GLuint first;
-   GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGenQueries(%d)\n", n);
+      _mesa_debug(ctx, "%s(%d)\n", func, n);
 
    if (n < 0) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glGenQueriesARB(n < 0)");
-      return;
-   }
-
-   /* No query objects can be active at this time! */
-   if (ctx->Query.CurrentOcclusionObject ||
-       ctx->Query.CurrentTimerObject) {
-      _mesa_error(ctx, GL_INVALID_OPERATION, "glGenQueriesARB");
+      _mesa_error(ctx, GL_INVALID_VALUE, "%s(n < 0)", func);
       return;
    }
 
@@ -202,8 +260,12 @@ _mesa_GenQueriesARB(GLsizei n, GLuint *ids)
          struct gl_query_object *q
             = ctx->Driver.NewQueryObject(ctx, first + i);
          if (!q) {
-            _mesa_error(ctx, GL_OUT_OF_MEMORY, "glGenQueriesARB");
+            _mesa_error(ctx, GL_OUT_OF_MEMORY, "%s", func);
             return;
+         } else if (dsa) {
+            /* Do the equivalent of binding the buffer with a target */
+            q->Target = target;
+            q->EverBound = GL_TRUE;
          }
          ids[i] = first + i;
          _mesa_HashInsert(ctx->Query.QueryObjects, first + i, q);
@@ -211,27 +273,49 @@ _mesa_GenQueriesARB(GLsizei n, GLuint *ids)
    }
 }
 
-
-static void GLAPIENTRY
-_mesa_DeleteQueriesARB(GLsizei n, const GLuint *ids)
+void GLAPIENTRY
+_mesa_GenQueries(GLsizei n, GLuint *ids)
 {
-   GLint i;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-   FLUSH_VERTICES(ctx, 0);
+   create_queries(ctx, 0, n, ids, false);
+}
 
-   if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glDeleeteQueries(%d)\n", n);
+void GLAPIENTRY
+_mesa_CreateQueries(GLenum target, GLsizei n, GLuint *ids)
+{
+   GET_CURRENT_CONTEXT(ctx);
 
-   if (n < 0) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glDeleteQueriesARB(n < 0)");
+   switch (target) {
+   case GL_SAMPLES_PASSED:
+   case GL_ANY_SAMPLES_PASSED:
+   case GL_ANY_SAMPLES_PASSED_CONSERVATIVE:
+   case GL_TIME_ELAPSED:
+   case GL_TIMESTAMP:
+   case GL_PRIMITIVES_GENERATED:
+   case GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN:
+      break;
+   default:
+      _mesa_error(ctx, GL_INVALID_ENUM, "glCreateQueries(invalid target = %s)",
+                  _mesa_enum_to_string(target));
       return;
    }
 
-   /* No query objects can be active at this time! */
-   if (ctx->Query.CurrentOcclusionObject ||
-       ctx->Query.CurrentTimerObject) {
-      _mesa_error(ctx, GL_INVALID_OPERATION, "glDeleteQueriesARB");
+   create_queries(ctx, target, n, ids, true);
+}
+
+
+void GLAPIENTRY
+_mesa_DeleteQueries(GLsizei n, const GLuint *ids)
+{
+   GLint i;
+   GET_CURRENT_CONTEXT(ctx);
+   FLUSH_VERTICES(ctx, 0);
+
+   if (MESA_VERBOSE & VERBOSE_API)
+      _mesa_debug(ctx, "glDeleteQueries(%d)\n", n);
+
+   if (n < 0) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glDeleteQueriesARB(n < 0)");
       return;
    }
 
@@ -239,7 +323,16 @@ _mesa_DeleteQueriesARB(GLsizei n, const GLuint *ids)
       if (ids[i] > 0) {
          struct gl_query_object *q = _mesa_lookup_query_object(ctx, ids[i]);
          if (q) {
-            ASSERT(!q->Active); /* should be caught earlier */
+            if (q->Active) {
+               struct gl_query_object **bindpt;
+               bindpt = get_query_binding_point(ctx, q->Target, q->Stream);
+               assert(bindpt); /* Should be non-null for active q. */
+               if (bindpt) {
+                  *bindpt = NULL;
+               }
+               q->Active = GL_FALSE;
+               ctx->Driver.EndQuery(ctx, q);
+            }
             _mesa_HashRemove(ctx->Query.QueryObjects, ids[i]);
             ctx->Driver.DeleteQuery(ctx, q);
          }
@@ -248,19 +341,25 @@ _mesa_DeleteQueriesARB(GLsizei n, const GLuint *ids)
 }
 
 
-static GLboolean GLAPIENTRY
-_mesa_IsQueryARB(GLuint id)
+GLboolean GLAPIENTRY
+_mesa_IsQuery(GLuint id)
 {
+   struct gl_query_object *q;
+
    GET_CURRENT_CONTEXT(ctx);
    ASSERT_OUTSIDE_BEGIN_END_WITH_RETVAL(ctx, GL_FALSE);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glIsQuery(%u)\n", id);
 
-   if (id && _mesa_lookup_query_object(ctx, id))
-      return GL_TRUE;
-   else
+   if (id == 0)
       return GL_FALSE;
+
+   q = _mesa_lookup_query_object(ctx, id);
+   if (q == NULL)
+      return GL_FALSE;
+
+   return q->EverBound;
 }
 
 static GLboolean
@@ -284,25 +383,37 @@ query_error_check_index(struct gl_context *ctx, GLenum target, GLuint index)
    return GL_TRUE;
 }
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_BeginQueryIndexed(GLenum target, GLuint index, GLuint id)
 {
    struct gl_query_object *q, **bindpt;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glBeginQueryIndexed(%s, %u, %u)\n",
-                  _mesa_lookup_enum_by_nr(target), index, id);
+                  _mesa_enum_to_string(target), index, id);
 
    if (!query_error_check_index(ctx, target, index))
       return;
 
-   FLUSH_VERTICES(ctx, _NEW_DEPTH);
+   FLUSH_VERTICES(ctx, 0);
 
-   bindpt = get_query_binding_point(ctx, target);
+   bindpt = get_query_binding_point(ctx, target, index);
    if (!bindpt) {
       _mesa_error(ctx, GL_INVALID_ENUM, "glBeginQuery{Indexed}(target)");
+      return;
+   }
+
+   /* From the GL_ARB_occlusion_query spec:
+    *
+    *     "If BeginQueryARB is called while another query is already in
+    *      progress with the same target, an INVALID_OPERATION error is
+    *      generated."
+    */
+   if (*bindpt) {
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glBeginQuery{Indexed}(target=%s is active)",
+                  _mesa_enum_to_string(target));
       return;
    }
 
@@ -313,7 +424,7 @@ _mesa_BeginQueryIndexed(GLenum target, GLuint index, GLuint id)
 
    q = _mesa_lookup_query_object(ctx, id);
    if (!q) {
-      if (ctx->API == API_OPENGL_CORE) {
+      if (ctx->API != API_OPENGL_COMPAT) {
          _mesa_error(ctx, GL_INVALID_OPERATION,
                      "glBeginQuery{Indexed}(non-gen name)");
          return;
@@ -334,12 +445,42 @@ _mesa_BeginQueryIndexed(GLenum target, GLuint index, GLuint id)
                      "glBeginQuery{Indexed}(query already active)");
          return;
       }
+
+      /* Section 2.14 Asynchronous Queries, page 84 of the OpenGL ES 3.0.4
+       * spec states:
+       *
+       *     "BeginQuery generates an INVALID_OPERATION error if any of the
+       *      following conditions hold: [...] id is the name of an
+       *      existing query object whose type does not match target; [...]
+       *
+       * Similar wording exists in the OpenGL 4.5 spec, section 4.2. QUERY
+       * OBJECTS AND ASYNCHRONOUS QUERIES, page 43.
+       */
+      if (q->EverBound && q->Target != target) {
+         _mesa_error(ctx, GL_INVALID_OPERATION,
+                     "glBeginQuery{Indexed}(target mismatch)");
+         return;
+      }
    }
+
+   /* This possibly changes the target of a buffer allocated by
+    * CreateQueries. Issue 39) in the ARB_direct_state_access extension states
+    * the following:
+    *
+    * "CreateQueries adds a <target>, so strictly speaking the <target>
+    * command isn't needed for BeginQuery/EndQuery, but in the end, this also
+    * isn't a selector, so we decided not to change it."
+    *
+    * Updating the target of the query object should be acceptable, so let's
+    * do that.
+    */
 
    q->Target = target;
    q->Active = GL_TRUE;
    q->Result = 0;
    q->Ready = GL_FALSE;
+   q->EverBound = GL_TRUE;
+   q->Stream = index;
 
    /* XXX should probably refcount query objects */
    *bindpt = q;
@@ -348,23 +489,22 @@ _mesa_BeginQueryIndexed(GLenum target, GLuint index, GLuint id)
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_EndQueryIndexed(GLenum target, GLuint index)
 {
    struct gl_query_object *q, **bindpt;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glEndQueryIndexed(%s, %u)\n",
-                  _mesa_lookup_enum_by_nr(target), index);
+                  _mesa_enum_to_string(target), index);
 
    if (!query_error_check_index(ctx, target, index))
       return;
 
-   FLUSH_VERTICES(ctx, _NEW_DEPTH);
+   FLUSH_VERTICES(ctx, 0);
 
-   bindpt = get_query_binding_point(ctx, target);
+   bindpt = get_query_binding_point(ctx, target, index);
    if (!bindpt) {
       _mesa_error(ctx, GL_INVALID_ENUM, "glEndQuery{Indexed}(target)");
       return;
@@ -372,6 +512,16 @@ _mesa_EndQueryIndexed(GLenum target, GLuint index)
 
    /* XXX should probably refcount query objects */
    q = *bindpt;
+
+   /* Check for GL_ANY_SAMPLES_PASSED vs GL_SAMPLES_PASSED. */
+   if (q && q->Target != target) {
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glEndQuery(target=%s with active query of target %s)",
+                  _mesa_enum_to_string(target),
+                  _mesa_enum_to_string(q->Target));
+      return;
+   }
+
    *bindpt = NULL;
 
    if (!q || !q->Active) {
@@ -384,28 +534,27 @@ _mesa_EndQueryIndexed(GLenum target, GLuint index)
    ctx->Driver.EndQuery(ctx, q);
 }
 
-static void GLAPIENTRY
-_mesa_BeginQueryARB(GLenum target, GLuint id)
+void GLAPIENTRY
+_mesa_BeginQuery(GLenum target, GLuint id)
 {
    _mesa_BeginQueryIndexed(target, 0, id);
 }
 
-static void GLAPIENTRY
-_mesa_EndQueryARB(GLenum target)
+void GLAPIENTRY
+_mesa_EndQuery(GLenum target)
 {
    _mesa_EndQueryIndexed(target, 0);
 }
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_QueryCounter(GLuint id, GLenum target)
 {
    struct gl_query_object *q;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glQueryCounter(%u, %s)\n", id,
-                  _mesa_lookup_enum_by_nr(target));
+                  _mesa_enum_to_string(target));
 
    /* error checking */
    if (target != GL_TIMESTAMP) {
@@ -443,29 +592,46 @@ _mesa_QueryCounter(GLuint id, GLenum target)
       return;
    }
 
+   /* This possibly changes the target of a buffer allocated by
+    * CreateQueries. Issue 39) in the ARB_direct_state_access extension states
+    * the following:
+    *
+    * "CreateQueries adds a <target>, so strictly speaking the <target>
+    * command isn't needed for BeginQuery/EndQuery, but in the end, this also
+    * isn't a selector, so we decided not to change it."
+    *
+    * Updating the target of the query object should be acceptable, so let's
+    * do that.
+    */
+
    q->Target = target;
    q->Result = 0;
    q->Ready = GL_FALSE;
+   q->EverBound = GL_TRUE;
 
-   /* QueryCounter is implemented using EndQuery without BeginQuery
-    * in drivers. This is actually Direct3D and Gallium convention. */
-   ctx->Driver.EndQuery(ctx, q);
+   if (ctx->Driver.QueryCounter) {
+      ctx->Driver.QueryCounter(ctx, q);
+   } else {
+      /* QueryCounter is implemented using EndQuery without BeginQuery
+       * in drivers. This is actually Direct3D and Gallium convention.
+       */
+      ctx->Driver.EndQuery(ctx, q);
+   }
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_GetQueryIndexediv(GLenum target, GLuint index, GLenum pname,
                         GLint *params)
 {
    struct gl_query_object *q = NULL, **bindpt = NULL;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & VERBOSE_API)
       _mesa_debug(ctx, "glGetQueryIndexediv(%s, %u, %s)\n",
-                  _mesa_lookup_enum_by_nr(target),
+                  _mesa_enum_to_string(target),
                   index,
-                  _mesa_lookup_enum_by_nr(pname));
+                  _mesa_enum_to_string(pname));
 
    if (!query_error_check_index(ctx, target, index))
       return;
@@ -477,7 +643,7 @@ _mesa_GetQueryIndexediv(GLenum target, GLuint index, GLenum pname,
       }
    }
    else {
-      bindpt = get_query_binding_point(ctx, target);
+      bindpt = get_query_binding_point(ctx, target, index);
       if (!bindpt) {
          _mesa_error(ctx, GL_INVALID_ENUM, "glGetQuery{Indexed}iv(target)");
          return;
@@ -511,16 +677,49 @@ _mesa_GetQueryIndexediv(GLenum target, GLuint index, GLenum pname,
          case GL_TRANSFORM_FEEDBACK_PRIMITIVES_WRITTEN:
             *params = ctx->Const.QueryCounterBits.PrimitivesWritten;
             break;
+         case GL_VERTICES_SUBMITTED_ARB:
+            *params = ctx->Const.QueryCounterBits.VerticesSubmitted;
+            break;
+         case GL_PRIMITIVES_SUBMITTED_ARB:
+            *params = ctx->Const.QueryCounterBits.PrimitivesSubmitted;
+            break;
+         case GL_VERTEX_SHADER_INVOCATIONS_ARB:
+            *params = ctx->Const.QueryCounterBits.VsInvocations;
+            break;
+         case GL_TESS_CONTROL_SHADER_PATCHES_ARB:
+            *params = ctx->Const.QueryCounterBits.TessPatches;
+            break;
+         case GL_TESS_EVALUATION_SHADER_INVOCATIONS_ARB:
+            *params = ctx->Const.QueryCounterBits.TessInvocations;
+            break;
+         case GL_GEOMETRY_SHADER_INVOCATIONS:
+            *params = ctx->Const.QueryCounterBits.GsInvocations;
+            break;
+         case GL_GEOMETRY_SHADER_PRIMITIVES_EMITTED_ARB:
+            *params = ctx->Const.QueryCounterBits.GsPrimitives;
+            break;
+         case GL_FRAGMENT_SHADER_INVOCATIONS_ARB:
+            *params = ctx->Const.QueryCounterBits.FsInvocations;
+            break;
+         case GL_COMPUTE_SHADER_INVOCATIONS_ARB:
+            *params = ctx->Const.QueryCounterBits.ComputeInvocations;
+            break;
+         case GL_CLIPPING_INPUT_PRIMITIVES_ARB:
+            *params = ctx->Const.QueryCounterBits.ClInPrimitives;
+            break;
+         case GL_CLIPPING_OUTPUT_PRIMITIVES_ARB:
+            *params = ctx->Const.QueryCounterBits.ClOutPrimitives;
+            break;
          default:
             _mesa_problem(ctx,
                           "Unknown target in glGetQueryIndexediv(target = %s)",
-                          _mesa_lookup_enum_by_nr(target));
+                          _mesa_enum_to_string(target));
             *params = 0;
             break;
          }
          break;
       case GL_CURRENT_QUERY_ARB:
-         *params = q ? q->Id : 0;
+         *params = (q && q->Target == target) ? q->Id : 0;
          break;
       default:
          _mesa_error(ctx, GL_INVALID_ENUM, "glGetQuery{Indexed}iv(pname)");
@@ -528,219 +727,232 @@ _mesa_GetQueryIndexediv(GLenum target, GLuint index, GLenum pname,
    }
 }
 
-static void GLAPIENTRY
-_mesa_GetQueryivARB(GLenum target, GLenum pname, GLint *params)
+void GLAPIENTRY
+_mesa_GetQueryiv(GLenum target, GLenum pname, GLint *params)
 {
    _mesa_GetQueryIndexediv(target, 0, pname, params);
 }
 
-static void GLAPIENTRY
-_mesa_GetQueryObjectivARB(GLuint id, GLenum pname, GLint *params)
+static void
+get_query_object(struct gl_context *ctx, const char *func,
+                 GLuint id, GLenum pname, GLenum ptype,
+                 struct gl_buffer_object *buf, intptr_t offset)
 {
    struct gl_query_object *q = NULL;
-   GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
+   uint64_t value;
 
    if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGetQueryObjectiv(%u, %s)\n", id,
-                  _mesa_lookup_enum_by_nr(pname));
+      _mesa_debug(ctx, "%s(%u, %s)\n", func, id,
+                  _mesa_enum_to_string(pname));
 
    if (id)
       q = _mesa_lookup_query_object(ctx, id);
 
-   if (!q || q->Active) {
+   if (!q || q->Active || !q->EverBound) {
       _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glGetQueryObjectivARB(id=%d is invalid or active)", id);
+                  "%s(id=%d is invalid or active)", func, id);
       return;
    }
 
-   switch (pname) {
-      case GL_QUERY_RESULT_ARB:
-         if (!q->Ready)
-            ctx->Driver.WaitQuery(ctx, q);
-         /* if result is too large for returned type, clamp to max value */
-         if (q->Target == GL_ANY_SAMPLES_PASSED) {
-            if (q->Result)
-               *params = GL_TRUE;
-            else
-               *params = GL_FALSE;
-         } else {
-            if (q->Result > 0x7fffffff) {
-               *params = 0x7fffffff;
-            }
-            else {
-               *params = (GLint)q->Result;
-            }
-         }
-         break;
-      case GL_QUERY_RESULT_AVAILABLE_ARB:
-	 if (!q->Ready)
-	    ctx->Driver.CheckQuery( ctx, q );
-         *params = q->Ready;
-         break;
-      default:
-         _mesa_error(ctx, GL_INVALID_ENUM, "glGetQueryObjectivARB(pname)");
+   if (buf && buf != ctx->Shared->NullBufferObj) {
+      bool is_64bit = ptype == GL_INT64_ARB ||
+         ptype == GL_UNSIGNED_INT64_ARB;
+      if (!ctx->Extensions.ARB_query_buffer_object) {
+         _mesa_error(ctx, GL_INVALID_OPERATION, "%s(not supported)", func);
          return;
+      }
+      if (buf->Size < offset + 4 * (is_64bit ? 2 : 1)) {
+         _mesa_error(ctx, GL_INVALID_OPERATION, "%s(out of bounds)", func);
+         return;
+      }
+
+      if (offset < 0) {
+         _mesa_error(ctx, GL_INVALID_VALUE, "%s(offset is negative)", func);
+         return;
+      }
+
+      switch (pname) {
+      case GL_QUERY_RESULT:
+      case GL_QUERY_RESULT_NO_WAIT:
+      case GL_QUERY_RESULT_AVAILABLE:
+      case GL_QUERY_TARGET:
+         ctx->Driver.StoreQueryResult(ctx, q, buf, offset, pname, ptype);
+         return;
+      }
+
+      /* fall through to get error below */
+   }
+
+   switch (pname) {
+   case GL_QUERY_RESULT:
+      if (!q->Ready)
+         ctx->Driver.WaitQuery(ctx, q);
+      value = q->Result;
+      break;
+   case GL_QUERY_RESULT_NO_WAIT:
+      if (!ctx->Extensions.ARB_query_buffer_object)
+         goto invalid_enum;
+      ctx->Driver.CheckQuery(ctx, q);
+      if (!q->Ready)
+         return;
+      value = q->Result;
+      break;
+   case GL_QUERY_RESULT_AVAILABLE:
+      if (!q->Ready)
+         ctx->Driver.CheckQuery(ctx, q);
+      value = q->Ready;
+      break;
+   case GL_QUERY_TARGET:
+      value = q->Target;
+      break;
+   default:
+invalid_enum:
+      _mesa_error(ctx, GL_INVALID_ENUM, "%s(pname=%s)",
+                  func, _mesa_enum_to_string(pname));
+      return;
+   }
+
+   switch (ptype) {
+   case GL_INT: {
+      GLint *param = (GLint *)offset;
+      if (value > 0x7fffffff)
+         *param = 0x7fffffff;
+      else
+         *param = value;
+      break;
+   }
+   case GL_UNSIGNED_INT: {
+      GLuint *param = (GLuint *)offset;
+      if (value > 0xffffffff)
+         *param = 0xffffffff;
+      else
+         *param = value;
+      break;
+   }
+   case GL_INT64_ARB:
+   case GL_UNSIGNED_INT64_ARB: {
+      GLuint64EXT *param = (GLuint64EXT *)offset;
+      *param = value;
+      break;
+   }
+   default:
+      unreachable("unexpected ptype");
    }
 }
 
-
-static void GLAPIENTRY
-_mesa_GetQueryObjectuivARB(GLuint id, GLenum pname, GLuint *params)
+void GLAPIENTRY
+_mesa_GetQueryObjectiv(GLuint id, GLenum pname, GLint *params)
 {
-   struct gl_query_object *q = NULL;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
-   if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGetQueryObjectuiv(%u, %s)\n", id,
-                  _mesa_lookup_enum_by_nr(pname));
+   get_query_object(ctx, "glGetQueryObjectiv",
+                    id, pname, GL_INT, ctx->QueryBuffer, (intptr_t)params);
+}
 
-   if (id)
-      q = _mesa_lookup_query_object(ctx, id);
 
-   if (!q || q->Active) {
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glGetQueryObjectuivARB(id=%d is invalid or active)", id);
-      return;
-   }
+void GLAPIENTRY
+_mesa_GetQueryObjectuiv(GLuint id, GLenum pname, GLuint *params)
+{
+   GET_CURRENT_CONTEXT(ctx);
 
-   switch (pname) {
-      case GL_QUERY_RESULT_ARB:
-         if (!q->Ready)
-            ctx->Driver.WaitQuery(ctx, q);
-         /* if result is too large for returned type, clamp to max value */
-         if (q->Target == GL_ANY_SAMPLES_PASSED) {
-            if (q->Result)
-               *params = GL_TRUE;
-            else
-               *params = GL_FALSE;
-         } else {
-            if (q->Result > 0xffffffff) {
-               *params = 0xffffffff;
-            }
-            else {
-               *params = (GLuint)q->Result;
-            }
-         }
-         break;
-      case GL_QUERY_RESULT_AVAILABLE_ARB:
-	 if (!q->Ready)
-	    ctx->Driver.CheckQuery( ctx, q );
-         *params = q->Ready;
-         break;
-      default:
-         _mesa_error(ctx, GL_INVALID_ENUM, "glGetQueryObjectuivARB(pname)");
-         return;
-   }
+   get_query_object(ctx, "glGetQueryObjectuiv",
+                    id, pname, GL_UNSIGNED_INT,
+                    ctx->QueryBuffer, (intptr_t)params);
 }
 
 
 /**
  * New with GL_EXT_timer_query
  */
-static void GLAPIENTRY
-_mesa_GetQueryObjecti64vEXT(GLuint id, GLenum pname, GLint64EXT *params)
+void GLAPIENTRY
+_mesa_GetQueryObjecti64v(GLuint id, GLenum pname, GLint64EXT *params)
 {
-   struct gl_query_object *q = NULL;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
-   if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGetQueryObjecti64v(%u, %s)\n", id,
-                  _mesa_lookup_enum_by_nr(pname));
-
-   if (id)
-      q = _mesa_lookup_query_object(ctx, id);
-
-   if (!q || q->Active) {
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glGetQueryObjectui64vARB(id=%d is invalid or active)", id);
-      return;
-   }
-
-   switch (pname) {
-      case GL_QUERY_RESULT_ARB:
-         if (!q->Ready)
-            ctx->Driver.WaitQuery(ctx, q);
-         *params = q->Result;
-         break;
-      case GL_QUERY_RESULT_AVAILABLE_ARB:
-	 if (!q->Ready)
-	    ctx->Driver.CheckQuery( ctx, q );
-         *params = q->Ready;
-         break;
-      default:
-         _mesa_error(ctx, GL_INVALID_ENUM, "glGetQueryObjecti64vARB(pname)");
-         return;
-   }
+   get_query_object(ctx, "glGetQueryObjecti64v",
+                    id, pname, GL_INT64_ARB,
+                    ctx->QueryBuffer, (intptr_t)params);
 }
 
 
 /**
  * New with GL_EXT_timer_query
  */
-static void GLAPIENTRY
-_mesa_GetQueryObjectui64vEXT(GLuint id, GLenum pname, GLuint64EXT *params)
+void GLAPIENTRY
+_mesa_GetQueryObjectui64v(GLuint id, GLenum pname, GLuint64EXT *params)
 {
-   struct gl_query_object *q = NULL;
    GET_CURRENT_CONTEXT(ctx);
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
-   if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGetQueryObjectui64v(%u, %s)\n", id,
-                  _mesa_lookup_enum_by_nr(pname));
-
-   if (id)
-      q = _mesa_lookup_query_object(ctx, id);
-
-   if (!q || q->Active) {
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glGetQueryObjectuui64vARB(id=%d is invalid or active)", id);
-      return;
-   }
-
-   switch (pname) {
-      case GL_QUERY_RESULT_ARB:
-         if (!q->Ready)
-            ctx->Driver.WaitQuery(ctx, q);
-         *params = q->Result;
-         break;
-      case GL_QUERY_RESULT_AVAILABLE_ARB:
-	 if (!q->Ready)
-	    ctx->Driver.CheckQuery( ctx, q );
-         *params = q->Ready;
-         break;
-      default:
-         _mesa_error(ctx, GL_INVALID_ENUM, "glGetQueryObjectui64vARB(pname)");
-         return;
-   }
+   get_query_object(ctx, "glGetQueryObjectui64v",
+                    id, pname, GL_UNSIGNED_INT64_ARB,
+                    ctx->QueryBuffer, (intptr_t)params);
 }
 
-
-void
-_mesa_init_queryobj_dispatch(struct _glapi_table *disp)
+/**
+ * New with GL_ARB_query_buffer_object
+ */
+void GLAPIENTRY
+_mesa_GetQueryBufferObjectiv(GLuint id, GLuint buffer, GLenum pname,
+                             GLintptr offset)
 {
-   SET_GenQueriesARB(disp, _mesa_GenQueriesARB);
-   SET_DeleteQueriesARB(disp, _mesa_DeleteQueriesARB);
-   SET_IsQueryARB(disp, _mesa_IsQueryARB);
-   SET_BeginQueryARB(disp, _mesa_BeginQueryARB);
-   SET_EndQueryARB(disp, _mesa_EndQueryARB);
-   SET_GetQueryivARB(disp, _mesa_GetQueryivARB);
-   SET_GetQueryObjectivARB(disp, _mesa_GetQueryObjectivARB);
-   SET_GetQueryObjectuivARB(disp, _mesa_GetQueryObjectuivARB);
-   SET_QueryCounter(disp, _mesa_QueryCounter);
+   struct gl_buffer_object *buf;
+   GET_CURRENT_CONTEXT(ctx);
 
-   SET_GetQueryObjecti64vEXT(disp, _mesa_GetQueryObjecti64vEXT);
-   SET_GetQueryObjectui64vEXT(disp, _mesa_GetQueryObjectui64vEXT);
+   buf = _mesa_lookup_bufferobj_err(ctx, buffer, "glGetQueryBufferObjectiv");
+   if (!buf)
+      return;
 
-   SET_BeginQueryIndexed(disp, _mesa_BeginQueryIndexed);
-   SET_EndQueryIndexed(disp, _mesa_EndQueryIndexed);
-   SET_GetQueryIndexediv(disp, _mesa_GetQueryIndexediv);
+   get_query_object(ctx, "glGetQueryBufferObjectiv",
+                    id, pname, GL_INT, buf, offset);
 }
 
 
-#endif /* FEATURE_queryobj */
+void GLAPIENTRY
+_mesa_GetQueryBufferObjectuiv(GLuint id, GLuint buffer, GLenum pname,
+                              GLintptr offset)
+{
+   struct gl_buffer_object *buf;
+   GET_CURRENT_CONTEXT(ctx);
+
+   buf = _mesa_lookup_bufferobj_err(ctx, buffer, "glGetQueryBufferObjectuiv");
+   if (!buf)
+      return;
+
+   get_query_object(ctx, "glGetQueryBufferObjectuiv",
+                    id, pname, GL_UNSIGNED_INT, buf, offset);
+}
+
+
+void GLAPIENTRY
+_mesa_GetQueryBufferObjecti64v(GLuint id, GLuint buffer, GLenum pname,
+                               GLintptr offset)
+{
+   struct gl_buffer_object *buf;
+   GET_CURRENT_CONTEXT(ctx);
+
+   buf = _mesa_lookup_bufferobj_err(ctx, buffer, "glGetQueryBufferObjecti64v");
+   if (!buf)
+      return;
+
+   get_query_object(ctx, "glGetQueryBufferObjecti64v",
+                    id, pname, GL_INT64_ARB, buf, offset);
+}
+
+
+void GLAPIENTRY
+_mesa_GetQueryBufferObjectui64v(GLuint id, GLuint buffer, GLenum pname,
+                                GLintptr offset)
+{
+   struct gl_buffer_object *buf;
+   GET_CURRENT_CONTEXT(ctx);
+
+   buf = _mesa_lookup_bufferobj_err(ctx, buffer, "glGetQueryBufferObjectui64v");
+   if (!buf)
+      return;
+
+   get_query_object(ctx, "glGetQueryBufferObjectui64v",
+                    id, pname, GL_UNSIGNED_INT64_ARB, buf, offset);
+}
 
 
 /**
@@ -757,6 +969,18 @@ _mesa_init_queryobj(struct gl_context *ctx)
    ctx->Const.QueryCounterBits.Timestamp = 64;
    ctx->Const.QueryCounterBits.PrimitivesGenerated = 64;
    ctx->Const.QueryCounterBits.PrimitivesWritten = 64;
+
+   ctx->Const.QueryCounterBits.VerticesSubmitted = 64;
+   ctx->Const.QueryCounterBits.PrimitivesSubmitted = 64;
+   ctx->Const.QueryCounterBits.VsInvocations = 64;
+   ctx->Const.QueryCounterBits.TessPatches = 64;
+   ctx->Const.QueryCounterBits.TessInvocations = 64;
+   ctx->Const.QueryCounterBits.GsInvocations = 64;
+   ctx->Const.QueryCounterBits.GsPrimitives = 64;
+   ctx->Const.QueryCounterBits.FsInvocations = 64;
+   ctx->Const.QueryCounterBits.ComputeInvocations = 64;
+   ctx->Const.QueryCounterBits.ClInPrimitives = 64;
+   ctx->Const.QueryCounterBits.ClOutPrimitives = 64;
 }
 
 

@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -30,6 +30,11 @@
 #define U_RECT_H
 
 #include "pipe/p_compiler.h"
+#include "util/u_math.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct u_rect {
    int x0, x1;
@@ -37,20 +42,25 @@ struct u_rect {
 };
 
 /* Do two rectangles intersect?
+ * Note: empty rectangles are valid as inputs (and never intersect).
  */
-static INLINE boolean
+static inline boolean
 u_rect_test_intersection(const struct u_rect *a,
                          const struct u_rect *b)
 {
    return (!(a->x1 < b->x0 ||
              b->x1 < a->x0 ||
              a->y1 < b->y0 ||
-             b->y1 < a->y0));
+             b->y1 < a->y0 ||
+             a->x1 < a->x0 ||
+             a->y1 < a->y0 ||
+             b->x1 < b->x0 ||
+             b->y1 < b->y0));
 }
 
 /* Find the intersection of two rectangles known to intersect.
  */
-static INLINE void
+static inline void
 u_rect_find_intersection(const struct u_rect *a,
                          struct u_rect *b)
 {
@@ -63,7 +73,13 @@ u_rect_find_intersection(const struct u_rect *a,
 }
 
 
-static INLINE void
+static inline int
+u_rect_area(const struct u_rect *r)
+{
+   return (r->x1 - r->x0) * (r->y1 - r->y0);
+}
+
+static inline void
 u_rect_possible_intersection(const struct u_rect *a,
                              struct u_rect *b)
 {
@@ -71,33 +87,28 @@ u_rect_possible_intersection(const struct u_rect *a,
       u_rect_find_intersection(a,b);
    }
    else {
-      b->x0 = b->x1 = b->y0 = b->y1 = 0;
+      /*
+       * Note the u_rect_xx tests deal with inclusive coordinates
+       * hence all-zero would not be an empty box.
+       */
+      b->x0 = b->y0 = 0;
+      b->x1 = b->y1 = -1;
    }
 }
 
-#include "pipe/p_format.h"
-#include "util/u_pack_color.h"
-
-
-
-/**********************************************************************
- * Pipe copy/fill rect helpers.
+/* Set @d to a rectangle that covers both @a and @b.
  */
+static inline void
+u_rect_union(struct u_rect *d, const struct u_rect *a, const struct u_rect *b)
+{
+   d->x0 = MIN2(a->x0, b->x0);
+   d->y0 = MIN2(a->y0, b->y0);
+   d->x1 = MAX2(a->x1, b->x1);
+   d->y1 = MAX2(a->y1, b->y1);
+}
 
-/* These really should move to a different file:
- */
-#include "pipe/p_format.h"
-
-extern void
-util_copy_rect(ubyte * dst, enum pipe_format format,
-               unsigned dst_stride, unsigned dst_x, unsigned dst_y,
-               unsigned width, unsigned height, const ubyte * src,
-               int src_stride, unsigned src_x, unsigned src_y);
-
-extern void
-util_fill_rect(ubyte * dst, enum pipe_format format,
-               unsigned dst_stride, unsigned dst_x, unsigned dst_y,
-               unsigned width, unsigned height, union util_color *uc);
-
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* U_RECT_H */

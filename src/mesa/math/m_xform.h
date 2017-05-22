@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.3
  *
  * Copyright (C) 1999-2008  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -31,14 +31,6 @@
 #include "main/glheader.h"
 #include "math/m_matrix.h"
 #include "math/m_vector.h"
-
-#ifdef USE_X86_ASM
-#define _XFORMAPI _ASMAPI
-#define _XFORMAPIP _ASMAPIP
-#else
-#define _XFORMAPI
-#define _XFORMAPIP *
-#endif
 
 
 extern void
@@ -99,31 +91,31 @@ init_c_cliptest(void);
 #define CLIP_FRUSTUM_BITS    0x3f
 
 
-typedef GLvector4f * (_XFORMAPIP clip_func)( GLvector4f *vClip,
-					     GLvector4f *vProj,
-					     GLubyte clipMask[],
-					     GLubyte *orMask,
-					     GLubyte *andMask,
-					     GLboolean viewport_z_clip );
+typedef GLvector4f * (*clip_func)(GLvector4f *vClip,
+                                  GLvector4f *vProj,
+                                  GLubyte clipMask[],
+                                  GLubyte *orMask,
+                                  GLubyte *andMask,
+                                  GLboolean viewport_z_clip);
 
 typedef void (*dotprod_func)( GLfloat *out,
 			      GLuint out_stride,
-			      CONST GLvector4f *coord_vec,
-			      CONST GLfloat plane[4] );
+			      const GLvector4f *coord_vec,
+			      const GLfloat plane[4] );
 
 typedef void (*vec_copy_func)( GLvector4f *to,
-			       CONST GLvector4f *from );
+			       const GLvector4f *from );
 
 
 
 /*
  * Functions for transformation of normals in the VB.
  */
-typedef void (_NORMAPIP normal_func)( CONST GLmatrix *mat,
-				      GLfloat scale,
-				      CONST GLvector4f *in,
-				      CONST GLfloat lengths[],
-				      GLvector4f *dest );
+typedef void (*normal_func)(const GLmatrix *mat,
+                            GLfloat scale,
+                            const GLvector4f *in,
+                            const GLfloat lengths[],
+                            GLvector4f *dest);
 
 
 /* Flags for selecting a normal transformation function.
@@ -141,9 +133,9 @@ typedef void (_NORMAPIP normal_func)( CONST GLmatrix *mat,
  *     when the mask byte is zero.  This is always present as a
  *     parameter, to allow a unified interface.
  */
-typedef void (_XFORMAPIP transform_func)( GLvector4f *to_vec,
-					  CONST GLfloat m[16],
-					  CONST GLvector4f *from_vec );
+typedef void (*transform_func)(GLvector4f *to_vec,
+                               const GLfloat m[16],
+                               const GLvector4f *from_vec);
 
 
 extern dotprod_func  _mesa_dotprod_tab[5];

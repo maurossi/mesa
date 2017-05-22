@@ -5,7 +5,6 @@
 
 /*
  * Mesa 3-D graphics library
- * Version:  7.1
  *
  * Copyright (C) 1999-2007  Brian Paul   All Rights Reserved.
  *
@@ -22,15 +21,15 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
-#include "mfeatures.h"
+#include <stdio.h>
 #include "bufferobj.h"
-#include "colortab.h"
 #include "context.h"
 #include "enums.h"
 #include "fbobject.h"
@@ -38,6 +37,7 @@
 #include "hash.h"
 #include "imports.h"
 #include "macros.h"
+#include "shaderimage.h"
 #include "teximage.h"
 #include "texobj.h"
 #include "texstate.h"
@@ -50,6 +50,54 @@
 /** \name Internal functions */
 /*@{*/
 
+/**
+ * This function checks for all valid combinations of Min and Mag filters for
+ * Float types, when extensions like OES_texture_float and
+ * OES_texture_float_linear are supported. OES_texture_float mentions support
+ * for NEAREST, NEAREST_MIPMAP_NEAREST magnification and minification filters.
+ * Mag filters like LINEAR and min filters like NEAREST_MIPMAP_LINEAR,
+ * LINEAR_MIPMAP_NEAREST and LINEAR_MIPMAP_LINEAR are only valid in case
+ * OES_texture_float_linear is supported.
+ *
+ * Returns true in case the filter is valid for given Float type else false.
+ */
+static bool
+valid_filter_for_float(const struct gl_context *ctx,
+                       const struct gl_texture_object *obj)
+{
+   switch (obj->Sampler.MagFilter) {
+   case GL_LINEAR:
+      if (obj->_IsHalfFloat && !ctx->Extensions.OES_texture_half_float_linear) {
+         return false;
+      } else if (obj->_IsFloat && !ctx->Extensions.OES_texture_float_linear) {
+         return false;
+      }
+   case GL_NEAREST:
+   case GL_NEAREST_MIPMAP_NEAREST:
+      break;
+   default:
+      unreachable("Invalid mag filter");
+   }
+
+   switch (obj->Sampler.MinFilter) {
+   case GL_LINEAR:
+   case GL_NEAREST_MIPMAP_LINEAR:
+   case GL_LINEAR_MIPMAP_NEAREST:
+   case GL_LINEAR_MIPMAP_LINEAR:
+      if (obj->_IsHalfFloat && !ctx->Extensions.OES_texture_half_float_linear) {
+         return false;
+      } else if (obj->_IsFloat && !ctx->Extensions.OES_texture_float_linear) {
+         return false;
+      }
+   case GL_NEAREST:
+   case GL_NEAREST_MIPMAP_NEAREST:
+      break;
+   default:
+      unreachable("Invalid min filter");
+   }
+
+   return true;
+}
 
 /**
  * Return the gl_texture_object for a given ID.
@@ -61,6 +109,125 @@ _mesa_lookup_texture(struct gl_context *ctx, GLuint id)
       _mesa_HashLookup(ctx->Shared->TexObjects, id);
 }
 
+/**
+ * Wrapper around _mesa_lookup_texture that throws GL_INVALID_OPERATION if id
+ * is not in the hash table. After calling _mesa_error, it returns NULL.
+ */
+struct gl_texture_object *
+_mesa_lookup_texture_err(struct gl_context *ctx, GLuint id, const char* func)
+{
+   struct gl_texture_object *texObj = NULL;
+
+   if (id > 0)
+      texObj = _mesa_lookup_texture(ctx, id); /* Returns NULL if not found. */
+
+   if (!texObj)
+      _mesa_error(ctx, GL_INVALID_OPERATION, "%s(texture)", func);
+
+   return texObj;
+}
+
+void
+_mesa_begin_texture_lookups(struct gl_context *ctx)
+{
+   _mesa_HashLockMutex(ctx->Shared->TexObjects);
+}
+
+
+void
+_mesa_end_texture_lookups(struct gl_context *ctx)
+{
+   _mesa_HashUnlockMutex(ctx->Shared->TexObjects);
+}
+
+
+struct gl_texture_object *
+_mesa_lookup_texture_locked(struct gl_context *ctx, GLuint id)
+{
+   return (struct gl_texture_object *)
+      _mesa_HashLookupLocked(ctx->Shared->TexObjects, id);
+}
+
+/**
+ * Return a pointer to the current texture object for the given target
+ * on the current texture unit.
+ * Note: all <target> error checking should have been done by this point.
+ */
+struct gl_texture_object *
+_mesa_get_current_tex_object(struct gl_context *ctx, GLenum target)
+{
+   struct gl_texture_unit *texUnit = _mesa_get_current_tex_unit(ctx);
+   const GLboolean arrayTex = ctx->Extensions.EXT_texture_array;
+
+   switch (target) {
+      case GL_TEXTURE_1D:
+         return texUnit->CurrentTex[TEXTURE_1D_INDEX];
+      case GL_PROXY_TEXTURE_1D:
+         return ctx->Texture.ProxyTex[TEXTURE_1D_INDEX];
+      case GL_TEXTURE_2D:
+         return texUnit->CurrentTex[TEXTURE_2D_INDEX];
+      case GL_PROXY_TEXTURE_2D:
+         return ctx->Texture.ProxyTex[TEXTURE_2D_INDEX];
+      case GL_TEXTURE_3D:
+         return texUnit->CurrentTex[TEXTURE_3D_INDEX];
+      case GL_PROXY_TEXTURE_3D:
+         return ctx->Texture.ProxyTex[TEXTURE_3D_INDEX];
+      case GL_TEXTURE_CUBE_MAP_POSITIVE_X:
+      case GL_TEXTURE_CUBE_MAP_NEGATIVE_X:
+      case GL_TEXTURE_CUBE_MAP_POSITIVE_Y:
+      case GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
+      case GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
+      case GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
+      case GL_TEXTURE_CUBE_MAP:
+         return ctx->Extensions.ARB_texture_cube_map
+                ? texUnit->CurrentTex[TEXTURE_CUBE_INDEX] : NULL;
+      case GL_PROXY_TEXTURE_CUBE_MAP:
+         return ctx->Extensions.ARB_texture_cube_map
+                ? ctx->Texture.ProxyTex[TEXTURE_CUBE_INDEX] : NULL;
+      case GL_TEXTURE_CUBE_MAP_ARRAY:
+         return _mesa_has_texture_cube_map_array(ctx)
+                ? texUnit->CurrentTex[TEXTURE_CUBE_ARRAY_INDEX] : NULL;
+      case GL_PROXY_TEXTURE_CUBE_MAP_ARRAY:
+         return _mesa_has_texture_cube_map_array(ctx)
+                ? ctx->Texture.ProxyTex[TEXTURE_CUBE_ARRAY_INDEX] : NULL;
+      case GL_TEXTURE_RECTANGLE_NV:
+         return ctx->Extensions.NV_texture_rectangle
+                ? texUnit->CurrentTex[TEXTURE_RECT_INDEX] : NULL;
+      case GL_PROXY_TEXTURE_RECTANGLE_NV:
+         return ctx->Extensions.NV_texture_rectangle
+                ? ctx->Texture.ProxyTex[TEXTURE_RECT_INDEX] : NULL;
+      case GL_TEXTURE_1D_ARRAY_EXT:
+         return arrayTex ? texUnit->CurrentTex[TEXTURE_1D_ARRAY_INDEX] : NULL;
+      case GL_PROXY_TEXTURE_1D_ARRAY_EXT:
+         return arrayTex ? ctx->Texture.ProxyTex[TEXTURE_1D_ARRAY_INDEX] : NULL;
+      case GL_TEXTURE_2D_ARRAY_EXT:
+         return arrayTex ? texUnit->CurrentTex[TEXTURE_2D_ARRAY_INDEX] : NULL;
+      case GL_PROXY_TEXTURE_2D_ARRAY_EXT:
+         return arrayTex ? ctx->Texture.ProxyTex[TEXTURE_2D_ARRAY_INDEX] : NULL;
+      case GL_TEXTURE_BUFFER:
+         return (_mesa_has_ARB_texture_buffer_object(ctx) ||
+                 _mesa_has_OES_texture_buffer(ctx)) ?
+                texUnit->CurrentTex[TEXTURE_BUFFER_INDEX] : NULL;
+      case GL_TEXTURE_EXTERNAL_OES:
+         return _mesa_is_gles(ctx) && ctx->Extensions.OES_EGL_image_external
+            ? texUnit->CurrentTex[TEXTURE_EXTERNAL_INDEX] : NULL;
+      case GL_TEXTURE_2D_MULTISAMPLE:
+         return ctx->Extensions.ARB_texture_multisample
+            ? texUnit->CurrentTex[TEXTURE_2D_MULTISAMPLE_INDEX] : NULL;
+      case GL_PROXY_TEXTURE_2D_MULTISAMPLE:
+         return ctx->Extensions.ARB_texture_multisample
+            ? ctx->Texture.ProxyTex[TEXTURE_2D_MULTISAMPLE_INDEX] : NULL;
+      case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
+         return ctx->Extensions.ARB_texture_multisample
+            ? texUnit->CurrentTex[TEXTURE_2D_MULTISAMPLE_ARRAY_INDEX] : NULL;
+      case GL_PROXY_TEXTURE_2D_MULTISAMPLE_ARRAY:
+         return ctx->Extensions.ARB_texture_multisample
+            ? ctx->Texture.ProxyTex[TEXTURE_2D_MULTISAMPLE_ARRAY_INDEX] : NULL;
+      default:
+         _mesa_problem(NULL, "bad target in _mesa_get_current_tex_object()");
+         return NULL;
+   }
+}
 
 
 /**
@@ -69,11 +236,11 @@ _mesa_lookup_texture(struct gl_context *ctx, GLuint id)
  *
  * Called via ctx->Driver.NewTextureObject, unless overridden by a device
  * driver.
- * 
+ *
  * \param shared the shared GL state structure to contain the texture object
  * \param name integer name for the texture object
  * \param target either GL_TEXTURE_1D, GL_TEXTURE_2D, GL_TEXTURE_3D,
- * GL_TEXTURE_CUBE_MAP_ARB or GL_TEXTURE_RECTANGLE_NV.  zero is ok for the sake
+ * GL_TEXTURE_CUBE_MAP or GL_TEXTURE_RECTANGLE_NV.  zero is ok for the sake
  * of GenTextures()
  *
  * \return pointer to new texture object.
@@ -84,7 +251,7 @@ _mesa_new_texture_object( struct gl_context *ctx, GLuint name, GLenum target )
    struct gl_texture_object *obj;
    (void) ctx;
    obj = MALLOC_STRUCT(gl_texture_object);
-   _mesa_initialize_texture_object(obj, name, target);
+   _mesa_initialize_texture_object(ctx, obj, name, target);
    return obj;
 }
 
@@ -96,26 +263,36 @@ _mesa_new_texture_object( struct gl_context *ctx, GLuint name, GLenum target )
  * \param target  the texture target
  */
 void
-_mesa_initialize_texture_object( struct gl_texture_object *obj,
+_mesa_initialize_texture_object( struct gl_context *ctx,
+                                 struct gl_texture_object *obj,
                                  GLuint name, GLenum target )
 {
-   ASSERT(target == 0 ||
+   assert(target == 0 ||
           target == GL_TEXTURE_1D ||
           target == GL_TEXTURE_2D ||
           target == GL_TEXTURE_3D ||
-          target == GL_TEXTURE_CUBE_MAP_ARB ||
+          target == GL_TEXTURE_CUBE_MAP ||
           target == GL_TEXTURE_RECTANGLE_NV ||
           target == GL_TEXTURE_1D_ARRAY_EXT ||
           target == GL_TEXTURE_2D_ARRAY_EXT ||
           target == GL_TEXTURE_EXTERNAL_OES ||
-          target == GL_TEXTURE_BUFFER);
+          target == GL_TEXTURE_CUBE_MAP_ARRAY ||
+          target == GL_TEXTURE_BUFFER ||
+          target == GL_TEXTURE_2D_MULTISAMPLE ||
+          target == GL_TEXTURE_2D_MULTISAMPLE_ARRAY);
 
    memset(obj, 0, sizeof(*obj));
    /* init the non-zero fields */
-   _glthread_INIT_MUTEX(obj->Mutex);
+   mtx_init(&obj->Mutex, mtx_plain);
    obj->RefCount = 1;
    obj->Name = name;
    obj->Target = target;
+   if (target != 0) {
+      obj->TargetIndex = _mesa_tex_target_to_index(ctx, target);
+   }
+   else {
+      obj->TargetIndex = NUM_TEXTURE_TARGETS; /* invalid/error value */
+   }
    obj->Priority = 1.0F;
    obj->BaseLevel = 0;
    obj->MaxLevel = 1000;
@@ -144,7 +321,8 @@ _mesa_initialize_texture_object( struct gl_texture_object *obj,
    obj->Sampler.MaxAnisotropy = 1.0;
    obj->Sampler.CompareMode = GL_NONE;         /* ARB_shadow */
    obj->Sampler.CompareFunc = GL_LEQUAL;       /* ARB_shadow */
-   obj->DepthMode = GL_LUMINANCE;
+   obj->DepthMode = ctx->API == API_OPENGL_CORE ? GL_RED : GL_LUMINANCE;
+   obj->StencilSampling = false;
    obj->Sampler.CubeMapSeamless = GL_FALSE;
    obj->Swizzle[0] = GL_RED;
    obj->Swizzle[1] = GL_GREEN;
@@ -152,8 +330,9 @@ _mesa_initialize_texture_object( struct gl_texture_object *obj,
    obj->Swizzle[3] = GL_ALPHA;
    obj->_Swizzle = SWIZZLE_NOOP;
    obj->Sampler.sRGBDecode = GL_DECODE_EXT;
-   obj->BufferObjectFormat = GL_LUMINANCE8;
-   obj->_BufferObjectFormat = MESA_FORMAT_L8;
+   obj->BufferObjectFormat = GL_R8;
+   obj->_BufferObjectFormat = MESA_FORMAT_R_UNORM8;
+   obj->ImageFormatCompatibilityType = GL_IMAGE_FORMAT_COMPATIBILITY_BY_SIZE;
 }
 
 
@@ -165,23 +344,40 @@ static void
 finish_texture_init(struct gl_context *ctx, GLenum target,
                     struct gl_texture_object *obj)
 {
+   GLenum filter = GL_LINEAR;
    assert(obj->Target == 0);
 
-   if (target == GL_TEXTURE_RECTANGLE_NV ||
-       target == GL_TEXTURE_EXTERNAL_OES) {
-      /* have to init wrap and filter state here - kind of klunky */
-      obj->Sampler.WrapS = GL_CLAMP_TO_EDGE;
-      obj->Sampler.WrapT = GL_CLAMP_TO_EDGE;
-      obj->Sampler.WrapR = GL_CLAMP_TO_EDGE;
-      obj->Sampler.MinFilter = GL_LINEAR;
-      if (ctx->Driver.TexParameter) {
-         static const GLfloat fparam_wrap[1] = {(GLfloat) GL_CLAMP_TO_EDGE};
-         static const GLfloat fparam_filter[1] = {(GLfloat) GL_LINEAR};
-         ctx->Driver.TexParameter(ctx, target, obj, GL_TEXTURE_WRAP_S, fparam_wrap);
-         ctx->Driver.TexParameter(ctx, target, obj, GL_TEXTURE_WRAP_T, fparam_wrap);
-         ctx->Driver.TexParameter(ctx, target, obj, GL_TEXTURE_WRAP_R, fparam_wrap);
-         ctx->Driver.TexParameter(ctx, target, obj, GL_TEXTURE_MIN_FILTER, fparam_filter);
-      }
+   obj->Target = target;
+   obj->TargetIndex = _mesa_tex_target_to_index(ctx, target);
+   assert(obj->TargetIndex < NUM_TEXTURE_TARGETS);
+
+   switch (target) {
+      case GL_TEXTURE_2D_MULTISAMPLE:
+      case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
+         filter = GL_NEAREST;
+         /* fallthrough */
+
+      case GL_TEXTURE_RECTANGLE_NV:
+      case GL_TEXTURE_EXTERNAL_OES:
+         /* have to init wrap and filter state here - kind of klunky */
+         obj->Sampler.WrapS = GL_CLAMP_TO_EDGE;
+         obj->Sampler.WrapT = GL_CLAMP_TO_EDGE;
+         obj->Sampler.WrapR = GL_CLAMP_TO_EDGE;
+         obj->Sampler.MinFilter = filter;
+         obj->Sampler.MagFilter = filter;
+         if (ctx->Driver.TexParameter) {
+            /* XXX we probably don't need to make all these calls */
+            ctx->Driver.TexParameter(ctx, obj, GL_TEXTURE_WRAP_S);
+            ctx->Driver.TexParameter(ctx, obj, GL_TEXTURE_WRAP_T);
+            ctx->Driver.TexParameter(ctx, obj, GL_TEXTURE_WRAP_R);
+            ctx->Driver.TexParameter(ctx, obj, GL_TEXTURE_MIN_FILTER);
+            ctx->Driver.TexParameter(ctx, obj, GL_TEXTURE_MAG_FILTER);
+         }
+         break;
+
+      default:
+         /* nothing needs done */
+         break;
    }
 }
 
@@ -217,12 +413,13 @@ _mesa_delete_texture_object(struct gl_context *ctx,
    _mesa_reference_buffer_object(ctx, &texObj->BufferObject, NULL);
 
    /* destroy the mutex -- it may have allocated memory (eg on bsd) */
-   _glthread_DESTROY_MUTEX(texObj->Mutex);
+   mtx_destroy(&texObj->Mutex);
+
+   free(texObj->Label);
 
    /* free this object */
    free(texObj);
 }
-
 
 
 /**
@@ -237,6 +434,7 @@ _mesa_copy_texture_object( struct gl_texture_object *dest,
                            const struct gl_texture_object *src )
 {
    dest->Target = src->Target;
+   dest->TargetIndex = src->TargetIndex;
    dest->Name = src->Name;
    dest->Priority = src->Priority;
    dest->Sampler.BorderColor.f[0] = src->Sampler.BorderColor.f[0];
@@ -258,6 +456,7 @@ _mesa_copy_texture_object( struct gl_texture_object *dest,
    dest->Sampler.CompareFunc = src->Sampler.CompareFunc;
    dest->Sampler.CubeMapSeamless = src->Sampler.CubeMapSeamless;
    dest->DepthMode = src->DepthMode;
+   dest->StencilSampling = src->StencilSampling;
    dest->Sampler.sRGBDecode = src->Sampler.sRGBDecode;
    dest->_MaxLevel = src->_MaxLevel;
    dest->_MaxLambda = src->_MaxLambda;
@@ -266,6 +465,8 @@ _mesa_copy_texture_object( struct gl_texture_object *dest,
    dest->_MipmapComplete = src->_MipmapComplete;
    COPY_4V(dest->Swizzle, src->Swizzle);
    dest->_Swizzle = src->_Swizzle;
+   dest->_IsHalfFloat = src->_IsHalfFloat;
+   dest->_IsFloat = src->_IsFloat;
 
    dest->RequiredTextureImageUnits = src->RequiredTextureImageUnits;
 }
@@ -310,12 +511,15 @@ valid_texture_object(const struct gl_texture_object *tex)
    case GL_TEXTURE_1D:
    case GL_TEXTURE_2D:
    case GL_TEXTURE_3D:
-   case GL_TEXTURE_CUBE_MAP_ARB:
+   case GL_TEXTURE_CUBE_MAP:
    case GL_TEXTURE_RECTANGLE_NV:
    case GL_TEXTURE_1D_ARRAY_EXT:
    case GL_TEXTURE_2D_ARRAY_EXT:
    case GL_TEXTURE_BUFFER:
    case GL_TEXTURE_EXTERNAL_OES:
+   case GL_TEXTURE_CUBE_MAP_ARRAY:
+   case GL_TEXTURE_2D_MULTISAMPLE:
+   case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
       return GL_TRUE;
    case 0x99:
       _mesa_problem(NULL, "invalid reference to a deleted texture object");
@@ -346,17 +550,20 @@ _mesa_reference_texobj_(struct gl_texture_object **ptr,
       GLboolean deleteFlag = GL_FALSE;
       struct gl_texture_object *oldTex = *ptr;
 
-      ASSERT(valid_texture_object(oldTex));
+      assert(valid_texture_object(oldTex));
       (void) valid_texture_object; /* silence warning in release builds */
 
-      _glthread_LOCK_MUTEX(oldTex->Mutex);
-      ASSERT(oldTex->RefCount > 0);
+      mtx_lock(&oldTex->Mutex);
+      assert(oldTex->RefCount > 0);
       oldTex->RefCount--;
 
       deleteFlag = (oldTex->RefCount == 0);
-      _glthread_UNLOCK_MUTEX(oldTex->Mutex);
+      mtx_unlock(&oldTex->Mutex);
 
       if (deleteFlag) {
+         /* Passing in the context drastically changes the driver code for
+          * framebuffer deletion.
+          */
          GET_CURRENT_CONTEXT(ctx);
          if (ctx)
             ctx->Driver.DeleteTexture(ctx, oldTex);
@@ -370,8 +577,8 @@ _mesa_reference_texobj_(struct gl_texture_object **ptr,
 
    if (tex) {
       /* reference new texture */
-      ASSERT(valid_texture_object(tex));
-      _glthread_LOCK_MUTEX(tex->Mutex);
+      assert(valid_texture_object(tex));
+      mtx_lock(&tex->Mutex);
       if (tex->RefCount == 0) {
          /* this texture's being deleted (look just above) */
          /* Not sure this can every really happen.  Warn if it does. */
@@ -382,7 +589,7 @@ _mesa_reference_texobj_(struct gl_texture_object **ptr,
          tex->RefCount++;
          *ptr = tex;
       }
-      _glthread_UNLOCK_MUTEX(tex->Mutex);
+      mtx_unlock(&tex->Mutex);
    }
 }
 
@@ -443,7 +650,7 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
 {
    const GLint baseLevel = t->BaseLevel;
    const struct gl_texture_image *baseImage;
-   GLint maxLog2 = 0, maxLevels = 0;
+   GLint maxLevels = 0;
 
    /* We'll set these to FALSE if tests fail below */
    t->_BaseComplete = GL_TRUE;
@@ -466,7 +673,7 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
    }
 
    if (t->MaxLevel < baseLevel) {
-      incomplete(t, BASE, "MAX_LEVEL (%d) < BASE_LEVEL (%d)",
+      incomplete(t, MIPMAP, "MAX_LEVEL (%d) < BASE_LEVEL (%d)",
 		 t->MaxLevel, baseLevel);
       return;
    }
@@ -493,36 +700,38 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
       t->_IsIntegerFormat = datatype == GL_INT || datatype == GL_UNSIGNED_INT;
    }
 
+   /* Check if the texture type is Float or HalfFloatOES and ensure Min and Mag
+    * filters are supported in this case.
+    */
+   if (_mesa_is_gles(ctx) && !valid_filter_for_float(ctx, t)) {
+      incomplete(t, BASE, "Filter is not supported with Float types.");
+      return;
+   }
+
    /* Compute _MaxLevel (the maximum mipmap level we'll sample from given the
     * mipmap image sizes and GL_TEXTURE_MAX_LEVEL state).
     */
    switch (t->Target) {
    case GL_TEXTURE_1D:
    case GL_TEXTURE_1D_ARRAY_EXT:
-      maxLog2 = baseImage->WidthLog2;
       maxLevels = ctx->Const.MaxTextureLevels;
       break;
    case GL_TEXTURE_2D:
    case GL_TEXTURE_2D_ARRAY_EXT:
-      maxLog2 = MAX2(baseImage->WidthLog2,
-                     baseImage->HeightLog2);
       maxLevels = ctx->Const.MaxTextureLevels;
       break;
    case GL_TEXTURE_3D:
-      maxLog2 = MAX3(baseImage->WidthLog2,
-                     baseImage->HeightLog2,
-                     baseImage->DepthLog2);
       maxLevels = ctx->Const.Max3DTextureLevels;
       break;
-   case GL_TEXTURE_CUBE_MAP_ARB:
-      maxLog2 = MAX2(baseImage->WidthLog2,
-                     baseImage->HeightLog2);
+   case GL_TEXTURE_CUBE_MAP:
+   case GL_TEXTURE_CUBE_MAP_ARRAY:
       maxLevels = ctx->Const.MaxCubeTextureLevels;
       break;
    case GL_TEXTURE_RECTANGLE_NV:
    case GL_TEXTURE_BUFFER:
    case GL_TEXTURE_EXTERNAL_OES:
-      maxLog2 = 0;  /* not applicable */
+   case GL_TEXTURE_2D_MULTISAMPLE:
+   case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
       maxLevels = 1;  /* no mipmapping */
       break;
    default:
@@ -530,13 +739,22 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
       return;
    }
 
-   ASSERT(maxLevels > 0);
+   assert(maxLevels > 0);
 
-   t->_MaxLevel = baseLevel + maxLog2;  /* 'p' in the GL spec */
-   t->_MaxLevel = MIN2(t->_MaxLevel, t->MaxLevel);
-   t->_MaxLevel = MIN2(t->_MaxLevel, maxLevels - 1); /* 'q' in the GL spec */
+   t->_MaxLevel = MIN3(t->MaxLevel,
+                       /* 'p' in the GL spec */
+                       (int) (baseLevel + baseImage->MaxNumLevels - 1),
+                       /* 'q' in the GL spec */
+                       maxLevels - 1);
 
-   /* Compute _MaxLambda = q - b (see the 1.2 spec) used during mipmapping */
+   if (t->Immutable) {
+      /* Adjust max level for views: the data store may have more levels than
+       * the view exposes.
+       */
+      t->_MaxLevel = MIN2(t->_MaxLevel, t->NumLevels - 1);
+   }
+
+   /* Compute _MaxLambda = q - p in the spec used during mipmapping */
    t->_MaxLambda = (GLfloat) (t->_MaxLevel - baseLevel);
 
    if (t->Immutable) {
@@ -548,8 +766,9 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
       return;
    }
 
-   if (t->Target == GL_TEXTURE_CUBE_MAP_ARB) {
-      /* Make sure that all six cube map level 0 images are the same size.
+   if (t->Target == GL_TEXTURE_CUBE_MAP) {
+      /* Make sure that all six cube map level 0 images are the same size and
+       * format.
        * Note:  we know that the image's width==height (we enforce that
        * at glTexImage time) so we only need to test the width here.
        */
@@ -562,6 +781,15 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
          if (t->Image[face][baseLevel] == NULL ||
              t->Image[face][baseLevel]->Width2 != baseImage->Width2) {
             incomplete(t, BASE, "Cube face missing or mismatched size");
+            return;
+         }
+         if (t->Image[face][baseLevel]->InternalFormat !=
+             baseImage->InternalFormat) {
+            incomplete(t, BASE, "Cube face format mismatch");
+            return;
+         }
+         if (t->Image[face][baseLevel]->Border != baseImage->Border) {
+            incomplete(t, BASE, "Cube face border size mismatch");
             return;
          }
       }
@@ -581,7 +809,7 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
       GLuint width, height, depth, face;
 
       if (minLevel > maxLevel) {
-         incomplete(t, BASE, "minLevel > maxLevel");
+         incomplete(t, MIPMAP, "minLevel > maxLevel");
          return;
       }
 
@@ -590,7 +818,9 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
       height = baseImage->Height2;
       depth = baseImage->Depth2;
 
-      /* Note: this loop will be a no-op for RECT, BUFFER, EXTERNAL textures */
+      /* Note: this loop will be a no-op for RECT, BUFFER, EXTERNAL,
+       * MULTISAMPLE and MULTISAMPLE_ARRAY textures
+       */
       for (i = baseLevel + 1; i < maxLevels; i++) {
          /* Compute the expected size of image at level[i] */
          if (width > 1) {
@@ -599,7 +829,8 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
          if (height > 1 && t->Target != GL_TEXTURE_1D_ARRAY) {
             height /= 2;
          }
-         if (depth > 1 && t->Target != GL_TEXTURE_2D_ARRAY) {
+         if (depth > 1 && t->Target != GL_TEXTURE_2D_ARRAY
+             && t->Target != GL_TEXTURE_CUBE_MAP_ARRAY) {
             depth /= 2;
          }
 
@@ -612,7 +843,7 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
                   incomplete(t, MIPMAP, "TexImage[%d] is missing", i);
                   return;
                }
-               if (img->TexFormat != baseImage->TexFormat) {
+               if (img->InternalFormat != baseImage->InternalFormat) {
                   incomplete(t, MIPMAP, "Format[i] != Format[baseLevel]");
                   return;
                }
@@ -621,30 +852,23 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
                   return;
                }
                if (img->Width2 != width) {
-                  incomplete(t, MIPMAP, "TexImage[%d] bad width %u", i, img->Width2);
+                  incomplete(t, MIPMAP, "TexImage[%d] bad width %u", i,
+                             img->Width2);
                   return;
                }
                if (img->Height2 != height) {
-                  incomplete(t, MIPMAP, "TexImage[%d] bad height %u", i, img->Height2);
+                  incomplete(t, MIPMAP, "TexImage[%d] bad height %u", i,
+                             img->Height2);
                   return;
                }
                if (img->Depth2 != depth) {
-                  incomplete(t, MIPMAP, "TexImage[%d] bad depth %u", i, img->Depth2);
+                  incomplete(t, MIPMAP, "TexImage[%d] bad depth %u", i,
+                             img->Depth2);
                   return;
-               }
-
-               /* Extra checks for cube textures */
-               if (face > 0) {
-                  /* check that cube faces are the same size */
-                  if (img->Width2 != t->Image[0][i]->Width2 || 
-                      img->Height2 != t->Image[0][i]->Height2) {
-		     incomplete(t, MIPMAP, "CubeMap Image[n][i] bad size");
-		     return;
-		  }
                }
             }
          }
-         
+
          if (width == 1 && height == 1 && depth == 1) {
             return;  /* found smallest needed mipmap, all done! */
          }
@@ -653,25 +877,21 @@ _mesa_test_texobj_completeness( const struct gl_context *ctx,
 }
 
 
-/**
- * Check if the given cube map texture is "cube complete" as defined in
- * the OpenGL specification.
- */
 GLboolean
-_mesa_cube_complete(const struct gl_texture_object *texObj)
+_mesa_cube_level_complete(const struct gl_texture_object *texObj,
+                          const GLint level)
 {
-   const GLint baseLevel = texObj->BaseLevel;
    const struct gl_texture_image *img0, *img;
    GLuint face;
 
    if (texObj->Target != GL_TEXTURE_CUBE_MAP)
       return GL_FALSE;
 
-   if ((baseLevel < 0) || (baseLevel >= MAX_TEXTURE_LEVELS))
+   if ((level < 0) || (level >= MAX_TEXTURE_LEVELS))
       return GL_FALSE;
 
    /* check first face */
-   img0 = texObj->Image[0][baseLevel];
+   img0 = texObj->Image[0][level];
    if (!img0 ||
        img0->Width < 1 ||
        img0->Width != img0->Height)
@@ -679,7 +899,7 @@ _mesa_cube_complete(const struct gl_texture_object *texObj)
 
    /* check remaining faces vs. first face */
    for (face = 1; face < 6; face++) {
-      img = texObj->Image[face][baseLevel];
+      img = texObj->Image[face][level];
       if (!img ||
           img->Width != img0->Width ||
           img->Height != img0->Height ||
@@ -690,23 +910,29 @@ _mesa_cube_complete(const struct gl_texture_object *texObj)
    return GL_TRUE;
 }
 
+/**
+ * Check if the given cube map texture is "cube complete" as defined in
+ * the OpenGL specification.
+ */
+GLboolean
+_mesa_cube_complete(const struct gl_texture_object *texObj)
+{
+   return _mesa_cube_level_complete(texObj, texObj->BaseLevel);
+}
 
 /**
  * Mark a texture object dirty.  It forces the object to be incomplete
- * and optionally forces the context to re-validate its state.
+ * and forces the context to re-validate its state.
  *
  * \param ctx GL context.
  * \param texObj texture object.
- * \param invalidate_state also invalidate context state.
  */
 void
-_mesa_dirty_texobj(struct gl_context *ctx, struct gl_texture_object *texObj,
-                   GLboolean invalidate_state)
+_mesa_dirty_texobj(struct gl_context *ctx, struct gl_texture_object *texObj)
 {
    texObj->_BaseComplete = GL_FALSE;
    texObj->_MipmapComplete = GL_FALSE;
-   if (invalidate_state)
-      ctx->NewState |= _NEW_TEXTURE;
+   ctx->NewState |= _NEW_TEXTURE;
 }
 
 
@@ -721,18 +947,21 @@ _mesa_get_fallback_texture(struct gl_context *ctx, gl_texture_index tex)
 {
    if (!ctx->Shared->FallbackTex[tex]) {
       /* create fallback texture now */
-      const GLsizei width = 1, height = 1, depth = 1;
-      GLubyte texel[4];
+      const GLsizei width = 1, height = 1;
+      GLsizei depth = 1;
+      GLubyte texel[24];
       struct gl_texture_object *texObj;
       struct gl_texture_image *texImage;
-      gl_format texFormat;
+      mesa_format texFormat;
       GLuint dims, face, numFaces = 1;
       GLenum target;
 
-      texel[0] =
-      texel[1] =
-      texel[2] = 0x0;
-      texel[3] = 0xff;
+      for (face = 0; face < 6; face++) {
+         texel[4*face + 0] =
+         texel[4*face + 1] =
+         texel[4*face + 2] = 0x0;
+         texel[4*face + 3] = 0xff;
+      }
 
       switch (tex) {
       case TEXTURE_2D_ARRAY_INDEX:
@@ -768,9 +997,22 @@ _mesa_get_fallback_texture(struct gl_context *ctx, gl_texture_index tex)
          dims = 0;
          target = GL_TEXTURE_BUFFER;
          break;
+      case TEXTURE_CUBE_ARRAY_INDEX:
+         dims = 3;
+         target = GL_TEXTURE_CUBE_MAP_ARRAY;
+         depth = 6;
+         break;
       case TEXTURE_EXTERNAL_INDEX:
          dims = 2;
          target = GL_TEXTURE_EXTERNAL_OES;
+         break;
+      case TEXTURE_2D_MULTISAMPLE_INDEX:
+         dims = 2;
+         target = GL_TEXTURE_2D_MULTISAMPLE;
+         break;
+      case TEXTURE_2D_MULTISAMPLE_ARRAY_INDEX:
+         dims = 3;
+         target = GL_TEXTURE_2D_MULTISAMPLE_ARRAY;
          break;
       default:
          /* no-op */
@@ -792,12 +1034,7 @@ _mesa_get_fallback_texture(struct gl_context *ctx, gl_texture_index tex)
 
       /* need a loop here just for cube maps */
       for (face = 0; face < numFaces; face++) {
-         GLenum faceTarget;
-
-         if (target == GL_TEXTURE_CUBE_MAP)
-            faceTarget = GL_TEXTURE_CUBE_MAP_POSITIVE_X + face;
-         else
-            faceTarget = target;
+         const GLenum faceTarget = _mesa_cube_face_target(target, face);
 
          /* initialize level[0] texture image */
          texImage = _mesa_get_tex_image(ctx, texObj, faceTarget, 0);
@@ -858,6 +1095,8 @@ count_tex_size(GLuint key, void *data, void *userData)
       (const struct gl_texture_object *) data;
    GLuint *total = (GLuint *) userData;
 
+   (void) key;
+
    *total = *total + texture_size(texObj);
 }
 
@@ -880,6 +1119,21 @@ _mesa_total_texture_memory(struct gl_context *ctx)
 
    return total;
 }
+
+
+/**
+ * Return the base format for the given texture object by looking
+ * at the base texture image.
+ * \return base format (such as GL_RGBA) or GL_NONE if it can't be determined
+ */
+GLenum
+_mesa_texture_base_format(const struct gl_texture_object *texObj)
+{
+   const struct gl_texture_image *texImage = _mesa_base_tex_image(texObj);
+
+   return texImage ? texImage->_BaseFormat : GL_NONE;
+}
+
 
 static struct gl_texture_object *
 invalidate_tex_image_error_check(struct gl_context *ctx, GLuint texture,
@@ -934,6 +1188,59 @@ invalidate_tex_image_error_check(struct gl_context *ctx, GLuint texture,
    return t;
 }
 
+
+/**
+ * Helper function for glCreateTextures and glGenTextures. Need this because
+ * glCreateTextures should throw errors if target = 0. This is not exposed to
+ * the rest of Mesa to encourage Mesa internals to use nameless textures,
+ * which do not require expensive hash lookups.
+ * \param target  either 0 or a valid / error-checked texture target enum
+ */
+static void
+create_textures(struct gl_context *ctx, GLenum target,
+                GLsizei n, GLuint *textures, const char *caller)
+{
+   GLuint first;
+   GLint i;
+
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "%s %d\n", caller, n);
+
+   if (n < 0) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "%s(n < 0)", caller);
+      return;
+   }
+
+   if (!textures)
+      return;
+
+   /*
+    * This must be atomic (generation and allocation of texture IDs)
+    */
+   _mesa_HashLockMutex(ctx->Shared->TexObjects);
+
+   first = _mesa_HashFindFreeKeyBlock(ctx->Shared->TexObjects, n);
+
+   /* Allocate new, empty texture objects */
+   for (i = 0; i < n; i++) {
+      struct gl_texture_object *texObj;
+      GLuint name = first + i;
+      texObj = ctx->Driver.NewTextureObject(ctx, name, target);
+      if (!texObj) {
+         _mesa_HashUnlockMutex(ctx->Shared->TexObjects);
+         _mesa_error(ctx, GL_OUT_OF_MEMORY, "gl%sTextures", caller);
+         return;
+      }
+
+      /* insert into hash table */
+      _mesa_HashInsertLocked(ctx->Shared->TexObjects, texObj->Name, texObj);
+
+      textures[i] = name;
+   }
+
+   _mesa_HashUnlockMutex(ctx->Shared->TexObjects);
+}
+
 /*@}*/
 
 
@@ -948,56 +1255,51 @@ invalidate_tex_image_error_check(struct gl_context *ctx, GLuint texture,
  * \param n number of texture names to be generated.
  * \param textures an array in which will hold the generated texture names.
  *
- * \sa glGenTextures().
+ * \sa glGenTextures(), glCreateTextures().
  *
  * Calls _mesa_HashFindFreeKeyBlock() to find a block of free texture
  * IDs which are stored in \p textures.  Corresponding empty texture
  * objects are also generated.
- */ 
+ */
 void GLAPIENTRY
-_mesa_GenTextures( GLsizei n, GLuint *textures )
+_mesa_GenTextures(GLsizei n, GLuint *textures)
 {
    GET_CURRENT_CONTEXT(ctx);
-   GLuint first;
-   GLint i;
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
-   if (n < 0) {
-      _mesa_error( ctx, GL_INVALID_VALUE, "glGenTextures" );
-      return;
-   }
-
-   if (!textures)
-      return;
-
-   /*
-    * This must be atomic (generation and allocation of texture IDs)
-    */
-   _glthread_LOCK_MUTEX(ctx->Shared->Mutex);
-
-   first = _mesa_HashFindFreeKeyBlock(ctx->Shared->TexObjects, n);
-
-   /* Allocate new, empty texture objects */
-   for (i = 0; i < n; i++) {
-      struct gl_texture_object *texObj;
-      GLuint name = first + i;
-      GLenum target = 0;
-      texObj = ctx->Driver.NewTextureObject(ctx, name, target);
-      if (!texObj) {
-         _glthread_UNLOCK_MUTEX(ctx->Shared->Mutex);
-         _mesa_error(ctx, GL_OUT_OF_MEMORY, "glGenTextures");
-         return;
-      }
-
-      /* insert into hash table */
-      _mesa_HashInsert(ctx->Shared->TexObjects, texObj->Name, texObj);
-
-      textures[i] = name;
-   }
-
-   _glthread_UNLOCK_MUTEX(ctx->Shared->Mutex);
+   create_textures(ctx, 0, n, textures, "glGenTextures");
 }
 
+/**
+ * Create texture objects.
+ *
+ * \param target the texture target for each name to be generated.
+ * \param n number of texture names to be generated.
+ * \param textures an array in which will hold the generated texture names.
+ *
+ * \sa glCreateTextures(), glGenTextures().
+ *
+ * Calls _mesa_HashFindFreeKeyBlock() to find a block of free texture
+ * IDs which are stored in \p textures.  Corresponding empty texture
+ * objects are also generated.
+ */
+void GLAPIENTRY
+_mesa_CreateTextures(GLenum target, GLsizei n, GLuint *textures)
+{
+   GLint targetIndex;
+   GET_CURRENT_CONTEXT(ctx);
+
+   /*
+    * The 4.5 core profile spec (30.10.2014) doesn't specify what
+    * glCreateTextures should do with invalid targets, which was probably an
+    * oversight.  This conforms to the spec for glBindTexture.
+    */
+   targetIndex = _mesa_tex_target_to_index(ctx, target);
+   if (targetIndex < 0) {
+      _mesa_error(ctx, GL_INVALID_ENUM, "glCreateTextures(target)");
+      return;
+   }
+
+   create_textures(ctx, target, n, textures, "glCreateTextures");
+}
 
 /**
  * Check if the given texture object is bound to the current draw or
@@ -1007,23 +1309,35 @@ static void
 unbind_texobj_from_fbo(struct gl_context *ctx,
                        struct gl_texture_object *texObj)
 {
-   const GLuint n = (ctx->DrawBuffer == ctx->ReadBuffer) ? 1 : 2;
-   GLuint i;
+   bool progress = false;
 
-   for (i = 0; i < n; i++) {
-      struct gl_framebuffer *fb = (i == 0) ? ctx->DrawBuffer : ctx->ReadBuffer;
-      if (_mesa_is_user_fbo(fb)) {
-         GLuint j;
-         for (j = 0; j < BUFFER_COUNT; j++) {
-            if (fb->Attachment[j].Type == GL_TEXTURE &&
-                fb->Attachment[j].Texture == texObj) {
-	       /* Vertices are already flushed by _mesa_DeleteTextures */
-	       ctx->NewState |= _NEW_BUFFERS;
-               _mesa_remove_attachment(ctx, fb->Attachment + j);         
-            }
-         }
-      }
+   /* Section 4.4.2 (Attaching Images to Framebuffer Objects), subsection
+    * "Attaching Texture Images to a Framebuffer," of the OpenGL 3.1 spec
+    * says:
+    *
+    *     "If a texture object is deleted while its image is attached to one
+    *     or more attachment points in the currently bound framebuffer, then
+    *     it is as if FramebufferTexture* had been called, with a texture of
+    *     zero, for each attachment point to which this image was attached in
+    *     the currently bound framebuffer. In other words, this texture image
+    *     is first detached from all attachment points in the currently bound
+    *     framebuffer. Note that the texture image is specifically not
+    *     detached from any other framebuffer objects. Detaching the texture
+    *     image from any other framebuffer objects is the responsibility of
+    *     the application."
+    */
+   if (_mesa_is_user_fbo(ctx->DrawBuffer)) {
+      progress = _mesa_detach_renderbuffer(ctx, ctx->DrawBuffer, texObj);
    }
+   if (_mesa_is_user_fbo(ctx->ReadBuffer)
+       && ctx->ReadBuffer != ctx->DrawBuffer) {
+      progress = _mesa_detach_renderbuffer(ctx, ctx->ReadBuffer, texObj)
+         || progress;
+   }
+
+   if (progress)
+      /* Vertices are already flushed by _mesa_DeleteTextures */
+      ctx->NewState |= _NEW_BUFFERS;
 }
 
 
@@ -1035,18 +1349,70 @@ static void
 unbind_texobj_from_texunits(struct gl_context *ctx,
                             struct gl_texture_object *texObj)
 {
-   GLuint u, tex;
+   const gl_texture_index index = texObj->TargetIndex;
+   GLuint u;
 
-   for (u = 0; u < Elements(ctx->Texture.Unit); u++) {
+   if (texObj->Target == 0) {
+      /* texture was never bound */
+      return;
+   }
+
+   assert(index < NUM_TEXTURE_TARGETS);
+
+   for (u = 0; u < ctx->Texture.NumCurrentTexUsed; u++) {
       struct gl_texture_unit *unit = &ctx->Texture.Unit[u];
-      for (tex = 0; tex < NUM_TEXTURE_TARGETS; tex++) {
-         if (texObj == unit->CurrentTex[tex]) {
-            _mesa_reference_texobj(&unit->CurrentTex[tex],
-                                   ctx->Shared->DefaultTex[tex]);
-            ASSERT(unit->CurrentTex[tex]);
-            break;
-         }
+
+      if (texObj == unit->CurrentTex[index]) {
+         /* Bind the default texture for this unit/target */
+         _mesa_reference_texobj(&unit->CurrentTex[index],
+                                ctx->Shared->DefaultTex[index]);
+         unit->_BoundTextures &= ~(1 << index);
       }
+   }
+}
+
+
+/**
+ * Check if the given texture object is bound to any shader image unit
+ * and unbind it if that's the case.
+ */
+static void
+unbind_texobj_from_image_units(struct gl_context *ctx,
+                               struct gl_texture_object *texObj)
+{
+   GLuint i;
+
+   for (i = 0; i < ctx->Const.MaxImageUnits; i++) {
+      struct gl_image_unit *unit = &ctx->ImageUnits[i];
+
+      if (texObj == unit->TexObj) {
+         _mesa_reference_texobj(&unit->TexObj, NULL);
+         *unit = _mesa_default_image_unit(ctx);
+      }
+   }
+}
+
+
+/**
+ * Unbinds all textures bound to the given texture image unit.
+ */
+static void
+unbind_textures_from_unit(struct gl_context *ctx, GLuint unit)
+{
+   struct gl_texture_unit *texUnit = &ctx->Texture.Unit[unit];
+
+   while (texUnit->_BoundTextures) {
+      const GLuint index = ffs(texUnit->_BoundTextures) - 1;
+      struct gl_texture_object *texObj = ctx->Shared->DefaultTex[index];
+
+      _mesa_reference_texobj(&texUnit->CurrentTex[index], texObj);
+
+      /* Pass BindTexture call to device driver */
+      if (ctx->Driver.BindTexture)
+         ctx->Driver.BindTexture(ctx, unit, 0, texObj);
+
+      texUnit->_BoundTextures &= ~(1 << index);
+      ctx->NewState |= _NEW_TEXTURE;
    }
 }
 
@@ -1070,7 +1436,21 @@ _mesa_DeleteTextures( GLsizei n, const GLuint *textures)
 {
    GET_CURRENT_CONTEXT(ctx);
    GLint i;
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx); /* too complex */
+
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "glDeleteTextures %d\n", n);
+
+   if (n < 0) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glDeleteTextures(n < 0)");
+      return;
+   }
+
+   FLUSH_VERTICES(ctx, 0); /* too complex */
+
+   if (n < 0) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glDeleteTextures(n)");
+      return;
+   }
 
    if (!textures)
       return;
@@ -1094,6 +1474,12 @@ _mesa_DeleteTextures( GLsizei n, const GLuint *textures)
              */
             unbind_texobj_from_texunits(ctx, delObj);
 
+            /* Check if this texture is currently bound to any shader
+             * image unit.  If so, unbind it.
+             * See section 3.9.X of GL_ARB_shader_image_load_store.
+             */
+            unbind_texobj_from_image_units(ctx, delObj);
+
             _mesa_unlock_texture(ctx, delObj);
 
             ctx->NewState |= _NEW_TEXTURE;
@@ -1101,9 +1487,7 @@ _mesa_DeleteTextures( GLsizei n, const GLuint *textures)
             /* The texture _name_ is now free for re-use.
              * Remove it from the hash table now.
              */
-            _glthread_LOCK_MUTEX(ctx->Shared->Mutex);
             _mesa_HashRemove(ctx->Shared->TexObjects, delObj->Name);
-            _glthread_UNLOCK_MUTEX(ctx->Shared->Mutex);
 
             /* Unreference the texobj.  If refcount hits zero, the texture
              * will be deleted.
@@ -1114,6 +1498,47 @@ _mesa_DeleteTextures( GLsizei n, const GLuint *textures)
    }
 }
 
+/**
+ * This deletes a texObj without altering the hash table.
+ */
+void
+_mesa_delete_nameless_texture(struct gl_context *ctx,
+                              struct gl_texture_object *texObj)
+{
+   if (!texObj)
+      return;
+
+   FLUSH_VERTICES(ctx, 0);
+
+   _mesa_lock_texture(ctx, texObj);
+   {
+      /* Check if texture is bound to any framebuffer objects.
+       * If so, unbind.
+       * See section 4.4.2.3 of GL_EXT_framebuffer_object.
+       */
+      unbind_texobj_from_fbo(ctx, texObj);
+
+      /* Check if this texture is currently bound to any texture units.
+       * If so, unbind it.
+       */
+      unbind_texobj_from_texunits(ctx, texObj);
+
+      /* Check if this texture is currently bound to any shader
+       * image unit.  If so, unbind it.
+       * See section 3.9.X of GL_ARB_shader_image_load_store.
+       */
+      unbind_texobj_from_image_units(ctx, texObj);
+   }
+   _mesa_unlock_texture(ctx, texObj);
+
+   ctx->NewState |= _NEW_TEXTURE;
+
+   /* Unreference the texobj.  If refcount hits zero, the texture
+    * will be deleted.
+    */
+   _mesa_reference_texobj(&texObj, NULL);
+}
+
 
 /**
  * Convert a GL texture target enum such as GL_TEXTURE_2D or GL_TEXTURE_3D
@@ -1121,8 +1546,8 @@ _mesa_DeleteTextures( GLsizei n, const GLuint *textures)
  * Note that proxy targets are not valid here.
  * \return TEXTURE_x_INDEX or -1 if target is invalid
  */
-static GLint
-target_enum_to_index(struct gl_context *ctx, GLenum target)
+int
+_mesa_tex_target_to_index(const struct gl_context *ctx, GLenum target)
 {
    switch (target) {
    case GL_TEXTURE_1D:
@@ -1130,31 +1555,37 @@ target_enum_to_index(struct gl_context *ctx, GLenum target)
    case GL_TEXTURE_2D:
       return TEXTURE_2D_INDEX;
    case GL_TEXTURE_3D:
-      return TEXTURE_3D_INDEX;
-   case GL_TEXTURE_CUBE_MAP_ARB:
+      return ctx->API != API_OPENGLES ? TEXTURE_3D_INDEX : -1;
+   case GL_TEXTURE_CUBE_MAP:
       return ctx->Extensions.ARB_texture_cube_map
          ? TEXTURE_CUBE_INDEX : -1;
-   case GL_TEXTURE_RECTANGLE_NV:
+   case GL_TEXTURE_RECTANGLE:
       return _mesa_is_desktop_gl(ctx) && ctx->Extensions.NV_texture_rectangle
          ? TEXTURE_RECT_INDEX : -1;
-   case GL_TEXTURE_1D_ARRAY_EXT:
-      return _mesa_is_desktop_gl(ctx)
-         && (ctx->Extensions.EXT_texture_array
-             || ctx->Extensions.MESA_texture_array)
+   case GL_TEXTURE_1D_ARRAY:
+      return _mesa_is_desktop_gl(ctx) && ctx->Extensions.EXT_texture_array
          ? TEXTURE_1D_ARRAY_INDEX : -1;
-   case GL_TEXTURE_2D_ARRAY_EXT:
-      return (_mesa_is_desktop_gl(ctx)
-              && (ctx->Extensions.EXT_texture_array
-                  || ctx->Extensions.MESA_texture_array))
+   case GL_TEXTURE_2D_ARRAY:
+      return (_mesa_is_desktop_gl(ctx) && ctx->Extensions.EXT_texture_array)
          || _mesa_is_gles3(ctx)
          ? TEXTURE_2D_ARRAY_INDEX : -1;
-   case GL_TEXTURE_BUFFER_ARB:
-      return _mesa_is_desktop_gl(ctx)
-         && ctx->Extensions.ARB_texture_buffer_object
-         ? TEXTURE_BUFFER_INDEX : -1;
+   case GL_TEXTURE_BUFFER:
+      return (_mesa_has_ARB_texture_buffer_object(ctx) ||
+              _mesa_has_OES_texture_buffer(ctx)) ?
+             TEXTURE_BUFFER_INDEX : -1;
    case GL_TEXTURE_EXTERNAL_OES:
       return _mesa_is_gles(ctx) && ctx->Extensions.OES_EGL_image_external
          ? TEXTURE_EXTERNAL_INDEX : -1;
+   case GL_TEXTURE_CUBE_MAP_ARRAY:
+      return _mesa_has_texture_cube_map_array(ctx)
+         ? TEXTURE_CUBE_ARRAY_INDEX : -1;
+   case GL_TEXTURE_2D_MULTISAMPLE:
+      return ((_mesa_is_desktop_gl(ctx) && ctx->Extensions.ARB_texture_multisample) ||
+              _mesa_is_gles31(ctx)) ? TEXTURE_2D_MULTISAMPLE_INDEX: -1;
+   case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
+      return ((_mesa_is_desktop_gl(ctx) && ctx->Extensions.ARB_texture_multisample) ||
+              _mesa_is_gles31(ctx))
+         ? TEXTURE_2D_MULTISAMPLE_ARRAY_INDEX: -1;
    default:
       return -1;
    }
@@ -1162,34 +1593,87 @@ target_enum_to_index(struct gl_context *ctx, GLenum target)
 
 
 /**
- * Bind a named texture to a texturing target.
- * 
+ * Do actual texture binding.  All error checking should have been done prior
+ * to calling this function.  Note that the texture target (1D, 2D, etc) is
+ * always specified by the texObj->TargetIndex.
+ *
+ * \param unit  index of texture unit to update
+ * \param texObj  the new texture object (cannot be NULL)
+ */
+static void
+bind_texture(struct gl_context *ctx,
+             unsigned unit,
+             struct gl_texture_object *texObj)
+{
+   struct gl_texture_unit *texUnit;
+   int targetIndex;
+
+   assert(unit < ARRAY_SIZE(ctx->Texture.Unit));
+   texUnit = &ctx->Texture.Unit[unit];
+
+   assert(texObj);
+   assert(valid_texture_object(texObj));
+
+   targetIndex = texObj->TargetIndex;
+   assert(targetIndex >= 0);
+   assert(targetIndex < NUM_TEXTURE_TARGETS);
+
+   /* Check if this texture is only used by this context and is already bound.
+    * If so, just return.
+    */
+   {
+      bool early_out;
+      mtx_lock(&ctx->Shared->Mutex);
+      early_out = ((ctx->Shared->RefCount == 1)
+                   && (texObj == texUnit->CurrentTex[targetIndex]));
+      mtx_unlock(&ctx->Shared->Mutex);
+      if (early_out) {
+         return;
+      }
+   }
+
+   /* flush before changing binding */
+   FLUSH_VERTICES(ctx, _NEW_TEXTURE);
+
+   /* If the refcount on the previously bound texture is decremented to
+    * zero, it'll be deleted here.
+    */
+   _mesa_reference_texobj(&texUnit->CurrentTex[targetIndex], texObj);
+
+   ctx->Texture.NumCurrentTexUsed = MAX2(ctx->Texture.NumCurrentTexUsed,
+                                         unit + 1);
+
+   if (texObj->Name != 0)
+      texUnit->_BoundTextures |= (1 << targetIndex);
+   else
+      texUnit->_BoundTextures &= ~(1 << targetIndex);
+
+   /* Pass BindTexture call to device driver */
+   if (ctx->Driver.BindTexture) {
+      ctx->Driver.BindTexture(ctx, unit, texObj->Target, texObj);
+   }
+}
+
+
+/**
+ * Implement glBindTexture().  Do error checking, look-up or create a new
+ * texture object, then bind it in the current texture unit.
+ *
  * \param target texture target.
  * \param texName texture name.
- * 
- * \sa glBindTexture().
- *
- * Determines the old texture object bound and returns immediately if rebinding
- * the same texture.  Get the current texture which is either a default texture
- * if name is null, a named texture from the hash, or a new texture if the
- * given texture name is new. Increments its reference count, binds it, and
- * calls dd_function_table::BindTexture. Decrements the old texture reference
- * count and deletes it if it reaches zero.
  */
 void GLAPIENTRY
 _mesa_BindTexture( GLenum target, GLuint texName )
 {
    GET_CURRENT_CONTEXT(ctx);
-   struct gl_texture_unit *texUnit = _mesa_get_current_tex_unit(ctx);
    struct gl_texture_object *newTexObj = NULL;
    GLint targetIndex;
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
 
    if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
       _mesa_debug(ctx, "glBindTexture %s %d\n",
-                  _mesa_lookup_enum_by_nr(target), (GLint) texName);
+                  _mesa_enum_to_string(target), (GLint) texName);
 
-   targetIndex = target_enum_to_index(ctx, target);
+   targetIndex = _mesa_tex_target_to_index(ctx, target);
    if (targetIndex < 0) {
       _mesa_error(ctx, GL_INVALID_ENUM, "glBindTexture(target)");
       return;
@@ -1209,7 +1693,9 @@ _mesa_BindTexture( GLenum target, GLuint texName )
       if (newTexObj) {
          /* error checking */
          if (newTexObj->Target != 0 && newTexObj->Target != target) {
-            /* the named texture object's target doesn't match the given target */
+            /* The named texture object's target doesn't match the
+             * given target
+             */
             _mesa_error( ctx, GL_INVALID_OPERATION,
                          "glBindTexture(target mismatch)" );
             return;
@@ -1220,7 +1706,8 @@ _mesa_BindTexture( GLenum target, GLuint texName )
       }
       else {
          if (ctx->API == API_OPENGL_CORE) {
-            _mesa_error(ctx, GL_INVALID_OPERATION, "glBindTexture");
+            _mesa_error(ctx, GL_INVALID_OPERATION,
+                        "glBindTexture(non-gen name)");
             return;
          }
 
@@ -1232,54 +1719,169 @@ _mesa_BindTexture( GLenum target, GLuint texName )
          }
 
          /* and insert it into hash table */
-         _glthread_LOCK_MUTEX(ctx->Shared->Mutex);
          _mesa_HashInsert(ctx->Shared->TexObjects, texName, newTexObj);
-         _glthread_UNLOCK_MUTEX(ctx->Shared->Mutex);
-      }
-      newTexObj->Target = target;
-   }
-
-   assert(valid_texture_object(newTexObj));
-
-   /* Check if this texture is only used by this context and is already bound.
-    * If so, just return.
-    */
-   {
-      GLboolean early_out;
-      _glthread_LOCK_MUTEX(ctx->Shared->Mutex);
-      early_out = ((ctx->Shared->RefCount == 1)
-                   && (newTexObj == texUnit->CurrentTex[targetIndex]));
-      _glthread_UNLOCK_MUTEX(ctx->Shared->Mutex);
-      if (early_out) {
-         return;
       }
    }
 
-   /* flush before changing binding */
-   FLUSH_VERTICES(ctx, _NEW_TEXTURE);
+   assert(newTexObj->Target == target);
+   assert(newTexObj->TargetIndex == targetIndex);
 
-   /* Do the actual binding.  The refcount on the previously bound
-    * texture object will be decremented.  It'll be deleted if the
-    * count hits zero.
+   bind_texture(ctx, ctx->Texture.CurrentUnit, newTexObj);
+}
+
+
+/**
+ * OpenGL 4.5 / GL_ARB_direct_state_access glBindTextureUnit().
+ *
+ * \param unit texture unit.
+ * \param texture texture name.
+ *
+ * \sa glBindTexture().
+ *
+ * If the named texture is 0, this will reset each target for the specified
+ * texture unit to its default texture.
+ * If the named texture is not 0 or a recognized texture name, this throws
+ * GL_INVALID_OPERATION.
+ */
+void GLAPIENTRY
+_mesa_BindTextureUnit(GLuint unit, GLuint texture)
+{
+   GET_CURRENT_CONTEXT(ctx);
+   struct gl_texture_object *texObj;
+
+   if (unit >= _mesa_max_tex_unit(ctx)) {
+      _mesa_error(ctx, GL_INVALID_VALUE, "glBindTextureUnit(unit=%u)", unit);
+      return;
+   }
+
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "glBindTextureUnit %s %d\n",
+                  _mesa_enum_to_string(GL_TEXTURE0+unit), (GLint) texture);
+
+   /* Section 8.1 (Texture Objects) of the OpenGL 4.5 core profile spec
+    * (20141030) says:
+    *    "When texture is zero, each of the targets enumerated at the
+    *    beginning of this section is reset to its default texture for the
+    *    corresponding texture image unit."
     */
-   _mesa_reference_texobj(&texUnit->CurrentTex[targetIndex], newTexObj);
-   ASSERT(texUnit->CurrentTex[targetIndex]);
+   if (texture == 0) {
+      unbind_textures_from_unit(ctx, unit);
+      return;
+   }
 
-   /* Pass BindTexture call to device driver */
-   if (ctx->Driver.BindTexture)
-      ctx->Driver.BindTexture(ctx, target, newTexObj);
+   /* Get the non-default texture object */
+   texObj = _mesa_lookup_texture(ctx, texture);
+
+   /* Error checking */
+   if (!texObj) {
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glBindTextureUnit(non-gen name)");
+      return;
+   }
+   if (texObj->Target == 0) {
+      /* Texture object was gen'd but never bound so the target is not set */
+      _mesa_error(ctx, GL_INVALID_OPERATION, "glBindTextureUnit(target)");
+      return;
+   }
+   assert(valid_texture_object(texObj));
+
+   bind_texture(ctx, unit, texObj);
+}
+
+
+/**
+ * OpenGL 4.4 / GL_ARB_multi_bind glBindTextures().
+ */
+void GLAPIENTRY
+_mesa_BindTextures(GLuint first, GLsizei count, const GLuint *textures)
+{
+   GET_CURRENT_CONTEXT(ctx);
+   GLint i;
+
+   /* The ARB_multi_bind spec says:
+    *
+    *     "An INVALID_OPERATION error is generated if <first> + <count>
+    *      is greater than the number of texture image units supported
+    *      by the implementation."
+    */
+   if (first + count > ctx->Const.MaxCombinedTextureImageUnits) {
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glBindTextures(first=%u + count=%d > the value of "
+                  "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS=%u)",
+                  first, count, ctx->Const.MaxCombinedTextureImageUnits);
+      return;
+   }
+
+   if (textures) {
+      /* Note that the error semantics for multi-bind commands differ from
+       * those of other GL commands.
+       *
+       * The issues section in the ARB_multi_bind spec says:
+       *
+       *    "(11) Typically, OpenGL specifies that if an error is generated by
+       *          a command, that command has no effect.  This is somewhat
+       *          unfortunate for multi-bind commands, because it would require
+       *          a first pass to scan the entire list of bound objects for
+       *          errors and then a second pass to actually perform the
+       *          bindings.  Should we have different error semantics?
+       *
+       *       RESOLVED:  Yes.  In this specification, when the parameters for
+       *       one of the <count> binding points are invalid, that binding
+       *       point is not updated and an error will be generated.  However,
+       *       other binding points in the same command will be updated if
+       *       their parameters are valid and no other error occurs."
+       */
+
+      _mesa_begin_texture_lookups(ctx);
+
+      for (i = 0; i < count; i++) {
+         if (textures[i] != 0) {
+            struct gl_texture_unit *texUnit = &ctx->Texture.Unit[first + i];
+            struct gl_texture_object *current = texUnit->_Current;
+            struct gl_texture_object *texObj;
+
+            if (current && current->Name == textures[i])
+               texObj = current;
+            else
+               texObj = _mesa_lookup_texture_locked(ctx, textures[i]);
+
+            if (texObj && texObj->Target != 0) {
+               bind_texture(ctx, first + i, texObj);
+            } else {
+               /* The ARB_multi_bind spec says:
+                *
+                *     "An INVALID_OPERATION error is generated if any value
+                *      in <textures> is not zero or the name of an existing
+                *      texture object (per binding)."
+                */
+               _mesa_error(ctx, GL_INVALID_OPERATION,
+                           "glBindTextures(textures[%d]=%u is not zero "
+                           "or the name of an existing texture object)",
+                           i, textures[i]);
+            }
+         } else {
+            unbind_textures_from_unit(ctx, first + i);
+         }
+      }
+
+      _mesa_end_texture_lookups(ctx);
+   } else {
+      /* Unbind all textures in the range <first> through <first>+<count>-1 */
+      for (i = 0; i < count; i++)
+         unbind_textures_from_unit(ctx, first + i);
+   }
 }
 
 
 /**
  * Set texture priorities.
- * 
+ *
  * \param n number of textures.
  * \param texName texture names.
  * \param priorities corresponding texture priorities.
- * 
+ *
  * \sa glPrioritizeTextures().
- * 
+ *
  * Looks up each texture in the hash, clamps the corresponding priority between
  * 0.0 and 1.0, and calls dd_function_table::PrioritizeTexture.
  */
@@ -1289,7 +1891,11 @@ _mesa_PrioritizeTextures( GLsizei n, const GLuint *texName,
 {
    GET_CURRENT_CONTEXT(ctx);
    GLint i;
-   ASSERT_OUTSIDE_BEGIN_END_AND_FLUSH(ctx);
+
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "glPrioritizeTextures %d\n", n);
+
+   FLUSH_VERTICES(ctx, 0);
 
    if (n < 0) {
       _mesa_error( ctx, GL_INVALID_VALUE, "glPrioritizeTextures" );
@@ -1315,13 +1921,14 @@ _mesa_PrioritizeTextures( GLsizei n, const GLuint *texName,
 
 /**
  * See if textures are loaded in texture memory.
- * 
+ *
  * \param n number of textures to query.
  * \param texName array with the texture names.
  * \param residences array which will hold the residence status.
  *
- * \return GL_TRUE if all textures are resident and \p residences is left unchanged, 
- * 
+ * \return GL_TRUE if all textures are resident and
+ *                 residences is left unchanged,
+ *
  * Note: we assume all textures are always resident
  */
 GLboolean GLAPIENTRY
@@ -1332,6 +1939,9 @@ _mesa_AreTexturesResident(GLsizei n, const GLuint *texName,
    GLboolean allResident = GL_TRUE;
    GLint i;
    ASSERT_OUTSIDE_BEGIN_END_WITH_RETVAL(ctx, GL_FALSE);
+
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "glAreTexturesResident %d\n", n);
 
    if (n < 0) {
       _mesa_error(ctx, GL_INVALID_VALUE, "glAreTexturesResident(n)");
@@ -1354,7 +1964,7 @@ _mesa_AreTexturesResident(GLsizei n, const GLuint *texName,
          return GL_FALSE;
       }
    }
-   
+
    return allResident;
 }
 
@@ -1366,7 +1976,7 @@ _mesa_AreTexturesResident(GLsizei n, const GLuint *texName,
  *
  * \return GL_TRUE if texture name corresponds to a texture, or GL_FALSE
  * otherwise.
- * 
+ *
  * \sa glIsTexture().
  *
  * Calls _mesa_HashLookup().
@@ -1377,6 +1987,9 @@ _mesa_IsTexture( GLuint texture )
    struct gl_texture_object *t;
    GET_CURRENT_CONTEXT(ctx);
    ASSERT_OUTSIDE_BEGIN_END_WITH_RETVAL(ctx, GL_FALSE);
+
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "glIsTexture %d\n", texture);
 
    if (!texture)
       return GL_FALSE;
@@ -1402,7 +2015,7 @@ _mesa_IsTexture( GLuint texture )
 void
 _mesa_lock_context_textures( struct gl_context *ctx )
 {
-   _glthread_LOCK_MUTEX(ctx->Shared->TexMutex);
+   mtx_lock(&ctx->Shared->TexMutex);
 
    if (ctx->Shared->TextureStateStamp != ctx->TextureStateTimestamp) {
       ctx->NewState |= _NEW_TEXTURE;
@@ -1415,8 +2028,9 @@ void
 _mesa_unlock_context_textures( struct gl_context *ctx )
 {
    assert(ctx->Shared->TextureStateStamp == ctx->TextureStateTimestamp);
-   _glthread_UNLOCK_MUTEX(ctx->Shared->TexMutex);
+   mtx_unlock(&ctx->Shared->TexMutex);
 }
+
 
 void GLAPIENTRY
 _mesa_InvalidateTexSubImage(GLuint texture, GLint level, GLint xoffset,
@@ -1427,7 +2041,8 @@ _mesa_InvalidateTexSubImage(GLuint texture, GLint level, GLint xoffset,
    struct gl_texture_image *image;
    GET_CURRENT_CONTEXT(ctx);
 
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "glInvalidateTexSubImage %d\n", texture);
 
    t = invalidate_tex_image_error_check(ctx, texture, level,
                                         "glInvalidateTexSubImage");
@@ -1495,6 +2110,7 @@ _mesa_InvalidateTexSubImage(GLuint texture, GLint level, GLint xoffset,
          break;
       case GL_TEXTURE_2D_ARRAY:
       case GL_TEXTURE_CUBE_MAP_ARRAY:
+      case GL_TEXTURE_2D_MULTISAMPLE_ARRAY:
          xBorder = image->Border;
          yBorder = image->Border;
          zBorder = 0;
@@ -1562,12 +2178,14 @@ _mesa_InvalidateTexSubImage(GLuint texture, GLint level, GLint xoffset,
    return;
 }
 
+
 void GLAPIENTRY
 _mesa_InvalidateTexImage(GLuint texture, GLint level)
 {
    GET_CURRENT_CONTEXT(ctx);
 
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
+   if (MESA_VERBOSE & (VERBOSE_API|VERBOSE_TEXTURE))
+      _mesa_debug(ctx, "glInvalidateTexImage(%d, %d)\n", texture, level);
 
    invalidate_tex_image_error_check(ctx, texture, level,
                                     "glInvalidateTexImage");

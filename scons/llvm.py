@@ -37,6 +37,9 @@ import SCons.Errors
 import SCons.Util
 
 
+required_llvm_version = '3.3'
+
+
 def generate(env):
     env['llvm'] = False
 
@@ -69,20 +72,30 @@ def generate(env):
             return
 
         # Try to determine the LLVM version from llvm/Config/config.h
-        llvm_config = os.path.join(llvm_dir, 'include/llvm/Config/config.h')
+        llvm_config = os.path.join(llvm_dir, 'include/llvm/Config/llvm-config.h')
         if not os.path.exists(llvm_config):
             print 'scons: could not find %s' % llvm_config
             return
-        llvm_version_re = re.compile(r'^#define PACKAGE_VERSION "([^"]*)"')
+        llvm_version_major_re = re.compile(r'^#define LLVM_VERSION_MAJOR ([0-9]+)')
+        llvm_version_minor_re = re.compile(r'^#define LLVM_VERSION_MINOR ([0-9]+)')
         llvm_version = None
+        llvm_version_major = None
+        llvm_version_minor = None
         for line in open(llvm_config, 'rt'):
-            mo = llvm_version_re.match(line)
+            mo = llvm_version_major_re.match(line)
             if mo:
-                llvm_version = mo.group(1)
-                llvm_version = distutils.version.LooseVersion(llvm_version)
-                break
+                llvm_version_major = mo.group(1)
+            mo = llvm_version_minor_re.match(line)
+            if mo:
+                llvm_version_minor = mo.group(1)
+        if llvm_version_major is not None and llvm_version_minor is not None:
+            llvm_version = distutils.version.LooseVersion('%s.%s' % (llvm_version_major, llvm_version_minor))
+
         if llvm_version is None:
             print 'scons: could not determine the LLVM version from %s' % llvm_config
+            return
+        if llvm_version < distutils.version.LooseVersion(required_llvm_version):
+            print 'scons: LLVM version %s found, but %s is required' % (llvm_version, required_llvm_version)
             return
 
         env.Prepend(CPPPATH = [os.path.join(llvm_dir, 'include')])
@@ -92,57 +105,72 @@ def generate(env):
             'HAVE_STDINT_H',
         ])
         env.Prepend(LIBPATH = [os.path.join(llvm_dir, 'lib')])
-        if llvm_version >= distutils.version.LooseVersion('3.0'):
-            # 3.0
+        # LIBS should match the output of `llvm-config --libs engine mcjit bitwriter x86asmprinter`
+        if llvm_version >= distutils.version.LooseVersion('3.9'):
+            env.Prepend(LIBS = [
+                'LLVMX86Disassembler', 'LLVMX86AsmParser',
+                'LLVMX86CodeGen', 'LLVMSelectionDAG', 'LLVMAsmPrinter',
+                'LLVMDebugInfoCodeView', 'LLVMCodeGen',
+                'LLVMScalarOpts', 'LLVMInstCombine',
+                'LLVMInstrumentation', 'LLVMTransformUtils',
+                'LLVMBitWriter', 'LLVMX86Desc',
+                'LLVMMCDisassembler', 'LLVMX86Info',
+                'LLVMX86AsmPrinter', 'LLVMX86Utils',
+                'LLVMMCJIT', 'LLVMExecutionEngine', 'LLVMTarget',
+                'LLVMAnalysis', 'LLVMProfileData',
+                'LLVMRuntimeDyld', 'LLVMObject', 'LLVMMCParser',
+                'LLVMBitReader', 'LLVMMC', 'LLVMCore',
+                'LLVMSupport',
+                'LLVMIRReader', 'LLVMASMParser'
+            ])
+        elif llvm_version >= distutils.version.LooseVersion('3.7'):
             env.Prepend(LIBS = [
                 'LLVMBitWriter', 'LLVMX86Disassembler', 'LLVMX86AsmParser',
-                'LLVMX86CodeGen', 'LLVMX86Desc', 'LLVMSelectionDAG',
-                'LLVMAsmPrinter', 'LLVMMCParser', 'LLVMX86AsmPrinter',
-                'LLVMX86Utils', 'LLVMX86Info', 'LLVMJIT',
+                'LLVMX86CodeGen', 'LLVMSelectionDAG', 'LLVMAsmPrinter',
+                'LLVMCodeGen', 'LLVMScalarOpts', 'LLVMProfileData',
+                'LLVMInstCombine', 'LLVMInstrumentation', 'LLVMTransformUtils', 'LLVMipa',
+                'LLVMAnalysis', 'LLVMX86Desc', 'LLVMMCDisassembler',
+                'LLVMX86Info', 'LLVMX86AsmPrinter', 'LLVMX86Utils',
+                'LLVMMCJIT', 'LLVMTarget', 'LLVMExecutionEngine',
+                'LLVMRuntimeDyld', 'LLVMObject', 'LLVMMCParser',
+                'LLVMBitReader', 'LLVMMC', 'LLVMCore', 'LLVMSupport'
+            ])
+        elif llvm_version >= distutils.version.LooseVersion('3.6'):
+            env.Prepend(LIBS = [
+                'LLVMBitWriter', 'LLVMX86Disassembler', 'LLVMX86AsmParser',
+                'LLVMX86CodeGen', 'LLVMSelectionDAG', 'LLVMAsmPrinter',
+                'LLVMCodeGen', 'LLVMScalarOpts', 'LLVMProfileData',
+                'LLVMInstCombine', 'LLVMTransformUtils', 'LLVMipa',
+                'LLVMAnalysis', 'LLVMX86Desc', 'LLVMMCDisassembler',
+                'LLVMX86Info', 'LLVMX86AsmPrinter', 'LLVMX86Utils',
+                'LLVMMCJIT', 'LLVMTarget', 'LLVMExecutionEngine',
+                'LLVMRuntimeDyld', 'LLVMObject', 'LLVMMCParser',
+                'LLVMBitReader', 'LLVMMC', 'LLVMCore', 'LLVMSupport'
+            ])
+        elif llvm_version >= distutils.version.LooseVersion('3.5'):
+            env.Prepend(LIBS = [
+                'LLVMMCDisassembler',
+                'LLVMBitWriter', 'LLVMMCJIT', 'LLVMRuntimeDyld',
+                'LLVMX86Disassembler', 'LLVMX86AsmParser', 'LLVMX86CodeGen',
+                'LLVMSelectionDAG', 'LLVMAsmPrinter', 'LLVMX86Desc',
+                'LLVMObject', 'LLVMMCParser', 'LLVMBitReader', 'LLVMX86Info',
+                'LLVMX86AsmPrinter', 'LLVMX86Utils', 'LLVMJIT',
                 'LLVMExecutionEngine', 'LLVMCodeGen', 'LLVMScalarOpts',
                 'LLVMInstCombine', 'LLVMTransformUtils', 'LLVMipa',
                 'LLVMAnalysis', 'LLVMTarget', 'LLVMMC', 'LLVMCore',
                 'LLVMSupport'
             ])
-        elif llvm_version >= distutils.version.LooseVersion('2.9'):
-            # 2.9
-            env.Prepend(LIBS = [
-                'LLVMObject', 'LLVMMCJIT', 'LLVMMCDisassembler',
-                'LLVMLinker', 'LLVMipo', 'LLVMInterpreter',
-                'LLVMInstrumentation', 'LLVMJIT', 'LLVMExecutionEngine',
-                'LLVMBitWriter', 'LLVMX86Disassembler', 'LLVMX86AsmParser',
-                'LLVMMCParser', 'LLVMX86AsmPrinter', 'LLVMX86CodeGen',
-                'LLVMSelectionDAG', 'LLVMX86Utils', 'LLVMX86Info', 'LLVMAsmPrinter',
-                'LLVMCodeGen', 'LLVMScalarOpts', 'LLVMInstCombine',
-                'LLVMTransformUtils', 'LLVMipa', 'LLVMAsmParser',
-                'LLVMArchive', 'LLVMBitReader', 'LLVMAnalysis', 'LLVMTarget',
-                'LLVMCore', 'LLVMMC', 'LLVMSupport',
-            ])
-        elif llvm_version >= distutils.version.LooseVersion('2.7'):
-            # 2.7
-            env.Prepend(LIBS = [
-                'LLVMLinker', 'LLVMipo', 'LLVMInterpreter',
-                'LLVMInstrumentation', 'LLVMJIT', 'LLVMExecutionEngine',
-                'LLVMBitWriter', 'LLVMX86Disassembler', 'LLVMX86AsmParser',
-                'LLVMMCParser', 'LLVMX86AsmPrinter', 'LLVMX86CodeGen',
-                'LLVMSelectionDAG', 'LLVMX86Info', 'LLVMAsmPrinter',
-                'LLVMCodeGen', 'LLVMScalarOpts', 'LLVMInstCombine',
-                'LLVMTransformUtils', 'LLVMipa', 'LLVMAsmParser',
-                'LLVMArchive', 'LLVMBitReader', 'LLVMAnalysis', 'LLVMTarget',
-                'LLVMMC', 'LLVMCore', 'LLVMSupport', 'LLVMSystem',
-            ])
         else:
-            # 2.6
             env.Prepend(LIBS = [
-                'LLVMX86AsmParser', 'LLVMX86AsmPrinter', 'LLVMX86CodeGen',
-                'LLVMX86Info', 'LLVMLinker', 'LLVMipo', 'LLVMInterpreter',
-                'LLVMInstrumentation', 'LLVMJIT', 'LLVMExecutionEngine',
-                'LLVMDebugger', 'LLVMBitWriter', 'LLVMAsmParser',
-                'LLVMArchive', 'LLVMBitReader', 'LLVMSelectionDAG',
-                'LLVMAsmPrinter', 'LLVMCodeGen', 'LLVMScalarOpts',
-                'LLVMTransformUtils', 'LLVMipa', 'LLVMAnalysis',
-                'LLVMTarget', 'LLVMMC', 'LLVMCore', 'LLVMSupport',
-                'LLVMSystem',
+                'LLVMMCDisassembler',
+                'LLVMBitWriter', 'LLVMX86Disassembler', 'LLVMX86AsmParser',
+                'LLVMX86CodeGen', 'LLVMX86Desc', 'LLVMSelectionDAG',
+                'LLVMAsmPrinter', 'LLVMMCParser', 'LLVMX86AsmPrinter',
+                'LLVMX86Utils', 'LLVMX86Info', 'LLVMMCJIT', 'LLVMJIT',
+                'LLVMExecutionEngine', 'LLVMCodeGen', 'LLVMScalarOpts',
+                'LLVMInstCombine', 'LLVMTransformUtils', 'LLVMipa',
+                'LLVMAnalysis', 'LLVMTarget', 'LLVMMC', 'LLVMCore',
+                'LLVMSupport', 'LLVMRuntimeDyld', 'LLVMObject'
             ])
         env.Append(LIBS = [
             'imagehlp',
@@ -154,6 +182,11 @@ def generate(env):
             # Some of the LLVM C headers use the inline keyword without
             # defining it.
             env.Append(CPPDEFINES = [('inline', '__inline')])
+            # Match some of the warning options from llvm/cmake/modules/HandleLLVMOptions.cmake
+            env.AppendUnique(CXXFLAGS = [
+                '/wd4355', # 'this' : used in base member initializer list
+                '/wd4624', # 'derived class' : destructor could not be generated because a base class destructor is inaccessible
+            ])
             if env['build'] in ('debug', 'checked'):
                 # LLVM libraries are static, build with /MT, and they
                 # automatically link agains LIBCMT. When we're doing a
@@ -161,30 +194,40 @@ def generate(env):
                 # that.
                 env.Append(LINKFLAGS = ['/nodefaultlib:LIBCMT'])
     else:
-        if not env.Detect('llvm-config'):
-            print 'scons: llvm-config script not found' % llvm_version
+        llvm_config = os.environ.get('LLVM_CONFIG', 'llvm-config')
+        if not env.Detect(llvm_config):
+            print 'scons: %s script not found' % llvm_config
             return
 
-        llvm_version = env.backtick('llvm-config --version').rstrip()
+        llvm_version = env.backtick('%s --version' % llvm_config).rstrip()
         llvm_version = distutils.version.LooseVersion(llvm_version)
+
+        if llvm_version < distutils.version.LooseVersion(required_llvm_version):
+            print 'scons: LLVM version %s found, but %s is required' % (llvm_version, required_llvm_version)
+            return
 
         try:
             # Treat --cppflags specially to prevent NDEBUG from disabling
             # assertion failures in debug builds.
-            cppflags = env.ParseFlags('!llvm-config --cppflags')
+            cppflags = env.ParseFlags('!%s --cppflags' % llvm_config)
             try:
                 cppflags['CPPDEFINES'].remove('NDEBUG')
             except ValueError:
                 pass
             env.MergeFlags(cppflags)
 
-            components = ['engine', 'bitwriter', 'x86asmprinter']
+            # Match llvm --fno-rtti flag
+            cxxflags = env.backtick('%s --cxxflags' % llvm_config).split()
+            if '-fno-rtti' in cxxflags:
+                env.Append(CXXFLAGS = ['-fno-rtti'])
 
-            if llvm_version >= distutils.version.LooseVersion('3.1'):
-                components.append('mcjit')
+            components = ['engine', 'mcjit', 'bitwriter', 'x86asmprinter', 'mcdisassembler', 'irreader']
 
-            env.ParseConfig('llvm-config --libs ' + ' '.join(components))
-            env.ParseConfig('llvm-config --ldflags')
+            env.ParseConfig('%s --libs ' % llvm_config + ' '.join(components))
+            env.ParseConfig('%s --ldflags' % llvm_config)
+            if llvm_version >= distutils.version.LooseVersion('3.5'):
+                env.ParseConfig('%s --system-libs' % llvm_config)
+                env.Append(CXXFLAGS = ['-std=c++11'])
         except OSError:
             print 'scons: llvm-config version %s failed' % llvm_version
             return

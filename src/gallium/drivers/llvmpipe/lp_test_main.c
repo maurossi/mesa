@@ -370,6 +370,14 @@ int main(int argc, char **argv)
    unsigned i;
    boolean success;
    boolean single = FALSE;
+   unsigned fpstate;
+
+   util_cpu_detect();
+   fpstate = util_fpstate_get();
+   util_fpstate_set_denorms_to_zero(fpstate);
+
+   if (!lp_build_init())
+      return 1;
 
    for(i = 1; i < argc; ++i) {
       if(strcmp(argv[i], "-v") == 0)
@@ -382,8 +390,6 @@ int main(int argc, char **argv)
          n = atoi(argv[i]);
    }
 
-   lp_build_init();
-
 #ifdef DEBUG
    if (verbose >= 2) {
       gallivm_debug |= GALLIVM_DEBUG_IR;
@@ -391,9 +397,7 @@ int main(int argc, char **argv)
    }
 #endif
 
-   util_cpu_detect();
-
-   if(fp) {
+   if (fp) {
       /* Warm up the caches */
       test_some(0, NULL, 100);
 
@@ -407,8 +411,10 @@ int main(int argc, char **argv)
    else
       success = test_all(verbose, fp);
 
-   if(fp)
+   if (fp)
       fclose(fp);
+
+   LLVMShutdown();
 
    return success ? 0 : 1;
 }

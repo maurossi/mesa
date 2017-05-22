@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  7.9
  *
  * Copyright (C) 2010 LunarG Inc.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
  *    Chia-I Wu <olv@lunarg.com>
@@ -46,11 +46,28 @@ struct stw_st_framebuffer {
    unsigned texture_mask;
 };
 
-static INLINE struct stw_st_framebuffer *
-stw_st_framebuffer(struct st_framebuffer_iface *stfb)
+
+
+/**
+ * Is the given mutex held by the calling thread?
+ */
+bool
+stw_own_mutex(const CRITICAL_SECTION *cs)
 {
-   return (struct stw_st_framebuffer *) stfb;
+   // We can't compare OwningThread with our thread handle/id (see
+   // http://stackoverflow.com/a/12675635 ) but we can compare with the
+   // OwningThread member of a critical section we know we own.
+   CRITICAL_SECTION dummy;
+   InitializeCriticalSection(&dummy);
+   EnterCriticalSection(&dummy);
+   if (0)
+      _debug_printf("%p %p\n", cs->OwningThread, dummy.OwningThread);
+   bool ret = cs->OwningThread == dummy.OwningThread;
+   LeaveCriticalSection(&dummy);
+   DeleteCriticalSection(&dummy);
+   return ret;
 }
+
 
 /**
  * Remove outdated textures and create the requested ones.
@@ -77,6 +94,7 @@ stw_st_framebuffer_validate_locked(struct st_framebuffer_iface *stfb,
    templ.depth0 = 1;
    templ.array_size = 1;
    templ.last_level = 0;
+   templ.nr_samples = stwfb->stvis.samples;
 
    for (i = 0; i < ST_ATTACHMENT_COUNT; i++) {
       enum pipe_format format;
@@ -95,6 +113,7 @@ stw_st_framebuffer_validate_locked(struct st_framebuffer_iface *stfb,
       case ST_ATTACHMENT_BACK_LEFT:
          format = stwfb->stvis.color_format;
          bind = PIPE_BIND_DISPLAY_TARGET |
+                PIPE_BIND_SAMPLER_VIEW |
                 PIPE_BIND_RENDER_TARGET;
          break;
       case ST_ATTACHMENT_DEPTH_STENCIL:
@@ -121,7 +140,8 @@ stw_st_framebuffer_validate_locked(struct st_framebuffer_iface *stfb,
 }
 
 static boolean 
-stw_st_framebuffer_validate(struct st_framebuffer_iface *stfb,
+stw_st_framebuffer_validate(struct st_context_iface *stctx,
+                            struct st_framebuffer_iface *stfb,
                             const enum st_attachment_type *statts,
                             unsigned count,
                             struct pipe_resource **out)
@@ -133,7 +153,7 @@ stw_st_framebuffer_validate(struct st_framebuffer_iface *stfb,
    for (i = 0; i < count; i++)
       statt_mask |= 1 << statts[i];
 
-   pipe_mutex_lock(stwfb->fb->mutex);
+   stw_framebuffer_lock(stwfb->fb);
 
    if (stwfb->fb->must_resize || (statt_mask & ~stwfb->texture_mask)) {
       stw_st_framebuffer_validate_locked(&stwfb->base,
@@ -146,7 +166,7 @@ stw_st_framebuffer_validate(struct st_framebuffer_iface *stfb,
       pipe_resource_reference(&out[i], stwfb->textures[statts[i]]);
    }
 
-   stw_framebuffer_release(stwfb->fb);
+   stw_framebuffer_unlock(stwfb->fb);
 
    return TRUE;
 }
@@ -162,23 +182,42 @@ stw_st_framebuffer_present_locked(HDC hdc,
    struct stw_st_framebuffer *stwfb = stw_st_framebuffer(stfb);
    struct pipe_resource *resource;
 
+   assert(stw_own_mutex(&stwfb->fb->mutex));
+
    resource = stwfb->textures[statt];
    if (resource) {
       stw_framebuffer_present_locked(hdc, stwfb->fb, resource);
    }
+   else {
+      stw_framebuffer_unlock(stwfb->fb);
+   }
+
+   assert(!stw_own_mutex(&stwfb->fb->mutex));
 
    return TRUE;
 }
 
 static boolean
-stw_st_framebuffer_flush_front(struct st_framebuffer_iface *stfb,
+stw_st_framebuffer_flush_front(struct st_context_iface *stctx,
+                               struct st_framebuffer_iface *stfb,
                                enum st_attachment_type statt)
 {
    struct stw_st_framebuffer *stwfb = stw_st_framebuffer(stfb);
+   boolean ret;
+   HDC hDC;
 
-   pipe_mutex_lock(stwfb->fb->mutex);
+   stw_framebuffer_lock(stwfb->fb);
 
-   return stw_st_framebuffer_present_locked(stwfb->fb->hDC, &stwfb->base, statt);
+   /* We must not cache HDCs anywhere, as they can be invalidated by the
+    * application, or screen resolution changes. */
+
+   hDC = GetDC(stwfb->fb->hWnd);
+
+   ret = stw_st_framebuffer_present_locked(hDC, &stwfb->base, statt);
+
+   ReleaseDC(stwfb->fb->hWnd, hDC);
+
+   return ret;
 }
 
 /**
@@ -250,6 +289,19 @@ stw_st_swap_framebuffer_locked(HDC hdc, struct st_framebuffer_iface *stfb)
    front = ST_ATTACHMENT_FRONT_LEFT;
    return stw_st_framebuffer_present_locked(hdc, &stwfb->base, front);
 }
+
+
+/**
+ * Return the pipe_resource that correspond to given buffer.
+ */
+struct pipe_resource *
+stw_get_framebuffer_resource(struct st_framebuffer_iface *stfb,
+                             enum st_attachment_type att)
+{
+   struct stw_st_framebuffer *stwfb = stw_st_framebuffer(stfb);
+   return stwfb->textures[att];
+}
+
 
 /**
  * Create an st_api of the state tracker.

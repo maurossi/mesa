@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -50,7 +50,7 @@ create_vert_shader(struct vl_median_filter *filter)
    struct ureg_src i_vpos;
    struct ureg_dst o_vpos, o_vtex;
 
-   shader = ureg_create(TGSI_PROCESSOR_VERTEX);
+   shader = ureg_create(PIPE_SHADER_VERTEX);
    if (!shader)
       return NULL;
 
@@ -84,7 +84,7 @@ create_frag_shader(struct vl_median_filter *filter,
    struct ureg_dst *t_array = MALLOC(sizeof(struct ureg_dst) * num_offsets);
    struct ureg_dst o_fragment;
    const unsigned median = num_offsets >> 1;
-   int i, j;
+   unsigned i, j;
 
    assert(num_offsets & 1); /* we need an odd number of offsets */
    if (!(num_offsets & 1)) { /* yeah, we REALLY need an odd number of offsets!!! */
@@ -93,13 +93,13 @@ create_frag_shader(struct vl_median_filter *filter,
    }
 
    if (num_offsets > screen->get_shader_param(
-      screen, TGSI_PROCESSOR_FRAGMENT, PIPE_SHADER_CAP_MAX_TEMPS)) {
+      screen, PIPE_SHADER_FRAGMENT, PIPE_SHADER_CAP_MAX_TEMPS)) {
 
       FREE(t_array);
       return NULL;
    }
 
-   shader = ureg_create(TGSI_PROCESSOR_FRAGMENT);
+   shader = ureg_create(PIPE_SHADER_FRAGMENT);
    if (!shader) {
       FREE(t_array);
       return NULL;
@@ -158,7 +158,8 @@ static void
 generate_offsets(enum vl_median_filter_shape shape, unsigned size,
                  struct vertex2f **offsets, unsigned *num_offsets)
 {
-   int i = 0, half_size;
+   unsigned i = 0;
+   int half_size;
    struct vertex2f v;
 
    assert(offsets && num_offsets);
@@ -254,7 +255,8 @@ vl_median_filter_init(struct vl_median_filter *filter, struct pipe_context *pipe
    filter->pipe = pipe;
 
    memset(&rs_state, 0, sizeof(rs_state));
-   rs_state.gl_rasterization_rules = true;
+   rs_state.half_pixel_center = true;
+   rs_state.bottom_edge_rule = true;
    rs_state.depth_clip = 1;
    filter->rs_state = pipe->create_rasterizer_state(pipe, &rs_state);
    if (!filter->rs_state)
@@ -374,7 +376,6 @@ vl_median_filter_render(struct vl_median_filter *filter,
    viewport.scale[0] = dst->width;
    viewport.scale[1] = dst->height;
    viewport.scale[2] = 1;
-   viewport.scale[3] = 1;
 
    memset(&fb_state, 0, sizeof(fb_state));
    fb_state.width = dst->width;
@@ -384,13 +385,15 @@ vl_median_filter_render(struct vl_median_filter *filter,
 
    filter->pipe->bind_rasterizer_state(filter->pipe, filter->rs_state);
    filter->pipe->bind_blend_state(filter->pipe, filter->blend);
-   filter->pipe->bind_fragment_sampler_states(filter->pipe, 1, &filter->sampler);
-   filter->pipe->set_fragment_sampler_views(filter->pipe, 1, &src);
+   filter->pipe->bind_sampler_states(filter->pipe, PIPE_SHADER_FRAGMENT,
+                                     0, 1, &filter->sampler);
+   filter->pipe->set_sampler_views(filter->pipe, PIPE_SHADER_FRAGMENT,
+                                   0, 1, &src);
    filter->pipe->bind_vs_state(filter->pipe, filter->vs);
    filter->pipe->bind_fs_state(filter->pipe, filter->fs);
    filter->pipe->set_framebuffer_state(filter->pipe, &fb_state);
-   filter->pipe->set_viewport_state(filter->pipe, &viewport);
-   filter->pipe->set_vertex_buffers(filter->pipe, 1, &filter->quad);
+   filter->pipe->set_viewport_states(filter->pipe, 0, 1, &viewport);
+   filter->pipe->set_vertex_buffers(filter->pipe, 0, 1, &filter->quad);
    filter->pipe->bind_vertex_elements_state(filter->pipe, filter->ves);
 
    util_draw_arrays(filter->pipe, PIPE_PRIM_QUADS, 0, 4);

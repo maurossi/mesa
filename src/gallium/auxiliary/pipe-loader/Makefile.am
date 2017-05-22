@@ -1,38 +1,48 @@
-AUTOMAKE_OPTIONS = subdir-objects
+include Makefile.sources
+include $(top_srcdir)/src/gallium/Automake.inc
 
-AM_CPPFLAGS = $(DEFINES) \
+# XXX: check if we need the gallium/winsys include
+AM_CFLAGS = \
+	-I$(top_srcdir)/src/loader \
+	-I$(top_srcdir)/src/gallium/winsys \
 	$(GALLIUM_PIPE_LOADER_DEFINES) \
-	-I$(top_srcdir)/include \
-	-I$(top_srcdir)/src/gallium/include \
-	-I$(top_srcdir)/src/gallium/auxiliary \
-	-I$(top_srcdir)/src/gallium/winsys
+	$(GALLIUM_CFLAGS) \
+	$(VISIBILITY_CFLAGS)
 
-AM_CFLAGS = $(PIC_FLAGS)
+noinst_LTLIBRARIES = \
+	libpipe_loader_static.la \
+	libpipe_loader_dynamic.la
 
-noinst_LTLIBRARIES =
+libpipe_loader_static_la_CFLAGS = \
+	$(AM_CFLAGS) \
+	-DGALLIUM_STATIC_TARGETS=1
 
-if HAVE_LOADER_GALLIUM
-noinst_LTLIBRARIES += libpipe_loader.la
+libpipe_loader_dynamic_la_CFLAGS = \
+	$(AM_CFLAGS) \
+	-DPIPE_SEARCH_DIR=\"$(libdir)/gallium-pipe\"
 
-libpipe_loader_la_SOURCES = \
-	pipe_loader.h \
-	pipe_loader_priv.h \
-	pipe_loader.c \
-	pipe_loader_sw.c
+libpipe_loader_static_la_SOURCES = \
+	$(COMMON_SOURCES)
 
-if HAVE_DRM_LOADER_GALLIUM
-libpipe_loader_la_SOURCES += pipe_loader_drm.c
-AM_CFLAGS += $(LIBDRM_CFLAGS)
+libpipe_loader_dynamic_la_SOURCES = \
+	$(COMMON_SOURCES)
+
+if HAVE_LIBDRM
+AM_CFLAGS += \
+	$(LIBDRM_CFLAGS)
+
+libpipe_loader_static_la_SOURCES += \
+	$(DRM_SOURCES)
+
+libpipe_loader_dynamic_la_SOURCES += \
+	$(DRM_SOURCES)
+
 endif
 
-# Provide compatibility with scripts for the old Mesa build system for
-# a while by putting a link to the library in the current directory.
-all-local: libpipe_loader.la
-	ln -f .libs/libpipe_loader.a .
+libpipe_loader_static_la_LIBADD = \
+	$(top_builddir)/src/loader/libloader.la
 
-clean-local:
-	rm -f libpipe_loader.a
-endif
+libpipe_loader_dynamic_la_LIBADD = \
+	$(top_builddir)/src/loader/libloader.la
 
-# FIXME: Remove when the rest of Gallium is converted to automake.
-default: all
+EXTRA_DIST = SConscript

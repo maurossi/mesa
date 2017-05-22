@@ -42,7 +42,10 @@
 #define GALLIVM_DEBUG_NO_OPT        (1 << 3)
 #define GALLIVM_DEBUG_PERF          (1 << 4)
 #define GALLIVM_DEBUG_NO_BRILINEAR  (1 << 5)
-#define GALLIVM_DEBUG_GC            (1 << 6)
+#define GALLIVM_DEBUG_NO_RHO_APPROX (1 << 6)
+#define GALLIVM_DEBUG_NO_QUAD_LOD   (1 << 7)
+#define GALLIVM_DEBUG_GC            (1 << 8)
+#define GALLIVM_DEBUG_DUMP_BC       (1 << 9)
 
 
 #ifdef __cplusplus
@@ -57,7 +60,7 @@ extern unsigned gallivm_debug;
 #endif
 
 
-static INLINE void
+static inline void
 lp_build_name(LLVMValueRef val, const char *format, ...)
 {
 #ifdef DEBUG
@@ -83,7 +86,11 @@ lp_check_alignment(const void *ptr, unsigned alignment);
 
 
 void
-lp_disassemble(const void* func);
+lp_disassemble(LLVMValueRef func, const void *code);
+
+
+void
+lp_profile(LLVMValueRef func, const void *code);
 
 
 #ifdef __cplusplus

@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
 
 
@@ -95,7 +95,7 @@ fse_prepare(struct draw_pt_middle_end *middle,
    fse->key.nr_elements = MAX2(fse->key.nr_outputs,     /* outputs - translate to hw format */
                                fse->key.nr_inputs);     /* inputs - fetch from api format */
 
-   fse->key.viewport = !draw->identity_viewport;
+   fse->key.viewport = !draw->bypass_viewport;
    fse->key.clip = draw->clip_xy || draw->clip_z || draw->clip_user;
    fse->key.const_vbuffers = 0;
 
@@ -159,7 +159,7 @@ fse_prepare(struct draw_pt_middle_end *middle,
    for (i = 0; i < draw->pt.nr_vertex_buffers; i++) {
       fse->active->set_buffer( fse->active,
                                i,
-                               ((const ubyte *) draw->pt.user.vbuffer[i] +
+                               ((const ubyte *) draw->pt.user.vbuffer[i].map +
                                 draw->pt.vertex_buffer[i].buffer_offset),
                               draw->pt.vertex_buffer[i].stride,
                               draw->pt.max_index );
@@ -177,6 +177,12 @@ fse_prepare(struct draw_pt_middle_end *middle,
    }
 }
 
+
+static void
+fse_bind_parameters(struct draw_pt_middle_end *middle)
+{
+   /* No-op? */
+}
 
 
 static void
@@ -366,6 +372,7 @@ draw_pt_middle_fse(struct draw_context *draw)
       return NULL;
 
    fse->base.prepare = fse_prepare;
+   fse->base.bind_parameters = fse_bind_parameters;
    fse->base.run = fse_run;
    fse->base.run_linear = fse_run_linear;
    fse->base.run_linear_elts = fse_run_linear_elts;

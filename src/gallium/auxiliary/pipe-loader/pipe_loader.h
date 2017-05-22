@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -34,16 +34,19 @@
 #define PIPE_LOADER_H
 
 #include "pipe/p_compiler.h"
+#include "state_tracker/drm_driver.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 struct pipe_screen;
+struct drisw_loader_funcs;
 
 enum pipe_loader_device_type {
    PIPE_LOADER_DEVICE_SOFTWARE,
    PIPE_LOADER_DEVICE_PCI,
+   PIPE_LOADER_DEVICE_PLATFORM,
    NUM_PIPE_LOADER_DEVICE_TYPES
 };
 
@@ -60,7 +63,7 @@ struct pipe_loader_device {
       } pci;
    } u; /**< Discriminated by \a type */
 
-   const char *driver_name;
+   char *driver_name;
    const struct pipe_loader_ops *ops;
 };
 
@@ -79,13 +82,19 @@ pipe_loader_probe(struct pipe_loader_device **devs, int ndev);
  * Create a pipe_screen for the specified device.
  *
  * \param dev Device the screen will be created for.
- * \param library_paths Colon-separated list of filesystem paths that
- *                      will be used to look for the pipe driver
- *                      module that handles this device.
  */
 struct pipe_screen *
-pipe_loader_create_screen(struct pipe_loader_device *dev,
-                          const char *library_paths);
+pipe_loader_create_screen(struct pipe_loader_device *dev);
+
+/**
+ * Query the configuration parameters for the specified device.
+ *
+ * \param dev Device that will be queried.
+ * \param conf The drm_conf id of the option to be queried.
+ */
+const struct drm_conf_ret *
+pipe_loader_configuration(struct pipe_loader_device *dev,
+                          enum drm_conf conf);
 
 /**
  * Release resources allocated for a list of devices.
@@ -99,7 +108,36 @@ pipe_loader_create_screen(struct pipe_loader_device *dev,
 void
 pipe_loader_release(struct pipe_loader_device **devs, int ndev);
 
-#ifdef HAVE_PIPE_LOADER_SW
+/**
+ * Initialize sw dri device give the drisw_loader_funcs.
+ *
+ * This function is platform-specific.
+ *
+ * \sa pipe_loader_probe
+ */
+bool
+pipe_loader_sw_probe_dri(struct pipe_loader_device **devs,
+                         struct drisw_loader_funcs *drisw_lf);
+
+/**
+ * Initialize a kms backed sw device given an fd.
+ *
+ * This function is platform-specific.
+ *
+ * \sa pipe_loader_probe
+ */
+bool
+pipe_loader_sw_probe_kms(struct pipe_loader_device **devs, int fd);
+
+/**
+ * Initialize a null sw device.
+ *
+ * This function is platform-specific.
+ *
+ * \sa pipe_loader_probe
+ */
+bool
+pipe_loader_sw_probe_null(struct pipe_loader_device **devs);
 
 /**
  * Get a list of known software devices.
@@ -111,9 +149,16 @@ pipe_loader_release(struct pipe_loader_device **devs, int ndev);
 int
 pipe_loader_sw_probe(struct pipe_loader_device **devs, int ndev);
 
-#endif
-
-#ifdef HAVE_PIPE_LOADER_DRM
+/**
+ * Get a software device wrapped atop another device.
+ *
+ * This function is platform-specific.
+ *
+ * \sa pipe_loader_probe
+ */
+boolean
+pipe_loader_sw_probe_wrapped(struct pipe_loader_device **dev,
+                             struct pipe_screen *screen);
 
 /**
  * Get a list of known DRM devices.
@@ -132,10 +177,8 @@ pipe_loader_drm_probe(struct pipe_loader_device **devs, int ndev);
  *
  * \sa pipe_loader_probe
  */
-boolean
+bool
 pipe_loader_drm_probe_fd(struct pipe_loader_device **dev, int fd);
-
-#endif
 
 #ifdef __cplusplus
 }

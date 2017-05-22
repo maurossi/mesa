@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,7 +27,7 @@
 
  /*
   * Authors:
-  *   Keith Whitwell <keith@tungstengraphics.com>
+  *   Keith Whitwell <keithw@vmware.com>
   */
 
 #include "util/u_memory.h"
@@ -73,7 +73,7 @@ struct translate_generic {
        */
       int copy_size;
 
-   } attrib[PIPE_MAX_ATTRIBS];
+   } attrib[TRANSLATE_MAX_ATTRIBS];
 
    unsigned nr_attrib;
 };
@@ -266,10 +266,7 @@ emit_B10G10R10A2_UNORM( const void *attrib, void *ptr )
    value |= (((uint32_t)(CLAMP(src[1], 0, 1) * 0x3ff)) & 0x3ff) << 10;
    value |= (((uint32_t)(CLAMP(src[0], 0, 1) * 0x3ff)) & 0x3ff) << 20;
    value |= ((uint32_t)(CLAMP(src[3], 0, 1) * 0x3)) << 30;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void
@@ -281,10 +278,7 @@ emit_B10G10R10A2_USCALED( const void *attrib, void *ptr )
    value |= (((uint32_t)CLAMP(src[1], 0, 1023)) & 0x3ff) << 10;
    value |= (((uint32_t)CLAMP(src[0], 0, 1023)) & 0x3ff) << 20;
    value |= ((uint32_t)CLAMP(src[3], 0, 3)) << 30;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void
@@ -296,10 +290,7 @@ emit_B10G10R10A2_SNORM( const void *attrib, void *ptr )
    value |= (uint32_t)((((uint32_t)(CLAMP(src[1], -1, 1) * 0x1ff)) & 0x3ff) << 10) ;
    value |= (uint32_t)((((uint32_t)(CLAMP(src[0], -1, 1) * 0x1ff)) & 0x3ff) << 20) ;
    value |= (uint32_t)(((uint32_t)(CLAMP(src[3], -1, 1) * 0x1)) << 30) ;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void
@@ -311,10 +302,7 @@ emit_B10G10R10A2_SSCALED( const void *attrib, void *ptr )
    value |= (uint32_t)((((uint32_t)CLAMP(src[1], -512, 511)) & 0x3ff) << 10) ;
    value |= (uint32_t)((((uint32_t)CLAMP(src[0], -512, 511)) & 0x3ff) << 20) ;
    value |= (uint32_t)(((uint32_t)CLAMP(src[3], -2, 1)) << 30) ;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void
@@ -326,10 +314,7 @@ emit_R10G10B10A2_UNORM( const void *attrib, void *ptr )
    value |= (((uint32_t)(CLAMP(src[1], 0, 1) * 0x3ff)) & 0x3ff) << 10;
    value |= (((uint32_t)(CLAMP(src[2], 0, 1) * 0x3ff)) & 0x3ff) << 20;
    value |= ((uint32_t)(CLAMP(src[3], 0, 1) * 0x3)) << 30;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void
@@ -341,10 +326,7 @@ emit_R10G10B10A2_USCALED( const void *attrib, void *ptr )
    value |= (((uint32_t)CLAMP(src[1], 0, 1023)) & 0x3ff) << 10;
    value |= (((uint32_t)CLAMP(src[2], 0, 1023)) & 0x3ff) << 20;
    value |= ((uint32_t)CLAMP(src[3], 0, 3)) << 30;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void
@@ -356,10 +338,7 @@ emit_R10G10B10A2_SNORM( const void *attrib, void *ptr )
    value |= (uint32_t)((((uint32_t)(CLAMP(src[1], -1, 1) * 0x1ff)) & 0x3ff) << 10) ;
    value |= (uint32_t)((((uint32_t)(CLAMP(src[2], -1, 1) * 0x1ff)) & 0x3ff) << 20) ;
    value |= (uint32_t)(((uint32_t)(CLAMP(src[3], -1, 1) * 0x1)) << 30) ;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void
@@ -371,10 +350,7 @@ emit_R10G10B10A2_SSCALED( const void *attrib, void *ptr)
    value |= (uint32_t)((((uint32_t)CLAMP(src[1], -512, 511)) & 0x3ff) << 10) ;
    value |= (uint32_t)((((uint32_t)CLAMP(src[2], -512, 511)) & 0x3ff) << 20) ;
    value |= (uint32_t)(((uint32_t)CLAMP(src[3], -2, 1)) << 30) ;
-#ifdef PIPE_ARCH_BIG_ENDIAN
-   value = util_bswap32(value);
-#endif
-   *(uint32_t *)attrib = value;
+   *(uint32_t *)attrib = util_le32_to_cpu(value);
 }
 
 static void 
@@ -607,6 +583,7 @@ static emit_func get_emit_func( enum pipe_format format )
 
 static ALWAYS_INLINE void PIPE_CDECL generic_run_one( struct translate_generic *tg,
                                          unsigned elt,
+                                         unsigned start_instance,
                                          unsigned instance_id,
                                          void *vert )
 {
@@ -623,7 +600,8 @@ static ALWAYS_INLINE void PIPE_CDECL generic_run_one( struct translate_generic *
          int copy_size;
 
          if (tg->attrib[attr].instance_divisor) {
-            index = instance_id / tg->attrib[attr].instance_divisor;
+            index = start_instance;
+            index += (instance_id  / tg->attrib[attr].instance_divisor);
             /* XXX we need to clamp the index here too, but to a
              * per-array max value, not the draw->pt.max_index value
              * that's being given to us via translate->set_buffer().
@@ -636,7 +614,7 @@ static ALWAYS_INLINE void PIPE_CDECL generic_run_one( struct translate_generic *
          }
 
          src = tg->attrib[attr].input_ptr +
-               tg->attrib[attr].input_stride * index;
+               (ptrdiff_t)tg->attrib[attr].input_stride * index;
 
          copy_size = tg->attrib[attr].copy_size;
          if(likely(copy_size >= 0))
@@ -674,6 +652,7 @@ static ALWAYS_INLINE void PIPE_CDECL generic_run_one( struct translate_generic *
 static void PIPE_CDECL generic_run_elts( struct translate *translate,
                                          const unsigned *elts,
                                          unsigned count,
+                                         unsigned start_instance,
                                          unsigned instance_id,
                                          void *output_buffer )
 {
@@ -682,7 +661,7 @@ static void PIPE_CDECL generic_run_elts( struct translate *translate,
    unsigned i;
 
    for (i = 0; i < count; i++) {
-      generic_run_one(tg, *elts++, instance_id, vert);
+      generic_run_one(tg, *elts++, start_instance, instance_id, vert);
       vert += tg->translate.key.output_stride;
    }
 }
@@ -690,6 +669,7 @@ static void PIPE_CDECL generic_run_elts( struct translate *translate,
 static void PIPE_CDECL generic_run_elts16( struct translate *translate,
                                          const uint16_t *elts,
                                          unsigned count,
+                                         unsigned start_instance,
                                          unsigned instance_id,
                                          void *output_buffer )
 {
@@ -698,7 +678,7 @@ static void PIPE_CDECL generic_run_elts16( struct translate *translate,
    unsigned i;
 
    for (i = 0; i < count; i++) {
-      generic_run_one(tg, *elts++, instance_id, vert);
+      generic_run_one(tg, *elts++, start_instance, instance_id, vert);
       vert += tg->translate.key.output_stride;
    }
 }
@@ -706,6 +686,7 @@ static void PIPE_CDECL generic_run_elts16( struct translate *translate,
 static void PIPE_CDECL generic_run_elts8( struct translate *translate,
                                          const uint8_t *elts,
                                          unsigned count,
+                                         unsigned start_instance, 
                                          unsigned instance_id,
                                          void *output_buffer )
 {
@@ -714,7 +695,7 @@ static void PIPE_CDECL generic_run_elts8( struct translate *translate,
    unsigned i;
 
    for (i = 0; i < count; i++) {
-      generic_run_one(tg, *elts++, instance_id, vert);
+      generic_run_one(tg, *elts++, start_instance, instance_id, vert);
       vert += tg->translate.key.output_stride;
    }
 }
@@ -722,6 +703,7 @@ static void PIPE_CDECL generic_run_elts8( struct translate *translate,
 static void PIPE_CDECL generic_run( struct translate *translate,
                                     unsigned start,
                                     unsigned count,
+                                    unsigned start_instance,
                                     unsigned instance_id,
                                     void *output_buffer )
 {
@@ -730,7 +712,7 @@ static void PIPE_CDECL generic_run( struct translate *translate,
    unsigned i;
 
    for (i = 0; i < count; i++) {
-      generic_run_one(tg, start + i, instance_id, vert);
+      generic_run_one(tg, start + i, start_instance, instance_id, vert);
       vert += tg->translate.key.output_stride;
    }
 }
@@ -790,8 +772,10 @@ struct translate *translate_generic_create( const struct translate_key *key )
    struct translate_generic *tg = CALLOC_STRUCT(translate_generic);
    unsigned i;
 
-   if (tg == NULL)
+   if (!tg)
       return NULL;
+
+   assert(key->nr_elements <= TRANSLATE_MAX_ATTRIBS);
 
    tg->translate.key = *key;
    tg->translate.release = generic_release;
@@ -806,7 +790,6 @@ struct translate *translate_generic_create( const struct translate_key *key )
             util_format_description(key->element[i].input_format);
 
       assert(format_desc);
-      assert(format_desc->fetch_rgba_float);
 
       tg->attrib[i].type = key->element[i].type;
 
@@ -820,11 +803,14 @@ struct translate *translate_generic_create( const struct translate_key *key )
          }
 
          if (format_desc->channel[0].type == UTIL_FORMAT_TYPE_SIGNED) {
+            assert(format_desc->fetch_rgba_sint);
             tg->attrib[i].fetch = (fetch_func)format_desc->fetch_rgba_sint;
          } else {
+            assert(format_desc->fetch_rgba_uint);
             tg->attrib[i].fetch = (fetch_func)format_desc->fetch_rgba_uint;
          }
       } else {
+         assert(format_desc->fetch_rgba_float);
          tg->attrib[i].fetch = (fetch_func)format_desc->fetch_rgba_float;
       }
 

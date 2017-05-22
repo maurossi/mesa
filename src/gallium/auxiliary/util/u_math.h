@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -40,126 +40,22 @@
 
 
 #include "pipe/p_compiler.h"
-#include "util/u_debug.h"
 
+#include "c99_math.h"
+#include <assert.h>
+#include <float.h>
+#include <stdarg.h>
+
+#include "util/bitscan.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 
-#include <math.h>
-#include <stdarg.h>
-
-#ifdef PIPE_OS_UNIX
-#include <strings.h> /* for ffs */
-#endif
-
-
 #ifndef M_SQRT2
 #define M_SQRT2 1.41421356237309504880
 #endif
-
-
-#if defined(_MSC_VER) 
-
-#if _MSC_VER < 1400 && !defined(__cplusplus)
- 
-static INLINE float cosf( float f ) 
-{
-   return (float) cos( (double) f );
-}
-
-static INLINE float sinf( float f ) 
-{
-   return (float) sin( (double) f );
-}
-
-static INLINE float ceilf( float f ) 
-{
-   return (float) ceil( (double) f );
-}
-
-static INLINE float floorf( float f ) 
-{
-   return (float) floor( (double) f );
-}
-
-static INLINE float powf( float f, float g ) 
-{
-   return (float) pow( (double) f, (double) g );
-}
-
-static INLINE float sqrtf( float f ) 
-{
-   return (float) sqrt( (double) f );
-}
-
-static INLINE float fabsf( float f ) 
-{
-   return (float) fabs( (double) f );
-}
-
-static INLINE float logf( float f ) 
-{
-   return (float) log( (double) f );
-}
-
-#else
-/* Work-around an extra semi-colon in VS 2005 logf definition */
-#ifdef logf
-#undef logf
-#define logf(x) ((float)log((double)(x)))
-#endif /* logf */
-
-#define isfinite(x) _finite((double)(x))
-#define isnan(x) _isnan((double)(x))
-#endif /* _MSC_VER < 1400 && !defined(__cplusplus) */
-
-static INLINE double log2( double x )
-{
-   const double invln2 = 1.442695041;
-   return log( x ) * invln2;
-}
-
-static INLINE double
-round(double x)
-{
-   return x >= 0.0 ? floor(x + 0.5) : ceil(x - 0.5);
-}
-
-static INLINE float
-roundf(float x)
-{
-   return x >= 0.0f ? floorf(x + 0.5f) : ceilf(x - 0.5f);
-}
-
-#endif /* _MSC_VER */
-
-
-#ifdef PIPE_OS_ANDROID
-
-static INLINE
-double log2(double d)
-{
-   return log(d) * (1.0 / M_LN2);
-}
-
-/* workaround a conflict with main/imports.h */
-#ifdef log2f
-#undef log2f
-#endif
-
-static INLINE
-float log2f(float f)
-{
-   return logf(f) * (float) (1.0 / M_LN2);
-}
-
-#endif
-
-
-
 
 #define POW2_TABLE_SIZE_LOG2 9
 #define POW2_TABLE_SIZE (1 << POW2_TABLE_SIZE_LOG2)
@@ -191,6 +87,20 @@ union di {
 
 
 /**
+ * Extract the IEEE float32 exponent.
+ */
+static inline signed
+util_get_float32_exponent(float x)
+{
+   union fi f;
+
+   f.f = x;
+
+   return ((f.ui >> 23) & 0xff) - 127;
+}
+
+
+/**
  * Fast version of 2^x
  * Identity: exp2(a + b) = exp2(a) * exp2(b)
  * Let ipart = int(x)
@@ -199,7 +109,7 @@ union di {
  * Compute exp2(ipart) with i << ipart
  * Compute exp2(fpart) with lookup table.
  */
-static INLINE float
+static inline float
 util_fast_exp2(float x)
 {
    int32_t ipart;
@@ -230,7 +140,7 @@ util_fast_exp2(float x)
 /**
  * Fast approximation to exp(x).
  */
-static INLINE float
+static inline float
 util_fast_exp(float x)
 {
    const float k = 1.44269f; /* = log2(e) */
@@ -247,7 +157,7 @@ extern float log2_table[LOG2_TABLE_SIZE];
 /**
  * Fast approximation to log2(x).
  */
-static INLINE float
+static inline float
 util_fast_log2(float x)
 {
    union fi num;
@@ -263,7 +173,7 @@ util_fast_log2(float x)
 /**
  * Fast approximation to x^y.
  */
-static INLINE float
+static inline float
 util_fast_pow(float x, float y)
 {
    return util_fast_exp2(util_fast_log2(x) * y);
@@ -271,7 +181,7 @@ util_fast_pow(float x, float y)
 
 /* Note that this counts zero as a power of two.
  */
-static INLINE boolean
+static inline boolean
 util_is_power_of_two( unsigned v )
 {
    return (v & (v-1)) == 0;
@@ -281,7 +191,7 @@ util_is_power_of_two( unsigned v )
 /**
  * Floor(x), returned as int.
  */
-static INLINE int
+static inline int
 util_ifloor(float f)
 {
    int ai, bi;
@@ -298,7 +208,7 @@ util_ifloor(float f)
 /**
  * Round float to nearest int.
  */
-static INLINE int
+static inline int
 util_iround(float f)
 {
 #if defined(PIPE_CC_GCC) && defined(PIPE_ARCH_X86) 
@@ -324,10 +234,10 @@ util_iround(float f)
 /**
  * Approximate floating point comparison
  */
-static INLINE boolean
+static inline boolean
 util_is_approx(float a, float b, float tol)
 {
-   return fabs(b - a) <= tol;
+   return fabsf(b - a) <= tol;
 }
 
 
@@ -343,7 +253,7 @@ util_is_approx(float a, float b, float tol)
 /**
  * Single-float
  */
-static INLINE boolean
+static inline boolean
 util_is_inf_or_nan(float x)
 {
    union fi tmp;
@@ -352,7 +262,7 @@ util_is_inf_or_nan(float x)
 }
 
 
-static INLINE boolean
+static inline boolean
 util_is_nan(float x)
 {
    union fi tmp;
@@ -361,7 +271,7 @@ util_is_nan(float x)
 }
 
 
-static INLINE int
+static inline int
 util_inf_sign(float x)
 {
    union fi tmp;
@@ -377,7 +287,7 @@ util_inf_sign(float x)
 /**
  * Double-float
  */
-static INLINE boolean
+static inline boolean
 util_is_double_inf_or_nan(double x)
 {
    union di tmp;
@@ -386,7 +296,7 @@ util_is_double_inf_or_nan(double x)
 }
 
 
-static INLINE boolean
+static inline boolean
 util_is_double_nan(double x)
 {
    union di tmp;
@@ -395,7 +305,7 @@ util_is_double_nan(double x)
 }
 
 
-static INLINE int
+static inline int
 util_double_inf_sign(double x)
 {
    union di tmp;
@@ -411,21 +321,21 @@ util_double_inf_sign(double x)
 /**
  * Half-float
  */
-static INLINE boolean
+static inline boolean
 util_is_half_inf_or_nan(int16_t x)
 {
    return (x & 0x7c00) == 0x7c00;
 }
 
 
-static INLINE boolean
+static inline boolean
 util_is_half_nan(int16_t x)
 {
    return (x & 0x7fff) > 0x7c00;
 }
 
 
-static INLINE int
+static inline int
 util_half_inf_sign(int16_t x)
 {
    if ((x & 0x7fff) != 0x7c00) {
@@ -437,81 +347,9 @@ util_half_inf_sign(int16_t x)
 
 
 /**
- * Find first bit set in word.  Least significant bit is 1.
- * Return 0 if no bits set.
- */
-#ifndef FFS_DEFINED
-#define FFS_DEFINED 1
-
-#if defined(_MSC_VER) && _MSC_VER >= 1300 && (_M_IX86 || _M_AMD64 || _M_IA64)
-unsigned char _BitScanForward(unsigned long* Index, unsigned long Mask);
-#pragma intrinsic(_BitScanForward)
-static INLINE
-unsigned long ffs( unsigned long u )
-{
-   unsigned long i;
-   if (_BitScanForward(&i, u))
-      return i + 1;
-   else
-      return 0;
-}
-#elif defined(PIPE_CC_MSVC) && defined(PIPE_ARCH_X86)
-static INLINE
-unsigned ffs( unsigned u )
-{
-   unsigned i;
-
-   if (u == 0) {
-      return 0;
-   }
-
-   __asm bsf eax, [u]
-   __asm inc eax
-   __asm mov [i], eax
-
-   return i;
-}
-#elif defined(__MINGW32__) || defined(PIPE_OS_ANDROID)
-#define ffs __builtin_ffs
-#endif
-
-#endif /* FFS_DEFINED */
-
-/**
- * Find last bit set in a word.  The least significant bit is 1.
- * Return 0 if no bits are set.
- */
-static INLINE unsigned util_last_bit(unsigned u)
-{
-   unsigned r = 0;
-   while (u) {
-       r++;
-       u >>= 1;
-   }
-   return r;
-}
-
-
-/* Destructively loop over all of the bits in a mask as in:
- *
- * while (mymask) {
- *   int i = u_bit_scan(&mymask);
- *   ... process element i
- * }
- * 
- */
-static INLINE int u_bit_scan(unsigned *mask)
-{
-   int i = ffs(*mask) - 1;
-   *mask &= ~(1 << i);
-   return i;
-}
-
-
-/**
  * Return float bits.
  */
-static INLINE unsigned
+static inline unsigned
 fui( float f )
 {
    union fi fi;
@@ -519,12 +357,20 @@ fui( float f )
    return fi.ui;
 }
 
+static inline float
+uif(uint32_t ui)
+{
+   union fi fi;
+   fi.ui = ui;
+   return fi.f;
+}
+
 
 /**
  * Convert ubyte to float in [0, 1].
  * XXX a 256-entry lookup table would be slightly faster.
  */
-static INLINE float
+static inline float
 ubyte_to_float(ubyte ub)
 {
    return (float) ub * (1.0f / 255.0f);
@@ -534,17 +380,16 @@ ubyte_to_float(ubyte ub)
 /**
  * Convert float in [0,1] to ubyte in [0,255] with clamping.
  */
-static INLINE ubyte
+static inline ubyte
 float_to_ubyte(float f)
 {
-   const int ieee_0996 = 0x3f7f0000;   /* 0.996 or so */
    union fi tmp;
 
    tmp.f = f;
    if (tmp.i < 0) {
       return (ubyte) 0;
    }
-   else if (tmp.i >= ieee_0996) {
+   else if (tmp.i >= 0x3f800000 /* 1.0f */) {
       return (ubyte) 255;
    }
    else {
@@ -553,13 +398,13 @@ float_to_ubyte(float f)
    }
 }
 
-static INLINE float
+static inline float
 byte_to_float_tex(int8_t b)
 {
    return (b == -128) ? -1.0F : b * 1.0F / 127.0F;
 }
 
-static INLINE int8_t
+static inline int8_t
 float_to_byte_tex(float f)
 {
    return (int8_t) (127.0F * f);
@@ -568,10 +413,10 @@ float_to_byte_tex(float f)
 /**
  * Calc log base 2
  */
-static INLINE unsigned
+static inline unsigned
 util_logbase2(unsigned n)
 {
-#if defined(PIPE_CC_GCC) && (PIPE_CC_GCC_VERSION >= 304)
+#if defined(HAVE___BUILTIN_CLZ)
    return ((sizeof(unsigned) * 8 - 1) - __builtin_clz(n | 1));
 #else
    unsigned pos = 0;
@@ -584,14 +429,26 @@ util_logbase2(unsigned n)
 #endif
 }
 
+/**
+ * Returns the ceiling of log n base 2, and 0 when n == 0. Equivalently,
+ * returns the smallest x such that n <= 2**x.
+ */
+static inline unsigned
+util_logbase2_ceil(unsigned n)
+{
+   if (n <= 1)
+      return 0;
+
+   return 1 + util_logbase2(n - 1);
+}
 
 /**
  * Returns the smallest power of two >= x
  */
-static INLINE unsigned
+static inline unsigned
 util_next_power_of_two(unsigned x)
 {
-#if defined(PIPE_CC_GCC) && (PIPE_CC_GCC_VERSION >= 304)
+#if defined(HAVE___BUILTIN_CLZ)
    if (x <= 1)
        return 1;
 
@@ -620,10 +477,10 @@ util_next_power_of_two(unsigned x)
 /**
  * Return number of bits set in n.
  */
-static INLINE unsigned
+static inline unsigned
 util_bitcount(unsigned n)
 {
-#if defined(PIPE_CC_GCC) && (PIPE_CC_GCC_VERSION >= 304)
+#if defined(HAVE___BUILTIN_POPCOUNT)
    return __builtin_popcount(n);
 #else
    /* K&R classic bitcount.
@@ -632,8 +489,8 @@ util_bitcount(unsigned n)
     * Requires only one iteration per set bit, instead of
     * one iteration per bit less than highest set bit.
     */
-   unsigned bits = 0;
-   for (bits; n; bits++) {
+   unsigned bits;
+   for (bits = 0; n; bits++) {
       n &= n - 1;
    }
    return bits;
@@ -641,26 +498,58 @@ util_bitcount(unsigned n)
 }
 
 
+static inline unsigned
+util_bitcount64(uint64_t n)
+{
+#ifdef HAVE___BUILTIN_POPCOUNTLL
+   return __builtin_popcountll(n);
+#else
+   return util_bitcount(n) + util_bitcount(n >> 32);
+#endif
+}
+
+
+/**
+ * Reverse bits in n
+ * Algorithm taken from:
+ * http://stackoverflow.com/questions/9144800/c-reverse-bits-in-unsigned-integer
+ */
+static inline unsigned
+util_bitreverse(unsigned n)
+{
+    n = ((n >> 1) & 0x55555555u) | ((n & 0x55555555u) << 1);
+    n = ((n >> 2) & 0x33333333u) | ((n & 0x33333333u) << 2);
+    n = ((n >> 4) & 0x0f0f0f0fu) | ((n & 0x0f0f0f0fu) << 4);
+    n = ((n >> 8) & 0x00ff00ffu) | ((n & 0x00ff00ffu) << 8);
+    n = ((n >> 16) & 0xffffu) | ((n & 0xffffu) << 16);
+    return n;
+}
+
 /**
  * Convert from little endian to CPU byte order.
  */
 
 #ifdef PIPE_ARCH_BIG_ENDIAN
+#define util_le64_to_cpu(x) util_bswap64(x)
 #define util_le32_to_cpu(x) util_bswap32(x)
 #define util_le16_to_cpu(x) util_bswap16(x)
 #else
+#define util_le64_to_cpu(x) (x)
 #define util_le32_to_cpu(x) (x)
 #define util_le16_to_cpu(x) (x)
 #endif
 
+#define util_cpu_to_le64(x) util_le64_to_cpu(x)
+#define util_cpu_to_le32(x) util_le32_to_cpu(x)
+#define util_cpu_to_le16(x) util_le16_to_cpu(x)
 
 /**
  * Reverse byte order of a 32 bit word.
  */
-static INLINE uint32_t
+static inline uint32_t
 util_bswap32(uint32_t n)
 {
-#if defined(PIPE_CC_GCC) && (PIPE_CC_GCC_VERSION >= 403)
+#if defined(HAVE___BUILTIN_BSWAP32)
    return __builtin_bswap32(n);
 #else
    return (n >> 24) |
@@ -670,17 +559,48 @@ util_bswap32(uint32_t n)
 #endif
 }
 
+/**
+ * Reverse byte order of a 64bit word.
+ */
+static inline uint64_t
+util_bswap64(uint64_t n)
+{
+#if defined(HAVE___BUILTIN_BSWAP64)
+   return __builtin_bswap64(n);
+#else
+   return ((uint64_t)util_bswap32((uint32_t)n) << 32) |
+          util_bswap32((n >> 32));
+#endif
+}
+
 
 /**
  * Reverse byte order of a 16 bit word.
  */
-static INLINE uint16_t
+static inline uint16_t
 util_bswap16(uint16_t n)
 {
    return (n >> 8) |
           (n << 8);
 }
 
+static inline void*
+util_memcpy_cpu_to_le32(void * restrict dest, const void * restrict src, size_t n)
+{
+#ifdef PIPE_ARCH_BIG_ENDIAN
+   size_t i, e;
+   assert(n % 4 == 0);
+
+   for (i = 0, e = n / 4; i < e; i++) {
+      uint32_t * restrict d = (uint32_t* restrict)dest;
+      const uint32_t * restrict s = (const uint32_t* restrict)src;
+      d[i] = util_bswap32(s[i]);
+   }
+   return dest;
+#else
+   return memcpy(dest, src, n);
+#endif
+}
 
 /**
  * Clamp X to [MIN, MAX].
@@ -701,16 +621,22 @@ util_bswap16(uint16_t n)
 /**
  * Align a value, only works pot alignemnts.
  */
-static INLINE int
+static inline int
 align(int value, int alignment)
 {
    return (value + alignment - 1) & ~(alignment - 1);
 }
 
+static inline uint64_t
+align64(uint64_t value, unsigned alignment)
+{
+   return (value + alignment - 1) & ~((uint64_t)alignment - 1);
+}
+
 /**
  * Works like align but on npot alignments.
  */
-static INLINE size_t
+static inline size_t
 util_align_npot(size_t value, size_t alignment)
 {
    if (value % alignment)
@@ -718,7 +644,7 @@ util_align_npot(size_t value, size_t alignment)
    return value;
 }
 
-static INLINE unsigned
+static inline unsigned
 u_minify(unsigned value, unsigned levels)
 {
     return MAX2(1, value >> levels);
@@ -751,15 +677,24 @@ do {                                     \
 #endif
 
 
-static INLINE uint32_t util_unsigned_fixed(float value, unsigned frac_bits)
+static inline uint32_t
+util_unsigned_fixed(float value, unsigned frac_bits)
 {
    return value < 0 ? 0 : (uint32_t)(value * (1<<frac_bits));
 }
 
-static INLINE int32_t util_signed_fixed(float value, unsigned frac_bits)
+static inline int32_t
+util_signed_fixed(float value, unsigned frac_bits)
 {
    return (int32_t)(value * (1<<frac_bits));
 }
+
+unsigned
+util_fpstate_get(void);
+unsigned
+util_fpstate_set_denorms_to_zero(unsigned current_fpstate);
+void
+util_fpstate_set(unsigned fpstate);
 
 
 

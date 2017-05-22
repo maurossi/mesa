@@ -85,14 +85,19 @@ util_dump_tex_mipfilter(unsigned value, boolean shortened);
 const char *
 util_dump_tex_filter(unsigned value, boolean shortened);
 
+const char *
+util_dump_query_type(unsigned value, boolean shortened);
+
+const char *
+util_dump_prim_mode(unsigned value, boolean shortened);
+
 
 /*
  * p_state.h, through a FILE
  */
 
 void
-util_dump_template(FILE *stream,
-                   const struct pipe_resource *templat);
+util_dump_resource(FILE *stream, const struct pipe_resource *state);
 
 void
 util_dump_rasterizer_state(FILE *stream,
@@ -151,8 +156,24 @@ util_dump_surface(FILE *stream,
                   const struct pipe_surface *state);
 
 void
+util_dump_image_view(FILE *stream, const struct pipe_image_view *state);
+
+void
+util_dump_shader_buffer(FILE *stream, const struct pipe_shader_buffer *state);
+
+void
+util_dump_sampler_view(FILE *stream, const struct pipe_sampler_view *state);
+
+void
 util_dump_transfer(FILE *stream,
                    const struct pipe_transfer *state);
+
+void
+util_dump_constant_buffer(FILE *stream,
+                          const struct pipe_constant_buffer *state);
+
+void
+util_dump_index_buffer(FILE *stream, const struct pipe_index_buffer *state);
 
 void
 util_dump_vertex_buffer(FILE *stream,
@@ -163,7 +184,17 @@ util_dump_vertex_element(FILE *stream,
                          const struct pipe_vertex_element *state);
 
 void
+util_dump_stream_output_target(FILE *stream,
+                               const struct pipe_stream_output_target *state);
+
+void
 util_dump_draw_info(FILE *stream, const struct pipe_draw_info *state);
+
+void
+util_dump_box(FILE *stream, const struct pipe_box *box);
+
+void
+util_dump_blit_info(FILE *stream, const struct pipe_blit_info *info);
 
 /* FIXME: Move the other debug_dump_xxx functions out of u_debug.h into here. */
 

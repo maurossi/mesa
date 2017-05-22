@@ -24,28 +24,51 @@
 #ifndef BRW_PROGRAM_H
 #define BRW_PROGRAM_H
 
-/**
- * Sampler information needed by VS, WM, and GS program cache keys.
- */
-struct brw_sampler_prog_key_data {
-   /**
-    * EXT_texture_swizzle and DEPTH_TEXTURE_MODE swizzles.
-    */
-   uint16_t swizzles[MAX_SAMPLERS];
+#include "brw_compiler.h"
 
-   uint16_t gl_clamp_mask[3];
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-   /**
-    * YUV conversions, needed for the GL_MESA_ycbcr extension.
-    */
-   uint16_t yuvtex_mask;
-   uint16_t yuvtex_swap_mask; /**< UV swaped */
-};
+struct brw_context;
+
+struct nir_shader *brw_create_nir(struct brw_context *brw,
+                                  const struct gl_shader_program *shader_prog,
+                                  struct gl_program *prog,
+                                  gl_shader_stage stage,
+                                  bool is_scalar);
+
+void brw_setup_tex_for_precompile(struct brw_context *brw,
+                                  struct brw_sampler_prog_key_data *tex,
+                                  struct gl_program *prog);
 
 void brw_populate_sampler_prog_key_data(struct gl_context *ctx,
 				        const struct gl_program *prog,
 				        struct brw_sampler_prog_key_data *key);
-bool brw_debug_recompile_sampler_key(const struct brw_sampler_prog_key_data *old_key,
+bool brw_debug_recompile_sampler_key(struct brw_context *brw,
+                                     const struct brw_sampler_prog_key_data *old_key,
                                      const struct brw_sampler_prog_key_data *key);
+void brw_add_texrect_params(struct gl_program *prog);
+
+void
+brw_mark_surface_used(struct brw_stage_prog_data *prog_data,
+                      unsigned surf_index);
+
+void
+brw_stage_prog_data_free(const void *prog_data);
+
+void
+brw_dump_arb_asm(const char *stage, struct gl_program *prog);
+
+void brw_upload_tcs_prog(struct brw_context *brw);
+void brw_tcs_populate_key(struct brw_context *brw,
+                          struct brw_tcs_prog_key *key);
+void brw_upload_tes_prog(struct brw_context *brw);
+void brw_tes_populate_key(struct brw_context *brw,
+                          struct brw_tes_prog_key *key);
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
 
 #endif

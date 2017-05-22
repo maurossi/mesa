@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,14 +18,14 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * 
  **************************************************************************/
 
-/* Authors:  Keith Whitwell <keith@tungstengraphics.com>
+/* Authors:  Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef SP_STATE_H
@@ -56,6 +56,8 @@
 
 
 struct tgsi_sampler;
+struct tgsi_image;
+struct tgsi_buffer;
 struct tgsi_exec_machine;
 struct vertex_info;
 
@@ -81,11 +83,14 @@ struct sp_fragment_shader_variant
 
    void (*prepare)(const struct sp_fragment_shader_variant *shader,
 		   struct tgsi_exec_machine *machine,
-		   struct tgsi_sampler **samplers);
+		   struct tgsi_sampler *sampler,
+		   struct tgsi_image *image,
+		   struct tgsi_buffer *buffer);
 
    unsigned (*run)(const struct sp_fragment_shader_variant *shader,
 		   struct tgsi_exec_machine *machine,
-		   struct quad_header *quad);
+		   struct quad_header *quad,
+		   bool early_depth_test);
 
    /* Deletes this instance of the object */
    void (*delete)(struct sp_fragment_shader_variant *shader,
@@ -126,6 +131,13 @@ struct sp_so_state {
    struct pipe_stream_output_info base;
 };
 
+/** Subclass of pipe_compute_state */
+struct sp_compute_shader {
+   struct pipe_compute_state shader;
+   struct tgsi_token *tokens;
+   struct tgsi_shader_info info;
+   int max_sampler;             /* -1 if no samplers */
+};
 
 void
 softpipe_init_blend_funcs(struct pipe_context *pipe);
@@ -149,6 +161,9 @@ void
 softpipe_init_vertex_funcs(struct pipe_context *pipe);
 
 void
+softpipe_init_image_funcs(struct pipe_context *pipe);
+
+void
 softpipe_set_framebuffer_state(struct pipe_context *,
                                const struct pipe_framebuffer_state *);
 
@@ -156,14 +171,16 @@ void
 softpipe_update_derived(struct softpipe_context *softpipe, unsigned prim);
 
 void
+softpipe_set_sampler_views(struct pipe_context *pipe,
+                           enum pipe_shader_type shader,
+                           unsigned start,
+                           unsigned num,
+                           struct pipe_sampler_view **views);
+
+
+void
 softpipe_draw_vbo(struct pipe_context *pipe,
                   const struct pipe_draw_info *info);
-
-void
-softpipe_map_transfers(struct softpipe_context *sp);
-
-void
-softpipe_unmap_transfers(struct softpipe_context *sp);
 
 void
 softpipe_map_texture_surfaces(struct softpipe_context *sp);
@@ -171,9 +188,6 @@ softpipe_map_texture_surfaces(struct softpipe_context *sp);
 void
 softpipe_unmap_texture_surfaces(struct softpipe_context *sp);
 
-
-struct vertex_info *
-softpipe_get_vertex_info(struct softpipe_context *softpipe);
 
 struct vertex_info *
 softpipe_get_vbuf_vertex_info(struct softpipe_context *softpipe);
@@ -190,5 +204,26 @@ softpipe_find_fs_variant(struct softpipe_context *softpipe,
                          struct sp_fragment_shader *fs,
                          const struct sp_fragment_shader_variant_key *key);
 
+void
+softpipe_prepare_vertex_sampling(struct softpipe_context *ctx,
+                                 unsigned num,
+                                 struct pipe_sampler_view **views);
+void
+softpipe_cleanup_vertex_sampling(struct softpipe_context *ctx);
 
+
+void
+softpipe_prepare_geometry_sampling(struct softpipe_context *ctx,
+                                   unsigned num,
+                                   struct pipe_sampler_view **views);
+void
+softpipe_cleanup_geometry_sampling(struct softpipe_context *ctx);
+
+
+void
+softpipe_launch_grid(struct pipe_context *context,
+                     const struct pipe_grid_info *info);
+
+void
+softpipe_update_compute_samplers(struct softpipe_context *softpipe);
 #endif

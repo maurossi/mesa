@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright 2008 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2008 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -27,6 +27,7 @@
 
 #include "util/u_memory.h"
 #include "util/u_math.h"
+#include "util/u_prim.h"
 #include "pipe/p_context.h"
 #include "draw/draw_context.h"
 #include "draw/draw_private.h"
@@ -48,19 +49,20 @@ struct pt_post_vs {
    unsigned flags;
 
    boolean (*run)( struct pt_post_vs *pvs,
-                   struct draw_vertex_info *info );
+                   struct draw_vertex_info *info,
+                   const struct draw_prim_info *prim_info );
 };
 
-static INLINE void
+static inline void
 initialize_vertex_header(struct vertex_header *header)
 {
    header->clipmask = 0;
    header->edgeflag = 1;
-   header->have_clipdist = 0;
+   header->pad = 0;
    header->vertex_id = UNDEFINED_VERTEX_ID;
 }
 
-static INLINE float
+static inline float
 dot4(const float *a, const float *b)
 {
    return (a[0]*b[0] +
@@ -115,9 +117,10 @@ dot4(const float *a, const float *b)
 
 
 boolean draw_pt_post_vs_run( struct pt_post_vs *pvs,
-			     struct draw_vertex_info *info )
+                             struct draw_vertex_info *info,
+                             const struct draw_prim_info *prim_info )
 {
-   return pvs->run( pvs, info );
+   return pvs->run( pvs, info, prim_info );
 }
 
 
@@ -127,14 +130,14 @@ void draw_pt_post_vs_prepare( struct pt_post_vs *pvs,
                               boolean clip_user,
                               boolean guard_band,
 			      boolean bypass_viewport,
-			      boolean opengl,
+                              boolean clip_halfz,
 			      boolean need_edgeflags )
 {
    pvs->flags = 0;
 
    /* This combination not currently tested/in use:
     */
-   if (opengl)
+   if (!clip_halfz)
       guard_band = FALSE;
 
    if (clip_xy && !guard_band) {
@@ -152,14 +155,14 @@ void draw_pt_post_vs_prepare( struct pt_post_vs *pvs,
       ASSIGN_4V( pvs->draw->plane[3],  0,  0.5,  0, 1 );
    }
 
-   if (clip_z && opengl) {
-      pvs->flags |= DO_CLIP_FULL_Z;
-      ASSIGN_4V( pvs->draw->plane[4],  0,  0,  1, 1 );
-   }
-
-   if (clip_z && !opengl) {
-      pvs->flags |= DO_CLIP_HALF_Z;
-      ASSIGN_4V( pvs->draw->plane[4],  0,  0,  1, 0 );
+   if (clip_z) {
+      if (clip_halfz) {
+         pvs->flags |= DO_CLIP_HALF_Z;
+         ASSIGN_4V( pvs->draw->plane[4],  0,  0,  1, 0 );
+      } else {
+         pvs->flags |= DO_CLIP_FULL_Z;
+         ASSIGN_4V( pvs->draw->plane[4],  0,  0,  1, 1 );
+      }
    }
 
    if (clip_user)

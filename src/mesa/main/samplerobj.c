@@ -16,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 
@@ -35,12 +36,11 @@
 #include "main/enums.h"
 #include "main/hash.h"
 #include "main/macros.h"
-#include "main/mfeatures.h"
 #include "main/mtypes.h"
 #include "main/samplerobj.h"
 
 
-static struct gl_sampler_object *
+struct gl_sampler_object *
 _mesa_lookup_samplerobj(struct gl_context *ctx, GLuint name)
 {
    if (name == 0)
@@ -50,6 +50,45 @@ _mesa_lookup_samplerobj(struct gl_context *ctx, GLuint name)
          _mesa_HashLookup(ctx->Shared->SamplerObjects, name);
 }
 
+static struct gl_sampler_object *
+_mesa_lookup_samplerobj_locked(struct gl_context *ctx, GLuint name)
+{
+   if (name == 0)
+      return NULL;
+   else
+      return (struct gl_sampler_object *)
+         _mesa_HashLookupLocked(ctx->Shared->SamplerObjects, name);
+}
+
+static inline void
+begin_samplerobj_lookups(struct gl_context *ctx)
+{
+   _mesa_HashLockMutex(ctx->Shared->SamplerObjects);
+}
+
+
+static inline void
+end_samplerobj_lookups(struct gl_context *ctx)
+{
+   _mesa_HashUnlockMutex(ctx->Shared->SamplerObjects);
+}
+
+
+static inline struct gl_sampler_object *
+lookup_samplerobj_locked(struct gl_context *ctx, GLuint name)
+{
+   return (struct gl_sampler_object *)
+         _mesa_HashLookupLocked(ctx->Shared->SamplerObjects, name);
+}
+
+static void
+delete_sampler_object(struct gl_context *ctx,
+                      struct gl_sampler_object *sampObj)
+{
+   mtx_destroy(&sampObj->Mutex);
+   free(sampObj->Label);
+   free(sampObj);
+}
 
 /**
  * Handle reference counting.
@@ -66,28 +105,22 @@ _mesa_reference_sampler_object_(struct gl_context *ctx,
       GLboolean deleteFlag = GL_FALSE;
       struct gl_sampler_object *oldSamp = *ptr;
 
-      /*_glthread_LOCK_MUTEX(oldSamp->Mutex);*/
-      ASSERT(oldSamp->RefCount > 0);
+      mtx_lock(&oldSamp->Mutex);
+      assert(oldSamp->RefCount > 0);
       oldSamp->RefCount--;
-#if 0
-      printf("SamplerObj %p %d DECR to %d\n",
-             (void *) oldSamp, oldSamp->Name, oldSamp->RefCount);
-#endif
       deleteFlag = (oldSamp->RefCount == 0);
-      /*_glthread_UNLOCK_MUTEX(oldSamp->Mutex);*/
+      mtx_unlock(&oldSamp->Mutex);
 
-      if (deleteFlag) {
-	 ASSERT(ctx->Driver.DeleteSamplerObject);
-         ctx->Driver.DeleteSamplerObject(ctx, oldSamp);
-      }
+      if (deleteFlag)
+         delete_sampler_object(ctx, oldSamp);
 
       *ptr = NULL;
    }
-   ASSERT(!*ptr);
+   assert(!*ptr);
 
    if (samp) {
       /* reference new sampler */
-      /*_glthread_LOCK_MUTEX(samp->Mutex);*/
+      mtx_lock(&samp->Mutex);
       if (samp->RefCount == 0) {
          /* this sampler's being deleted (look just above) */
          /* Not sure this can every really happen.  Warn if it does. */
@@ -96,13 +129,9 @@ _mesa_reference_sampler_object_(struct gl_context *ctx,
       }
       else {
          samp->RefCount++;
-#if 0
-         printf("SamplerObj %p %d INCR to %d\n",
-                (void *) samp, samp->Name, samp->RefCount);
-#endif
          *ptr = samp;
       }
-      /*_glthread_UNLOCK_MUTEX(samp->Mutex);*/
+      mtx_unlock(&samp->Mutex);
    }
 }
 
@@ -110,9 +139,10 @@ _mesa_reference_sampler_object_(struct gl_context *ctx,
 /**
  * Initialize the fields of the given sampler object.
  */
-void
+static void
 _mesa_init_sampler_object(struct gl_sampler_object *sampObj, GLuint name)
 {
+   mtx_init(&sampObj->Mutex, mtx_plain);
    sampObj->Name = name;
    sampObj->RefCount = 1;
    sampObj->WrapS = GL_REPEAT;
@@ -147,37 +177,25 @@ _mesa_new_sampler_object(struct gl_context *ctx, GLuint name)
    return sampObj;
 }
 
-
-/**
- * Fallback for ctx->Driver.DeleteSamplerObject();
- */
-void
-_mesa_delete_sampler_object(struct gl_context *ctx,
-                            struct gl_sampler_object *sampObj)
+static void
+create_samplers(struct gl_context *ctx, GLsizei count, GLuint *samplers,
+                const char *caller)
 {
-   FREE(sampObj);
-}
-
-
-void GLAPIENTRY
-_mesa_GenSamplers(GLsizei count, GLuint *samplers)
-{
-   GET_CURRENT_CONTEXT(ctx);
    GLuint first;
    GLint i;
 
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
    if (MESA_VERBOSE & VERBOSE_API)
-      _mesa_debug(ctx, "glGenSamplers(%d)\n", count);
+      _mesa_debug(ctx, "%s(%d)\n", caller, count);
 
    if (count < 0) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glGenSamplers");
+      _mesa_error(ctx, GL_INVALID_VALUE, "%s(n<0)", caller);
       return;
    }
 
    if (!samplers)
       return;
+
+   _mesa_HashLockMutex(ctx->Shared->SamplerObjects);
 
    first = _mesa_HashFindFreeKeyBlock(ctx->Shared->SamplerObjects, count);
 
@@ -185,9 +203,25 @@ _mesa_GenSamplers(GLsizei count, GLuint *samplers)
    for (i = 0; i < count; i++) {
       struct gl_sampler_object *sampObj =
          ctx->Driver.NewSamplerObject(ctx, first + i);
-      _mesa_HashInsert(ctx->Shared->SamplerObjects, first + i, sampObj);
+      _mesa_HashInsertLocked(ctx->Shared->SamplerObjects, first + i, sampObj);
       samplers[i] = first + i;
    }
+
+   _mesa_HashUnlockMutex(ctx->Shared->SamplerObjects);
+}
+
+void GLAPIENTRY
+_mesa_GenSamplers(GLsizei count, GLuint *samplers)
+{
+   GET_CURRENT_CONTEXT(ctx);
+   create_samplers(ctx, count, samplers, "glGenSamplers");
+}
+
+void GLAPIENTRY
+_mesa_CreateSamplers(GLsizei count, GLuint *samplers)
+{
+   GET_CURRENT_CONTEXT(ctx);
+   create_samplers(ctx, count, samplers, "glCreateSamplers");
 }
 
 
@@ -197,7 +231,6 @@ _mesa_DeleteSamplers(GLsizei count, const GLuint *samplers)
    GET_CURRENT_CONTEXT(ctx);
    GLsizei i;
 
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
    FLUSH_VERTICES(ctx, 0);
 
    if (count < 0) {
@@ -205,26 +238,36 @@ _mesa_DeleteSamplers(GLsizei count, const GLuint *samplers)
       return;
    }
 
-   _glthread_LOCK_MUTEX(ctx->Shared->Mutex);
+   _mesa_HashLockMutex(ctx->Shared->SamplerObjects);
 
    for (i = 0; i < count; i++) {
       if (samplers[i]) {
+         GLuint j;
          struct gl_sampler_object *sampObj =
-            _mesa_lookup_samplerobj(ctx, samplers[i]);
+            _mesa_lookup_samplerobj_locked(ctx, samplers[i]);
+   
          if (sampObj) {
+            /* If the sampler is currently bound, unbind it. */
+            for (j = 0; j < ctx->Const.MaxCombinedTextureImageUnits; j++) {
+               if (ctx->Texture.Unit[j].Sampler == sampObj) {
+                  FLUSH_VERTICES(ctx, _NEW_TEXTURE);
+                  _mesa_reference_sampler_object(ctx, &ctx->Texture.Unit[j].Sampler, NULL);
+               }
+            }
+
             /* The ID is immediately freed for re-use */
-            _mesa_HashRemove(ctx->Shared->SamplerObjects, samplers[i]);
+            _mesa_HashRemoveLocked(ctx->Shared->SamplerObjects, samplers[i]);
             /* But the object exists until its reference count goes to zero */
             _mesa_reference_sampler_object(ctx, &sampObj, NULL);
          }
       }
    }
 
-   _glthread_UNLOCK_MUTEX(ctx->Shared->Mutex);
+   _mesa_HashUnlockMutex(ctx->Shared->SamplerObjects);
 }
 
 
-static GLboolean GLAPIENTRY
+GLboolean GLAPIENTRY
 _mesa_IsSampler(GLuint sampler)
 {
    struct gl_sampler_object *sampObj;
@@ -240,6 +283,17 @@ _mesa_IsSampler(GLuint sampler)
    return sampObj != NULL;
 }
 
+void
+_mesa_bind_sampler(struct gl_context *ctx, GLuint unit,
+                   struct gl_sampler_object *sampObj)
+{
+   if (ctx->Texture.Unit[unit].Sampler != sampObj) {
+      FLUSH_VERTICES(ctx, _NEW_TEXTURE);
+   }
+
+   _mesa_reference_sampler_object(ctx, &ctx->Texture.Unit[unit].Sampler,
+                                  sampObj);
+}
 
 void GLAPIENTRY
 _mesa_BindSampler(GLuint unit, GLuint sampler)
@@ -267,13 +321,107 @@ _mesa_BindSampler(GLuint unit, GLuint sampler)
       }
    }
    
-   if (ctx->Texture.Unit[unit].Sampler != sampObj) {
-      FLUSH_VERTICES(ctx, _NEW_TEXTURE);
+   /* bind new sampler */
+   _mesa_bind_sampler(ctx, unit, sampObj);
+}
+
+
+void GLAPIENTRY
+_mesa_BindSamplers(GLuint first, GLsizei count, const GLuint *samplers)
+{
+   GET_CURRENT_CONTEXT(ctx);
+   GLint i;
+
+   /* The ARB_multi_bind spec says:
+    *
+    *   "An INVALID_OPERATION error is generated if <first> + <count> is
+    *    greater than the number of texture image units supported by
+    *    the implementation."
+    */
+   if (first + count > ctx->Const.MaxCombinedTextureImageUnits) {
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glBindSamplers(first=%u + count=%d > the value of "
+                  "GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS=%u)",
+                  first, count, ctx->Const.MaxCombinedTextureImageUnits);
+      return;
    }
 
-   /* bind new sampler */
-   _mesa_reference_sampler_object(ctx, &ctx->Texture.Unit[unit].Sampler,
-                                  sampObj);
+   FLUSH_VERTICES(ctx, 0);
+
+   if (samplers) {
+      /* Note that the error semantics for multi-bind commands differ from
+       * those of other GL commands.
+       *
+       * The Issues section in the ARB_multi_bind spec says:
+       *
+       *    "(11) Typically, OpenGL specifies that if an error is generated by
+       *          a command, that command has no effect.  This is somewhat
+       *          unfortunate for multi-bind commands, because it would require
+       *          a first pass to scan the entire list of bound objects for
+       *          errors and then a second pass to actually perform the
+       *          bindings.  Should we have different error semantics?
+       *
+       *       RESOLVED:  Yes.  In this specification, when the parameters for
+       *       one of the <count> binding points are invalid, that binding
+       *       point is not updated and an error will be generated.  However,
+       *       other binding points in the same command will be updated if
+       *       their parameters are valid and no other error occurs."
+       */
+
+      begin_samplerobj_lookups(ctx);
+
+      for (i = 0; i < count; i++) {
+         const GLuint unit = first + i;
+         struct gl_sampler_object * const currentSampler =
+             ctx->Texture.Unit[unit].Sampler;
+         struct gl_sampler_object *sampObj;
+
+         if (samplers[i] != 0) {
+            if (currentSampler && currentSampler->Name == samplers[i])
+               sampObj = currentSampler;
+            else
+               sampObj = lookup_samplerobj_locked(ctx, samplers[i]);
+
+            /* The ARB_multi_bind spec says:
+             *
+             *    "An INVALID_OPERATION error is generated if any value
+             *     in <samplers> is not zero or the name of an existing
+             *     sampler object (per binding)."
+             */
+            if (!sampObj) {
+               _mesa_error(ctx, GL_INVALID_OPERATION,
+                           "glBindSamplers(samplers[%d]=%u is not zero or "
+                           "the name of an existing sampler object)",
+                           i, samplers[i]);
+               continue;
+            }
+         } else {
+            sampObj = NULL;
+         }
+
+         /* Bind the new sampler */
+         if (sampObj != currentSampler) {
+            _mesa_reference_sampler_object(ctx,
+                                           &ctx->Texture.Unit[unit].Sampler,
+                                           sampObj);
+            ctx->NewState |= _NEW_TEXTURE;
+         }
+      }
+
+      end_samplerobj_lookups(ctx);
+   } else {
+      /* Unbind all samplers in the range <first> through <first>+<count>-1 */
+      for (i = 0; i < count; i++) {
+         const GLuint unit = first + i;
+
+         if (ctx->Texture.Unit[unit].Sampler) {
+            _mesa_reference_sampler_object(ctx,
+                                           &ctx->Texture.Unit[unit].Sampler,
+                                           NULL);
+            ctx->NewState |= _NEW_TEXTURE;
+         }
+      }
+   }
 }
 
 
@@ -297,7 +445,7 @@ validate_texture_wrap_mode(struct gl_context *ctx, GLenum wrap)
    case GL_MIRROR_CLAMP_EXT:
       return e->ATI_texture_mirror_once || e->EXT_texture_mirror_clamp;
    case GL_MIRROR_CLAMP_TO_EDGE_EXT:
-      return e->ATI_texture_mirror_once || e->EXT_texture_mirror_clamp;
+      return e->ATI_texture_mirror_once || e->EXT_texture_mirror_clamp || e->ARB_texture_mirror_clamp_to_edge;
    case GL_MIRROR_CLAMP_TO_BORDER_EXT:
       return e->EXT_texture_mirror_clamp;
    default:
@@ -315,6 +463,22 @@ flush(struct gl_context *ctx)
    FLUSH_VERTICES(ctx, _NEW_TEXTURE);
 }
 
+void
+_mesa_set_sampler_wrap(struct gl_context *ctx, struct gl_sampler_object *samp,
+                       GLenum s, GLenum t, GLenum r)
+{
+   assert(validate_texture_wrap_mode(ctx, s));
+   assert(validate_texture_wrap_mode(ctx, t));
+   assert(validate_texture_wrap_mode(ctx, r));
+
+   if (samp->WrapS == s && samp->WrapT == t && samp->WrapR == r)
+      return;
+
+   flush(ctx);
+   samp->WrapS = s;
+   samp->WrapT = t;
+   samp->WrapR = r;
+}
 
 #define INVALID_PARAM 0x100
 #define INVALID_PNAME 0x101
@@ -364,6 +528,27 @@ set_sampler_wrap_r(struct gl_context *ctx, struct gl_sampler_object *samp,
    return INVALID_PARAM;
 }
 
+void
+_mesa_set_sampler_filters(struct gl_context *ctx,
+                          struct gl_sampler_object *samp,
+                          GLenum min_filter, GLenum mag_filter)
+{
+   assert(min_filter == GL_NEAREST ||
+          min_filter == GL_LINEAR ||
+          min_filter == GL_NEAREST_MIPMAP_NEAREST ||
+          min_filter == GL_LINEAR_MIPMAP_NEAREST ||
+          min_filter == GL_NEAREST_MIPMAP_LINEAR ||
+          min_filter == GL_LINEAR_MIPMAP_LINEAR);
+   assert(mag_filter == GL_NEAREST ||
+          mag_filter == GL_LINEAR);
+
+   if (samp->MinFilter == min_filter && samp->MagFilter == mag_filter)
+      return;
+
+   flush(ctx);
+   samp->MinFilter = min_filter;
+   samp->MagFilter = mag_filter;
+}
 
 static GLuint
 set_sampler_min_filter(struct gl_context *ctx, struct gl_sampler_object *samp,
@@ -492,8 +677,12 @@ static GLuint
 set_sampler_compare_mode(struct gl_context *ctx,
                          struct gl_sampler_object *samp, GLint param)
 {
+    /* If GL_ARB_shadow is not supported, don't report an error.  The
+     * sampler object extension spec isn't clear on this extension interaction.
+     * Silences errors with Wine on older GPUs such as R200.
+     */
    if (!ctx->Extensions.ARB_shadow)
-      return INVALID_PNAME;
+      return GL_FALSE;
 
    if (samp->CompareMode == param)
       return GL_FALSE;
@@ -513,8 +702,12 @@ static GLuint
 set_sampler_compare_func(struct gl_context *ctx,
                          struct gl_sampler_object *samp, GLint param)
 {
+    /* If GL_ARB_shadow is not supported, don't report an error.  The
+     * sampler object extension spec isn't clear on this extension interaction.
+     * Silences errors with Wine on older GPUs such as R200.
+     */
    if (!ctx->Extensions.ARB_shadow)
-      return INVALID_PNAME;
+      return GL_FALSE;
 
    if (samp->CompareFunc == param)
       return GL_FALSE;
@@ -522,21 +715,15 @@ set_sampler_compare_func(struct gl_context *ctx,
    switch (param) {
    case GL_LEQUAL:
    case GL_GEQUAL:
-      flush(ctx);
-      samp->CompareFunc = param;
-      return GL_TRUE;
    case GL_EQUAL:
    case GL_NOTEQUAL:
    case GL_LESS:
    case GL_GREATER:
    case GL_ALWAYS:
    case GL_NEVER:
-      if (ctx->Extensions.EXT_shadow_funcs) {
-         flush(ctx);
-         samp->CompareFunc = param;
-         return GL_TRUE;
-      }
-      /* fall-through */
+      flush(ctx);
+      samp->CompareFunc = param;
+      return GL_TRUE;
    default:
       return INVALID_PARAM;
    }
@@ -553,7 +740,7 @@ set_sampler_max_anisotropy(struct gl_context *ctx,
    if (samp->MaxAnisotropy == param)
       return GL_FALSE;
 
-   if (param < 1.0)
+   if (param < 1.0F)
       return INVALID_VALUE;
 
    flush(ctx);
@@ -567,7 +754,8 @@ static GLuint
 set_sampler_cube_map_seamless(struct gl_context *ctx,
                               struct gl_sampler_object *samp, GLboolean param)
 {
-   if (!ctx->Extensions.AMD_seamless_cubemap_per_texture)
+   if (!_mesa_is_desktop_gl(ctx)
+       || !ctx->Extensions.AMD_seamless_cubemap_per_texture)
       return INVALID_PNAME;
 
    if (samp->CubeMapSeamless == param)
@@ -579,6 +767,16 @@ set_sampler_cube_map_seamless(struct gl_context *ctx,
    flush(ctx);
    samp->CubeMapSeamless = param;
    return GL_TRUE;
+}
+
+void
+_mesa_set_sampler_srgb_decode(struct gl_context *ctx,
+                              struct gl_sampler_object *samp, GLenum param)
+{
+   assert(param == GL_DECODE_EXT || param == GL_SKIP_DECODE_EXT);
+
+   flush(ctx);
+   samp->sRGBDecode = param;
 }
 
 static GLuint
@@ -608,8 +806,14 @@ _mesa_SamplerParameteri(GLuint sampler, GLenum pname, GLint param)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glSamplerParameteri(sampler %u)",
-                  sampler);
+      /* '3.8.2 Sampler Objects' section of the GL-ES 3.0 specification states:
+       *
+       *     "An INVALID_OPERATION error is generated if sampler is not the name
+       *     of a sampler object previously returned from a call to GenSamplers."
+       *
+       */
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glSamplerParameteri(sampler %u)", sampler);
       return;
    }
 
@@ -668,7 +872,7 @@ _mesa_SamplerParameteri(GLuint sampler, GLenum pname, GLint param)
       break;
    case INVALID_PNAME:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameteri(pname=%s)\n",
-                  _mesa_lookup_enum_by_nr(pname));
+                  _mesa_enum_to_string(pname));
       break;
    case INVALID_PARAM:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameteri(param=%d)\n",
@@ -684,19 +888,23 @@ _mesa_SamplerParameteri(GLuint sampler, GLenum pname, GLint param)
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_SamplerParameterf(GLuint sampler, GLenum pname, GLfloat param)
 {
    struct gl_sampler_object *sampObj;
    GLuint res;
    GET_CURRENT_CONTEXT(ctx);
 
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glSamplerParameterf(sampler %u)",
-                  sampler);
+      /* '3.8.2 Sampler Objects' section of the GL-ES 3.0 specification states:
+       *
+       *     "An INVALID_OPERATION error is generated if sampler is not the name
+       *     of a sampler object previously returned from a call to GenSamplers."
+       *
+       */
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glSamplerParameterf(sampler %u)", sampler);
       return;
    }
 
@@ -755,7 +963,7 @@ _mesa_SamplerParameterf(GLuint sampler, GLenum pname, GLfloat param)
       break;
    case INVALID_PNAME:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterf(pname=%s)\n",
-                  _mesa_lookup_enum_by_nr(pname));
+                  _mesa_enum_to_string(pname));
       break;
    case INVALID_PARAM:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterf(param=%f)\n",
@@ -770,7 +978,7 @@ _mesa_SamplerParameterf(GLuint sampler, GLenum pname, GLfloat param)
    }
 }
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_SamplerParameteriv(GLuint sampler, GLenum pname, const GLint *params)
 {
    struct gl_sampler_object *sampObj;
@@ -779,8 +987,13 @@ _mesa_SamplerParameteriv(GLuint sampler, GLenum pname, const GLint *params)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glSamplerParameteriv(sampler %u)",
-                  sampler);
+      /* '3.8.2 Sampler Objects' section of the GL-ES 3.0 specification states:
+       *
+       *     "An INVALID_OPERATION error is generated if sampler is not the name
+       *     of a sampler object previously returned from a call to GenSamplers."
+       */
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glSamplerParameteriv(sampler %u)", sampler);
       return;
    }
 
@@ -847,7 +1060,7 @@ _mesa_SamplerParameteriv(GLuint sampler, GLenum pname, const GLint *params)
       break;
    case INVALID_PNAME:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameteriv(pname=%s)\n",
-                  _mesa_lookup_enum_by_nr(pname));
+                  _mesa_enum_to_string(pname));
       break;
    case INVALID_PARAM:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameteriv(param=%d)\n",
@@ -862,19 +1075,23 @@ _mesa_SamplerParameteriv(GLuint sampler, GLenum pname, const GLint *params)
    }
 }
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_SamplerParameterfv(GLuint sampler, GLenum pname, const GLfloat *params)
 {
    struct gl_sampler_object *sampObj;
    GLuint res;
    GET_CURRENT_CONTEXT(ctx);
 
-   ASSERT_OUTSIDE_BEGIN_END(ctx);
-
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glSamplerParameterfv(sampler %u)",
-                  sampler);
+      /* '3.8.2 Sampler Objects' section of the GL-ES 3.0 specification states:
+       *
+       *     "An INVALID_OPERATION error is generated if sampler is not the name
+       *     of a sampler object previously returned from a call to GenSamplers."
+       *
+       */
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glSamplerParameterfv(sampler %u)", sampler);
       return;
    }
 
@@ -934,7 +1151,7 @@ _mesa_SamplerParameterfv(GLuint sampler, GLenum pname, const GLfloat *params)
       break;
    case INVALID_PNAME:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterfv(pname=%s)\n",
-                  _mesa_lookup_enum_by_nr(pname));
+                  _mesa_enum_to_string(pname));
       break;
    case INVALID_PARAM:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterfv(param=%f)\n",
@@ -949,7 +1166,7 @@ _mesa_SamplerParameterfv(GLuint sampler, GLenum pname, const GLfloat *params)
    }
 }
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_SamplerParameterIiv(GLuint sampler, GLenum pname, const GLint *params)
 {
    struct gl_sampler_object *sampObj;
@@ -958,8 +1175,8 @@ _mesa_SamplerParameterIiv(GLuint sampler, GLenum pname, const GLint *params)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glSamplerParameterIiv(sampler %u)",
-                  sampler);
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glSamplerParameterIiv(sampler %u)", sampler);
       return;
    }
 
@@ -1019,7 +1236,7 @@ _mesa_SamplerParameterIiv(GLuint sampler, GLenum pname, const GLint *params)
       break;
    case INVALID_PNAME:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterIiv(pname=%s)\n",
-                  _mesa_lookup_enum_by_nr(pname));
+                  _mesa_enum_to_string(pname));
       break;
    case INVALID_PARAM:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterIiv(param=%d)\n",
@@ -1035,7 +1252,7 @@ _mesa_SamplerParameterIiv(GLuint sampler, GLenum pname, const GLint *params)
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_SamplerParameterIuiv(GLuint sampler, GLenum pname, const GLuint *params)
 {
    struct gl_sampler_object *sampObj;
@@ -1044,8 +1261,8 @@ _mesa_SamplerParameterIuiv(GLuint sampler, GLenum pname, const GLuint *params)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glSamplerParameterIuiv(sampler %u)",
-                  sampler);
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glSamplerParameterIuiv(sampler %u)", sampler);
       return;
    }
 
@@ -1105,7 +1322,7 @@ _mesa_SamplerParameterIuiv(GLuint sampler, GLenum pname, const GLuint *params)
       break;
    case INVALID_PNAME:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterIuiv(pname=%s)\n",
-                  _mesa_lookup_enum_by_nr(pname));
+                  _mesa_enum_to_string(pname));
       break;
    case INVALID_PARAM:
       _mesa_error(ctx, GL_INVALID_ENUM, "glSamplerParameterIuiv(param=%u)\n",
@@ -1121,7 +1338,7 @@ _mesa_SamplerParameterIuiv(GLuint sampler, GLenum pname, const GLuint *params)
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_GetSamplerParameteriv(GLuint sampler, GLenum pname, GLint *params)
 {
    struct gl_sampler_object *sampObj;
@@ -1129,8 +1346,14 @@ _mesa_GetSamplerParameteriv(GLuint sampler, GLenum pname, GLint *params)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glGetSamplerParameteriv(sampler %u)",
-                  sampler);
+      /* '3.8.2 Sampler Objects' section of the GL-ES 3.0 specification states:
+       *
+       *     "An INVALID_OPERATION error is generated if sampler is not the name
+       *     of a sampler object previously returned from a call to GenSamplers."
+       *
+       */
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glGetSamplerParameteriv(sampler %u)", sampler);
       return;
    }
 
@@ -1151,26 +1374,34 @@ _mesa_GetSamplerParameteriv(GLuint sampler, GLenum pname, GLint *params)
       *params = sampObj->MagFilter;
       break;
    case GL_TEXTURE_MIN_LOD:
-      *params = (GLint) sampObj->MinLod;
+      /* GL spec 'Data Conversions' section specifies that floating-point
+       * value in integer Get function is rounded to nearest integer
+       */
+      *params = IROUND(sampObj->MinLod);
       break;
    case GL_TEXTURE_MAX_LOD:
-      *params = (GLint) sampObj->MaxLod;
+      /* GL spec 'Data Conversions' section specifies that floating-point
+       * value in integer Get function is rounded to nearest integer
+       */
+      *params = IROUND(sampObj->MaxLod);
       break;
    case GL_TEXTURE_LOD_BIAS:
-      *params = (GLint) sampObj->LodBias;
+      /* GL spec 'Data Conversions' section specifies that floating-point
+       * value in integer Get function is rounded to nearest integer
+       */
+      *params = IROUND(sampObj->LodBias);
       break;
    case GL_TEXTURE_COMPARE_MODE:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = sampObj->CompareMode;
       break;
    case GL_TEXTURE_COMPARE_FUNC:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = sampObj->CompareFunc;
       break;
    case GL_TEXTURE_MAX_ANISOTROPY_EXT:
-      *params = (GLint) sampObj->MaxAnisotropy;
+      /* GL spec 'Data Conversions' section specifies that floating-point
+       * value in integer Get function is rounded to nearest integer
+       */
+      *params = IROUND(sampObj->MaxAnisotropy);
       break;
    case GL_TEXTURE_BORDER_COLOR:
       params[0] = FLOAT_TO_INT(sampObj->BorderColor.f[0]);
@@ -1195,11 +1426,11 @@ _mesa_GetSamplerParameteriv(GLuint sampler, GLenum pname, GLint *params)
 
 invalid_pname:
    _mesa_error(ctx, GL_INVALID_ENUM, "glGetSamplerParameteriv(pname=%s)",
-               _mesa_lookup_enum_by_nr(pname));
+               _mesa_enum_to_string(pname));
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_GetSamplerParameterfv(GLuint sampler, GLenum pname, GLfloat *params)
 {
    struct gl_sampler_object *sampObj;
@@ -1207,8 +1438,14 @@ _mesa_GetSamplerParameterfv(GLuint sampler, GLenum pname, GLfloat *params)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glGetSamplerParameterfv(sampler %u)",
-                  sampler);
+      /* '3.8.2 Sampler Objects' section of the GL-ES 3.0 specification states:
+       *
+       *     "An INVALID_OPERATION error is generated if sampler is not the name
+       *     of a sampler object previously returned from a call to GenSamplers."
+       *
+       */
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "glGetSamplerParameterfv(sampler %u)", sampler);
       return;
    }
 
@@ -1238,13 +1475,9 @@ _mesa_GetSamplerParameterfv(GLuint sampler, GLenum pname, GLfloat *params)
       *params = sampObj->LodBias;
       break;
    case GL_TEXTURE_COMPARE_MODE:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = (GLfloat) sampObj->CompareMode;
       break;
    case GL_TEXTURE_COMPARE_FUNC:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = (GLfloat) sampObj->CompareFunc;
       break;
    case GL_TEXTURE_MAX_ANISOTROPY_EXT:
@@ -1273,11 +1506,11 @@ _mesa_GetSamplerParameterfv(GLuint sampler, GLenum pname, GLfloat *params)
 
 invalid_pname:
    _mesa_error(ctx, GL_INVALID_ENUM, "glGetSamplerParameterfv(pname=%s)",
-               _mesa_lookup_enum_by_nr(pname));
+               _mesa_enum_to_string(pname));
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_GetSamplerParameterIiv(GLuint sampler, GLenum pname, GLint *params)
 {
    struct gl_sampler_object *sampObj;
@@ -1285,7 +1518,7 @@ _mesa_GetSamplerParameterIiv(GLuint sampler, GLenum pname, GLint *params)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE,
+      _mesa_error(ctx, GL_INVALID_OPERATION,
                   "glGetSamplerParameterIiv(sampler %u)",
                   sampler);
       return;
@@ -1317,13 +1550,9 @@ _mesa_GetSamplerParameterIiv(GLuint sampler, GLenum pname, GLint *params)
       *params = (GLint) sampObj->LodBias;
       break;
    case GL_TEXTURE_COMPARE_MODE:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = sampObj->CompareMode;
       break;
    case GL_TEXTURE_COMPARE_FUNC:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = sampObj->CompareFunc;
       break;
    case GL_TEXTURE_MAX_ANISOTROPY_EXT:
@@ -1352,11 +1581,11 @@ _mesa_GetSamplerParameterIiv(GLuint sampler, GLenum pname, GLint *params)
 
 invalid_pname:
    _mesa_error(ctx, GL_INVALID_ENUM, "glGetSamplerParameterIiv(pname=%s)",
-               _mesa_lookup_enum_by_nr(pname));
+               _mesa_enum_to_string(pname));
 }
 
 
-static void GLAPIENTRY
+void GLAPIENTRY
 _mesa_GetSamplerParameterIuiv(GLuint sampler, GLenum pname, GLuint *params)
 {
    struct gl_sampler_object *sampObj;
@@ -1364,7 +1593,7 @@ _mesa_GetSamplerParameterIuiv(GLuint sampler, GLenum pname, GLuint *params)
 
    sampObj = _mesa_lookup_samplerobj(ctx, sampler);
    if (!sampObj) {
-      _mesa_error(ctx, GL_INVALID_VALUE,
+      _mesa_error(ctx, GL_INVALID_OPERATION,
                   "glGetSamplerParameterIuiv(sampler %u)",
                   sampler);
       return;
@@ -1396,13 +1625,9 @@ _mesa_GetSamplerParameterIuiv(GLuint sampler, GLenum pname, GLuint *params)
       *params = (GLuint) sampObj->LodBias;
       break;
    case GL_TEXTURE_COMPARE_MODE:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = sampObj->CompareMode;
       break;
    case GL_TEXTURE_COMPARE_FUNC:
-      if (!ctx->Extensions.ARB_shadow)
-         goto invalid_pname;
       *params = sampObj->CompareFunc;
       break;
    case GL_TEXTURE_MAX_ANISOTROPY_EXT:
@@ -1431,7 +1656,7 @@ _mesa_GetSamplerParameterIuiv(GLuint sampler, GLenum pname, GLuint *params)
 
 invalid_pname:
    _mesa_error(ctx, GL_INVALID_ENUM, "glGetSamplerParameterIuiv(pname=%s)",
-               _mesa_lookup_enum_by_nr(pname));
+               _mesa_enum_to_string(pname));
 }
 
 
@@ -1439,25 +1664,4 @@ void
 _mesa_init_sampler_object_functions(struct dd_function_table *driver)
 {
    driver->NewSamplerObject = _mesa_new_sampler_object;
-   driver->DeleteSamplerObject = _mesa_delete_sampler_object;
-}
-
-
-void
-_mesa_init_sampler_object_dispatch(struct _glapi_table *disp)
-{
-   SET_GenSamplers(disp, _mesa_GenSamplers);
-   SET_DeleteSamplers(disp, _mesa_DeleteSamplers);
-   SET_IsSampler(disp, _mesa_IsSampler);
-   SET_BindSampler(disp, _mesa_BindSampler);
-   SET_SamplerParameteri(disp, _mesa_SamplerParameteri);
-   SET_SamplerParameterf(disp, _mesa_SamplerParameterf);
-   SET_SamplerParameteriv(disp, _mesa_SamplerParameteriv);
-   SET_SamplerParameterfv(disp, _mesa_SamplerParameterfv);
-   SET_SamplerParameterIiv(disp, _mesa_SamplerParameterIiv);
-   SET_SamplerParameterIuiv(disp, _mesa_SamplerParameterIuiv);
-   SET_GetSamplerParameteriv(disp, _mesa_GetSamplerParameteriv);
-   SET_GetSamplerParameterfv(disp, _mesa_GetSamplerParameterfv);
-   SET_GetSamplerParameterIiv(disp, _mesa_GetSamplerParameterIiv);
-   SET_GetSamplerParameterIuiv(disp, _mesa_GetSamplerParameterIuiv);
 }

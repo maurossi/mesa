@@ -34,7 +34,7 @@ void
 u_mmDumpMemInfo(const struct mem_block *heap)
 {
    debug_printf("Memory heap %p:\n", (void *) heap);
-   if (heap == 0) {
+   if (heap == NULL) {
       debug_printf("  heap == 0\n");
    }
    else {
@@ -224,7 +224,7 @@ u_mmFindBlock(struct mem_block *heap, int start)
 }
 
 
-static INLINE int
+static inline int
 Join2Blocks(struct mem_block *p)
 {
    /* XXX there should be some assertions here */

@@ -20,13 +20,14 @@
  */
 
 #include "main/glheader.h"
-#include "main/colormac.h"
 #include "main/macros.h"
 #include "main/atifragshader.h"
 #include "main/samplerobj.h"
 #include "swrast/s_atifragshader.h"
 #include "swrast/s_context.h"
 
+#define ATI_FS_INPUT_PRIMARY 0
+#define ATI_FS_INPUT_SECONDARY 1
 
 /**
  * State for executing ATI fragment shader.
@@ -237,21 +238,6 @@ finish_pass(struct atifs_machine *machine)
    }
 }
 
-struct ati_fs_opcode_st ati_fs_opcodes[] = {
-   {GL_ADD_ATI, 2},
-   {GL_SUB_ATI, 2},
-   {GL_MUL_ATI, 2},
-   {GL_MAD_ATI, 3},
-   {GL_LERP_ATI, 3},
-   {GL_MOV_ATI, 1},
-   {GL_CND_ATI, 3},
-   {GL_CND0_ATI, 3},
-   {GL_DOT2_ADD_ATI, 3},
-   {GL_DOT3_ATI, 2},
-   {GL_DOT4_ATI, 2}
-};
-
-
 
 static void
 handle_pass_op(struct atifs_machine *machine, struct atifs_setupinst *texinst,
@@ -263,7 +249,7 @@ handle_pass_op(struct atifs_machine *machine, struct atifs_setupinst *texinst,
    if (pass_tex >= GL_TEXTURE0_ARB && pass_tex <= GL_TEXTURE7_ARB) {
       pass_tex -= GL_TEXTURE0_ARB;
       COPY_4V(machine->Registers[idx],
-	      span->array->attribs[FRAG_ATTRIB_TEX0 + pass_tex][column]);
+	      span->array->attribs[VARYING_SLOT_TEX0 + pass_tex][column]);
    }
    else if (pass_tex >= GL_REG_0_ATI && pass_tex <= GL_REG_5_ATI) {
       pass_tex -= GL_REG_0_ATI;
@@ -286,7 +272,7 @@ handle_sample_op(struct gl_context * ctx, struct atifs_machine *machine,
    if (coord_source >= GL_TEXTURE0_ARB && coord_source <= GL_TEXTURE7_ARB) {
       coord_source -= GL_TEXTURE0_ARB;
       COPY_4V(tex_coords,
-              span->array->attribs[FRAG_ATTRIB_TEX0 + coord_source][column]);
+              span->array->attribs[VARYING_SLOT_TEX0 + coord_source][column]);
    }
    else if (coord_source >= GL_REG_0_ATI && coord_source <= GL_REG_5_ATI) {
       coord_source -= GL_REG_0_ATI;
@@ -452,13 +438,13 @@ execute_shader(struct gl_context *ctx, const struct ati_fragment_shader *shader,
 		     for (i = 0; i < 3; i++) {
 			dst[optype][i] =
 			   (src[optype][2][i] >
-			    0.5) ? src[optype][0][i] : src[optype][1][i];
+			    0.5F) ? src[optype][0][i] : src[optype][1][i];
 		     }
 		  }
 		  else {
 		     dst[optype][3] =
 			(src[optype][2][3] >
-			 0.5) ? src[optype][0][3] : src[optype][1][3];
+			 0.5F) ? src[optype][0][3] : src[optype][1][3];
 		  }
 		  break;
 
@@ -569,8 +555,8 @@ init_machine(struct gl_context * ctx, struct atifs_machine *machine,
 	 machine->Registers[i][j] = 0.0;
    }
 
-   COPY_4V(inputs[ATI_FS_INPUT_PRIMARY], span->array->attribs[FRAG_ATTRIB_COL0][col]);
-   COPY_4V(inputs[ATI_FS_INPUT_SECONDARY], span->array->attribs[FRAG_ATTRIB_COL1][col]);
+   COPY_4V(inputs[ATI_FS_INPUT_PRIMARY], span->array->attribs[VARYING_SLOT_COL0][col]);
+   COPY_4V(inputs[ATI_FS_INPUT_SECONDARY], span->array->attribs[VARYING_SLOT_COL1][col]);
 }
 
 
@@ -586,7 +572,7 @@ _swrast_exec_fragment_shader(struct gl_context * ctx, SWspan *span)
    GLuint i;
 
    /* incoming colors should be floats */
-   ASSERT(span->array->ChanType == GL_FLOAT);
+   assert(span->array->ChanType == GL_FLOAT);
 
    for (i = 0; i < span->end; i++) {
       if (span->array->mask[i]) {
@@ -599,7 +585,7 @@ _swrast_exec_fragment_shader(struct gl_context * ctx, SWspan *span)
 	    const GLfloat *colOut = machine.Registers[0];
             /*fprintf(stderr,"outputs %f %f %f %f\n",
               colOut[0], colOut[1], colOut[2], colOut[3]); */
-            COPY_4V(span->array->attribs[FRAG_ATTRIB_COL0][i], colOut);
+            COPY_4V(span->array->attribs[VARYING_SLOT_COL0][i], colOut);
 	 }
       }
    }

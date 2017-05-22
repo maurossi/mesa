@@ -143,8 +143,7 @@ static void copy_propagate(struct radeon_compiler * c, struct rc_instruction * i
 	unsigned int i;
 
 	if (inst_mov->U.I.DstReg.File != RC_FILE_TEMPORARY ||
-	    inst_mov->U.I.WriteALUResult ||
-	    inst_mov->U.I.SaturateMode)
+	    inst_mov->U.I.WriteALUResult)
 		return;
 
 	/* Get a list of all the readers of this MOV instruction. */
@@ -156,6 +155,22 @@ static void copy_propagate(struct radeon_compiler * c, struct rc_instruction * i
 	if (reader_data.Abort || reader_data.ReaderCount == 0)
 		return;
 
+	/* We can propagate SaturateMode if all the readers are MOV instructions
+	 * without a presubtract operation, source negation and absolute.
+	 * In that case, we just move SaturateMode to all readers. */
+        if (inst_mov->U.I.SaturateMode) {
+		for (i = 0; i < reader_data.ReaderCount; i++) {
+			struct rc_instruction * inst = reader_data.Readers[i].Inst;
+
+			if (inst->U.I.Opcode != RC_OPCODE_MOV ||
+			    inst->U.I.SrcReg[0].File == RC_FILE_PRESUB ||
+			    inst->U.I.SrcReg[0].Abs ||
+			    inst->U.I.SrcReg[0].Negate) {
+				return;
+			}
+		}
+	}
+
 	/* Propagate the MOV instruction. */
 	for (i = 0; i < reader_data.ReaderCount; i++) {
 		struct rc_instruction * inst = reader_data.Readers[i].Inst;
@@ -163,6 +178,8 @@ static void copy_propagate(struct radeon_compiler * c, struct rc_instruction * i
 
 		if (inst_mov->U.I.SrcReg[0].File == RC_FILE_PRESUB)
 			inst->U.I.PreSub = inst_mov->U.I.PreSub;
+		if (!inst->U.I.SaturateMode)
+			inst->U.I.SaturateMode = inst_mov->U.I.SaturateMode;
 	}
 
 	/* Finally, remove the original MOV instruction */
@@ -708,6 +725,7 @@ static int peephole_mul_omod(
 	struct rc_list * writer_list;
 	struct rc_variable * var;
 	struct peephole_mul_cb_data cb_data;
+	unsigned writemask_sum;
 
 	for (i = 0; i < 2; i++) {
 		unsigned int j;
@@ -815,10 +833,11 @@ static int peephole_mul_omod(
 	}
 
 	/* Rewrite the instructions */
+	writemask_sum = rc_variable_writemask_sum(writer_list->Item);
 	for (var = writer_list->Item; var; var = var->Friend) {
-		struct rc_variable * writer = writer_list->Item;
+		struct rc_variable * writer = var;
 		unsigned conversion_swizzle = rc_make_conversion_swizzle(
-					writer->Inst->U.I.DstReg.WriteMask,
+					writemask_sum,
 					inst_mul->U.I.DstReg.WriteMask);
 		writer->Inst->U.I.Omod = omod_op;
 		writer->Inst->U.I.DstReg.File = inst_mul->U.I.DstReg.File;

@@ -45,14 +45,14 @@ void
 renderer_set_constants(struct xa_context *r,
 		       int shader_type, const float *params, int param_bytes);
 
-static INLINE boolean
+static inline boolean
 is_affine(float *matrix)
 {
     return floatIsZero(matrix[2]) && floatIsZero(matrix[5])
 	&& floatsEqual(matrix[8], 1);
 }
 
-static INLINE void
+static inline void
 map_point(float *mat, float x, float y, float *out_x, float *out_y)
 {
     if (!mat) {
@@ -71,7 +71,7 @@ map_point(float *mat, float x, float y, float *out_x, float *out_y)
     }
 }
 
-static INLINE void
+static inline void
 renderer_draw(struct xa_context *r)
 {
     int num_verts = r->buffer_size / (r->attrs_per_vertex * NUM_COMPONENTS);
@@ -79,14 +79,25 @@ renderer_draw(struct xa_context *r)
     if (!r->buffer_size)
 	return;
 
+    if (!r->scissor_valid) {
+	r->scissor.minx = 0;
+	r->scissor.miny = 0;
+	r->scissor.maxx = r->dst->tex->width0;
+	r->scissor.maxy = r->dst->tex->height0;
+    }
+
+    r->pipe->set_scissor_states(r->pipe, 0, 1, &r->scissor);
+
     cso_set_vertex_elements(r->cso, r->attrs_per_vertex, r->velems);
     util_draw_user_vertex_buffer(r->cso, r->buffer, PIPE_PRIM_QUADS,
                                  num_verts,	/* verts */
                                  r->attrs_per_vertex);	/* attribs/vert */
     r->buffer_size = 0;
+
+    xa_scissor_reset(r);
 }
 
-static INLINE void
+static inline void
 renderer_draw_conditional(struct xa_context *r, int next_batch)
 {
     if (r->buffer_size + next_batch >= XA_VB_SIZE ||
@@ -108,8 +119,10 @@ renderer_init_state(struct xa_context *r)
 
     /* XXX: move to renderer_init_state? */
     memset(&raster, 0, sizeof(struct pipe_rasterizer_state));
-    raster.gl_rasterization_rules = 1;
+    raster.half_pixel_center = 1;
+    raster.bottom_edge_rule = 1;
     raster.depth_clip = 1;
+    raster.scissor = 1;
     cso_set_rasterizer(r->cso, &raster);
 
     /* vertex elements state */
@@ -122,7 +135,7 @@ renderer_init_state(struct xa_context *r)
     }
 }
 
-static INLINE void
+static inline void
 add_vertex_color(struct xa_context *r, float x, float y, float color[4])
 {
     float *vertex = r->buffer + r->buffer_size;
@@ -140,7 +153,7 @@ add_vertex_color(struct xa_context *r, float x, float y, float color[4])
     r->buffer_size += 8;
 }
 
-static INLINE void
+static inline void
 add_vertex_1tex(struct xa_context *r, float x, float y, float s, float t)
 {
     float *vertex = r->buffer + r->buffer_size;
@@ -158,7 +171,7 @@ add_vertex_1tex(struct xa_context *r, float x, float y, float s, float t)
     r->buffer_size += 8;
 }
 
-static INLINE void
+static inline void
 add_vertex_2tex(struct xa_context *r,
 		float x, float y, float s0, float t0, float s1, float t1)
 {
@@ -324,11 +337,15 @@ setup_vertex_data_yuv(struct xa_context *r,
  */
 void
 renderer_bind_destination(struct xa_context *r,
-			  struct pipe_surface *surface, int width, int height)
+			  struct pipe_surface *surface)
 {
+    int width = surface->width;
+    int height = surface->height;
 
     struct pipe_framebuffer_state fb;
     struct pipe_viewport_state viewport;
+
+    xa_scissor_reset(r);
 
     /* Framebuffer uses actual surface width/height
      */
@@ -344,11 +361,9 @@ renderer_bind_destination(struct xa_context *r,
     viewport.scale[0] = width / 2.f;
     viewport.scale[1] = height / 2.f;
     viewport.scale[2] = 1.0;
-    viewport.scale[3] = 1.0;
     viewport.translate[0] = width / 2.f;
     viewport.translate[1] = height / 2.f;
     viewport.translate[2] = 0.0;
-    viewport.translate[3] = 0.0;
 
     /* Constant buffer set up to match viewport dimensions:
      */
@@ -379,7 +394,7 @@ renderer_set_constants(struct xa_context *r,
 
     pipe_resource_reference(cbuf, NULL);
     *cbuf = pipe_buffer_create(r->pipe->screen,
-			       PIPE_BIND_CONSTANT_BUFFER, PIPE_USAGE_STATIC,
+			       PIPE_BIND_CONSTANT_BUFFER, PIPE_USAGE_DEFAULT,
 			       param_bytes);
 
     if (*cbuf) {
@@ -405,6 +420,8 @@ renderer_copy_prepare(struct xa_context *r,
 				       PIPE_BIND_RENDER_TARGET));
     (void)screen;
 
+    renderer_bind_destination(r, dst_surface);
+
     /* set misc state we care about */
     {
 	struct pipe_blend_state blend;
@@ -421,6 +438,7 @@ renderer_copy_prepare(struct xa_context *r,
     /* sampler */
     {
 	struct pipe_sampler_state sampler;
+        const struct pipe_sampler_state *p_sampler = &sampler;
 
 	memset(&sampler, 0, sizeof(sampler));
 	sampler.wrap_s = PIPE_TEX_WRAP_CLAMP_TO_EDGE;
@@ -430,12 +448,9 @@ renderer_copy_prepare(struct xa_context *r,
 	sampler.min_img_filter = PIPE_TEX_FILTER_NEAREST;
 	sampler.mag_img_filter = PIPE_TEX_FILTER_NEAREST;
 	sampler.normalized_coords = 1;
-	cso_single_sampler(r->cso, PIPE_SHADER_FRAGMENT, 0, &sampler);
-	cso_single_sampler_done(r->cso, PIPE_SHADER_FRAGMENT);
+        cso_set_samplers(r->cso, PIPE_SHADER_FRAGMENT, 1, &p_sampler);
+        r->num_bound_samplers = 1;
     }
-
-    renderer_bind_destination(r, dst_surface,
-			      dst_surface->width, dst_surface->height);
 
     /* texture/sampler view */
     {
@@ -450,9 +465,11 @@ renderer_copy_prepare(struct xa_context *r,
     }
 
     /* shaders */
-    if (src_texture->format == PIPE_FORMAT_L8_UNORM)
+    if (src_texture->format == PIPE_FORMAT_L8_UNORM ||
+        src_texture->format == PIPE_FORMAT_R8_UNORM)
 	fs_traits |= FS_SRC_LUMINANCE;
-    if (dst_surface->format == PIPE_FORMAT_L8_UNORM)
+    if (dst_surface->format == PIPE_FORMAT_L8_UNORM ||
+        dst_surface->format == PIPE_FORMAT_R8_UNORM)
 	fs_traits |= FS_DST_LUMINANCE;
     if (xa_format_a(dst_xa_format) != 0 &&
 	xa_format_a(src_xa_format) == 0)
@@ -513,11 +530,22 @@ renderer_draw_yuv(struct xa_context *r,
                          src_x, src_y, src_w, src_h,
                          dst_x, dst_y, dst_w, dst_h, srf);
 
+   if (!r->scissor_valid) {
+       r->scissor.minx = 0;
+       r->scissor.miny = 0;
+       r->scissor.maxx = r->dst->tex->width0;
+       r->scissor.maxy = r->dst->tex->height0;
+   }
+
+   r->pipe->set_scissor_states(r->pipe, 0, 1, &r->scissor);
+
    cso_set_vertex_elements(r->cso, num_attribs, r->velems);
    util_draw_user_vertex_buffer(r->cso, r->buffer, PIPE_PRIM_QUADS,
                                 4,	/* verts */
                                 num_attribs);	/* attribs/vert */
    r->buffer_size = 0;
+
+   xa_scissor_reset(r);
 }
 
 void

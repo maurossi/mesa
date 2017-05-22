@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2007 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -53,7 +53,7 @@ struct setup_stage {
 /**
  * Basically a cast wrapper.
  */
-static INLINE struct setup_stage *setup_stage( struct draw_stage *stage )
+static inline struct setup_stage *setup_stage( struct draw_stage *stage )
 {
    return (struct setup_stage *)stage;
 }
@@ -65,7 +65,7 @@ static INLINE struct setup_stage *setup_stage( struct draw_stage *stage )
  * have a couple of slots at the beginning (1-dword header, 4-dword
  * clip pos) that we ignore here.
  */
-static INLINE void
+static inline void
 emit_hw_vertex( struct i915_context *i915,
                 const struct vertex_header *vertex)
 {
@@ -124,7 +124,7 @@ emit_hw_vertex( struct i915_context *i915,
 
 
 
-static INLINE void 
+static inline void 
 emit_prim( struct draw_stage *stage, 
 	   struct prim_header *prim,
 	   unsigned hwprim,
@@ -145,7 +145,7 @@ emit_prim( struct draw_stage *stage,
    assert(vertex_size >= 12); /* never smaller than 12 bytes */
 
    if (!BEGIN_BATCH( 1 + nr * vertex_size / 4)) {
-      FLUSH_BATCH(NULL);
+      FLUSH_BATCH(NULL, I915_FLUSH_ASYNC);
 
       /* Make sure state is re-emitted after a flush: 
        */

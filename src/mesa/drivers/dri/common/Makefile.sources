@@ -1,10 +1,12 @@
-mesa_dri_common_gallium_SOURCES := \
+DRI_COMMON_FILES := \
 	utils.c \
+	utils.h \
 	dri_util.c \
-	xmlconfig.c
+	dri_util.h
 
-mesa_dri_common_SOURCES := \
-	$(mesa_dri_common_gallium_SOURCES)
+XMLCONFIG_FILES := \
+	xmlconfig.c \
+	xmlconfig.h
 
 # Paths are relative to MESA_TOP.
 mesa_dri_common_INCLUDES := \
@@ -14,3 +16,6 @@ mesa_dri_common_INCLUDES := \
 	src/mapi \
 	src/mesa \
 	src/mesa/drivers/dri/common
+
+megadriver_stub_FILES := \
+	megadriver_stub.c

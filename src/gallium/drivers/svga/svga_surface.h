@@ -45,18 +45,44 @@ struct svga_surface
    struct pipe_surface base;
 
    struct svga_host_surface_cache_key key;
+
+   /*
+    * Note that the handle may point at a secondary / backing resource
+    * created by svga_texture_view_surface() which is something other
+    * than svga_texture(base->texture)->handle.
+    */
    struct svga_winsys_surface *handle;
 
-   unsigned real_face;
+   unsigned real_layer;
    unsigned real_level;
    unsigned real_zslice;
 
    boolean dirty;
+
+   /* VGPU10 */
+   SVGA3dRenderTargetViewId view_id;
+
+   /*
+    * As with 'handle' above, this may point to a secondary / backing resource.
+    * We can't have one resource bound as both a render target and a shader
+    * resource at the same time.  But we sometimes want to do that, such as
+    * for mipmap generation where we sample from one level and render into
+    * another.
+    * In this situation, the backed surface is the render target while the
+    * original surface is the shader resource.
+    */
+   struct svga_surface *backed;
 };
 
 
+void
+svga_mark_surfaces_dirty(struct svga_context *svga);
+
 extern void
 svga_propagate_surface(struct svga_context *svga, struct pipe_surface *surf);
+
+void
+svga_propagate_rendertargets(struct svga_context *svga);
 
 extern boolean
 svga_surface_needs_propagation(const struct pipe_surface *surf);
@@ -64,11 +90,13 @@ svga_surface_needs_propagation(const struct pipe_surface *surf);
 struct svga_winsys_surface *
 svga_texture_view_surface(struct svga_context *svga,
                           struct svga_texture *tex,
+                          unsigned bind_flags,
                           SVGA3dSurfaceFlags flags,
                           SVGA3dSurfaceFormat format,
                           unsigned start_mip,
                           unsigned num_mip,
-                          int face_pick,
+                          int layer_pick,
+                          unsigned num_layers,
                           int zslice_pick,
                           struct svga_host_surface_cache_key *key); /* OUT */
 
@@ -84,19 +112,41 @@ svga_texture_copy_handle(struct svga_context *svga,
                          unsigned width, unsigned height, unsigned depth);
 
 
-static INLINE struct svga_surface *
+static inline struct svga_surface *
 svga_surface(struct pipe_surface *surface)
 {
-   assert(surface);
    return (struct svga_surface *)surface;
 }
 
 
-static INLINE const struct svga_surface *
+static inline const struct svga_surface *
 svga_surface_const(const struct pipe_surface *surface)
 {
-   assert(surface);
    return (const struct svga_surface *)surface;
+}
+
+struct pipe_surface *
+svga_validate_surface_view(struct svga_context *svga, struct svga_surface *s);
+
+static inline SVGA3dResourceType
+svga_resource_type(enum pipe_texture_target target)
+{
+   switch (target) {
+   case PIPE_TEXTURE_1D:
+   case PIPE_TEXTURE_1D_ARRAY:
+      return SVGA3D_RESOURCE_TEXTURE1D;
+   case PIPE_TEXTURE_RECT:
+   case PIPE_TEXTURE_2D:
+   case PIPE_TEXTURE_2D_ARRAY:
+   case PIPE_TEXTURE_CUBE:
+      /* drawing to cube map is treated as drawing to 2D array */
+      return SVGA3D_RESOURCE_TEXTURE2D;
+   case PIPE_TEXTURE_3D:
+      return SVGA3D_RESOURCE_TEXTURE3D;
+   default:
+      assert(!"Unexpected texture target");
+      return SVGA3D_RESOURCE_TEXTURE2D;
+   }
 }
 
 #endif

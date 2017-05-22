@@ -1,6 +1,6 @@
  /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -64,10 +64,10 @@
 #define I915_DESTREG_DBUFADDR1 4
 #define I915_DESTREG_DV0 6
 #define I915_DESTREG_DV1 7
-#define I915_DESTREG_SENABLE 8
-#define I915_DESTREG_SR0 9
-#define I915_DESTREG_SR1 10
-#define I915_DESTREG_SR2 11
+#define I915_DESTREG_SR0 8
+#define I915_DESTREG_SR1 9
+#define I915_DESTREG_SR2 10
+#define I915_DESTREG_SENABLE 11
 #define I915_DESTREG_DRAWRECT0 12
 #define I915_DESTREG_DRAWRECT1 13
 #define I915_DESTREG_DRAWRECT2 14
@@ -115,6 +115,8 @@ enum {
    I915_RASTER_RULES_SETUP_SIZE,
 };
 
+#define I915_TEX_UNITS 8
+
 #define I915_MAX_CONSTANT      32
 #define I915_CONSTANT_SIZE     (2+(4*I915_MAX_CONSTANT))
 
@@ -138,7 +140,7 @@ enum {
  */
 struct i915_fragment_program
 {
-   struct gl_fragment_program FragProg;
+   struct gl_program FragProg;
 
    bool translated;
    bool params_uptodate;
@@ -194,7 +196,8 @@ struct i915_fragment_program
 
    /* Helpers for i915_fragprog.c:
     */
-   GLuint wpos_tex;
+   uint8_t texcoord_mapping[I915_TEX_UNITS];
+   uint8_t wpos_tex;
    bool depth_written;
 
    struct
@@ -204,15 +207,6 @@ struct i915_fragment_program
    } param[I915_MAX_CONSTANT];
    GLuint nr_params;
 };
-
-
-
-
-
-
-
-#define I915_TEX_UNITS 8
-
 
 struct i915_hw_state
 {
@@ -250,7 +244,6 @@ struct i915_context
 {
    struct intel_context intel;
 
-   GLuint last_ReallyEnabled;
    GLuint lodbias_ss2[MAX_TEXTURE_UNITS];
 
 
@@ -324,6 +317,7 @@ extern bool i915CreateContext(int api,
 			      __DRIcontext * driContextPriv,
                               unsigned major_version,
                               unsigned minor_version,
+                              uint32_t flags,
                               unsigned *error,
 			      void *sharedContextPrivate);
 
@@ -361,7 +355,7 @@ extern void i915InitFragProgFuncs(struct dd_function_table *functions);
  * Inline conversion functions.  These are better-typed than the
  * macros used previously:
  */
-static INLINE struct i915_context *
+static inline struct i915_context *
 i915_context(struct gl_context * ctx)
 {
    return (struct i915_context *) ctx;

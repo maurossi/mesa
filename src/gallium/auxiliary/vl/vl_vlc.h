@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -45,7 +45,6 @@ struct vl_vlc
    const uint8_t *data;
    const uint8_t *end;
 
-   unsigned          num_inputs;
    const void *const *inputs;
    const unsigned    *sizes;
    unsigned          bytes_left;
@@ -66,7 +65,7 @@ struct vl_vlc_compressed
 /**
  * initalize and decompress a lookup table
  */
-static INLINE void
+static inline void
 vl_vlc_init_table(struct vl_vlc_entry *dst, unsigned dst_size, const struct vl_vlc_compressed *src, unsigned src_size)
 {
    unsigned i, bits = util_logbase2(dst_size);
@@ -80,7 +79,7 @@ vl_vlc_init_table(struct vl_vlc_entry *dst, unsigned dst_size, const struct vl_v
    }
 
    for(; src_size > 0; --src_size, ++src) {
-      for(i=0; i<(1 << (bits - src->entry.length)); ++i)
+      for(i = 0; i < (1u << (bits - src->entry.length)); ++i)
          dst[src->bitcode >> (16 - bits) | i] = src->entry;
    }
 }
@@ -88,36 +87,46 @@ vl_vlc_init_table(struct vl_vlc_entry *dst, unsigned dst_size, const struct vl_v
 /**
  * switch over to next input buffer
  */
-static INLINE void
+static inline void
 vl_vlc_next_input(struct vl_vlc *vlc)
 {
-   const uint8_t* data = vlc->inputs[0];
    unsigned len = vlc->sizes[0];
 
    assert(vlc);
-   assert(vlc->num_inputs);
+   assert(vlc->bytes_left);
 
-   vlc->bytes_left -= len;
-
-   /* align the data pointer */
-   while (len && pointer_to_uintptr(data) & 3) {
-      vlc->buffer |= (uint64_t)*data << (24 + vlc->invalid_bits);
-      ++data;
-      --len;
-      vlc->invalid_bits -= 8;
+   if (len < vlc->bytes_left)
+      vlc->bytes_left -= len;
+   else {
+      len = vlc->bytes_left;
+      vlc->bytes_left = 0;
    }
-   vlc->data = data;
-   vlc->end = data + len;
 
-   --vlc->num_inputs;
+   vlc->data = vlc->inputs[0];
+   vlc->end = vlc->data + len;
+
    ++vlc->inputs;
    ++vlc->sizes;
 }
 
 /**
+ * align the data pointer to the next dword
+ */
+static inline void
+vl_vlc_align_data_ptr(struct vl_vlc *vlc)
+{
+   /* align the data pointer */
+   while (vlc->data != vlc->end && pointer_to_uintptr(vlc->data) & 3) {
+      vlc->buffer |= (uint64_t)*vlc->data << (24 + vlc->invalid_bits);
+      ++vlc->data;
+      vlc->invalid_bits -= 8;
+   }
+}
+
+/**
  * fill the bit buffer, so that at least 32 bits are valid
  */
-static INLINE void
+static inline void
 vl_vlc_fillbits(struct vl_vlc *vlc)
 {
    assert(vlc);
@@ -129,10 +138,11 @@ vl_vlc_fillbits(struct vl_vlc *vlc)
       /* if this input is depleted */
       if (bytes_left == 0) {
 
-         if (vlc->num_inputs)
+         if (vlc->bytes_left) {
             /* go on to next input */
             vl_vlc_next_input(vlc);
-         else
+            vl_vlc_align_data_ptr(vlc);
+         } else
             /* or give up since we don't have anymore inputs */
             return;
 
@@ -165,7 +175,7 @@ vl_vlc_fillbits(struct vl_vlc *vlc)
 /**
  * initialize vlc structure and start reading from first input buffer
  */
-static INLINE void
+static inline void
 vl_vlc_init(struct vl_vlc *vlc, unsigned num_inputs,
             const void *const *inputs, const unsigned *sizes)
 {
@@ -176,7 +186,6 @@ vl_vlc_init(struct vl_vlc *vlc, unsigned num_inputs,
 
    vlc->buffer = 0;
    vlc->invalid_bits = 32;
-   vlc->num_inputs = num_inputs;
    vlc->inputs = inputs;
    vlc->sizes = sizes;
    vlc->bytes_left = 0;
@@ -184,15 +193,17 @@ vl_vlc_init(struct vl_vlc *vlc, unsigned num_inputs,
    for (i = 0; i < num_inputs; ++i)
       vlc->bytes_left += sizes[i];
 
-   vl_vlc_next_input(vlc);
-   vl_vlc_fillbits(vlc);
-   vl_vlc_fillbits(vlc);
+   if (vlc->bytes_left) {
+      vl_vlc_next_input(vlc);
+      vl_vlc_align_data_ptr(vlc);
+      vl_vlc_fillbits(vlc);
+   }
 }
 
 /**
  * number of bits still valid in bit buffer
  */
-static INLINE unsigned
+static inline unsigned
 vl_vlc_valid_bits(struct vl_vlc *vlc)
 {
    return 32 - vlc->invalid_bits;
@@ -201,7 +212,7 @@ vl_vlc_valid_bits(struct vl_vlc *vlc)
 /**
  * number of bits left over all inbut buffers
  */
-static INLINE unsigned
+static inline unsigned
 vl_vlc_bits_left(struct vl_vlc *vlc)
 {
    signed bytes_left = vlc->end - vlc->data;
@@ -212,7 +223,7 @@ vl_vlc_bits_left(struct vl_vlc *vlc)
 /**
  * get num_bits from bit buffer without removing them
  */
-static INLINE unsigned
+static inline unsigned
 vl_vlc_peekbits(struct vl_vlc *vlc, unsigned num_bits)
 {
    assert(vl_vlc_valid_bits(vlc) >= num_bits || vlc->data >= vlc->end);
@@ -222,7 +233,7 @@ vl_vlc_peekbits(struct vl_vlc *vlc, unsigned num_bits)
 /**
  * remove num_bits from bit buffer
  */
-static INLINE void
+static inline void
 vl_vlc_eatbits(struct vl_vlc *vlc, unsigned num_bits)
 {
    assert(vl_vlc_valid_bits(vlc) >= num_bits);
@@ -234,7 +245,7 @@ vl_vlc_eatbits(struct vl_vlc *vlc, unsigned num_bits)
 /**
  * get num_bits from bit buffer with removing them
  */
-static INLINE unsigned
+static inline unsigned
 vl_vlc_get_uimsbf(struct vl_vlc *vlc, unsigned num_bits)
 {
    unsigned value;
@@ -250,7 +261,7 @@ vl_vlc_get_uimsbf(struct vl_vlc *vlc, unsigned num_bits)
 /**
  * treat num_bits as signed value and remove them from bit buffer
  */
-static INLINE signed
+static inline signed
 vl_vlc_get_simsbf(struct vl_vlc *vlc, unsigned num_bits)
 {
    signed value;
@@ -266,12 +277,106 @@ vl_vlc_get_simsbf(struct vl_vlc *vlc, unsigned num_bits)
 /**
  * lookup a value and length in a decompressed table
  */
-static INLINE int8_t
+static inline int8_t
 vl_vlc_get_vlclbf(struct vl_vlc *vlc, const struct vl_vlc_entry *tbl, unsigned num_bits)
 {
    tbl += vl_vlc_peekbits(vlc, num_bits);
    vl_vlc_eatbits(vlc, tbl->length);
    return tbl->value;
+}
+
+/**
+ * fast forward search for a specific byte value
+ */
+static inline boolean
+vl_vlc_search_byte(struct vl_vlc *vlc, unsigned num_bits, uint8_t value)
+{
+   /* make sure we are on a byte boundary */
+   assert((vl_vlc_valid_bits(vlc) % 8) == 0);
+   assert(num_bits == ~0u || (num_bits % 8) == 0);
+
+   /* deplete the bit buffer */
+   while (vl_vlc_valid_bits(vlc) > 0) {
+
+      if (vl_vlc_peekbits(vlc, 8) == value) {
+         vl_vlc_fillbits(vlc);
+         return TRUE;
+      }
+
+      vl_vlc_eatbits(vlc, 8);
+
+      if (num_bits != ~0u) {
+         num_bits -= 8;
+         if (num_bits == 0)
+            return FALSE;
+      }
+   }
+
+   /* deplete the byte buffers */
+   while (1) {
+
+      /* if this input is depleted */
+      if (vlc->data == vlc->end) {
+         if (vlc->bytes_left)
+            /* go on to next input */
+            vl_vlc_next_input(vlc);
+         else
+            /* or give up since we don't have anymore inputs */
+            return FALSE;
+      }
+
+      if (*vlc->data == value) {
+         vl_vlc_align_data_ptr(vlc);
+         vl_vlc_fillbits(vlc);
+         return TRUE;
+      }
+
+      ++vlc->data;
+      if (num_bits != ~0u) {
+         num_bits -= 8;
+         if (num_bits == 0) {
+            vl_vlc_align_data_ptr(vlc);
+            return FALSE;
+         }
+      }
+   }
+}
+
+/**
+ * remove num_bits bits starting at pos from the bitbuffer
+ */
+static inline void
+vl_vlc_removebits(struct vl_vlc *vlc, unsigned pos, unsigned num_bits)
+{
+   uint64_t lo = (vlc->buffer & (~0UL >> (pos + num_bits))) << num_bits;
+   uint64_t hi = (vlc->buffer & (~0UL << (64 - pos)));
+   vlc->buffer = lo | hi;
+   vlc->invalid_bits += num_bits;
+}
+
+/**
+ * limit the number of bits left for fetching
+ */
+static inline void
+vl_vlc_limit(struct vl_vlc *vlc, unsigned bits_left)
+{
+   assert(bits_left <= vl_vlc_bits_left(vlc));
+
+   vl_vlc_fillbits(vlc);
+   if (bits_left < vl_vlc_valid_bits(vlc)) {
+      vlc->invalid_bits = 32 - bits_left;
+      vlc->buffer &= ~0L << (vlc->invalid_bits + 32);
+      vlc->end = vlc->data;
+      vlc->bytes_left = 0;
+   } else {
+      assert((bits_left - vl_vlc_valid_bits(vlc)) % 8 == 0);
+      vlc->bytes_left = (bits_left - vl_vlc_valid_bits(vlc)) / 8;
+      if (vlc->bytes_left < (vlc->end - vlc->data)) {
+         vlc->end = vlc->data + vlc->bytes_left;
+         vlc->bytes_left = 0;
+      } else
+         vlc->bytes_left -= vlc->end - vlc->data;
+   }
 }
 
 #endif /* vl_vlc_h */

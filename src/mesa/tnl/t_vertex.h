@@ -1,5 +1,5 @@
 /*
- * Copyright 2003 Tungsten Graphics, inc.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -16,13 +16,13 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.  IN NO EVENT SHALL
- * TUNGSTEN GRAPHICS AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
+ * VMWARE AND/OR THEIR SUPPLIERS BE LIABLE FOR ANY CLAIM,
  * DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
  * OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  * Authors:
- *    Keith Whitwell <keithw@tungstengraphics.com>
+ *    Keith Whitwell <keithw@vmware.com>
  */
 
 #ifndef _TNL_VERTEX_H
@@ -40,7 +40,7 @@ struct tnl_clipspace;
 
 
 /* It will probably be necessary to allow drivers to specify new
- * emit-styles to cover all the wierd and wacky things out there.
+ * emit-styles to cover all the weird and wacky things out there.
  */
 enum tnl_attr_format {
    EMIT_1F,

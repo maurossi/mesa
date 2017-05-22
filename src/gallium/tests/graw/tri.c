@@ -52,16 +52,17 @@ static void set_vertices( void )
    handle = info.ctx->create_vertex_elements_state(info.ctx, 2, ve);
    info.ctx->bind_vertex_elements_state(info.ctx, handle);
 
+   memset(&vbuf, 0, sizeof vbuf);
 
    vbuf.stride = sizeof( struct vertex );
    vbuf.buffer_offset = 0;
    vbuf.buffer = pipe_buffer_create_with_data(info.ctx,
                                               PIPE_BIND_VERTEX_BUFFER,
-                                              PIPE_USAGE_STATIC,
+                                              PIPE_USAGE_DEFAULT,
                                               sizeof(vertices),
                                               vertices);
 
-   info.ctx->set_vertex_buffers(info.ctx, 1, &vbuf);
+   info.ctx->set_vertex_buffers(info.ctx, 0, 1, &vbuf);
 }
 
 
@@ -104,7 +105,7 @@ static void draw( void )
 
    info.ctx->clear(info.ctx, PIPE_CLEAR_COLOR, &clear_color, 0, 0);
    util_draw_arrays(info.ctx, PIPE_PRIM_TRIANGLES, 0, 3);
-   info.ctx->flush(info.ctx, NULL);
+   info.ctx->flush(info.ctx, NULL, 0);
 
    graw_save_surface_to_file(info.ctx, info.color_surf[0], NULL);
 
@@ -124,7 +125,8 @@ static void init( void )
       void *handle;
       memset(&rasterizer, 0, sizeof rasterizer);
       rasterizer.cull_face = PIPE_FACE_NONE;
-      rasterizer.gl_rasterization_rules = 1;
+      rasterizer.half_pixel_center = 1;
+      rasterizer.bottom_edge_rule = 1;
       rasterizer.flatshade = FlatShade;
       rasterizer.depth_clip = 1;
       handle = info.ctx->create_rasterizer_state(info.ctx, &rasterizer);

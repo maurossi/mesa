@@ -89,6 +89,7 @@ enum st_api_feature
 #define ST_CONTEXT_FLAG_DEBUG               (1 << 0)
 #define ST_CONTEXT_FLAG_FORWARD_COMPATIBLE  (1 << 1)
 #define ST_CONTEXT_FLAG_ROBUST_ACCESS       (1 << 2)
+#define ST_CONTEXT_FLAG_RESET_NOTIFICATION_ENABLED (1 << 3)
 
 /**
  * Reasons that context creation might fail.
@@ -158,6 +159,7 @@ enum st_context_resource_type {
  * Flush flags.
  */
 #define ST_FLUSH_FRONT                    (1 << 0)
+#define ST_FLUSH_END_OF_FRAME             (1 << 1)
 
 /**
  * Value to st_manager->get_param function.
@@ -172,11 +174,6 @@ enum st_manager_param {
     */
    ST_MANAGER_BROKEN_INVALIDATE
 };
-
-/**
- * The return type of st_api->get_proc_address.
- */
-typedef void (*st_proc_t)(void);
 
 struct pipe_context;
 struct pipe_resource;
@@ -203,6 +200,9 @@ struct st_egl_image
    /* this is owned by the caller */
    struct pipe_resource *texture;
 
+   /* format only differs from texture->format for multi-planar (YUV): */
+   enum pipe_format format;
+
    unsigned level;
    unsigned layer;
 };
@@ -213,7 +213,7 @@ struct st_egl_image
 struct st_visual
 {
    /**
-    * Available buffers.  Tested with ST_FRAMEBUFFER_*_MASK.
+    * Available buffers.  Bitfield of ST_ATTACHMENT_*_MASK bits.
     */
    unsigned buffer_mask;
 
@@ -238,7 +238,14 @@ struct st_visual
  */
 struct st_config_options
 {
-	boolean force_glsl_extensions_warn;
+   boolean disable_blend_func_extended;
+   boolean disable_glsl_line_continuations;
+   boolean disable_shader_bit_encoding;
+   boolean force_glsl_extensions_warn;
+   unsigned force_glsl_version;
+   boolean force_s3tc_enable;
+   boolean allow_glsl_extension_directive_midshader;
+   boolean glsl_zero_init;
 };
 
 /**
@@ -250,8 +257,7 @@ struct st_context_attribs
     * The profile and minimal version to support.
     *
     * The valid profiles and versions are rendering API dependent.  The latest
-    * version satisfying the request should be returned, unless the
-    * ST_CONTEXT_FLAG_FORWARD_COMPATIBLE bit is set.
+    * version satisfying the request should be returned.
     */
    enum st_profile_type profile;
    int major, minor;
@@ -269,6 +275,8 @@ struct st_context_attribs
     */
    struct st_config_options options;
 };
+
+struct st_context_iface;
 
 /**
  * Represent a windowing system drawable.
@@ -314,7 +322,8 @@ struct st_framebuffer_iface
     *
     * @att is one of the front buffer attachments.
     */
-   boolean (*flush_front)(struct st_framebuffer_iface *stfbi,
+   boolean (*flush_front)(struct st_context_iface *stctx,
+                          struct st_framebuffer_iface *stfbi,
                           enum st_attachment_type statt);
 
    /**
@@ -334,7 +343,8 @@ struct st_framebuffer_iface
     * the last call might be destroyed.  This behavior might change in the
     * future.
     */
-   boolean (*validate)(struct st_framebuffer_iface *stfbi,
+   boolean (*validate)(struct st_context_iface *stctx,
+                       struct st_framebuffer_iface *stfbi,
                        const enum st_attachment_type *statts,
                        unsigned count,
                        struct pipe_resource **out);
@@ -352,6 +362,17 @@ struct st_context_iface
     */
    void *st_context_private;
    void *st_manager_private;
+
+   /**
+    * The CSO context associated with this context in case we need to draw
+    * something before swap buffers.
+    */
+   struct cso_context *cso_context;
+
+   /**
+    * The gallium context.
+    */
+   struct pipe_context *pipe;
 
    /**
     * Destroy the context.
@@ -465,11 +486,15 @@ struct st_api
    void (*destroy)(struct st_api *stapi);
 
    /**
-    * Return an API entry point.
-    *
-    * For GL this is the same as _glapi_get_proc_address.
+    * Query supported OpenGL versions. (if applicable)
+    * The format is (major*10+minor).
     */
-   st_proc_t (*get_proc_address)(struct st_api *stapi, const char *procname);
+   void (*query_versions)(struct st_api *stapi, struct st_manager *sm,
+                          struct st_config_options *options,
+                          int *gl_core_version,
+                          int *gl_compat_version,
+                          int *gl_es1_version,
+                          int *gl_es2_version);
 
    /**
     * Create a rendering context.
@@ -500,7 +525,7 @@ struct st_api
 /**
  * Return true if the visual has the specified buffers.
  */
-static INLINE boolean
+static inline boolean
 st_visual_have_buffers(const struct st_visual *visual, unsigned mask)
 {
    return ((visual->buffer_mask & mask) == mask);

@@ -31,7 +31,7 @@
  */
 
 	.file	"read_rgba_span_x86.S"
-#if !defined(__DJGPP__) && !defined(__MINGW32__) && !defined(__APPLE__) /* this one cries for assyntax.h */
+#if !defined(__MINGW32__) && !defined(__APPLE__) /* this one cries for assyntax.h */
 /* Kevin F. Quinn 2nd July 2006
  * Replaced data segment constants with text-segment instructions.
  */
@@ -77,9 +77,7 @@
  */
 
 .globl _generic_read_RGBA_span_BGRA8888_REV_MMX
-#ifndef USE_DRICORE
 .hidden _generic_read_RGBA_span_BGRA8888_REV_MMX
-#endif
 	.type	_generic_read_RGBA_span_BGRA8888_REV_MMX, @function
 _generic_read_RGBA_span_BGRA8888_REV_MMX:
 	pushl	%ebx
@@ -174,9 +172,7 @@ _generic_read_RGBA_span_BGRA8888_REV_MMX:
  */
 
 .globl _generic_read_RGBA_span_BGRA8888_REV_SSE
-#ifndef USE_DRICORE
 .hidden _generic_read_RGBA_span_BGRA8888_REV_SSE
-#endif
 	.type	_generic_read_RGBA_span_BGRA8888_REV_SSE, @function
 _generic_read_RGBA_span_BGRA8888_REV_SSE:
 	pushl	%esi
@@ -339,9 +335,7 @@ _generic_read_RGBA_span_BGRA8888_REV_SSE:
 
 	.text
 .globl _generic_read_RGBA_span_BGRA8888_REV_SSE2
-#ifndef USE_DRICORE
 .hidden _generic_read_RGBA_span_BGRA8888_REV_SSE2
-#endif
 	.type	_generic_read_RGBA_span_BGRA8888_REV_SSE2, @function
 _generic_read_RGBA_span_BGRA8888_REV_SSE2:
 	pushl	%esi
@@ -500,9 +494,7 @@ _generic_read_RGBA_span_BGRA8888_REV_SSE2:
 
 	.text
 	.globl	_generic_read_RGBA_span_RGB565_MMX
-#ifndef USE_DRICORE
         .hidden _generic_read_RGBA_span_RGB565_MMX
-#endif
 	.type	_generic_read_RGBA_span_RGB565_MMX, @function
 
 _generic_read_RGBA_span_RGB565_MMX:
@@ -679,7 +671,7 @@ _generic_read_RGBA_span_RGB565_MMX:
 	emms
 #endif
 	ret
-#endif /* !defined(__DJGPP__) && !defined(__MINGW32__) && !defined(__APPLE__) */
+#endif /* !defined(__MINGW32__) && !defined(__APPLE__) */
 	
 #if defined (__ELF__) && defined (__linux__)
 	.section .note.GNU-stack,"",%progbits

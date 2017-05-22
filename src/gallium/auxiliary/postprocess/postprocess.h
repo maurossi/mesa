@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR
+ * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -28,51 +28,38 @@
 #ifndef POSTPROCESS_H
 #define POSTPROCESS_H
 
-#include "postprocess/pp_program.h"
+#include "pipe/p_state.h"
 
-#define PP_FILTERS 6            /* Increment this if you add filters */
-#define PP_MAX_PASSES 6
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct cso_context;
 
 struct pp_queue_t;              /* Forward definition */
+struct pp_program;
 
 /* Less typing later on */
 typedef void (*pp_func) (struct pp_queue_t *, struct pipe_resource *,
                          struct pipe_resource *, unsigned int);
-/**
-*	The main post-processing queue.
-*/
-struct pp_queue_t
-{
-   pp_func *pp_queue;           /* An array of pp_funcs */
-   unsigned int n_filters;      /* Number of enabled filters */
-
-   struct pipe_resource *tmp[2];        /* Two temp FBOs for the queue */
-   struct pipe_resource *inner_tmp[3];  /* Three for filter use */
-
-   unsigned int n_tmp, n_inner_tmp;
-
-   struct pipe_resource *depth; /* depth of original input */
-   struct pipe_resource *stencil;       /* stencil shared by inner_tmps */
-
-   struct pipe_surface *tmps[2], *inner_tmps[3], *stencils;
-
-   void ***shaders;             /* Shaders in TGSI form */
-   unsigned int *verts;
-   struct program *p;
-
-   bool fbos_init;
-};
 
 /* Main functions */
 
-struct pp_queue_t *pp_init(struct pipe_screen *, const unsigned int *);
+/**
+ * Note enabled is an array of values, one per filter stage.
+ * Zero indicates the stage is disabled.  Non-zero indicates the
+ * stage is enabled.  For some stages, the value controls quality.
+ */
+struct pp_queue_t *pp_init(struct pipe_context *pipe,
+                           const unsigned int *enabled,
+                           struct cso_context *);
+
 void pp_run(struct pp_queue_t *, struct pipe_resource *,
             struct pipe_resource *, struct pipe_resource *);
 void pp_free(struct pp_queue_t *);
-void pp_free_fbos(struct pp_queue_t *);
-void pp_debug(const char *, ...);
-struct program *pp_init_prog(struct pp_queue_t *, struct pipe_screen *);
+
 void pp_init_fbos(struct pp_queue_t *, unsigned int, unsigned int);
+
 
 /* The filters */
 
@@ -86,14 +73,25 @@ void pp_jimenezmlaa_color(struct pp_queue_t *, struct pipe_resource *,
 
 /* The filter init functions */
 
-void pp_celshade_init(struct pp_queue_t *, unsigned int, unsigned int);
+bool pp_celshade_init(struct pp_queue_t *, unsigned int, unsigned int);
 
-void pp_nored_init(struct pp_queue_t *, unsigned int, unsigned int);
-void pp_nogreen_init(struct pp_queue_t *, unsigned int, unsigned int);
-void pp_noblue_init(struct pp_queue_t *, unsigned int, unsigned int);
+bool pp_nored_init(struct pp_queue_t *, unsigned int, unsigned int);
+bool pp_nogreen_init(struct pp_queue_t *, unsigned int, unsigned int);
+bool pp_noblue_init(struct pp_queue_t *, unsigned int, unsigned int);
 
-void pp_jimenezmlaa_init(struct pp_queue_t *, unsigned int, unsigned int);
-void pp_jimenezmlaa_init_color(struct pp_queue_t *, unsigned int,
+bool pp_jimenezmlaa_init(struct pp_queue_t *, unsigned int, unsigned int);
+bool pp_jimenezmlaa_init_color(struct pp_queue_t *, unsigned int,
                                unsigned int);
+
+/* The filter free functions */
+
+void pp_celshade_free(struct pp_queue_t *, unsigned int);
+void pp_nocolor_free(struct pp_queue_t *, unsigned int);
+void pp_jimenezmlaa_free(struct pp_queue_t *, unsigned int);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

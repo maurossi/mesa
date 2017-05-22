@@ -1,6 +1,6 @@
 /**************************************************************************
  * 
- * Copyright 2003 Tungsten Graphics, Inc., Cedar Park, Texas.
+ * Copyright 2003 VMware, Inc.
  * All Rights Reserved.
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -18,7 +18,7 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
- * IN NO EVENT SHALL TUNGSTEN GRAPHICS AND/OR ITS SUPPLIERS BE LIABLE FOR
+ * IN NO EVENT SHALL VMWARE AND/OR ITS SUPPLIERS BE LIABLE FOR
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
@@ -72,7 +72,7 @@ struct i915_fp_compile {
    uint temp_flag;       /**< Tracks temporary regs which are in use */
    uint utemp_flag;      /**< Tracks TYPE_U temporary regs which are in use */
 
-   uint register_phases[16];
+   uint register_phases[I915_MAX_TEMPORARY];
    uint nr_tex_indirect;
    uint nr_tex_insn;
    uint nr_alu_insn;
@@ -136,7 +136,7 @@ struct i915_fp_compile {
 
 /* One neat thing about the UREG representation:  
  */
-static INLINE int
+static inline int
 swizzle(int reg, uint x, uint y, uint z, uint w)
 {
    assert(x <= SRC_ONE);
@@ -276,9 +276,9 @@ struct i915_full_dst_register
 {
    struct i915_dst_register               Register;
 /*
-   struct tgsi_src_register               Indirect;
+   struct tgsi_ind_register               Indirect;
    struct tgsi_dimension                  Dimension;
-   struct tgsi_src_register               DimIndirect;
+   struct tgsi_ind_register               DimIndirect;
 */
 };
 
@@ -286,9 +286,9 @@ struct i915_full_src_register
 {
    struct i915_src_register         Register;
 /*
-   struct tgsi_src_register         Indirect;
+   struct tgsi_ind_register         Indirect;
    struct tgsi_dimension            Dimension;
-   struct tgsi_src_register         DimIndirect;
+   struct tgsi_ind_register         DimIndirect;
 */
 };
 
@@ -322,6 +322,8 @@ struct i915_token_list
 
 extern struct i915_token_list* i915_optimize(const struct tgsi_token *tokens);
 
-extern void i915_optimize_free(struct i915_token_list* tokens);
+extern void i915_optimize_free(struct i915_token_list *tokens);
+
+extern uint i915_num_coords(uint tex);
 
 #endif

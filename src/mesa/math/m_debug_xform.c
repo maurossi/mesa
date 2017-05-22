@@ -1,6 +1,5 @@
 /*
  * Mesa 3-D graphics library
- * Version:  6.1
  *
  * Copyright (C) 1999-2004  Brian Paul   All Rights Reserved.
  *
@@ -17,9 +16,10 @@
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
- * BRIAN PAUL BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
- * AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+ * OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+ * ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+ * OTHER DEALINGS IN THE SOFTWARE.
  */
 
 /*
@@ -183,11 +183,11 @@ static int test_transform_function( transform_func func, int psize,
       return 0;
    }
 
-   mat->m = (GLfloat *) _mesa_align_malloc( 16 * sizeof(GLfloat), 16 );
+   mat->m = _mesa_align_malloc( 16 * sizeof(GLfloat), 16 );
    mat->type = mtypes[mtype];
 
    m = mat->m;
-   ASSERT( ((long)m & 15) == 0 );
+   assert( ((long)m & 15) == 0 );
 
    init_matrix( m );
 
@@ -206,7 +206,7 @@ static int test_transform_function( transform_func func, int psize,
          case VAR:
             break;
          default:
-            ASSERT(0);
+            assert(0);
             return 0;
          }
       }
@@ -285,7 +285,7 @@ void _math_test_all_transform_functions( char *description )
 
    if ( first_time ) {
       first_time = 0;
-      mesa_profile = _mesa_getenv( "MESA_PROFILE" );
+      mesa_profile = getenv( "MESA_PROFILE" );
    }
 
 #ifdef RUN_DEBUG_BENCHMARK
