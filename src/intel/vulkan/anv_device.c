@@ -452,7 +452,7 @@ anv_enumerate_devices(struct anv_instance *instance)
 
    instance->physicalDeviceCount = 0;
 
-   max_devices = drmGetDevices2(0, devices, sizeof(devices));
+   max_devices = drmGetDevices2(0, devices, ARRAY_SIZE(devices));
    if (max_devices < 1)
       return VK_ERROR_INCOMPATIBLE_DRIVER;
 
@@ -468,6 +468,7 @@ anv_enumerate_devices(struct anv_instance *instance)
             break;
       }
    }
+   drmFreeDevices(devices, max_devices);
 
    if (result == VK_SUCCESS)
       instance->physicalDeviceCount = 1;
