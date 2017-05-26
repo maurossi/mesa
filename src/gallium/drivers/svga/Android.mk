@@ -30,7 +30,9 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
+LOCAL_C_INCLUDES := \
+	$(LOCAL_PATH)/include \
+	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_dricore,,)/main
 
 LOCAL_MODULE := libmesa_pipe_svga
 
