@@ -1079,13 +1079,8 @@ fi
 
 if test "x$LIBUNWIND" = "xyes"; then
     PKG_CHECK_MODULES(LIBUNWIND, libunwind)
-    if test "x$HAVE_LIBUNWIND" != "xyes"; then
-        AC_MSG_ERROR([libunwind requested but not installed.])
-    fi
     AC_DEFINE(HAVE_LIBUNWIND, 1, [Have libunwind support])
 fi
-
-AM_CONDITIONAL(HAVE_LIBUNWIND, [test "x$LIBUNWIND" = xyes])
 
 
 dnl Options for APIs
@@ -2476,6 +2471,10 @@ if test -n "$with_gallium_drivers"; then
         esac
     done
 fi
+
+# XXX: Keep in sync with LLVM_REQUIRED_SWR
+AM_CONDITIONAL(SWR_INVALID_LLVM_VERSION, test "x$LLVM_VERSION" != x3.9.0 -a \
+                                              "x$LLVM_VERSION" != x3.9.1)
 
 if test "x$enable_llvm" = "xyes" -a "$with_gallium_drivers"; then
     llvm_require_version $LLVM_REQUIRED_GALLIUM "gallium"
