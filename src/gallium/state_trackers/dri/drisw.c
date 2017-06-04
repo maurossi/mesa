@@ -372,8 +372,6 @@ extern __DRIimage *dri2_create_image_from_winsys(__DRIscreen *_screen,
                                                  int width, int height, int format,
                                                  int num_handles, struct winsys_handle *whandle,
                                                  void *loaderPrivate);
-extern __DRI2fenceExtension dri2FenceExtension;
-
 
 static GLboolean
 drisw_query_image(__DRIimage *image, int attrib, int *value)
