@@ -157,6 +157,7 @@
  */
 #if defined(ANDROID)
 #define PIPE_OS_ANDROID
+#define PIPE_OS_BSD
 #endif
 
 #if defined(__FreeBSD__) || defined(__FreeBSD_kernel__)
