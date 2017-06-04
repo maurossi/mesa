@@ -30,9 +30,13 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/include
+LOCAL_C_INCLUDES := \
+	$(LOCAL_PATH)/include \
+	$(dir $(MESA_GEN_GIT_SHA1_H))
 
 LOCAL_MODULE := libmesa_pipe_svga
+
+LOCAL_STATIC_LIBRARIES += libmesa_git_sha1
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
