@@ -59,7 +59,7 @@ extern char *program_invocation_name, *program_invocation_short_name;
 #elif defined(__NetBSD__) && defined(__NetBSD_Version__) && (__NetBSD_Version__ >= 106000100)
 #    include <stdlib.h>
 #    define GET_PROGRAM_NAME() getprogname()
-#elif defined(__DragonFly__)
+#elif defined(__DragonFly__) || defined(__OpenBSD__) || defined(ANDROID)
 #    include <stdlib.h>
 #    define GET_PROGRAM_NAME() getprogname()
 #elif defined(__APPLE__)
@@ -94,7 +94,7 @@ __getProgramName()
 #endif
 
 #if !defined(GET_PROGRAM_NAME)
-#    if defined(__OpenBSD__) || defined(NetBSD) || defined(__UCLIBC__) || defined(ANDROID)
+#    if defined(NetBSD) || defined(__UCLIBC__)
 /* This is a hack. It's said to work on OpenBSD, NetBSD and GNU.
  * Rogelio M.Serrano Jr. reported it's also working with UCLIBC. It's
  * used as a last resort, if there is no documented facility available. */
