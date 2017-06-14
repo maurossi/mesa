@@ -138,12 +138,36 @@ _eglDestroyThreadInfo(_EGLThreadInfo *t)
 
 
 /**
+ * Delete/free a _EGLThreadInfo object.
+ */
+static void
+_eglDestroyThreadInfoCallback(_EGLThreadInfo *t)
+{
+   /* If this callback is called on thread termination then try to also give a
+    * chance to cleanup to the client drivers. If called for module termination
+    * then just release the thread information as calling eglReleaseThread
+    * would result in a deadlock.
+    */
+   if (_egl_TSDInitialized) {
+      /* The callback handler has replaced the TLS entry, which is passed in as
+       * 't', with NULL. Restore it here so that the release thread finds it in
+       * the TLS entry.
+       */
+      _eglSetTSD(t);
+      eglReleaseThread();
+   } else {
+      _eglDestroyThreadInfo(t);
+   }
+}
+
+
+/**
  * Make sure TSD is initialized and return current value.
  */
 static inline _EGLThreadInfo *
 _eglCheckedGetTSD(void)
 {
-   if (_eglInitTSD(&_eglDestroyThreadInfo) != EGL_TRUE) {
+   if (_eglInitTSD(&_eglDestroyThreadInfoCallback) != EGL_TRUE) {
       _eglLog(_EGL_FATAL, "failed to initialize \"current\" system");
       return NULL;
    }
