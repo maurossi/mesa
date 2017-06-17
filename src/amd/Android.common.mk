@@ -61,9 +61,6 @@ LOCAL_C_INCLUDES := \
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(LOCAL_PATH)/common
 
-LOCAL_SHARED_LIBRARIES := \
-	libdrm_amdgpu
-
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_nir
 
