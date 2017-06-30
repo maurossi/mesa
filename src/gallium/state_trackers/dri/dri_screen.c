@@ -132,6 +132,27 @@ dri_fill_in_modes(struct dri_screen *screen)
       MESA_FORMAT_B8G8R8A8_SRGB,
       MESA_FORMAT_B8G8R8X8_SRGB,
       MESA_FORMAT_B5G6R5_UNORM,
+
+      /* The 32-bit RGBA format must not precede the 32-bit BGRA format.
+       * Likewise for RGBX and BGRX.  Otherwise, the GLX client and the GLX
+       * server may disagree on which format the GLXFBConfig represents,
+       * resulting in swapped color channels.
+       *
+       * The problem, as of 2017-05-30:
+       * When matching a GLXFBConfig to a __DRIconfig, GLX ignores the channel
+       * order and chooses the first __DRIconfig with the expected channel
+       * sizes. Specifically, GLX compares the GLXFBConfig's and __DRIconfig's
+       * __DRI_ATTRIB_{CHANNEL}_SIZE but ignores __DRI_ATTRIB_{CHANNEL}_MASK.
+       *
+       * EGL does not suffer from this problem. It correctly compares the
+       * channel masks when matching EGLConfig to __DRIconfig.
+       */
+
+      /* Required by Android, for HAL_PIXEL_FORMAT_RGBA_8888. */
+      MESA_FORMAT_R8G8B8A8_UNORM,
+
+      /* Required by Android, for HAL_PIXEL_FORMAT_RGBX_8888. */
+      MESA_FORMAT_R8G8B8X8_UNORM,
    };
    static const enum pipe_format pipe_formats[] = {
       PIPE_FORMAT_BGRA8888_UNORM,
@@ -139,6 +160,8 @@ dri_fill_in_modes(struct dri_screen *screen)
       PIPE_FORMAT_BGRA8888_SRGB,
       PIPE_FORMAT_BGRX8888_SRGB,
       PIPE_FORMAT_B5G6R5_UNORM,
+      PIPE_FORMAT_RGBA8888_UNORM,
+      PIPE_FORMAT_RGBX8888_UNORM,
    };
    mesa_format format;
    __DRIconfig **configs = NULL;
