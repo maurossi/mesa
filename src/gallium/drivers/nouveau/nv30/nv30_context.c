@@ -79,7 +79,9 @@ nv30_context_flush(struct pipe_context *pipe, struct pipe_fence_handle **fence,
       nouveau_fence_ref(nv30->screen->base.fence.current,
                         (struct nouveau_fence **)fence);
 
+   mtx_lock(&nv30->screen->base.push_mutex);
    PUSH_KICK(push);
+   mtx_unlock(&nv30->screen->base.push_mutex);
 
    nouveau_context_update_frame_stats(&nv30->base);
 }
