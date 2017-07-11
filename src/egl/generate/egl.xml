@@ -1709,6 +1709,7 @@
                 <enum name="EGL_NATIVE_BUFFER_ANDROID"/>
             </require>
         </extension>
+	<!-- DDS: disable this
         <extension name="EGL_ANDROID_native_fence_sync" supported="egl">
             <require>
                 <enum name="EGL_SYNC_NATIVE_FENCE_ANDROID"/>
@@ -1718,6 +1719,7 @@
                 <command name="eglDupNativeFenceFDANDROID"/>
             </require>
         </extension>
+	-->
         <extension name="EGL_ANDROID_recordable" supported="egl">
             <require>
                 <enum name="EGL_RECORDABLE_ANDROID"/>
