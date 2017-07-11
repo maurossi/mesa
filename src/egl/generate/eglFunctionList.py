@@ -194,6 +194,7 @@ EGL_FUNCTIONS = (
     _eglFunc("eglGetSyncValuesCHROMIUM",             "display"),
 
     # EGL_ANDROID_native_fence_sync
-    _eglFunc("eglDupNativeFenceFDANDROID",           "display"),
+    # DDS: disable this
+    #_eglFunc("eglDupNativeFenceFDANDROID",           "display"),
 )
 
