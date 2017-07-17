@@ -322,3 +322,12 @@ static const struct pipe_loader_ops pipe_loader_drm_ops = {
    .get_driconf_xml = pipe_loader_drm_get_driconf_xml,
    .release = pipe_loader_drm_release
 };
+
+PUBLIC struct pipe_screen *load_pipe_screen(struct pipe_loader_device **dev, int fd)
+{
+   struct pipe_screen *pscreen = NULL;
+   if (pipe_loader_drm_probe_fd(dev, fd)) {
+      pscreen = pipe_loader_create_screen(*dev);
+   }
+   return pscreen;
+}
