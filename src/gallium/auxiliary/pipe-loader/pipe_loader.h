@@ -215,6 +215,9 @@ pipe_loader_drm_probe_fd(struct pipe_loader_device **dev, int fd);
 const struct driOptionDescription *
 pipe_loader_drm_get_driconf_by_name(const char *driver_name, unsigned *count);
 
+struct pipe_screen *
+load_pipe_screen(struct pipe_loader_device **dev, int fd);
+
 #ifdef __cplusplus
 }
 #endif
