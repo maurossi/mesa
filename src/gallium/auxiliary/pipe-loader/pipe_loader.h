@@ -218,6 +218,9 @@ pipe_loader_drm_get_driinfo_xml(const char *driver_name);
 
 extern const char gallium_driinfo_xml[];
 
+struct pipe_screen *
+load_pipe_screen(struct pipe_loader_device **dev, int fd);
+
 #ifdef __cplusplus
 }
 #endif
