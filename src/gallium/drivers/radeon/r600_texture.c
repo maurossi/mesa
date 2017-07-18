@@ -590,16 +590,22 @@ static boolean r600_texture_get_handle(struct pipe_screen* screen,
 		res->external_usage = usage;
 	}
 
-	if (rscreen->chip_class >= GFX9) {
-		offset = rtex->surface.u.gfx9.surf_offset;
-		stride = rtex->surface.u.gfx9.surf_pitch *
-			 rtex->surface.bpe;
-		slice_size = rtex->surface.u.gfx9.surf_slice_size;
+	if (res->b.b.target == PIPE_BUFFER) {
+		offset = 0;
+		stride = 0;
+		slice_size = 0;
 	} else {
-		offset = rtex->surface.u.legacy.level[0].offset;
-		stride = rtex->surface.u.legacy.level[0].nblk_x *
-			 rtex->surface.bpe;
-		slice_size = rtex->surface.u.legacy.level[0].slice_size;
+		if (rscreen->chip_class >= GFX9) {
+			offset = rtex->surface.u.gfx9.surf_offset;
+			stride = rtex->surface.u.gfx9.surf_pitch *
+				 rtex->surface.bpe;
+			slice_size = rtex->surface.u.gfx9.surf_slice_size;
+		} else {
+			offset = rtex->surface.u.legacy.level[0].offset;
+			stride = rtex->surface.u.legacy.level[0].nblk_x *
+				 rtex->surface.bpe;
+			slice_size = rtex->surface.u.legacy.level[0].slice_size;
+		}
 	}
 	return rscreen->ws->buffer_get_handle(res->buf, stride, offset,
 					      slice_size, whandle);
@@ -1965,6 +1971,8 @@ static struct pipe_surface *r600_create_surface(struct pipe_context *pipe,
 	unsigned level = templ->u.tex.level;
 	unsigned width = u_minify(tex->width0, level);
 	unsigned height = u_minify(tex->height0, level);
+	unsigned width0 = tex->width0;
+	unsigned height0 = tex->height0;
 
 	if (tex->target != PIPE_BUFFER && templ->format != tex->format) {
 		const struct util_format_description *tex_desc
@@ -1983,11 +1991,14 @@ static struct pipe_surface *r600_create_surface(struct pipe_context *pipe,
 
 			width = nblks_x * templ_desc->block.width;
 			height = nblks_y * templ_desc->block.height;
+
+			width0 = util_format_get_nblocksx(tex->format, width0);
+			height0 = util_format_get_nblocksy(tex->format, height0);
 		}
 	}
 
 	return r600_create_surface_custom(pipe, tex, templ,
-					  tex->width0, tex->height0,
+					  width0, height0,
 					  width, height);
 }
 
