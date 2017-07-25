@@ -156,10 +156,6 @@ TODO: document the other workarounds.
             <option name="glsl_correct_derivatives_after_discard" value="true"/>
         </application>
 
-        <application name="The Witcher 2" executable="witcher2">
-            <option name="glsl_correct_derivatives_after_discard" value="true"/>
-        </application>
-
         <!-- The GL thread whitelist is below, workarounds are above.
              Keep it that way. -->
 
