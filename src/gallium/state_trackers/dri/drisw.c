@@ -449,15 +449,13 @@ drisw_init_screen(__DRIscreen * sPriv)
    sPriv->driverPrivate = (void *)screen;
    sPriv->extensions = drisw_screen_extensions;
 
-   unsigned flags = dri_init_options_get_screen_flags(screen, "swrast");
-
    if (pipe_loader_sw_probe_dri(&screen->dev, &drisw_lf))
-      pscreen = pipe_loader_create_screen(screen->dev, flags);
+      pscreen = pipe_loader_create_screen(screen->dev, 0);
 
    if (!pscreen)
       goto fail;
 
-   configs = dri_init_screen_helper(screen, pscreen);
+   configs = dri_init_screen_helper(screen, pscreen, "swrast");
    if (!configs)
       goto fail;
 
