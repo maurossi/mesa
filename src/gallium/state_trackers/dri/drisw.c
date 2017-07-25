@@ -450,7 +450,7 @@ drisw_init_screen(__DRIscreen * sPriv)
    sPriv->extensions = drisw_screen_extensions;
 
    if (pipe_loader_sw_probe_dri(&screen->dev, &drisw_lf))
-      pscreen = pipe_loader_create_screen(screen->dev, 0);
+      pscreen = pipe_loader_create_screen(screen->dev);
 
    if (!pscreen)
       goto fail;
