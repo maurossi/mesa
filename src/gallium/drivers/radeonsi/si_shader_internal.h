@@ -220,7 +220,6 @@ struct si_shader_context {
 
 	LLVMValueRef lds;
 	LLVMValueRef gs_next_vertex[4];
-	LLVMValueRef postponed_kill;
 	LLVMValueRef return_value;
 
 	LLVMTypeRef voidt;
