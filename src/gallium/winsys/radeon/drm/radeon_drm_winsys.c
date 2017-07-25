@@ -736,8 +736,7 @@ static int handle_compare(void *key1, void *key2)
 }
 
 PUBLIC struct radeon_winsys *
-radeon_drm_winsys_create(int fd, unsigned flags,
-			 radeon_screen_create_t screen_create)
+radeon_drm_winsys_create(int fd, radeon_screen_create_t screen_create)
 {
     struct radeon_drm_winsys *ws;
 
@@ -832,7 +831,7 @@ radeon_drm_winsys_create(int fd, unsigned flags,
      *
      * Alternatively, we could create the screen based on "ws->gen"
      * and link all drivers into one binary blob. */
-    ws->base.screen = screen_create(&ws->base, flags);
+    ws->base.screen = screen_create(&ws->base);
     if (!ws->base.screen) {
         radeon_winsys_destroy(&ws->base);
         mtx_unlock(&fd_tab_mutex);

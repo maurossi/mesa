@@ -925,8 +925,7 @@ static void si_test_vmfault(struct si_screen *sscreen)
 	exit(0);
 }
 
-struct pipe_screen *radeonsi_screen_create(struct radeon_winsys *ws,
-					   unsigned flags)
+struct pipe_screen *radeonsi_screen_create(struct radeon_winsys *ws)
 {
 	struct si_screen *sscreen = CALLOC_STRUCT(si_screen);
 	unsigned num_threads, num_compiler_threads, num_compiler_threads_lowprio, i;
@@ -944,7 +943,7 @@ struct pipe_screen *radeonsi_screen_create(struct radeon_winsys *ws,
 
 	si_init_screen_state_functions(sscreen);
 
-	if (!r600_common_screen_init(&sscreen->b, ws, flags) ||
+	if (!r600_common_screen_init(&sscreen->b, ws) ||
 	    !si_init_gs_info(sscreen) ||
 	    !si_init_shader_cache(sscreen)) {
 		FREE(sscreen);
