@@ -2054,7 +2054,7 @@ dri2_init_screen(__DRIscreen * sPriv)
       goto free_screen;
 
    if (pipe_loader_drm_probe_fd(&screen->dev, fd))
-      pscreen = pipe_loader_create_screen(screen->dev, 0);
+      pscreen = pipe_loader_create_screen(screen->dev);
 
    if (!pscreen)
        goto release_pipe;
@@ -2145,7 +2145,7 @@ dri_kms_init_screen(__DRIscreen * sPriv)
       goto free_screen;
 
    if (pipe_loader_sw_probe_kms(&screen->dev, fd))
-      pscreen = pipe_loader_create_screen(screen->dev, 0);
+      pscreen = pipe_loader_create_screen(screen->dev);
 
    if (!pscreen)
        goto release_pipe;
