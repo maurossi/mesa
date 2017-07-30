@@ -53,7 +53,6 @@
 #ifdef HAVE_WAYLAND_PLATFORM
 #include "wayland-drm.h"
 #include "wayland-drm-client-protocol.h"
-#include "linux-dmabuf-unstable-v1-client-protocol.h"
 #endif
 
 #ifdef HAVE_X11_PLATFORM
@@ -63,7 +62,6 @@
 #include "egl_dri2.h"
 #include "loader/loader.h"
 #include "util/u_atomic.h"
-#include "util/u_vector.h"
 
 /* The kernel header drm_fourcc.h defines the DRM formats below.  We duplicate
  * some of the definitions here so that building Mesa won't bleeding-edge
@@ -950,16 +948,11 @@ dri2_display_destroy(_EGLDisplay *disp)
    case _EGL_PLATFORM_WAYLAND:
       if (dri2_dpy->wl_drm)
           wl_drm_destroy(dri2_dpy->wl_drm);
-      if (dri2_dpy->wl_dmabuf)
-          zwp_linux_dmabuf_v1_destroy(dri2_dpy->wl_dmabuf);
       if (dri2_dpy->wl_shm)
           wl_shm_destroy(dri2_dpy->wl_shm);
       wl_registry_destroy(dri2_dpy->wl_registry);
       wl_event_queue_destroy(dri2_dpy->wl_queue);
       wl_proxy_wrapper_destroy(dri2_dpy->wl_dpy_wrapper);
-      u_vector_finish(&dri2_dpy->wl_modifiers.argb8888);
-      u_vector_finish(&dri2_dpy->wl_modifiers.xrgb8888);
-      u_vector_finish(&dri2_dpy->wl_modifiers.rgb565);
       if (dri2_dpy->own_device) {
          wl_display_disconnect(dri2_dpy->wl_dpy);
       }

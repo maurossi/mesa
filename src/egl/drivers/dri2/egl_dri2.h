@@ -45,8 +45,6 @@
 #ifdef HAVE_WAYLAND_PLATFORM
 #include <wayland-client.h>
 #include "wayland-egl-priv.h"
-/* forward declarations of protocol elements */
-struct zwp_linux_dmabuf_v1;
 #endif
 
 #include <GL/gl.h>
@@ -74,8 +72,6 @@ struct zwp_linux_dmabuf_v1;
 #include "eglsurface.h"
 #include "eglimage.h"
 #include "eglsync.h"
-
-#include "util/u_vector.h"
 
 struct wl_buffer;
 
@@ -216,12 +212,6 @@ struct dri2_egl_display
    struct wl_drm            *wl_drm;
    struct wl_shm            *wl_shm;
    struct wl_event_queue    *wl_queue;
-   struct zwp_linux_dmabuf_v1 *wl_dmabuf;
-   struct {
-      struct u_vector        xrgb8888;
-      struct u_vector        argb8888;
-      struct u_vector        rgb565;
-   } wl_modifiers;
    bool                      authenticated;
    int                       formats;
    uint32_t                  capabilities;
