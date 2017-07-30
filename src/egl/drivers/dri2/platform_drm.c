@@ -323,9 +323,10 @@ dri2_drm_get_buffers_with_format(__DRIdrawable *driDrawable,
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
    int i, j;
 
+   dri2_surf->buffer_count = 0;
    for (i = 0, j = 0; i < 2 * count; i += 2, j++) {
       assert(attachments[i] < __DRI_BUFFER_COUNT);
-      assert(j < ARRAY_SIZE(dri2_surf->buffers));
+      assert(dri2_surf->buffer_count < 5);
 
       switch (attachments[i]) {
       case __DRI_BUFFER_BACK_LEFT:
