@@ -223,7 +223,7 @@ struct dri2_egl_display
 #endif
 
    bool                      is_render_node;
-   bool                      is_different_gpu;
+   int                       is_different_gpu;
 };
 
 struct dri2_egl_context
