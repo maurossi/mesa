@@ -72,7 +72,6 @@ release_buffer(struct gbm_surface *_surf, struct gbm_bo *bo)
    for (unsigned i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
       if (dri2_surf->color_buffers[i].bo == bo) {
 	 dri2_surf->color_buffers[i].locked = false;
-	 break;
       }
    }
 }
