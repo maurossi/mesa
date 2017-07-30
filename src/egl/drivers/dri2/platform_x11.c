@@ -446,7 +446,7 @@ dri2_x11_process_buffers(struct dri2_egl_surface *dri2_surf,
    xcb_rectangle_t rectangle;
 
    dri2_surf->buffer_count = count;
-   dri2_surf->have_fake_front = false;
+   dri2_surf->have_fake_front = 0;
 
    /* This assumes the DRI2 buffer attachment tokens matches the
     * __DRIbuffer tokens. */
@@ -463,7 +463,7 @@ dri2_x11_process_buffers(struct dri2_egl_surface *dri2_surf,
        * Note that EGL doesn't require that several clients rendering
        * to the same window must see the same aux buffers. */
       if (dri2_surf->buffers[i].attachment == __DRI_BUFFER_FAKE_FRONT_LEFT)
-         dri2_surf->have_fake_front = true;
+         dri2_surf->have_fake_front = 1;
    }
 
    if (dri2_surf->region != XCB_NONE)
