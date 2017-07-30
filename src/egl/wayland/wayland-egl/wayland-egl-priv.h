@@ -41,10 +41,8 @@
 extern "C" {
 #endif
 
-#define WL_EGL_WINDOW_VERSION 3
-
 struct wl_egl_window {
-	const intptr_t version;
+	struct wl_surface *surface;
 
 	int width;
 	int height;
@@ -57,8 +55,6 @@ struct wl_egl_window {
 	void *private;
 	void (*resize_callback)(struct wl_egl_window *, void *);
 	void (*destroy_window_callback)(void *);
-
-	struct wl_surface *surface;
 };
 
 #ifdef  __cplusplus
