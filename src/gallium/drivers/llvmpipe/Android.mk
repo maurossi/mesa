@@ -33,7 +33,7 @@ LOCAL_SRC_FILES := \
 
 LOCAL_MODULE := libmesa_pipe_llvmpipe
 
-LOCAL_SHARED_LIBRARIES += libLLVM
+LOCAL_SHARED_LIBRARIES += libLLVM39
 
 $(call mesa-build-with-llvm)
 

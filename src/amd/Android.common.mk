@@ -55,8 +55,8 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary \
 	$(intermediates)/common \
-	external/llvm/include \
-	external/llvm/device/include
+	external/llvm39/include \
+	external/llvm39/device/include
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(LOCAL_PATH)/common

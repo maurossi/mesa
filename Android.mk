@@ -89,12 +89,12 @@ define mesa-build-with-llvm
     $(warning Unsupported LLVM version in Android $(MESA_ANDROID_MAJOR_VERSION)),) \
   $(if $(filter 6,$(MESA_ANDROID_MAJOR_VERSION)), \
     $(eval LOCAL_CFLAGS += -DHAVE_LLVM=0x0307 -DMESA_LLVM_VERSION_PATCH=0) \
-    $(eval LOCAL_STATIC_LIBRARIES += libLLVMCore) \
-    $(eval LOCAL_C_INCLUDES += external/llvm/include external/llvm/device/include),) \
+    $(eval LOCAL_STATIC_LIBRARIES += libLLVM39Core) \
+    $(eval LOCAL_C_INCLUDES += external/llvm39/include external/llvm39/device/include),) \
   $(if $(filter 7,$(MESA_ANDROID_MAJOR_VERSION)), \
-    $(eval LOCAL_CFLAGS += -DHAVE_LLVM=0x0308 -DMESA_LLVM_VERSION_PATCH=0) \
-    $(eval LOCAL_STATIC_LIBRARIES += libLLVMCore) \
-    $(eval LOCAL_C_INCLUDES += external/llvm/include external/llvm/device/include),) \
+    $(eval LOCAL_CFLAGS += -DHAVE_LLVM=0x0309 -DMESA_LLVM_VERSION_PATCH=0) \
+    $(eval LOCAL_STATIC_LIBRARIES += libLLVM39Core) \
+    $(eval LOCAL_C_INCLUDES += external/llvm39/include external/llvm39/device/include),) \
   $(if $(filter O,$(MESA_ANDROID_MAJOR_VERSION)), \
     $(eval LOCAL_CFLAGS += -DHAVE_LLVM=0x0309 -DMESA_LLVM_VERSION_PATCH=0) \
     $(eval LOCAL_HEADER_LIBRARIES += llvm-headers),)
