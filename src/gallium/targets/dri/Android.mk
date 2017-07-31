@@ -66,7 +66,7 @@ LOCAL_CFLAGS += -DGALLIUM_R600
 endif
 ifneq ($(filter radeonsi,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_radeonsi libmesa_winsys_amdgpu libmesa_amd_common libmesa_pipe_radeon
-LOCAL_SHARED_LIBRARIES += libLLVM libdrm_amdgpu
+LOCAL_SHARED_LIBRARIES += libLLVM50 libdrm_amdgpu
 LOCAL_CFLAGS += -DGALLIUM_RADEONSI
 endif
 gallium_DRIVERS += libmesa_winsys_radeon libmesa_amdgpu_addrlib
@@ -76,7 +76,7 @@ endif
 ifneq ($(filter swrast,$(MESA_GPU_DRIVERS)),)
 gallium_DRIVERS += libmesa_pipe_llvmpipe libmesa_pipe_softpipe libmesa_winsys_sw_dri
 LOCAL_CFLAGS += -DGALLIUM_LLVMPIPE -DGALLIUM_SOFTPIPE
-LOCAL_SHARED_LIBRARIES += libLLVM
+LOCAL_SHARED_LIBRARIES += libLLVM50
 endif
 ifneq ($(filter vc4,$(MESA_GPU_DRIVERS)),)
 LOCAL_CFLAGS += -DGALLIUM_VC4

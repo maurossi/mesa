@@ -52,13 +52,13 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary \
 	$(intermediates)/common \
-	external/llvm/include \
-	external/llvm/device/include
+	external/llvm50/include \
+	external/llvm50/device/include
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(LOCAL_PATH)/common
 
-LOCAL_STATIC_LIBRARIES := libLLVMCore
+LOCAL_SHARED_LIBRARIES += libLLVM50
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(MESA_TOP)/src/amd/common
 

@@ -31,8 +31,8 @@ LOCAL_C_INCLUDES += \
 
 ifeq ($(MESA_ENABLE_LLVM),true)
 LOCAL_C_INCLUDES += \
-	external/llvm/include \
-	external/llvm/device/include
+	external/llvm50/include \
+	external/llvm50/device/include
 endif
 
 include $(MESA_COMMON_MK)
