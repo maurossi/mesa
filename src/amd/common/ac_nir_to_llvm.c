@@ -3808,11 +3808,13 @@ static LLVMValueRef visit_var_atomic(struct nir_to_llvm_context *ctx,
 
 	if (instr->intrinsic == nir_intrinsic_var_atomic_comp_swap) {
 		LLVMValueRef src1 = get_src(ctx->nir, instr->src[1]);
+#if HAVE_LLVM >= 0x0309
 		result = LLVMBuildAtomicCmpXchg(ctx->builder,
 						ptr, src, src1,
 						LLVMAtomicOrderingSequentiallyConsistent,
 						LLVMAtomicOrderingSequentiallyConsistent,
 						false);
+#endif
 	} else {
 		LLVMAtomicRMWBinOp op;
 		switch (instr->intrinsic) {
@@ -6565,13 +6567,13 @@ LLVMModuleRef ac_translate_nir_to_llvm(LLVMTargetMachineRef tm,
 	ac_llvm_context_init(&ctx.ac, ctx.context, options->chip_class);
 	ctx.ac.module = ctx.module;
 	LLVMSetTarget(ctx.module, options->supports_spill ? "amdgcn-mesa-mesa3d" : "amdgcn--");
-
+#if HAVE_LLVM >= 0x0309
 	LLVMTargetDataRef data_layout = LLVMCreateTargetDataLayout(tm);
 	char *data_layout_str = LLVMCopyStringRepOfTargetData(data_layout);
 	LLVMSetDataLayout(ctx.module, data_layout_str);
 	LLVMDisposeTargetData(data_layout);
 	LLVMDisposeMessage(data_layout_str);
-
+#endif
 	setup_types(&ctx);
 	ctx.builder = LLVMCreateBuilderInContext(ctx.context);
 	ctx.ac.builder = ctx.builder;
