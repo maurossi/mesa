@@ -37,7 +37,8 @@
  * Exactly one bit must be set in \a aspect.
  */
 static isl_surf_usage_flags_t
-choose_isl_surf_usage(VkImageUsageFlags vk_usage,
+choose_isl_surf_usage(VkImageCreateFlags vk_create_flags,
+                      VkImageUsageFlags vk_usage,
                       VkImageAspectFlags aspect)
 {
    isl_surf_usage_flags_t isl_usage = 0;
@@ -51,7 +52,7 @@ choose_isl_surf_usage(VkImageUsageFlags vk_usage,
    if (vk_usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)
       isl_usage |= ISL_SURF_USAGE_RENDER_TARGET_BIT;
 
-   if (vk_usage & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
+   if (vk_create_flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
       isl_usage |= ISL_SURF_USAGE_CUBE_BIT;
 
    /* Even if we're only using it for transfer operations, clears to depth and
@@ -168,7 +169,7 @@ make_surface(const struct anv_device *dev,
       .samples = vk_info->samples,
       .min_alignment = 0,
       .row_pitch = anv_info->stride,
-      .usage = choose_isl_surf_usage(image->usage, aspect),
+      .usage = choose_isl_surf_usage(vk_info->flags, image->usage, aspect),
       .tiling_flags = tiling_flags);
 
    /* isl_surf_init() will fail only if provided invalid input. Invalid input
@@ -577,6 +578,7 @@ anv_CreateImageView(VkDevice _device,
    assert(image->usage & (VK_IMAGE_USAGE_SAMPLED_BIT |
                           VK_IMAGE_USAGE_STORAGE_BIT |
                           VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                          VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT |
                           VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT));
 
    switch (image->type) {
@@ -771,6 +773,11 @@ anv_DestroyImageView(VkDevice _device, VkImageView _iview,
    if (iview->sampler_surface_state.alloc_size > 0) {
       anv_state_pool_free(&device->surface_state_pool,
                           iview->sampler_surface_state);
+   }
+
+   if (iview->no_aux_sampler_surface_state.alloc_size > 0) {
+      anv_state_pool_free(&device->surface_state_pool,
+                          iview->no_aux_sampler_surface_state);
    }
 
    if (iview->storage_surface_state.alloc_size > 0) {

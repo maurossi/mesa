@@ -158,7 +158,8 @@ rasterizer/core/gen_BackendPixelRate0.cpp: rasterizer/codegen/gen_backends.py ra
 COMMON_LIBADD = \
 	$(top_builddir)/src/gallium/auxiliary/libgallium.la \
 	$(top_builddir)/src/mesa/libmesagallium.la \
-	$(LLVM_LIBS)
+	$(LLVM_LIBS) \
+	$(PTHREAD_LIBS)
 
 COMMON_LDFLAGS = \
 	-shared \
@@ -172,6 +173,7 @@ COMMON_LDFLAGS = \
 lib_LTLIBRARIES = libswrAVX.la libswrAVX2.la
 
 libswrAVX_la_CXXFLAGS = \
+	$(PTHREAD_CFLAGS) \
 	$(SWR_AVX_CXXFLAGS) \
 	-DKNOB_ARCH=KNOB_ARCH_AVX \
 	$(COMMON_CXXFLAGS)
@@ -186,6 +188,7 @@ libswrAVX_la_LDFLAGS = \
 	$(COMMON_LDFLAGS)
 
 libswrAVX2_la_CXXFLAGS = \
+	$(PTHREAD_CFLAGS) \
 	$(SWR_AVX2_CXXFLAGS) \
 	-DKNOB_ARCH=KNOB_ARCH_AVX2 \
 	$(COMMON_CXXFLAGS)

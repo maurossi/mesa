@@ -5041,6 +5041,7 @@ end_tex_swizzle(struct svga_shader_emitter_v10 *emit,
                      ((swz_g == PIPE_SWIZZLE_0) << 1) |
                      ((swz_b == PIPE_SWIZZLE_0) << 2) |
                      ((swz_a == PIPE_SWIZZLE_0) << 3));
+      writemask_0 &= swz->inst_dst->Register.WriteMask;
 
       if (writemask_0) {
          struct tgsi_full_src_register zero = int_tex ?
@@ -5059,6 +5060,7 @@ end_tex_swizzle(struct svga_shader_emitter_v10 *emit,
                      ((swz_g == PIPE_SWIZZLE_1) << 1) |
                      ((swz_b == PIPE_SWIZZLE_1) << 2) |
                      ((swz_a == PIPE_SWIZZLE_1) << 3));
+      writemask_1 &= swz->inst_dst->Register.WriteMask;
 
       if (writemask_1) {
          struct tgsi_full_src_register one = int_tex ?

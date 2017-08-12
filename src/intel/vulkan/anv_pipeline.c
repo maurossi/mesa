@@ -1285,7 +1285,7 @@ anv_pipeline_init(struct anv_pipeline *pipeline,
       const VkVertexInputAttributeDescription *desc =
          &vi_info->pVertexAttributeDescriptions[i];
 
-      if (inputs_read & (1 << (VERT_ATTRIB_GENERIC0 + desc->location)))
+      if (inputs_read & (1ull << (VERT_ATTRIB_GENERIC0 + desc->location)))
          pipeline->vb_used |= 1 << desc->binding;
    }
 
