@@ -1040,7 +1040,7 @@ droid_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *dpy)
    };
 
    unsigned int format_count[ARRAY_SIZE(visuals)] = { 0 };
-   int config_count = 0;
+   int count = 0;
 
    /* The nesting of loops is significant here. Also significant is the order
     * of the HAL pixel formats. Many Android apps (such as Google's official
@@ -1074,11 +1074,11 @@ droid_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *dpy)
 
          struct dri2_egl_config *dri2_conf =
             dri2_add_config(dpy, dri2_dpy->driver_configs[j],
-                            config_count + 1, surface_type, config_attrs,
+                            count + 1, surface_type, config_attrs,
                             visuals[i].rgba_masks);
          if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == config_count + 1)
-               config_count++;
+            if (dri2_conf->base.ConfigID == count + 1)
+               count++;
             format_count[i]++;
          }
       }
@@ -1091,7 +1091,7 @@ droid_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *dpy)
       }
    }
 
-   return (config_count != 0);
+   return (count != 0);
 }
 
 static int

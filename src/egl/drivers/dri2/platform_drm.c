@@ -606,7 +606,7 @@ drm_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
    };
 
    unsigned int format_count[ARRAY_SIZE(visuals)] = { 0 };
-   unsigned int config_count = 0;
+   unsigned int count = 0;
 
    for (unsigned i = 0; dri2_dpy->driver_configs[i]; i++) {
       unsigned int red, alpha;
@@ -628,10 +628,10 @@ drm_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
          };
 
          dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-               config_count + 1, EGL_WINDOW_BIT, attr_list, NULL);
+               count + 1, EGL_WINDOW_BIT, attr_list, NULL);
          if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == config_count + 1)
-               config_count++;
+            if (dri2_conf->base.ConfigID == count + 1)
+               count++;
             format_count[j]++;
          }
       }
@@ -644,7 +644,7 @@ drm_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
       }
    }
 
-   return (config_count != 0);
+   return (count != 0);
 }
 
 static const struct dri2_egl_display_vtbl dri2_drm_display_vtbl = {

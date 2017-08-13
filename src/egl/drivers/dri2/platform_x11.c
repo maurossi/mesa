@@ -732,7 +732,7 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
 {
    xcb_depth_iterator_t d;
    xcb_visualtype_t *visuals;
-   int config_count = 0;
+   int count = 0;
    EGLint surface_type;
 
    d = xcb_screen_allowed_depths_iterator(dri2_dpy->screen);
@@ -773,12 +773,11 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
                0,
             };
 
-            dri2_conf = dri2_add_config(disp, config, config_count + 1,
-                                        surface_type, config_attrs,
-                                        rgba_masks);
+            dri2_conf = dri2_add_config(disp, config, count + 1, surface_type,
+                                        config_attrs, rgba_masks);
             if (dri2_conf)
-               if (dri2_conf->base.ConfigID == config_count + 1)
-                  config_count++;
+               if (dri2_conf->base.ConfigID == count + 1)
+                  count++;
 
             /* Allow a 24-bit RGB visual to match a 32-bit RGBA EGLConfig.
              * Otherwise it will only match a 32-bit RGBA visual.  On a
@@ -790,12 +789,11 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
             if (d.data->depth == 24) {
                rgba_masks[3] =
                   ~(rgba_masks[0] | rgba_masks[1] | rgba_masks[2]);
-               dri2_conf = dri2_add_config(disp, config, config_count + 1,
-                                           surface_type, config_attrs,
-                                           rgba_masks);
+               dri2_conf = dri2_add_config(disp, config, count + 1, surface_type,
+                                           config_attrs, rgba_masks);
                if (dri2_conf)
-                  if (dri2_conf->base.ConfigID == config_count + 1)
-                     config_count++;
+                  if (dri2_conf->base.ConfigID == count + 1)
+                     count++;
             }
 	 }
       }
@@ -803,7 +801,7 @@ dri2_x11_add_configs_for_visuals(struct dri2_egl_display *dri2_dpy,
       xcb_depth_next(&d);
    }
 
-   if (!config_count) {
+   if (!count) {
       _eglLog(_EGL_WARNING, "DRI2: failed to create any config");
       return EGL_FALSE;
    }
