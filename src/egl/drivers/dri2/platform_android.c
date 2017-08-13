@@ -1083,8 +1083,7 @@ droid_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *dpy)
          dri2_conf = dri2_add_config(dpy, dri2_dpy->driver_configs[j],
                count + 1, surface_type, config_attrs, visuals[i].rgba_masks);
          if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == count + 1)
-               count++;
+            count++;
             format_count[i]++;
          }
       }

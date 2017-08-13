@@ -630,8 +630,7 @@ drm_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
          dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
                count + 1, EGL_WINDOW_BIT, attr_list, NULL);
          if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == count + 1)
-               count++;
+            count++;
             format_count[j]++;
          }
       }

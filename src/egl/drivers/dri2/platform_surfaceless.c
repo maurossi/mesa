@@ -211,8 +211,7 @@ surfaceless_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *dpy)
                count + 1, EGL_PBUFFER_BIT, NULL, visuals[j].rgba_masks);
 
          if (dri2_conf) {
-            if (dri2_conf->base.ConfigID == count + 1)
-               count++;
+            count++;
             format_count[j]++;
          }
       }
