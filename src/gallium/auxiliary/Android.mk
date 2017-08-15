@@ -41,7 +41,7 @@ ifeq ($(MESA_ENABLE_LLVM),true)
 LOCAL_SRC_FILES += \
 	$(GALLIVM_SOURCES)
 $(call mesa-build-with-llvm)
-LOCAL_STATIC_LIBRARIES += libLLVMCore
+LOCAL_STATIC_LIBRARIES += libLLVM50Core
 endif
 
 LOCAL_CPPFLAGS += -std=c++11
