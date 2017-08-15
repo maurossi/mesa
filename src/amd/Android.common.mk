@@ -72,6 +72,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libelf
 
 $(call mesa-build-with-llvm)
+LOCAL_STATIC_LIBRARIES += libLLVMCore
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
