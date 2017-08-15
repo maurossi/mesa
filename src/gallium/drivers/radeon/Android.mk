@@ -30,13 +30,12 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_SHARED_LIBRARIES := libdrm_radeon libLLVM
-LOCAL_MODULE := libmesa_pipe_radeon
-
 ifeq ($(MESA_ENABLE_LLVM),true)
 LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
-$(call mesa-build-with-llvm)
 endif
+
+LOCAL_SHARED_LIBRARIES := libdrm_radeon libLLVM
+LOCAL_MODULE := libmesa_pipe_radeon
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
