@@ -29,4 +29,10 @@ LOCAL_C_INCLUDES += \
 	$(GALLIUM_TOP)/winsys \
 	$(GALLIUM_TOP)/drivers
 
+ifeq ($(MESA_ENABLE_LLVM),true)
+LOCAL_C_INCLUDES += \
+	external/llvm/include \
+	external/llvm/device/include
+endif
+
 include $(MESA_COMMON_MK)

@@ -61,8 +61,6 @@ $(intermediates)/radeonsi/si_driinfo.h: $(MERGE_DRIINFO) $(GEN_DRIINFO_INPUTS)
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
 
-$(call mesa-build-with-llvm)
-
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
