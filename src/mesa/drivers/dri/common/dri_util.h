@@ -67,7 +67,7 @@ struct gl_context;
  * Extensions.
  */
 extern const __DRIcoreExtension driCoreExtension;
-extern const __DRIswrastExtension driSWRastExtension;
+extern __DRIswrastExtension driSWRastExtension;
 extern const __DRIdri2Extension driDRI2Extension;
 extern const __DRI2configQueryExtension dri2ConfigQueryExtension;
 extern const __DRIcopySubBufferExtension driCopySubBufferExtension;
