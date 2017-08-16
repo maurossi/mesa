@@ -399,12 +399,53 @@ drisw_update_tex_buffer(struct dri_drawable *drawable,
    pipe_transfer_unmap(pipe, transfer);
 }
 
+extern __DRIimage *dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
+                                            int depth, int level, unsigned *error,
+                                            void *loaderPrivate);
+extern __DRIimage *dri2_lookup_egl_image(struct dri_screen *screen, void *handle);
+extern void dri2_destroy_image(__DRIimage *img);
+extern int convert_to_fourcc(int format);
+extern __DRIimage *dri2_create_image_from_winsys(__DRIscreen *_screen,
+                                                 int width, int height, int format,
+                                                 int num_handles, struct winsys_handle *whandle,
+                                                 void *loaderPrivate);
+
+static GLboolean
+drisw_query_image(__DRIimage *image, int attrib, int *value)
+{
+   switch (attrib) {
+   case __DRI_IMAGE_ATTRIB_FORMAT:
+      *value = image->dri_format;
+      return GL_TRUE;
+   case __DRI_IMAGE_ATTRIB_WIDTH:
+      *value = image->texture->width0;
+      return GL_TRUE;
+   case __DRI_IMAGE_ATTRIB_HEIGHT:
+      *value = image->texture->height0;
+      return GL_TRUE;
+   case __DRI_IMAGE_ATTRIB_COMPONENTS:
+      if (image->dri_components == 0)
+         return GL_FALSE;
+      *value = image->dri_components;
+      return GL_TRUE;
+   case __DRI_IMAGE_ATTRIB_NUM_PLANES:
+      *value = 1;
+      return GL_TRUE;
+   case __DRI_IMAGE_ATTRIB_FOURCC:
+      *value = convert_to_fourcc(image->dri_format);
+      return GL_TRUE;
+   default:
+      return GL_FALSE;
+   }
+}
+
 static __DRIimageExtension driSWImageExtension = {
     .base = { __DRI_IMAGE, 6 },
 
     .createImageFromRenderbuffer  = dri2_create_image_from_renderbuffer,
-    .createImageFromTexture = dri2_create_from_texture,
-    .destroyImage = dri2_destroy_image,
+    .createImageFromTexture       = dri2_create_from_texture,
+    .destroyImage                 = dri2_destroy_image,
+    .queryImage                   = drisw_query_image,
 };
 
 /*
@@ -466,6 +507,7 @@ drisw_init_screen(__DRIscreen * sPriv)
       goto fail;
 
    screen->lookup_egl_image = dri2_lookup_egl_image;
+   driSWRastExtension.createImageFromWinsys = dri2_create_image_from_winsys;
 
    return configs;
 fail:
