@@ -10,6 +10,7 @@ extern "C" {
 #define WINSYS_HANDLE_TYPE_KMS    1
 #define WINSYS_HANDLE_TYPE_FD     2
 #define WINSYS_HANDLE_TYPE_SHMID   3
+#define WINSYS_HANDLE_TYPE_BUFFER 4
 
 /**
  * For use with pipe_screen::{texture_from_handle|texture_get_handle}.
@@ -18,7 +19,7 @@ struct winsys_handle
 {
    /**
     * Input for texture_from_handle, valid values are
-    * WINSYS_HANDLE_TYPE_SHARED or WINSYS_HANDLE_TYPE_FD.
+    * WINSYS_HANDLE_TYPE_SHARED or WINSYS_HANDLE_TYPE_FD or WINSYS_HANDLE_TYPE_BUFFER.
     * Input to texture_get_handle,
     * to select handle for kms, flink, or prime.
     */
@@ -28,6 +29,13 @@ struct winsys_handle
     * of a specific layer of an array texture.
     */
    unsigned layer;
+
+   /**
+    * Input to texture_from_handle.
+    * Output for texture_get_handle.
+    */
+   void* external_buffer;
+
    /**
     * Input to texture_from_handle.
     * Output for texture_get_handle.
