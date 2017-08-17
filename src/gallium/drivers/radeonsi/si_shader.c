@@ -7357,8 +7357,8 @@ static void si_build_wrapper_function(struct si_shader_context *ctx,
 	struct gallivm_state *gallivm = &ctx->gallivm;
 	LLVMBuilderRef builder = ctx->gallivm.builder;
 	/* PS epilog has one arg per color component */
-	LLVMTypeRef param_types[48];
-	LLVMValueRef out[48];
+	LLVMTypeRef param_types[64];
+	LLVMValueRef out[64];
 	LLVMTypeRef function_type;
 	unsigned num_params;
 	unsigned num_out;
@@ -7525,6 +7525,7 @@ static void si_build_wrapper_function(struct si_shader_context *ctx,
 				LLVMValueRef val =
 					LLVMBuildExtractValue(builder, ret, i, "");
 
+				assert(num_out < ARRAY_SIZE(out));
 				out[num_out++] = val;
 
 				if (LLVMTypeOf(val) == ctx->i32) {

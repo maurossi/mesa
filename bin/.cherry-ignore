@@ -15,3 +15,65 @@ c12f8305a8ae4fd5d78a9ab8bbda790a711d5bed nv50,nvc0: remove IDX from bufctx immed
 # extra: References 6a7c5257cac but because later f8d69beed49
 #        introduced a regression and the latter didn't land
 c35fd58688fd8c0c421c35b28419d20befdcb8b9 i965: Fix anisotropic filtering for mag filter
+
+# stable: The commit addresses issue brought up by 08413a81b93dc537fb0c3
+#         which is not in branch.
+8e3d9c5d09c48be9a88bdca7ae3124c12b6db4fe anv: Round u_vector element sizes to a power of two
+
+# stable: The commit is a follow-up to 6235f08ff8870636d89d2181e0a9dfc3ebec7b45
+#         which is not in branch.
+b178e239dd7205a93ae3cf6c0a24c2c555bf333f anv: Transition MCS buffers from the undefined layout
+
+# stable: The commit addresses 63a43f41619 which is not in branch
+f6e674fa5164a957e93e8dc1334a48c9e7ee7df9 i965: Fix offset addition in get_isl_surf.
+
+# stable: The commit addresses 0f9b609cf4f which is not in branch.
+698636cc9762f090b75fd0421db7e654609e7715 i965: Fix = vs == in MCS aux usage assert.
+
+# stable: Depends on the low_prio queue, which did not land in branch.
+ed2b3f5c81b76281ff0e4728928ac55944b930b8 radeonsi: decrease the number of compiler threads
+
+# stable: Depends on the ac_surface work, which did not land in branch.
+5e81df0f103667d888bd346e148843f510a80adc ac/surface: fix hybrid graphics where APU=GFX9, dGPU=older
+
+# stable: Addresses build issues in autoExpandEnvironmentVariables
+#         which landed with commit a25093de7188d553dfd832626a4181bd36898604
+e21fc2c625279b29a3c05d3341b8b748655d5cec swr/rast: non-regex knob fallback code for gcc < 4.9
+
+# stable: Depends on the refactoring commit b10cdb217a1638aa7cbd2c7bbb580d180512f3f3
+#         at least.
+194ff5eed18f310bece0899595f678699badd32e swr: fix transform feedback logic
+
+# stable: Based upon earlier refactoring commit 37e22ab65e852fc585650f6df26d976e7306acce
+873789002f5d1c7c6c39231a8c8d541f4f61e65c radeonsi/gfx9: fix vertex idx in ES with multiple waves per threadgroup
+081ac6e5c6d2ef3931b27eb755d1a38827582a45 radeonsi/gfx9: always wrap GS and TCS in an if-block (v2)
+
+# stable: Reverted shortly after being merged in master.
+5c1241268ba9b240cb79ab9a30c5255b176c83c9 st/mesa: release sampler views when redefining a texture in st_context_teximage
+
+# stable: The bindless work did not land in branch.
+b38c9c57f272b54a190be4efd4297effa1a3deab mesa: fix mismatch when returning 64-bit bindless uniform handles
+
+# stable: Addresses commit 57165f2ef8 which landed after the 17.1 branchpoint.
+f99e9335e2ca46ec8ead00b63e79f800fec75592 st/glsl_to_tgsi: fix getting the image type for array of structs
+
+# stable: Addresses issues with bindless textures.
+f4d095cc651af005d5760aa9dd06e6ae7007fab6 radeonsi: update dirty_level_mask only when flushing or unbinding framebuffer
+
+# stable: Addresses issue introduced by earlier fix (081ac6e5c6d2), which
+#         did not land in branch
+2879a602dd5d133c792d262b6be98aa6f810c16d radeonsi: ensure that temp array allocas are in the entry block
+
+# stable: The EGL extension landed in 17.2
+39bf7756b9a56b4827fecabfca00a8139feecd25 egl: move KHR_no_error vs debug/robustness check further down
+
+# stable: The offending commit did not land in branch
+914f11e75b8ebe8a0faab76ce25fe185ab580eee st/mesa: fix unconditional return in st_framebuffer_iface_remove
+c4652a0a5b5eef32f31baa1187ecd2612ac1009d virgl: encode index buffer offset.
+
+# stable: RGBA landed in 17.2
+1bf703e4ea5c4f742bc7ba55d01e5afc3f4e11f9 dri_interface,egl,gallium: only expose RGBA visuals on Android
+be5773fa8dfe9255d9abaf5c7d5bbbd2d922da08 Android: fix compile error for DRI2 loader getCapability
+
+# stable: Commit was never applied - see above.
+d85802e501a67e193a4a363cfe3b4c17c3d9e2e9 Revert "st/mesa: release sampler views when redefining a texture in st_context_teximage"
