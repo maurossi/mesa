@@ -1610,16 +1610,6 @@ struct __DRIimageExtensionRec {
                                      int max, uint64_t *modifiers,
                                      unsigned int *external_only,
                                      int *count);
-
-   /**
-    * create a dri image from native window system handle
-    *
-    * \since version 5
-    */
-   __DRIimage *(*createImageFromWinsys)(__DRIscreen *_screen,
-                                        int width, int height, int format,
-                                        int num_handles, struct winsys_handle *whandle,
-                                        void *loaderPrivate);
 };
 
 
