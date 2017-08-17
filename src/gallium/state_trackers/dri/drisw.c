@@ -403,7 +403,7 @@ drisw_query_image(__DRIimage *image, int attrib, int *value)
 }
 
 static __DRIimageExtension driSWImageExtension = {
-    .base = { __DRI_IMAGE, 6 },
+    .base = { __DRI_IMAGE, 11 },
 
     .createImageFromRenderbuffer  = dri2_create_image_from_renderbuffer,
     .createImageFromTexture       = dri2_create_from_texture,
