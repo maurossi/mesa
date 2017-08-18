@@ -454,9 +454,13 @@ dri2_bind_extensions(struct dri2_egl_display *dri2_dpy,
              extensions[i]->version >= matches[j].version) {
             field = ((char *) dri2_dpy + matches[j].offset);
             *(const __DRIextension **) field = extensions[i];
-            _eglLog(_EGL_INFO, "found extension %s version %d",
-                    extensions[i]->name, extensions[i]->version);
-            break;
+            _eglLog(_EGL_INFO, "found extension %s %s version %d %d offset %d",
+                    extensions[i]->name, matches[j].name, extensions[i]->version, matches[j].version, matches[j].offset);
+//          break;
+         }
+         else {
+            _eglLog(_EGL_INFO, "skip unmatching extension %s ver. %d with %s ver. %d",
+                    extensions[i]->name, extensions[i]->version, matches[j].name, matches[j].version);
          }
       }
    }
