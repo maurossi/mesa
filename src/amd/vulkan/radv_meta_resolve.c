@@ -436,6 +436,11 @@ void radv_CmdResolveImage(
 	radv_meta_save_graphics_reset_vport_scissor(&saved_state, cmd_buffer);
 
 	assert(src_image->samples > 1);
+	if (src_image->samples <= 1) {
+		/* this causes GPU hangs if we get past here */
+		fprintf(stderr, "radv: Illegal resolve operation (src not multisampled), will hang GPU.");
+		return;
+	}
 	assert(dest_image->samples == 1);
 
 	if (src_image->samples >= 16) {

@@ -77,3 +77,68 @@ be5773fa8dfe9255d9abaf5c7d5bbbd2d922da08 Android: fix compile error for DRI2 loa
 
 # stable: Commit was never applied - see above.
 d85802e501a67e193a4a363cfe3b4c17c3d9e2e9 Revert "st/mesa: release sampler views when redefining a texture in st_context_teximage"
+
+# stable: Breaks SWR compilation due to earlier commit f50aa21456
+#         which did not land in branch.
+4d53b16f555b2d33216518100fb2cd578428512d swr: use the correct variable for no undefined symbols
+
+# stable: 17.2 nomination only. Depends on earlier commit 28634ff7d3
+#         which did not land in branch.
+cb6f16dce90b4737f62588f8ea5083ee6544787e radeon/ac: use ds_swizzle for derivs on si/cik.
+
+# stable: 17.2 nomination only. Depends on earlier commit 1cb5a6061c
+#         which did not land in branch.
+4d9b0dcccb81ad10113d9aef52b4c84496e879f1 configure: remove trailing "-a" in swr architecture test
+
+# stable: 17.2 nomination only.
+31a6750988d7dd431f72ff1ff11bfca83bde5d8c st/dri: NULL check before deref DRI loader .getCapability
+
+# stable: 17.2 nomination only.
+9966c85e01a4344d2a6bb76e432e0bed70d52ff6 st/osmesa: add osmesa framebuffer iface hash table per st manager
+
+# stable: 17.2 nomination only.
+c15b92ce1160d742ea431062bbe4b3e818bb2aaf intel/isl: Stop padding surfaces
+4d27c6095e8385cccd225993452baad4d2e35420 intel/isl: Don't align the height of the last array slice
+
+# stable: 17.2 nomination only.
+8e5808fc0c9d9da19a0c7f683c156386d4648842 i965/miptree: Call alloc_aux in create_for_bo
+
+# stable: 17.2 nomination only.
+2e9a13bf2205b6e96cba408e3f48f1c3fe49634a radv: Fix decompression on multisampled depth buffers
+
+# stable: 17.2 nomination only.
+5563872dbfbf733ed56e1b367bc8944ca59b1c3e isl: Validate row pitch of stencil surfaces.
+
+# stable: 17.2 nomination only.
+27fef5d52d44c8684fa4e7a21bd7a4284f3688ee radeonsi/gfx9: use the VI codepath for clamping Z
+
+# stable: 17.2 nomination only.
+f7dfc44c617bec0f847ebe49b8672a64354ab13d i965/blorp: Correct type of src_format in call to intel_miptree_texture_aux_usage
+
+# stable: 17.2 nomination only.
+5247b311e9b348fedd74980a34c4b6542d85b07b radv/gfx9: fix set predication packet.
+fc600eb98d5846fe59f4a79ed1c7ad2a0667e927 radv/gfx9: remove some leftover gfx6 descriptor setup.
+674ecbfef2acb17be363867425a013ca151e16b2 radv: emit db_htile_surface reg on gfx9 as well
+e43cc3e3afc98783310f81f8c0151a8314044739 radv/gfx9: handle GFX9 opaque metadata
+31bb8517a194af733deefe2d821537d994d39365 radv/gfx9: fix tile swizzle handling for gfx9
+
+# stable: 17.2 nomination only.
+694d59fbaf4bc85daaff6cc411162dd6d1232968 radv/gfx9: for fast clear use is_linear flag.
+
+# stable: 17.2 nomination only.
+49eda75df6aafdf5d2ffe5d9247b516ac7d14691 i965: Always allow CPU readback of the scanout on LLC platforms
+
+# stable: 17.2 nomination only.
+4c02e2bd95d16407084914ff7248a1717bdce658 radv: disable texture gather workaround on gfx9.
+
+# fixes:  This commit is complex and has non trivial conflicts due to
+#         multiple previous changes.
+ea08a296fe226f5e67366b4db420c2322f38774c radv: Handle VK_ATTACHMENT_UNUSED in color attachments.
+
+# fixes:  This commit addressed an earlier commit af22adee4f which did not
+#         land in branch.
+554aa094406f3f5a935c4adbe77569cc9beb4312 virgl: drop precise modifier.
+
+# fixes:  This commit is complex and has non trivial conflicts due to
+#         previous changes.
+df61a05019d5c7479d4b29d251af4231f125e61c radv: handle 10-bit format clamping workaround.

@@ -1135,7 +1135,17 @@ static LLVMValueRef emit_find_lsb(struct nir_to_llvm_context *ctx,
 		 */
 		LLVMConstInt(ctx->i32, 1, false),
 	};
-	return ac_build_intrinsic(&ctx->ac, "llvm.cttz.i32", ctx->i32, params, 2, AC_FUNC_ATTR_READNONE);
+
+	LLVMValueRef lsb = ac_build_intrinsic(&ctx->ac, "llvm.cttz.i32", ctx->i32,
+					      params, 2,
+					      AC_FUNC_ATTR_READNONE);
+
+	/* TODO: We need an intrinsic to skip this conditional. */
+	/* Check for zero: */
+	return LLVMBuildSelect(ctx->builder, LLVMBuildICmp(ctx->builder,
+							   LLVMIntEQ, src0,
+							   ctx->i32zero, ""),
+			       LLVMConstInt(ctx->i32, -1, 0), lsb, "");
 }
 
 static LLVMValueRef emit_ifind_msb(struct nir_to_llvm_context *ctx,
@@ -1239,7 +1249,6 @@ static LLVMValueRef emit_f2f16(struct nir_to_llvm_context *ctx,
 	src0 = to_float(ctx, src0);
 	result = LLVMBuildFPTrunc(ctx->builder, src0, ctx->f16, "");
 
-	/* TODO SI/CIK options here */
 	if (ctx->options->chip_class >= VI) {
 		LLVMValueRef args[2];
 		/* Check if the result is a denormal - and flush to 0 if so. */
@@ -1253,7 +1262,22 @@ static LLVMValueRef emit_f2f16(struct nir_to_llvm_context *ctx,
 
 	if (ctx->options->chip_class >= VI)
 		result = LLVMBuildSelect(ctx->builder, cond, ctx->f32zero, result, "");
-
+	else {
+		/* for SI/CIK */
+		/* 0x38800000 is smallest half float value (2^-14) in 32-bit float,
+		 * so compare the result and flush to 0 if it's smaller.
+		 */
+		LLVMValueRef temp, cond2;
+		temp = emit_intrin_1f_param(&ctx->ac, "llvm.fabs",
+					    ctx->f32, result);
+		cond = LLVMBuildFCmp(ctx->builder, LLVMRealUGT,
+				     LLVMBuildBitCast(ctx->builder, LLVMConstInt(ctx->i32, 0x38800000, false), ctx->f32, ""),
+				     temp, "");
+		cond2 = LLVMBuildFCmp(ctx->builder, LLVMRealUNE,
+				      temp, ctx->f32zero, "");
+		cond = LLVMBuildAnd(ctx->builder, cond, cond2, "");
+		result = LLVMBuildSelect(ctx->builder, cond, ctx->f32zero, result, "");
+	}
 	return result;
 }
 
