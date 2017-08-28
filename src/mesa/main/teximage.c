@@ -4766,13 +4766,13 @@ _mesa_CompressedTextureSubImage3D(GLuint texture, GLint level, GLint xoffset,
       }
 
       /* Copy in each face. */
-      for (i = 0; i < 6; ++i) {
+      for (i = zoffset; i < zoffset + depth; ++i) {
          texImage = texObj->Image[i][level];
          assert(texImage);
 
          _mesa_compressed_texture_sub_image(ctx, 3, texObj, texImage,
                                             texObj->Target, level,
-                                            xoffset, yoffset, zoffset,
+                                            xoffset, yoffset, 0,
                                             width, height, 1,
                                             format, imageSize, pixels);
 

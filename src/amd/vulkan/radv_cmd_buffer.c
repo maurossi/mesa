@@ -1106,6 +1106,10 @@ radv_emit_framebuffer_state(struct radv_cmd_buffer *cmd_buffer)
 	const struct radv_subpass *subpass = cmd_buffer->state.subpass;
 	int dst_resolve_micro_tile_mode = -1;
 
+	/* this may happen for inherited secondary recording */
+	if (!framebuffer)
+		return;
+
 	if (subpass->has_resolve) {
 		uint32_t a = subpass->resolve_attachments[0].attachment;
 		const struct radv_image *image = framebuffer->attachments[a].attachment->image;

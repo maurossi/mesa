@@ -905,6 +905,9 @@ TexInstruction::TexInstruction(Function *fn, operation op)
 
    tex.rIndirectSrc = -1;
    tex.sIndirectSrc = -1;
+
+   if (op == OP_TXF)
+      sType = TYPE_U32;
 }
 
 TexInstruction::~TexInstruction()
