@@ -142,3 +142,59 @@ ea08a296fe226f5e67366b4db420c2322f38774c radv: Handle VK_ATTACHMENT_UNUSED in co
 # fixes:  This commit is complex and has non trivial conflicts due to
 #         previous changes.
 df61a05019d5c7479d4b29d251af4231f125e61c radv: handle 10-bit format clamping workaround.
+
+# stable: 17.2 nomination only.
+611076a41aac3095a82dff2432943d7f8d429822 radv: disable support for VEGA for now.
+
+# stable: 17.2 nomination only.
+bc56dfbf3f20504fce13e0f1730eea05ea0ea69a i965: Mark all EGLimages as non-coherent.
+
+# stable: 17.2 nomination only.
+61d2f3f1c24323a1c067595ec78dfbfefdc72b41 i965/miptree: Return NONE from texture_aux_usage when fully resolved
+
+# stable: 17.2 nomination only.
+b040f51b61d4d5ee671ba9d862e871ac5ac67ddf ac/nir: fixup layer/viewport export for GFX9.
+
+# stable: 17.2 nomination only.
+2843c5d15cf7c051d6aaf0744c3c1c7d4a734184 radeonsi: update non-resident bindless descriptors if needed
+
+# stable: 17.2 nomination only.
+4734bfc02adad103efa1fa51e4c0f93fcaedb73c Android: Fix LLVM duplicated symbols linking for N and M
+
+# stable: 17.2 nomination only.
+0ae9ce0f29ea1973b850a4e6c6cae8606973036e i965/clear: Quantize the depth clear value based on the format
+
+# stable: 17.2 nomination only.
+fdef2f0fd19ac6f2715a802d1e14b8ddfa094f11 radeonsi/gfx9: properly handle imported textures with unexpected swizzle mode
+8dadb077908ad6d875577ca08e0e04a5741ba95b radeonsi: emit VGT_REUSE_OFF in the right place
+
+# stable: 17.2 nomination only.
+df09f1f3cd5110874899ed0f4b4c33ba9b006c50 radv/gfx9: use total levels in texture descriptor
+11834195e9c276e1f3756cf8f6161be14124261b radv/gfx9: fix level count in color register setup.
+d987b4ab9e240b479c71129c3c261982112c57d8 radv/gfx9: fixup db/stencil disable.
+864eb1852778abaa6f63ca106216001c9f375f05 radv: bump space check for indexed draw.
+9c080100d336e4f90575d5138508b519ed334eef radv/gfx9: emit sx_mrt_blend registers
+5378b5d0710be00d1316e42e692a52d4bc5d92fe radv: cleanup some image view descriptor setup.
+a74d98743115b928eaeabc0d58b63174158aa209 radv/image: don't rescale width/height if the format isn't changing
+bae7723e132d3177697606c799eabbb7cdde2f38 radv/gfx9: only minify image view width/height/depth before gfx9.
+5d26e0baf223b361c9919db213915a82d2dff5c4 radv: don't degrade tiling mode for small compressed or depth texture.
+8985ad494bce5a4c365fe38fdf500d8582b5a7d0 radv/gfx9: don't expose linear depth on vega.
+
+# stable: 17.2 nomination only.
+43595db30274f714e2b1f6120c2f5ec4c41614fe ac/nir: Cast sources of integer ops to int.
+
+# stable: 17.2 nomination only.
+19f6906c1e498499035e98929657e2faebe6c993 radv/gfx9: gfx9 has buffer sizing rules like pre-VI.
+
+# stable: 17.2 nomination only. Depends on earlier commit 76e2f390f98
+#         which did not land in branch.
+f24cf82d6db290a88abfff0669d2c5e2aa463901 i965/tex: Don't pass samples to miptree_create_for_teximage
+
+# stable: 17.2 nomination only. Depends on earlier commit f296c22989ff
+#         which did not land in branch.
+54c41af0aa92333579a72830254ac3aaa9f4aea1 i965: Make a BRW_NEW_FAST_CLEAR_COLOR dirty bit.
+
+# fixes: Depend on earlier commit 04a40f7d2a that did not land in
+#        branch and which exposes new API.
+3a5e3aa5a53cff55a5e31766d713a41ffa5a93d7 egl/drm: Fix misused x and y offsets in swrast_put_image2()
+fe2a6281b3b299998fe7399e7dbcc2077d773824 egl/drm: Fix misused x and y offsets in swrast_get_image()
