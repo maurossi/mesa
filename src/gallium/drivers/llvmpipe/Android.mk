@@ -33,8 +33,6 @@ LOCAL_SRC_FILES := \
 
 LOCAL_MODULE := libmesa_pipe_llvmpipe
 
-LOCAL_SHARED_LIBRARIES += libLLVM
-
 $(call mesa-build-with-llvm)
 
 include $(GALLIUM_COMMON_MK)
