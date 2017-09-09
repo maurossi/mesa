@@ -1839,6 +1839,7 @@ VkResult radv_BeginCommandBuffer(
 
 	memset(&cmd_buffer->state, 0, sizeof(cmd_buffer->state));
 	cmd_buffer->state.last_primitive_reset_en = -1;
+	cmd_buffer->usage_flags = pBeginInfo->flags;
 
 	/* setup initial configuration into command buffer */
 	if (cmd_buffer->level == VK_COMMAND_BUFFER_LEVEL_PRIMARY) {
@@ -1884,7 +1885,7 @@ void radv_CmdBindVertexBuffers(
 	/* We have to defer setting up vertex buffer since we need the buffer
 	 * stride from the pipeline. */
 
-	assert(firstBinding + bindingCount < MAX_VBS);
+	assert(firstBinding + bindingCount <= MAX_VBS);
 	for (uint32_t i = 0; i < bindingCount; i++) {
 		vb[firstBinding + i].buffer = radv_buffer_from_handle(pBuffers[i]);
 		vb[firstBinding + i].offset = pOffsets[i];

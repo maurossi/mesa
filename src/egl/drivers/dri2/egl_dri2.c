@@ -682,7 +682,8 @@ dri2_setup_screen(_EGLDisplay *disp)
       disp->Extensions.KHR_wait_sync = EGL_TRUE;
       if (dri2_dpy->fence->get_fence_from_cl_event)
          disp->Extensions.KHR_cl_event2 = EGL_TRUE;
-      if (dri2_dpy->fence->base.version >= 2) {
+      if (dri2_dpy->fence->base.version >= 2 &&
+          dri2_dpy->fence->get_capabilities) {
          unsigned capabilities =
             dri2_dpy->fence->get_capabilities(dri2_dpy->dri_screen);
          disp->Extensions.ANDROID_native_fence_sync =
@@ -936,9 +937,12 @@ dri2_display_release(_EGLDisplay *disp)
           wl_drm_destroy(dri2_dpy->wl_drm);
       if (dri2_dpy->wl_shm)
           wl_shm_destroy(dri2_dpy->wl_shm);
-      wl_registry_destroy(dri2_dpy->wl_registry);
-      wl_event_queue_destroy(dri2_dpy->wl_queue);
-      wl_proxy_wrapper_destroy(dri2_dpy->wl_dpy_wrapper);
+      if (dri2_dpy->wl_registry)
+         wl_registry_destroy(dri2_dpy->wl_registry);
+      if (dri2_dpy->wl_queue)
+         wl_event_queue_destroy(dri2_dpy->wl_queue);
+      if (dri2_dpy->wl_dpy_wrapper)
+         wl_proxy_wrapper_destroy(dri2_dpy->wl_dpy_wrapper);
       if (dri2_dpy->own_device) {
          wl_display_disconnect(dri2_dpy->wl_dpy);
       }

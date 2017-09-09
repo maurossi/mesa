@@ -194,7 +194,45 @@ f24cf82d6db290a88abfff0669d2c5e2aa463901 i965/tex: Don't pass samples to miptree
 #         which did not land in branch.
 54c41af0aa92333579a72830254ac3aaa9f4aea1 i965: Make a BRW_NEW_FAST_CLEAR_COLOR dirty bit.
 
-# fixes: Depend on earlier commit 04a40f7d2a that did not land in
+# fixes: Depends on earlier commit 04a40f7d2a that did not land in
 #        branch and which exposes new API.
 3a5e3aa5a53cff55a5e31766d713a41ffa5a93d7 egl/drm: Fix misused x and y offsets in swrast_put_image2()
 fe2a6281b3b299998fe7399e7dbcc2077d773824 egl/drm: Fix misused x and y offsets in swrast_get_image()
+
+# stable: 17.2 nomination only.
+0ac78dc92582a59d4319ebce019b4caa41fb432d util: move string_to_uint_map to glsl
+
+# stable: 17.2 nomination only.
+88cdf16871a0f1cd8ec3844072051ee38e945600 llvmpipe: initialize llvmpipe->dirty with LP_NEW_SCISSOR
+
+# stable: 17.2 nomination only.
+dc9e08b0c3b04ba77ed59b8700e9f43edccb3168 freedreno: skip batch-cache for compute shaders
+
+# stable: 17.2 nomination only.
+d118ff876559e468d2d243470947eee53171fe57 radv: disable 1d/2d linear optimisation on gfx9.
+
+# stable: 17.2 nomination only.
+6d929d3f85604768971d04fa2548f02ffca1696e radv/gfx9: set descriptor up for base_mip to level range.
+
+# stable: 17.2 nomination only.
+e38685cc62e2a452521c49a3ad09d82495c6b1d0 Revert "radv: disable support for VEGA for now."
+
+# stable: 17.2 nomination only. Depends on earlier commit 43ef75b394f
+#         which did not land in branch.
+63e79a8a777b36ecb30a1f6900e6b638cb32fc5f nir: Fix system_value_from_intrinsic for subgroups
+
+# stable: 17.2 nomination only. Depends on earlier commit f37ede40bad
+#         which did not land in branch.
+52b65dfda84e4d433a332dd84596eef054eb5cbb i965: Fix crash in fallback GTT mapping.
+
+# stable: 17.2 nomination only. Depends on earlier commit 5b62eb237c52
+#         which did not land in branch.
+34124e412f00432ba8b3b8d16e3f2168aa596622 radeonsi/gfx9: always flush DB metadata on framebuffer changes
+
+# fixes: Depends on earlier commit 78bef01da2b that did not land in
+#        branch.
+ff23e03d60d264a64fce340c132404c6070050a0 radv: Fix vkCopyImage with both depth and stencil aspects.
+
+# fixes: References 166823bf but it is not really a bug fix, just an
+#        enhancement.
+45c5c444518b7e83d9accd9f44702fa49282a3b8 radeonsi/gfx9: proper workaround for LS/HS VGPR initialization bug

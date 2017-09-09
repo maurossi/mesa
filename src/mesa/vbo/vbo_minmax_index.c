@@ -244,6 +244,7 @@ vbo_get_minmax_index(struct gl_context *ctx,
    const int index_size = vbo_sizeof_ib_type(ib->type);
    const char *indices;
    GLuint i;
+   GLintptr offset = 0;
 
    indices = (char *) ib->ptr + prim->start * index_size;
    if (_mesa_is_bufferobj(ib->obj)) {
@@ -253,7 +254,8 @@ vbo_get_minmax_index(struct gl_context *ctx,
                                 min_index, max_index))
          return;
 
-      indices = ctx->Driver.MapBufferRange(ctx, (GLintptr) indices, size,
+      offset = (GLintptr) indices;
+      indices = ctx->Driver.MapBufferRange(ctx, offset, size,
                                            GL_MAP_READ_BIT, ib->obj,
                                            MAP_INTERNAL);
    }
@@ -336,8 +338,8 @@ vbo_get_minmax_index(struct gl_context *ctx,
    }
 
    if (_mesa_is_bufferobj(ib->obj)) {
-      vbo_minmax_cache_store(ctx, ib->obj, ib->type, prim->start, count,
-                             *min_index, *max_index);
+      vbo_minmax_cache_store(ctx, ib->obj, ib->type, offset,
+                             count, *min_index, *max_index);
       ctx->Driver.UnmapBuffer(ctx, ib->obj, MAP_INTERNAL);
    }
 }
