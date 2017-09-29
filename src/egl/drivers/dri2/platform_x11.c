@@ -1334,6 +1334,7 @@ static const __DRIextension *dri3_image_loader_extensions[] = {
    &dri3_image_loader_extension.base,
    &image_lookup_extension.base,
    &use_invalidate.base,
+   &background_callable_extension.base,
    NULL,
 };
 

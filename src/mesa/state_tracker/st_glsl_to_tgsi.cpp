@@ -445,6 +445,7 @@ public:
    st_src_reg st_src_reg_for_double(double val);
    st_src_reg st_src_reg_for_float(float val);
    st_src_reg st_src_reg_for_int(int val);
+   st_src_reg st_src_reg_for_int64(int64_t val);
    st_src_reg st_src_reg_for_type(enum glsl_base_type type, int val);
 
    /**
@@ -1207,6 +1208,19 @@ glsl_to_tgsi_visitor::st_src_reg_for_int(int val)
 
    uval.i = val;
    src.index = add_constant(src.file, &uval, 1, GL_INT, &src.swizzle);
+
+   return src;
+}
+
+st_src_reg
+glsl_to_tgsi_visitor::st_src_reg_for_int64(int64_t val)
+{
+   st_src_reg src(PROGRAM_IMMEDIATE, -1, GLSL_TYPE_INT64);
+   union gl_constant_value uval[2];
+
+   memcpy(uval, &val, sizeof(uval));
+   src.index = add_constant(src.file, uval, 1, GL_DOUBLE, &src.swizzle);
+   src.swizzle = MAKE_SWIZZLE4(SWIZZLE_X, SWIZZLE_Y, SWIZZLE_X, SWIZZLE_Y);
 
    return src;
 }
@@ -2459,7 +2473,7 @@ glsl_to_tgsi_visitor::visit_expression(ir_expression* ir, st_src_reg *op)
       break;
    }
    case ir_unop_i642b:
-      emit_asm(ir, TGSI_OPCODE_U64SNE, result_dst, op[0], st_src_reg_for_int(0));
+      emit_asm(ir, TGSI_OPCODE_U64SNE, result_dst, op[0], st_src_reg_for_int64(0));
       break;
    case ir_unop_i642f:
       emit_asm(ir, TGSI_OPCODE_I642F, result_dst, op[0]);
@@ -2840,7 +2854,7 @@ glsl_to_tgsi_visitor::visit(ir_dereference_array *ir)
    ir->array->accept(this);
    src = this->result;
 
-   if (ir->array->ir_type != ir_type_dereference_array) {
+   if (!src.has_index2) {
       switch (this->prog->Target) {
       case GL_TESS_CONTROL_PROGRAM_NV:
          is_2D = (src.file == PROGRAM_INPUT || src.file == PROGRAM_OUTPUT) &&

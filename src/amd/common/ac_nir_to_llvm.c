@@ -3355,7 +3355,7 @@ static void visit_image_store(struct nir_to_llvm_context *ctx,
 static LLVMValueRef visit_image_atomic(struct nir_to_llvm_context *ctx,
                                        nir_intrinsic_instr *instr)
 {
-	LLVMValueRef params[6];
+	LLVMValueRef params[7];
 	int param_count = 0;
 	const nir_variable *var = instr->variables[0]->var;
 
@@ -4333,15 +4333,13 @@ static void visit_tex(struct nir_to_llvm_context *ctx, nir_tex_instr *instr)
 	}
 
 	if (instr->sampler_dim == GLSL_SAMPLER_DIM_CUBE && coord) {
-		if (instr->is_array && instr->op != nir_texop_lod)
-			coords[3] = apply_round_slice(ctx, coords[3]);
 		for (chan = 0; chan < instr->coord_components; chan++)
 			coords[chan] = to_float(ctx, coords[chan]);
 		if (instr->coord_components == 3)
 			coords[3] = LLVMGetUndef(ctx->f32);
 		ac_prepare_cube_coords(&ctx->ac,
 			instr->op == nir_texop_txd, instr->is_array,
-			coords, derivs);
+			instr->op == nir_texop_lod, coords, derivs);
 		if (num_deriv_comp)
 			num_deriv_comp--;
 	}

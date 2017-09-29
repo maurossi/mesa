@@ -236,3 +236,69 @@ ff23e03d60d264a64fce340c132404c6070050a0 radv: Fix vkCopyImage with both depth a
 # fixes: References 166823bf but it is not really a bug fix, just an
 #        enhancement.
 45c5c444518b7e83d9accd9f44702fa49282a3b8 radeonsi/gfx9: proper workaround for LS/HS VGPR initialization bug
+
+# stable: 17.2 nomination only.
+e4018fdd85d8b58250c2cff8cdf4edd6b2b3c70b st/mesa: skip draw calls with pipe_draw_info::count == 0
+
+# stable: 17.2 nomination only.
+76ac8fafadca86941f2723f7f7176b22112f5c0c radv/winsys: use amdgpu_bo_va_op_raw.
+e8d57802fea60d4b353761ba1bdb08545733c007 radv/gfx9: allocate events from uncached VA space
+
+# stable: 17.2 nomination only.
+219d29e4d83d8c901f127c8a004c45c23c15751e radv: use simpler indirect packet 3 if possible.
+
+# fixes: References 391673af but it is not really a bug fix.
+17dd4856a68621ab7107975df8239fb2963a57bb radeonsi: don't always apply the PrimID instancing bug workaround on SI
+
+# stable: 17.2 nomination only. Depends on earlier commit 4fab67a4415
+#         which did not land in branch.
+d496780fb2c7f2cf0e32b6a79dc528e5156dfcb3 intel/eu/validate: Look up types on demand in execution_type()
+
+# stable: 17.2 nomination only.
+2f5b4490b59062f224e73f7a2d5cc0d8bd8eaa7b radv: don't use iview for meta image width/height.
+1bcb953e16600e0d9329b678a6eacee98d326547 radv: handle GFX9 1D textures
+
+# stable: 17.2 nomination only.
+ebd2a5354df64ef504f1e213afd2d6ab9d69a776 radv/gfx9: set mip0-depth correctly for 2d arrays/3d images
+
+# stable: 17.2 nomination only.
+3633bae36b56a8667d31096b3c3472ab388c4fbf radv/gfx9: fix image resource handling.
+
+# fixes: It only fixes documentation.
+85b66d20969685c26d3f7d22b6fc7b988872fa88 docs/egl: remove reference to EGL_DRIVERS_PATH
+
+# fixes: We don't really want to disable something unless it is
+#        causing a big problem.
+bee83b26611c0a4a554aa37c59187351242e82fd radv: Disable multilayer & multilevel DCC.
+
+# fixes: Depends on earlier commit dfc06d2fac that did not land in
+#        branch.
+1a172fb113554fa03053052b161d5e22fc2fcb1f radv: Don't allocate CMASK for linear images.
+
+# stable: 17.2 nomination only. Depends on earlier commit f187a4932
+#         which did not land in branch.
+cffc0ae0d9e572a82ce88c09e6ee8e2ed2a9be91 ac/surface: match Z and stencil tile config
+
+# stable: 17.2. nomination only.
+64d9bd149aa7f5a09f73cae07499577933722fb2 radv/nir: call opt_remove_phis after trivial continues.
+
+# fixes: Depends on earlier commit 13a28ff2368 that did not land in
+#        branch.
+94736d31c364635a76a11e0bd4f046a42d2221d5 amd/common: add workaround for cube map array layer clamping
+
+# stable: 17.2 nomination only. Depends on earlier commit 5cb2eee557
+#         which did not land in branch.
+6fb0c1013b3578c5bd264efaa99a6d68418ccfb1 radeonsi: workaround for gather4 on integer cube maps
+
+# stable: 17.2 nomination only.
+c1b01370486d203a6bccff2161afb288cfda1de3 Scons: Add LLVM 5.0 support
+
+# stable: 17.2 nomination only.
+c4ac522511d20683c09441a9e96ddfbc1b540c00 ac/surface: handle S8 on gfx9
+
+# fixes:  This commit addressed an earlier commit 1bcb953e166 which did not
+#         land in branch.
+979978ee06867a531b8d56cee252f5c83920a339 radv: Check for GFX9 for 1D arrays in image_size intrinsic.
+
+# This commit is causing several regressions on i965 driver
+15cae12804ef288c7fb4cb9a38f7e32e6d8c4dc1 glsl/linker: fix output variable overlap check
