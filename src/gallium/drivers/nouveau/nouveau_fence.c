@@ -30,7 +30,8 @@
 #endif
 
 bool
-nouveau_fence_new(struct nouveau_screen *screen, struct nouveau_fence **fence)
+nouveau_fence_fd(struct nouveau_screen *screen, struct nouveau_fence **fence,
+                 int fd)
 {
    *fence = CALLOC_STRUCT(nouveau_fence);
    if (!*fence)
@@ -38,9 +39,16 @@ nouveau_fence_new(struct nouveau_screen *screen, struct nouveau_fence **fence)
 
    (*fence)->screen = screen;
    (*fence)->ref = 1;
+   (*fence)->fd = dup(fd);
    list_inithead(&(*fence)->work);
 
    return true;
+}
+
+bool
+nouveau_fence_new(struct nouveau_screen *screen, struct nouveau_fence **fence)
+{
+   return nouveau_fence_fd(screen, fence, -1);
 }
 
 static void
@@ -104,6 +112,9 @@ nouveau_fence_del(struct nouveau_fence *fence)
       debug_printf("WARNING: deleting fence with work still pending !\n");
       nouveau_fence_trigger_work(fence);
    }
+
+   if (fence->fd >= 0)
+      close(fence->fd);
 
    FREE(fence);
 }
@@ -175,9 +186,10 @@ nouveau_fence_kick(struct nouveau_fence *fence)
          nouveau_fence_emit(fence);
    }
 
-   if (fence->state < NOUVEAU_FENCE_STATE_FLUSHED)
-      if (nouveau_pushbuf_kick(screen->pushbuf, screen->pushbuf->channel))
+   if (fence->state < NOUVEAU_FENCE_STATE_FLUSHED) {
+      if (nouveau_pushbuf_kick_fence(screen->pushbuf, screen->pushbuf->channel, &fence->fd))
          return false;
+   }
 
    if (fence == screen->fence.current)
       nouveau_fence_next(screen);

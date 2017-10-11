@@ -1,3 +1,5 @@
+#include <libsync.h>
+
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
@@ -95,6 +97,14 @@ nouveau_screen_fence_finish(struct pipe_screen *screen,
    return nouveau_fence_wait(nouveau_fence(pfence), NULL);
 }
 
+static int
+nouveau_screen_fence_get_fd(struct pipe_screen *screen,
+                            struct pipe_fence_handle *pfence)
+{
+   struct nouveau_fence *fence = nouveau_fence(pfence);
+
+   return dup(fence->fd);
+}
 
 struct nouveau_bo *
 nouveau_screen_bo_from_handle(struct pipe_screen *pscreen,
@@ -314,6 +324,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
 
    pscreen->fence_reference = nouveau_screen_fence_ref;
    pscreen->fence_finish = nouveau_screen_fence_finish;
+   pscreen->fence_get_fd = nouveau_screen_fence_get_fd;
 
    nouveau_disk_cache_create(screen);
 
@@ -382,8 +393,33 @@ nouveau_set_debug_callback(struct pipe_context *pipe,
       memset(&context->debug, 0, sizeof(context->debug));
 }
 
+static void
+nouveau_create_fence_fd(struct pipe_context *pipe,
+                        struct pipe_fence_handle **pfence,
+                        int fd)
+{
+   struct nouveau_screen *screen = nouveau_screen(pipe->screen);
+
+   nouveau_fence_fd(screen, (struct nouveau_fence **)pfence, fd);
+}
+
+static void
+nouveau_fence_server_sync(struct pipe_context *pipe,
+                          struct pipe_fence_handle *pfence)
+{
+   struct nouveau_context *context = nouveau_context(pipe);
+   struct nouveau_fence *fence = nouveau_fence(pfence);
+
+   sync_accumulate("nouveau", &context->in_fence_fd, fence->fd);
+}
+
 void
 nouveau_context_init(struct nouveau_context *context)
 {
+   context->in_fence_fd = -1;
+
    context->pipe.set_debug_callback = nouveau_set_debug_callback;
+
+   context->pipe.create_fence_fd = nouveau_create_fence_fd;
+   context->pipe.fence_server_sync = nouveau_fence_server_sync;
 }

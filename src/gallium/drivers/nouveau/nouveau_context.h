@@ -54,6 +54,8 @@ struct nouveau_context {
       uint32_t buf_cache_count;
       uint32_t buf_cache_frame;
    } stats;
+
+   int in_fence_fd;
 };
 
 static inline struct nouveau_context *
@@ -98,6 +100,9 @@ nouveau_context_destroy(struct nouveau_context *ctx)
    for (i = 0; i < NOUVEAU_MAX_SCRATCH_BUFS; ++i)
       if (ctx->scratch.bo[i])
          nouveau_bo_ref(NULL, &ctx->scratch.bo[i]);
+
+   if (ctx->in_fence_fd >= 0)
+      close(ctx->in_fence_fd);
 
    FREE(ctx);
 }
