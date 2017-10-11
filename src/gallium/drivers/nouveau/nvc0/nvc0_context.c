@@ -30,16 +30,26 @@
 
 static void
 nvc0_flush(struct pipe_context *pipe,
-           struct pipe_fence_handle **fence,
+           struct pipe_fence_handle **pfence,
            unsigned flags)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nouveau_screen *screen = &nvc0->screen->base;
 
-   if (fence)
-      nouveau_fence_ref(screen->fence.current, (struct nouveau_fence **)fence);
+   if (pfence)
+      nouveau_fence_ref(screen->fence.current, (struct nouveau_fence **)pfence);
 
-   PUSH_KICK(nvc0->base.pushbuf); /* fencing handled in kick_notify */
+   if (flags & PIPE_FLUSH_FENCE_FD) {
+      struct nouveau_fence *fence = screen->fence.current;
+      struct nouveau_pushbuf *pushbuf = nvc0->base.pushbuf;
+      struct nouveau_object *channel = pushbuf->channel;
+      int fd = nvc0->base.in_fence_fd;
+
+      nouveau_pushbuf_kick_fence(pushbuf, channel, &fd);
+      fence->fd = fd;
+   } else {
+      PUSH_KICK(nvc0->base.pushbuf); /* fencing handled in kick_notify */
+   }
 
    nouveau_context_update_frame_stats(&nvc0->base);
 }
