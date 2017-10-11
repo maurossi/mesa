@@ -24,6 +24,7 @@ struct nouveau_fence {
    struct nouveau_screen *screen;
    int state;
    int ref;
+   int fd;
    uint32_t sequence;
    uint32_t work_count;
    struct list_head work;
@@ -32,6 +33,7 @@ struct nouveau_fence {
 void nouveau_fence_emit(struct nouveau_fence *);
 void nouveau_fence_del(struct nouveau_fence *);
 
+bool nouveau_fence_fd(struct nouveau_screen *, struct nouveau_fence **, int);
 bool nouveau_fence_new(struct nouveau_screen *, struct nouveau_fence **);
 bool nouveau_fence_work(struct nouveau_fence *, void (*)(void *), void *);
 void nouveau_fence_update(struct nouveau_screen *, bool flushed);
