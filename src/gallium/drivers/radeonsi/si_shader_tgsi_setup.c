@@ -1013,13 +1013,13 @@ void si_llvm_context_init(struct si_shader_context *ctx,
 	ctx->gallivm.module = LLVMModuleCreateWithNameInContext("tgsi",
 						ctx->gallivm.context);
 	LLVMSetTarget(ctx->gallivm.module, "amdgcn--");
-
+#if HAVE_LLVM >= 0x0309
 	LLVMTargetDataRef data_layout = LLVMCreateTargetDataLayout(tm);
 	char *data_layout_str = LLVMCopyStringRepOfTargetData(data_layout);
 	LLVMSetDataLayout(ctx->gallivm.module, data_layout_str);
 	LLVMDisposeTargetData(data_layout);
 	LLVMDisposeMessage(data_layout_str);
-
+#endif
 	bool unsafe_fpmath = (sscreen->debug_flags & DBG(UNSAFE_MATH)) != 0;
 	enum ac_float_mode float_mode =
 		unsafe_fpmath ? AC_FLOAT_MODE_UNSAFE_FP_MATH :
