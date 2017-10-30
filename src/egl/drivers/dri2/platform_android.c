@@ -1308,7 +1308,7 @@ droid_open_device(struct dri2_egl_display *dri2_dpy)
       fd = -1;
    }
 
-   return (fd >= 0) ? fcntl(fd, F_DUPFD_CLOEXEC, 3) : -1;
+   return (fd >= 0) ? fcntl(fd, F_DUPFD_CLOEXEC, 3) : loader_open_device("/dev/dri/renderD128");
 }
 
 static const struct dri2_egl_display_vtbl droid_display_vtbl = {
