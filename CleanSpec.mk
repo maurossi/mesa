@@ -14,3 +14,10 @@ $(call add-clean-step, rm -rf $(HOST_OUT_release)/*/EXECUTABLES/mesa_*_intermedi
 $(call add-clean-step, rm -rf $(HOST_OUT_release)/*/EXECUTABLES/glsl_compiler_intermediates)
 $(call add-clean-step, rm -rf $(HOST_OUT_release)/*/STATIC_LIBRARIES/libmesa_*_intermediates)
 $(call add-clean-step, rm -rf $(PRODUCT_OUT)/*/SHARED_LIBRARIES/*_dri_intermediates)
+
+# Move libraries to /vendor
+$(call add-clean-step, rm -f $(TARGET_OUT)/lib*/dri/*)
+$(call add-clean-step, rm -f $(TARGET_OUT)/lib*/libgbm.so)
+$(call add-clean-step, rm -f $(TARGET_OUT)/lib*/libglapi.so)
+$(call add-clean-step, rm -f $(TARGET_OUT)/lib*/libvulkan_intel.so)
+$(call add-clean-step, rm -f $(TARGET_OUT)/lib*/egl/libGLES_mesa.so)
