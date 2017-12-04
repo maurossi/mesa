@@ -29,6 +29,7 @@
 # The main target is libGLES_mesa.  For each classic driver enabled, a DRI
 # module will also be built.  DRI modules will be loaded by libGLES_mesa.
 
+ifneq ($(BOARD_USE_CUSTOMIZED_MESA), true)
 MESA_TOP := $(call my-dir)
 
 MESA_ANDROID_MAJOR_VERSION := $(word 1, $(subst ., , $(PLATFORM_VERSION)))
@@ -98,4 +99,5 @@ endif
 
 include $(INC_DIRS)
 
+endif
 endif
