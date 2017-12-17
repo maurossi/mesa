@@ -26,10 +26,10 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE := gallium_dri
-
+LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 LOCAL_MODULE_RELATIVE_PATH := $(MESA_DRI_MODULE_REL_PATH)
 LOCAL_SRC_FILES := target.c
-
+LOCAL_C_INCLUDES := $(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_util,,)
 LOCAL_CFLAGS :=
 
 # We need --undefined-version as some functions in dri.sym may be missing
