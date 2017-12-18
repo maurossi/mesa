@@ -230,12 +230,13 @@ anv_physical_device_init_uuids(struct anv_physical_device *device)
    }
 
    unsigned build_id_len = build_id_length(note);
+#ifndef ANDROID
    if (build_id_len < 20) {
       return vk_errorf(device->instance, device,
                        VK_ERROR_INITIALIZATION_FAILED,
                        "build-id too short.  It needs to be a SHA");
    }
-
+#endif
    struct mesa_sha1 sha1_ctx;
    uint8_t sha1[20];
    STATIC_ASSERT(VK_UUID_SIZE <= sizeof(sha1));

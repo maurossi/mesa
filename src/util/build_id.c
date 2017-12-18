@@ -58,8 +58,10 @@ build_id_find_nhdr_callback(struct dl_phdr_info *info, size_t size, void *data_)
 {
    struct callback_data *data = data_;
 
+#ifndef ANDROID
    if ((void *)info->dlpi_addr != data->dli_fbase)
       return 0;
+#endif
 
    for (unsigned i = 0; i < info->dlpi_phnum; i++) {
       if (info->dlpi_phdr[i].p_type != PT_NOTE)
