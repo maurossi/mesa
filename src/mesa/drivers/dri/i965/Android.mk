@@ -305,7 +305,7 @@ LOCAL_GENERATED_SOURCES := \
 	$(MESA_GEN_NIR_H)
 
 LOCAL_MODULE_CLASS := SHARED_LIBRARIES
-
+LOCAL_C_INCLUDES += $(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_util,,)
 intermediates := $(call local-generated-sources-dir)
 
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
