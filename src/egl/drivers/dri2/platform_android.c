@@ -1451,7 +1451,7 @@ dri2_initialize_android_drm(_EGLDriver *drv, _EGLDisplay *dpy)
    int ret;
 
    /* Not supported yet */
-   if (disp->Options.ForceSoftware)
+   if (dpy->Options.ForceSoftware)
       return EGL_FALSE;
 
    loader_set_logger(_eglLog);
