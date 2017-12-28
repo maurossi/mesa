@@ -173,8 +173,6 @@ get_native_buffer_name(struct ANativeWindowBuffer *buf)
    return (handle) ? handle->name : 0;
 }
 
-static const gralloc_module_t *gr_module = NULL;
-
 static EGLBoolean
 droid_window_dequeue_buffer(struct dri2_egl_surface *dri2_surf)
 {
@@ -1164,7 +1162,8 @@ swrastPutImage2(__DRIdrawable * draw, int op,
    if (h > dri2_surf->base.Height - y)
       h = dri2_surf->base.Height - y;
 
-   if (gr_module->lock(gr_module, dri2_surf->buffer->handle, GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN,
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(egl_dpy);
+   if (dri2_dpy->gralloc->lock(dri2_dpy->gralloc, dri2_surf->buffer->handle, GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN,
                        0, 0, dri2_surf->buffer->width, dri2_surf->buffer->height, (void**)&dstPtr)) {
       _eglLog(_EGL_WARNING, "can not lock window buffer");
       return;
@@ -1183,7 +1182,7 @@ swrastPutImage2(__DRIdrawable * draw, int op,
       }
    }
 
-   if (gr_module->unlock(gr_module, dri2_surf->buffer->handle)) {
+   if (dri2_dpy->gralloc->unlock(dri2_dpy->gralloc, dri2_surf->buffer->handle)) {
       _eglLog(_EGL_WARNING, "unlock buffer failed");
    }
 
@@ -1219,7 +1218,8 @@ swrastGetImage(__DRIdrawable * read,
    copyWidth = BPerPixel * w;
    xOffset = BPerPixel * x;
 
-   if (gr_module->lock(gr_module, dri2_surf->buffer->handle, GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN,
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(dri2_surf->base.Resource.Display);
+   if (dri2_dpy->gralloc->lock(dri2_dpy->gralloc, dri2_surf->buffer->handle, GRALLOC_USAGE_SW_READ_OFTEN | GRALLOC_USAGE_SW_WRITE_OFTEN,
                        0, 0, dri2_surf->buffer->width, dri2_surf->buffer->height, (void**)&srcPtr)) {
       _eglLog(_EGL_WARNING, "can not lock window buffer");
       memset(data, 0, copyWidth * h);
@@ -1239,7 +1239,7 @@ swrastGetImage(__DRIdrawable * read,
       }
    }
 
-   if (gr_module->unlock(gr_module, dri2_surf->buffer->handle)) {
+   if (dri2_dpy->gralloc->unlock(dri2_dpy->gralloc, dri2_surf->buffer->handle)) {
       _eglLog(_EGL_WARNING, "unlock buffer failed");
    }
 }
@@ -1335,28 +1335,6 @@ swrast_create_image_khr(_EGLDriver *drv, _EGLDisplay *disp,
 }
 
 static int
-load_gralloc(void)
-{
-   const hw_module_t *mod;
-   int err;
-
-   err = hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &mod);
-   if (!err) {
-      gr_module = (gralloc_module_t *) mod;
-   } else {
-      _eglLog(_EGL_WARNING, "fail to load gralloc");
-   }
-   return err;
-}
-
-static int
-is_drm_gralloc(void)
-{
-   /* need a cleaner way to distinguish drm_gralloc and gralloc.default */
-   return !!gr_module->perform;
-}
-
-static int
 droid_open_device(struct dri2_egl_display *dri2_dpy)
 {
    int fd = -1, err = -EINVAL;
@@ -1443,6 +1421,27 @@ static const __DRIextension *droid_swrast_loader_extensions[] = {
    NULL,
 };
 
+static struct dri2_egl_display *alloc_dri2_egl_display(bool is_swrast)
+{
+   struct dri2_egl_display *dri2_dpy = NULL;
+   const hw_module_t *mod;
+
+   if (!hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &mod)) {
+      gralloc_module_t *gr_mod = (gralloc_module_t *) mod;
+      if (is_swrast || gr_mod->perform) {
+         dri2_dpy = calloc(1, sizeof(*dri2_dpy));
+         if (dri2_dpy)
+            dri2_dpy->gralloc = gr_mod;
+         else
+            _eglError(EGL_BAD_ALLOC, "eglInitialize");
+      }
+   } else {
+      _eglLog(_EGL_FATAL, "DRI2: failed to get gralloc module");
+   }
+
+   return dri2_dpy;
+}
+
 static EGLBoolean
 dri2_initialize_android_drm(_EGLDriver *drv, _EGLDisplay *disp)
 {
@@ -1454,19 +1453,9 @@ dri2_initialize_android_drm(_EGLDriver *drv, _EGLDisplay *disp)
    if (disp->Options.ForceSoftware)
       return EGL_FALSE;
 
-   loader_set_logger(_eglLog);
-
-   dri2_dpy = calloc(1, sizeof(*dri2_dpy));
+   dri2_dpy = alloc_dri2_egl_display(false);
    if (!dri2_dpy)
-      return _eglError(EGL_BAD_ALLOC, "eglInitialize");
-
-   dri2_dpy->fd = -1;
-   ret = hw_get_module(GRALLOC_HARDWARE_MODULE_ID,
-                       (const hw_module_t **)&dri2_dpy->gralloc);
-   if (ret) {
-      err = "DRI2: failed to get gralloc module";
-      goto cleanup;
-   }
+      return _eglError(EGL_NOT_INITIALIZED, "eglInitialize");
 
    disp->DriverData = (void *) dri2_dpy;
 
@@ -1565,11 +1554,7 @@ dri2_initialize_android_swrast(_EGLDriver *drv, _EGLDisplay *disp)
    const char *err = "";
    const hw_module_t *mod;
 
-   _eglSetLogProc(droid_log);
-
-   loader_set_logger(_eglLog);
-
-   dri2_dpy = calloc(1, sizeof(*dri2_dpy));
+   dri2_dpy = alloc_dri2_egl_display(true);
    if (!dri2_dpy)
       return _eglError(EGL_BAD_ALLOC, "eglInitialize");
 
@@ -1619,24 +1604,17 @@ cleanup_driver_name:
 EGLBoolean
 dri2_initialize_android(_EGLDriver *drv, _EGLDisplay *disp)
 {
-   EGLBoolean initialized = EGL_TRUE;
+   EGLBoolean initialized = EGL_FALSE;
 
-   if (load_gralloc()) {
-      return EGL_FALSE;
-   }
+   _eglSetLogProc(droid_log);
 
-   int droid_hw_accel = (getenv("LIBGL_ALWAYS_SOFTWARE") == NULL) && is_drm_gralloc();
+   loader_set_logger(_eglLog);
 
-   if (droid_hw_accel) {
-      if (!dri2_initialize_android_drm(drv, disp)) {
-         initialized = dri2_initialize_android_swrast(drv, disp);
-         if (initialized) {
-            _eglLog(_EGL_INFO, "Android: Fallback to software renderer");
-         }
-      }
-   } else {
+   if (!getenv("LIBGL_ALWAYS_SOFTWARE"))
+      initialized = dri2_initialize_android_drm(drv, disp);
+
+   if (!initialized)
       initialized = dri2_initialize_android_swrast(drv, disp);
-   }
 
    return initialized;
 }
