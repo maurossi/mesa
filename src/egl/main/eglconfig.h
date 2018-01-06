@@ -88,7 +88,6 @@ struct _egl_config
    EGLint YInvertedNOK;
    EGLint FramebufferTargetAndroid;
    EGLint RecordableAndroid;
-   EGLint ComponentType;
 };
 
 
@@ -138,7 +137,6 @@ _eglOffsetOfConfig(EGLint attr)
    ATTRIB_MAP(EGL_Y_INVERTED_NOK,            YInvertedNOK);
    ATTRIB_MAP(EGL_FRAMEBUFFER_TARGET_ANDROID, FramebufferTargetAndroid);
    ATTRIB_MAP(EGL_RECORDABLE_ANDROID,        RecordableAndroid);
-   ATTRIB_MAP(EGL_COLOR_COMPONENT_TYPE_EXT,  ComponentType);
 #undef ATTRIB_MAP
    default:
       return -1;
