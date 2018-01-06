@@ -68,7 +68,6 @@ _eglInitConfig(_EGLConfig *conf, _EGLDisplay *dpy, EGLint id)
    conf->TransparentType = EGL_NONE;
    conf->NativeVisualType = EGL_NONE;
    conf->ColorBufferType = EGL_RGB_BUFFER;
-   conf->ComponentType = EGL_COLOR_COMPONENT_TYPE_FIXED_EXT;
 }
 
 
@@ -255,9 +254,6 @@ static const struct {
    { EGL_RECORDABLE_ANDROID,        ATTRIB_TYPE_BOOLEAN,
                                     ATTRIB_CRITERION_EXACT,
                                     EGL_DONT_CARE },
-   { EGL_COLOR_COMPONENT_TYPE_EXT,  ATTRIB_TYPE_ENUM,
-                                    ATTRIB_CRITERION_EXACT,
-                                    EGL_COLOR_COMPONENT_TYPE_FIXED_EXT },
 };
 
 
@@ -319,11 +315,6 @@ _eglValidateConfig(const _EGLConfig *conf, EGLBoolean for_matching)
             break;
          case EGL_COLOR_BUFFER_TYPE:
             if (val != EGL_RGB_BUFFER && val != EGL_LUMINANCE_BUFFER)
-               valid = EGL_FALSE;
-            break;
-         case EGL_COLOR_COMPONENT_TYPE_EXT:
-            if (val != EGL_COLOR_COMPONENT_TYPE_FIXED_EXT &&
-                val != EGL_COLOR_COMPONENT_TYPE_FLOAT_EXT)
                valid = EGL_FALSE;
             break;
          default:
