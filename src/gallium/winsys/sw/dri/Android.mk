@@ -31,5 +31,9 @@ LOCAL_SRC_FILES := $(C_SOURCES)
 
 LOCAL_MODULE := libmesa_winsys_sw_dri
 
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
+
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
