@@ -729,7 +729,7 @@ brw_initialize_context_constants(struct brw_context *brw)
       ctx->Const.AllowMappedBuffersDuringExecution = true;
 
    /* GL_ARB_get_program_binary */
-   ctx->Const.NumProgramBinaryFormats = 1;
+   ctx->Const.NumProgramBinaryFormats = 0;
 }
 
 static void
