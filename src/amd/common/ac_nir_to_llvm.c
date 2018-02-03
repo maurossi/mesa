@@ -2625,12 +2625,14 @@ static LLVMValueRef visit_var_atomic(struct ac_nir_context *ctx,
 	if (instr->intrinsic == nir_intrinsic_var_atomic_comp_swap ||
 	    instr->intrinsic == nir_intrinsic_shared_atomic_comp_swap) {
 		LLVMValueRef src1 = get_src(ctx, instr->src[src_idx + 1]);
+#if HAVE_LLVM >= 0x0309
 		result = LLVMBuildAtomicCmpXchg(ctx->ac.builder,
 						ptr, src, src1,
 						LLVMAtomicOrderingSequentiallyConsistent,
 						LLVMAtomicOrderingSequentiallyConsistent,
 						false);
 		result = LLVMBuildExtractValue(ctx->ac.builder, result, 0, "");
+#endif
 	} else {
 		LLVMAtomicRMWBinOp op;
 		switch (instr->intrinsic) {
