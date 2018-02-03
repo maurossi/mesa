@@ -171,6 +171,7 @@ void
 ac_add_function_attr(LLVMContextRef ctx, LLVMValueRef function,
                      int attr_idx, enum ac_func_attr attr)
 {
+#if HAVE_LLVM >= 0x0400
    const char *attr_name = attr_to_str(attr);
    unsigned kind_id = LLVMGetEnumAttributeKindForName(attr_name,
                                                       strlen(attr_name));
@@ -180,6 +181,7 @@ ac_add_function_attr(LLVMContextRef ctx, LLVMValueRef function,
       LLVMAddAttributeAtIndex(function, attr_idx, llvm_attr);
    else
       LLVMAddCallSiteAttribute(function, attr_idx, llvm_attr);
+#endif
 }
 
 void ac_add_func_attributes(LLVMContextRef ctx, LLVMValueRef function,
