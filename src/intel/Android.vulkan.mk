@@ -102,6 +102,10 @@ LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
+
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
@@ -121,6 +125,10 @@ LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := libdrm
+
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -142,6 +150,10 @@ LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
+
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
@@ -162,6 +174,10 @@ LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
+
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
@@ -181,6 +197,10 @@ LOCAL_C_INCLUDES := $(ANV_INCLUDES)
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_anv_entrypoints libmesa_genxml
 
 LOCAL_SHARED_LIBRARIES := libdrm
+
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
@@ -238,6 +258,10 @@ $(intermediates)/vulkan/anv_extensions.h:
 
 LOCAL_SHARED_LIBRARIES := libdrm
 
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
+
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
@@ -284,6 +308,10 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_anv_entrypoints
 
 LOCAL_SHARED_LIBRARIES := libdrm libz libsync liblog
+
+ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
+LOCAL_SHARED_LIBRARIES += libnativewindow
+endif
 
 include $(MESA_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)
