@@ -92,7 +92,7 @@ nvc0_get_query_result_resource(struct pipe_context *pipe,
                                        index, resource, offset);
 }
 
-static void
+void
 nvc0_render_condition(struct pipe_context *pipe,
                       struct pipe_query *pq,
                       boolean condition, enum pipe_render_cond_flag mode)
@@ -169,6 +169,16 @@ nvc0_render_condition(struct pipe_context *pipe,
       PUSH_DATA (push, hq->bo->offset + hq->offset);
       PUSH_DATA (push, cond);
    }
+}
+
+static void
+nvc0_render_condition_locked(struct pipe_context *pipe,
+                             struct pipe_query *pq,
+                             boolean condition, uint mode)
+{
+   mtx_lock(&nouveau_context(pipe)->screen->push_mutex);
+   nvc0_render_condition(pipe, pq, condition, mode);
+   mtx_unlock(&nouveau_context(pipe)->screen->push_mutex);
 }
 
 int
@@ -280,6 +290,6 @@ nvc0_init_query_functions(struct nvc0_context *nvc0)
    pipe->get_query_result = nvc0_get_query_result;
    pipe->get_query_result_resource = nvc0_get_query_result_resource;
    pipe->set_active_query_state = nvc0_set_active_query_state;
-   pipe->render_condition = nvc0_render_condition;
+   pipe->render_condition = nvc0_render_condition_locked;
    nvc0->cond_condmode = NVC0_3D_COND_MODE_ALWAYS;
 }
