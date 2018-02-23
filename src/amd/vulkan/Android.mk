@@ -78,6 +78,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 LOCAL_GENERATED_SOURCES += $(intermediates)/radv_entrypoints.c
 LOCAL_GENERATED_SOURCES += $(intermediates)/radv_entrypoints.h
 LOCAL_GENERATED_SOURCES += $(intermediates)/radv_extensions.c
+LOCAL_GENERATED_SOURCES += $(intermediates)/radv_extensions.h
 LOCAL_GENERATED_SOURCES += $(intermediates)/vk_format_table.c
 
 RADV_ENTRYPOINTS_SCRIPT := $(MESA_TOP)/src/amd/vulkan/radv_entrypoints_gen.py
@@ -105,7 +106,10 @@ $(intermediates)/radv_extensions.c: $(RADV_EXTENSIONS_SCRIPT) $(vulkan_api_xml)
 	$(MESA_PYTHON2) $(RADV_EXTENSIONS_SCRIPT) \
 		--xml $(vulkan_api_xml) \
 		--xml $(vk_android_native_buffer_xml) \
-		--out $@
+		--out-c $@ \
+		--out-h $(addsuffix .h,$(basename $@))
+
+$(intermediates)/radv_extensions.h: $(intermediates)/radv_extensions.c
 
 $(intermediates)/vk_format_table.c: $(VK_FORMAT_TABLE_SCRIPT) \
 					$(VK_FORMAT_PARSE_SCRIPT) \
