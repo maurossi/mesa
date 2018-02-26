@@ -84,7 +84,7 @@ EXTENSIONS = [
     Extension('VK_KHX_multiview',                         1, '!ANDROID'),
     Extension('VK_EXT_debug_report',                      9, True),
     Extension('VK_EXT_discard_rectangles',                1, True),
-    Extension('VK_EXT_external_memory_dma_buf',           1, True),
+    Extension('VK_EXT_external_memory_dma_buf',           1, '!ANDROID'),
     Extension('VK_EXT_external_memory_host',              1, 'device->rad_info.has_userptr'),
     Extension('VK_EXT_global_priority',                   1, 'device->rad_info.has_ctx_priority'),
     Extension('VK_AMD_draw_indirect_count',               1, True),
