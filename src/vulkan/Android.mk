@@ -65,18 +65,3 @@ endif
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
-
-#
-# libmesa_vulkan_wsi
-#
-
-include $(CLEAR_VARS)
-LOCAL_MODULE := libmesa_vulkan_wsi
-
-LOCAL_SRC_FILES := $(VULKAN_WSI_SOURCES)
-
-LOCAL_C_INCLUDES := \
-       $(MESA_TOP)/include/vulkan
-
-include $(MESA_COMMON_MK)
-include $(BUILD_STATIC_LIBRARY)
