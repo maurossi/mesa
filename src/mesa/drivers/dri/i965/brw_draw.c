@@ -395,8 +395,10 @@ mark_textures_used_for_txf(BITSET_WORD *used_for_txf,
  *
  * Resolve the depth buffer's HiZ buffer, resolve the depth buffer of each
  * enabled depth texture, and flush the render cache for any dirty textures.
+ * In addition, if the ASTC5x5 workaround is needed and if ASTC5x5 textures
+ * are present, resolve textures so that auxilary buffers are not needed.
  */
-void
+enum brw_astc5x5_wa_mode_t
 brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
                            bool *draw_aux_buffer_disabled)
 {
@@ -415,8 +417,33 @@ brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
       mark_textures_used_for_txf(used_for_txf, ctx->ComputeProgram._Current);
    }
 
-   /* Resolve depth buffer and render cache of each enabled texture. */
    int maxEnabledUnit = ctx->Texture._MaxEnabledTexImageUnit;
+   bool disable_aux = false;
+   bool texture_astc5x5_present = false;
+   bool texture_with_auxilary_present = false;
+
+   if (gen9_astc5x5_wa_required(brw)) {
+      /* walk through all the texture units to see if an ASTC5x5 and/or
+       * a texture with an auxilary buffer is to be accessed.
+       */
+      for (int i = 0; i <= maxEnabledUnit; i++) {
+         if (!ctx->Texture.Unit[i]._Current)
+            continue;
+         tex_obj = intel_texture_object(ctx->Texture.Unit[i]._Current);
+         if (!tex_obj)
+            continue;
+         if (tex_obj->mt && tex_obj->mt->aux_usage != ISL_AUX_USAGE_NONE) {
+            texture_with_auxilary_present = true;
+         }
+         if (tex_obj->_Format == MESA_FORMAT_RGBA_ASTC_5x5 ||
+             tex_obj->_Format == MESA_FORMAT_SRGB8_ALPHA8_ASTC_5x5) {
+            texture_astc5x5_present = true;
+         }
+      }
+      disable_aux = texture_astc5x5_present;
+   }
+
+   /* Resolve depth buffer and render cache of each enabled texture. */
    for (int i = 0; i <= maxEnabledUnit; i++) {
       if (!ctx->Texture.Unit[i]._Current)
 	 continue;
@@ -448,9 +475,16 @@ brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
                                      "for sampling");
       }
 
-      intel_miptree_prepare_texture(brw, tex_obj->mt, view_format,
-                                    min_level, num_levels,
-                                    min_layer, num_layers);
+      if (!disable_aux) {
+         intel_miptree_prepare_texture(brw, tex_obj->mt, view_format,
+                                       min_level, num_levels,
+                                       min_layer, num_layers);
+      } else {
+         intel_miptree_prepare_access(brw, tex_obj->mt,
+                                      min_level, num_levels,
+                                      min_layer, num_layers,
+                                      ISL_AUX_USAGE_NONE, false);
+      }
 
       /* If any programs are using it with texelFetch, we may need to also do
        * a prepare with an sRGB format to ensure texelFetch works "properly".
@@ -459,9 +493,16 @@ brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
          enum isl_format txf_format =
             translate_tex_format(brw, tex_obj->_Format, GL_DECODE_EXT);
          if (txf_format != view_format) {
-            intel_miptree_prepare_texture(brw, tex_obj->mt, txf_format,
-                                          min_level, num_levels,
-                                          min_layer, num_layers);
+            if (!disable_aux) {
+               intel_miptree_prepare_texture(brw, tex_obj->mt, txf_format,
+                                             min_level, num_levels,
+                                             min_layer, num_layers);
+            } else {
+               intel_miptree_prepare_access(brw, tex_obj->mt,
+                                            min_level, num_levels,
+                                            min_layer, num_layers,
+                                            ISL_AUX_USAGE_NONE, false);
+            }
          }
       }
 
@@ -497,6 +538,17 @@ brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
          }
       }
    }
+
+   if (gen9_astc5x5_wa_required(brw)) {
+      if (texture_astc5x5_present) {
+         assert(disable_aux);
+         return BRW_ASTC5x5_WA_MODE_HAS_ASTC5x5;
+      } else if (texture_with_auxilary_present) {
+         return BRW_ASTC5x5_WA_MODE_HAS_AUX;
+      }
+   }
+
+   return BRW_ASTC5x5_WA_MODE_NONE;
 }
 
 static void
@@ -740,8 +792,11 @@ brw_prepare_drawing(struct gl_context *ctx,
     * this draw call.
     */
    bool draw_aux_buffer_disabled[MAX_DRAW_BUFFERS] = { };
-   brw_predraw_resolve_inputs(brw, true, draw_aux_buffer_disabled);
+   enum brw_astc5x5_wa_mode_t astc5x5_wa_mode =
+      brw_predraw_resolve_inputs(brw, true, draw_aux_buffer_disabled);
    brw_predraw_resolve_framebuffer(brw, draw_aux_buffer_disabled);
+
+   gen9_set_astc5x5_wa_mode(brw, astc5x5_wa_mode);
 
    /* Bind all inputs, derive varying and size information:
     */

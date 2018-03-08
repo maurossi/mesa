@@ -475,7 +475,8 @@ swizzle_to_scs(GLenum swizzle, bool need_green_to_blue)
    return (need_green_to_blue && scs == HSW_SCS_GREEN) ? HSW_SCS_BLUE : scs;
 }
 
-static void brw_update_texture_surface(struct gl_context *ctx,
+static void
+brw_update_texture_surface(struct gl_context *ctx,
                            unsigned unit,
                            uint32_t *surf_offset,
                            bool for_gather,
@@ -615,8 +616,18 @@ static void brw_update_texture_surface(struct gl_context *ctx,
           obj->Target == GL_TEXTURE_CUBE_MAP_ARRAY)
          view.usage |= ISL_SURF_USAGE_CUBE_BIT;
 
-      enum isl_aux_usage aux_usage =
+      bool disable_aux =
+         (brw->astc5x5_wa_mode == BRW_ASTC5x5_WA_MODE_HAS_ASTC5x5);
+      enum isl_aux_usage aux_usage = (disable_aux) ? ISL_AUX_USAGE_NONE :
          intel_miptree_texture_aux_usage(brw, mt, format);
+
+      assert(!gen9_astc5x5_wa_required(brw) ||
+             brw->astc5x5_wa_mode != BRW_ASTC5x5_WA_MODE_HAS_ASTC5x5 ||
+             aux_usage == ISL_AUX_USAGE_NONE);
+      assert(!gen9_astc5x5_wa_required(brw) ||
+             brw->astc5x5_wa_mode != BRW_ASTC5x5_WA_MODE_HAS_AUX ||
+             !(mesa_fmt == MESA_FORMAT_RGBA_ASTC_5x5 ||
+               mesa_fmt == MESA_FORMAT_SRGB8_ALPHA8_ASTC_5x5));
 
       brw_emit_surface_state(brw, mt, mt->target, view, aux_usage,
                              surf_offset, surf_index,

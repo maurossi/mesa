@@ -1350,8 +1350,9 @@ void intel_update_renderbuffers(__DRIcontext *context,
                                 __DRIdrawable *drawable);
 void intel_prepare_render(struct brw_context *brw);
 
-void brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
-                                bool *draw_aux_buffer_disabled);
+enum brw_astc5x5_wa_mode_t
+brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
+                           bool *draw_aux_buffer_disabled);
 
 void intel_resolve_for_dri2_flush(struct brw_context *brw,
                                   __DRIdrawable *drawable);

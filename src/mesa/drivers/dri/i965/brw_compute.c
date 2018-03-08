@@ -177,7 +177,9 @@ brw_dispatch_compute_common(struct gl_context *ctx)
 
    brw_validate_textures(brw);
 
-   brw_predraw_resolve_inputs(brw, false, NULL);
+   enum brw_astc5x5_wa_mode_t astc5x5_wa_mode =
+      brw_predraw_resolve_inputs(brw, false, NULL);
+   gen9_set_astc5x5_wa_mode(brw, astc5x5_wa_mode);
 
    /* Flush the batch if the batch/state buffers are nearly full.  We can
     * grow them if needed, but this is not free, so we'd like to avoid it.
