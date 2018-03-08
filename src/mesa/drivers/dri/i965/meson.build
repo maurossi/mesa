@@ -97,6 +97,7 @@ files_i965 = files(
   'gen7_urb.c',
   'gen8_depth_state.c',
   'gen8_multisample_state.c',
+  'gen9_astc5x5_wa.c',
   'hsw_queryobj.c',
   'hsw_sol.c',
   'intel_batchbuffer.c',

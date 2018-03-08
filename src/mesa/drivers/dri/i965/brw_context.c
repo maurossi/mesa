@@ -1094,6 +1094,8 @@ brwCreateContext(gl_api api,
    if (ctx->Extensions.INTEL_performance_query)
       brw_init_performance_queries(brw);
 
+   brw->astc5x5_wa_mode = BRW_ASTC5x5_WA_MODE_NONE;
+
    vbo_use_buffer_objects(ctx);
    vbo_always_unmap_buffers(ctx);
 
