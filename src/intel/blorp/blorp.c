@@ -357,3 +357,19 @@ blorp_hiz_op(struct blorp_batch *batch, struct blorp_surf *surf,
       batch->blorp->exec(batch, &params);
    }
 }
+
+bool
+blorp_params_src_has_astc5x5(const struct blorp_params *params)
+{
+   return params->src.enabled &&
+      (params->src.surf.format == ISL_FORMAT_ASTC_LDR_2D_5X5_U8SRGB ||
+       params->src.surf.format == ISL_FORMAT_ASTC_LDR_2D_5X5_FLT16 ||
+       params->src.surf.format == ISL_FORMAT_ASTC_HDR_2D_5X5_FLT16);
+}
+
+bool
+blorp_params_src_has_aux(const struct blorp_params *params)
+{
+   return params->src.enabled &&
+      params->src.aux_usage != ISL_AUX_USAGE_NONE;
+}
