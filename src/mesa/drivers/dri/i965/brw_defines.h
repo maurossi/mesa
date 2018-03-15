@@ -1661,4 +1661,9 @@ enum brw_pixel_shader_coverage_mask_mode {
 # define GLK_SCEC_BARRIER_MODE_3D_HULL     (1 << 7)
 # define GLK_SCEC_BARRIER_MODE_MASK        REG_MASK(1 << 7)
 
+#define CS_CHICKEN1                        0x2580 /* Gen9+ */
+# define GEN9_REPLAY_MODE_MIDBUFFER             (0 << 0)
+# define GEN9_REPLAY_MODE_MIDOBJECT             (1 << 0)
+# define GEN9_REPLAY_MODE_MASK                  REG_MASK(1 << 0)
+
 #endif
