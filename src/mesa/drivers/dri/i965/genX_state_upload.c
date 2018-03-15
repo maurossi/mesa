@@ -5408,6 +5408,50 @@ static const struct brw_tracked_state genX(blend_constant_color) = {
 
 /* ---------------------------------------------------------------------- */
 
+#if GEN_GEN == 9
+
+/**
+ * Implement workarounds for preemption:
+ *    - WaDisableMidObjectPreemptionForGSLineStripAdj
+ *    - WaDisableMidObjectPreemptionForTrifanOrPolygon
+ */
+static void
+gen9_emit_preempt_wa(struct brw_context *brw)
+{
+   /* WaDisableMidObjectPreemptionForGSLineStripAdj
+    *
+    *    WA: Disable mid-draw preemption when draw-call is a linestrip_adj and
+    *    GS is enabled.
+    */
+   bool object_preemption =
+      !(brw->primitive == _3DPRIM_LINESTRIP_ADJ && brw->gs.enabled);
+
+   /* WaDisableMidObjectPreemptionForTrifanOrPolygon
+    *
+    *    TriFan miscompare in Execlist Preemption test. Cut index that is on a
+    *    previous context. End the previous, the resume another context with a
+    *    tri-fan or polygon, and the vertex count is corrupted. If we prempt
+    *    again we will cause corruption.
+    *
+    *    WA: Disable mid-draw preemption when draw-call has a tri-fan.
+    */
+   object_preemption =
+      object_preemption && !(brw->primitive == _3DPRIM_TRIFAN);
+
+   brw_enable_obj_preemption(brw, object_preemption);
+}
+
+static const struct brw_tracked_state gen9_preempt_wa = {
+   .dirty = {
+      .mesa = 0,
+      .brw = BRW_NEW_PRIMITIVE | BRW_NEW_GEOMETRY_PROGRAM,
+   },
+   .emit = gen9_emit_preempt_wa,
+};
+#endif
+
+/* ---------------------------------------------------------------------- */
+
 void
 genX(init_atoms)(struct brw_context *brw)
 {
@@ -5712,6 +5756,9 @@ genX(init_atoms)(struct brw_context *brw)
 
       &genX(cut_index),
       &gen8_pma_fix,
+#if GEN_GEN == 9
+      &gen9_preempt_wa,
+#endif
    };
 #endif
 
