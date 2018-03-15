@@ -699,7 +699,7 @@ dri2_setup_screen(_EGLDisplay *disp)
 
    if (dri2_renderer_query_integer(dri2_dpy,
                                    __DRI2_RENDERER_HAS_FRAMEBUFFER_SRGB))
-      disp->Extensions.KHR_gl_colorspace = EGL_TRUE;
+      disp->Extensions.KHR_gl_colorspace = EGL_FALSE;
 
    if (dri2_dpy->image_driver ||
        (dri2_dpy->dri2 && dri2_dpy->dri2->base.version >= 3) ||
