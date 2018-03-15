@@ -169,6 +169,24 @@ genX(init_device_state)(struct anv_device *device)
    gen10_emit_wa_lri_to_cache_mode_zero(&batch);
 #endif
 
+#if GEN_GEN >= 10
+   /* A fixed function pipe flush is required before modifying this field */
+   anv_batch_emit(&batch, GENX(PIPE_CONTROL), pipe) {
+      pipe.PipeControlFlushEnable = true;
+   }
+
+   /* enable object level preemption */
+   uint32_t csc1;
+
+   anv_pack_struct(&csc1, GENX(CS_CHICKEN1),
+                   .ReplayMode = ObjectLevelPreemption,
+                   .ReplayModeMask = 1);
+   anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
+      lri.RegisterOffset   = GENX(CS_CHICKEN1_num);
+      lri.DataDWord        = csc1;
+   }
+#endif
+
    anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
 
    assert(batch.next <= batch.end);
