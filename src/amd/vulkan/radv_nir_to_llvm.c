@@ -3043,13 +3043,13 @@ LLVMModuleRef ac_translate_nir_to_llvm(LLVMTargetMachineRef tm,
 			     options->family);
 	ctx.ac.module = LLVMModuleCreateWithNameInContext("shader", ctx.context);
 	LLVMSetTarget(ctx.ac.module, options->supports_spill ? "amdgcn-mesa-mesa3d" : "amdgcn--");
-
+#if HAVE_LLVM >= 0x0309
 	LLVMTargetDataRef data_layout = LLVMCreateTargetDataLayout(tm);
 	char *data_layout_str = LLVMCopyStringRepOfTargetData(data_layout);
 	LLVMSetDataLayout(ctx.ac.module, data_layout_str);
 	LLVMDisposeTargetData(data_layout);
 	LLVMDisposeMessage(data_layout_str);
-
+#endif
 	enum ac_float_mode float_mode =
 		options->unsafe_math ? AC_FLOAT_MODE_UNSAFE_FP_MATH :
 				       AC_FLOAT_MODE_DEFAULT;
