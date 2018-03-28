@@ -728,7 +728,7 @@ brw_postdraw_set_buffers_need_resolve(struct brw_context *brw)
       struct intel_renderbuffer *irb =
          intel_renderbuffer(fb->_ColorDrawBuffers[i]);
 
-      if (!irb)
+      if (!irb || !irb->mt)
          continue;
 
       mesa_format mesa_format =
