@@ -1245,6 +1245,7 @@ do_single_blorp_clear(struct brw_context *brw, struct gl_framebuffer *fb,
     * during resolves because the resolve operations only know about the
     * miptree and not the renderbuffer.
     */
+   if (!irb->mt) return;
    if (irb->Base.Base.Format != irb->mt->format)
       can_fast_clear = false;
 
