@@ -239,6 +239,7 @@ gen6_update_renderbuffer_surface(struct brw_context *brw,
    struct intel_renderbuffer *irb = intel_renderbuffer(rb);
    struct intel_mipmap_tree *mt = irb->mt;
 
+   if (!mt) return 0;
    assert(brw_render_target_supported(brw, rb));
 
    mesa_format rb_format = _mesa_get_render_format(ctx, intel_rb_format(irb));
@@ -917,6 +918,8 @@ gen4_update_renderbuffer_surface(struct brw_context *brw,
    uint32_t tile_x, tile_y;
    enum isl_format format;
    uint32_t offset;
+
+   if (!mt) return 0;
    /* _NEW_BUFFERS */
    mesa_format rb_format = _mesa_get_render_format(ctx, intel_rb_format(irb));
    /* BRW_NEW_FS_PROG_DATA */
