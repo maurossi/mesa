@@ -497,7 +497,7 @@ elif cc.has_header_symbol('sys/mkdev.h', 'major')
   pre_args += '-DMAJOR_IN_MKDEV'
 endif
 
-foreach h : ['xlocale.h', 'sys/sysctl.h']
+foreach h : ['xlocale.h', 'sys/sysctl.h', 'endian.h']
   if cc.has_header(h)
     pre_args += '-DHAVE_@0@'.format(h.to_upper().underscorify())
   endif
@@ -609,7 +609,7 @@ dep_libdrm_amdgpu = []
 dep_libdrm_radeon = []
 dep_libdrm_nouveau = []
 if with_amd_vk or with_gallium_radeonsi
-  dep_libdrm_amdgpu = dependency('libdrm_amdgpu', version : '>= 2.4.85')
+  dep_libdrm_amdgpu = dependency('libdrm_amdgpu', version : '>= 2.4.89')
 endif
 if with_gallium_radeonsi # older radeon too
   dep_libdrm_radeon = dependency('libdrm_radeon', version : '>= 2.4.71')
