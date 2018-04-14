@@ -87,7 +87,6 @@ VK_FORMAT_TABLE_SCRIPT := $(MESA_TOP)/src/amd/vulkan/vk_format_table.py
 VK_FORMAT_PARSE_SCRIPT := $(MESA_TOP)/src/amd/vulkan/vk_format_parse.py
 
 vulkan_api_xml = $(MESA_TOP)/src/vulkan/registry/vk.xml
-vk_android_native_buffer_xml = $(MESA_TOP)/src/vulkan/registry/vk_android_native_buffer.xml
 vk_format_layout_csv = $(MESA_TOP)/src/amd/vulkan/vk_format_layout.csv
 
 $(intermediates)/radv_entrypoints.c: $(RADV_ENTRYPOINTS_SCRIPT) \
@@ -96,7 +95,6 @@ $(intermediates)/radv_entrypoints.c: $(RADV_ENTRYPOINTS_SCRIPT) \
 	@mkdir -p $(dir $@)
 	$(MESA_PYTHON2) $(RADV_ENTRYPOINTS_SCRIPT) \
 		--xml $(vulkan_api_xml) \
-		--xml $(vk_android_native_buffer_xml) \
 		--outdir $(dir $@)
 
 $(intermediates)/radv_entrypoints.h: $(intermediates)/radv_entrypoints.c
@@ -105,7 +103,6 @@ $(intermediates)/radv_extensions.c: $(RADV_EXTENSIONS_SCRIPT) $(vulkan_api_xml)
 	@mkdir -p $(dir $@)
 	$(MESA_PYTHON2) $(RADV_EXTENSIONS_SCRIPT) \
 		--xml $(vulkan_api_xml) \
-		--xml $(vk_android_native_buffer_xml) \
 		--out-c $@ \
 		--out-h $(addsuffix .h,$(basename $@))
 
