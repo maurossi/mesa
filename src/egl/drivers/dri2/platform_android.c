@@ -661,11 +661,18 @@ droid_query_buffer_age(_EGLDriver *drv,
 {
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surface);
 
+   /* To avoid blocking other EGL calls, release the display mutex before
+    * we enter droid_window_dequeue_buffer() and re-acquire the mutex upon
+    * return.
+    */
+   mtx_unlock(&disp->Mutex);
    if (update_buffers(dri2_surf) < 0) {
       _eglError(EGL_BAD_ALLOC, "droid_query_buffer_age");
+      mtx_lock(&disp->Mutex);
       return -1;
    }
 
+   mtx_lock(&disp->Mutex);
    return dri2_surf->back ? dri2_surf->back->age : 0;
 }
 
