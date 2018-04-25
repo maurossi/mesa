@@ -724,7 +724,7 @@ droid_swap_interval(_EGLDisplay *disp, _EGLSurface *surf, EGLint interval)
    struct dri2_egl_surface *dri2_surf = dri2_egl_surface(surf);
    struct ANativeWindow *window = dri2_surf->window;
 
-   if (window->setSwapInterval(window, interval))
+   if (window && window->setSwapInterval(window, interval))
       return EGL_FALSE;
 
    surf->SwapInterval = interval;
