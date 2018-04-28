@@ -138,7 +138,7 @@ static void si_init_compiler(struct si_screen *sscreen,
 	/* Add LLVM passes into the pass manager. */
 	if (sscreen->debug_flags & DBG(CHECK_IR))
 		LLVMAddVerifierPass(compiler->passmgr);
-
+#if HAVE_LLVM >= 0x0309
 	LLVMAddAlwaysInlinerPass(compiler->passmgr);
 	/* This pass should eliminate all the load and store instructions. */
 	LLVMAddPromoteMemoryToRegisterPass(compiler->passmgr);
@@ -156,6 +156,7 @@ static void si_init_compiler(struct si_screen *sscreen,
 		return;
 	compiler->data_layout = LLVMCopyStringRepOfTargetData(data_layout);
 	LLVMDisposeTargetData(data_layout);
+#endif
 }
 
 static void si_destroy_compiler(struct si_compiler *compiler)
