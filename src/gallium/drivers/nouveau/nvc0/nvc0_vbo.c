@@ -921,6 +921,8 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    struct nvc0_screen *screen = nvc0->screen;
    int s;
 
+   mtx_lock(&screen->base.push_mutex);
+
    /* NOTE: caller must ensure that (min_index + index_bias) is >= 0 */
    nvc0->vb_elt_first = info->min_index + info->index_bias;
    nvc0->vb_elt_limit = info->max_index - info->min_index;
@@ -1094,4 +1096,5 @@ cleanup:
 
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_IDX);
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_BINDLESS);
+   mtx_unlock(&screen->base.push_mutex);
 }
