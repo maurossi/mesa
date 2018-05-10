@@ -198,6 +198,8 @@ nv30_context_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    if (!nv30)
       return NULL;
 
+   mtx_lock(&screen->base.push_mutex);
+
    nv30->screen = screen;
    nv30->base.screen = &screen->base;
    nv30->base.copy_data = nv30_transfer_copy_data;
@@ -230,6 +232,7 @@ nv30_context_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    ret = nouveau_bufctx_new(nv30->base.client, 64, &nv30->bufctx);
    if (ret) {
       nv30_context_destroy(pipe);
+      mtx_unlock(&screen->base.push_mutex);
       return NULL;
    }
 
@@ -263,10 +266,13 @@ nv30_context_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    nv30->blitter = util_blitter_create(pipe);
    if (!nv30->blitter) {
       nv30_context_destroy(pipe);
+      mtx_unlock(&screen->base.push_mutex);
       return NULL;
    }
 
    nouveau_context_init_vdec(&nv30->base);
+
+   mtx_unlock(&screen->base.push_mutex);
 
    return pipe;
 }
