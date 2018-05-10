@@ -423,13 +423,17 @@ void
 nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *cp = nvc0->compprog;
    int ret;
 
+   mtx_lock(&screen->base.push_mutex);
+
    ret = !nvc0_state_validate_cp(nvc0, ~0);
    if (ret) {
       NOUVEAU_ERR("Failed to launch grid !\n");
+      mtx_unlock(&screen->base.push_mutex);
       return;
    }
 
@@ -497,4 +501,6 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
    nvc0->dirty_cp |= NVC0_NEW_CP_SURFACES;
    nvc0->images_dirty[5] |= nvc0->images_valid[5];
+
+   mtx_unlock(&screen->base.push_mutex);
 }
