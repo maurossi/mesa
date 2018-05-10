@@ -39,7 +39,9 @@ nvc0_flush(struct pipe_context *pipe,
    if (fence)
       nouveau_fence_ref(screen->fence.current, (struct nouveau_fence **)fence);
 
+   mtx_lock(&screen->push_mutex);
    PUSH_KICK(nvc0->base.pushbuf); /* fencing handled in kick_notify */
+   mtx_unlock(&screen->push_mutex);
 
    nouveau_context_update_frame_stats(&nvc0->base);
 }
@@ -49,8 +51,10 @@ nvc0_texture_barrier(struct pipe_context *pipe, unsigned flags)
 {
    struct nouveau_pushbuf *push = nvc0_context(pipe)->base.pushbuf;
 
+   mtx_lock(&nvc0_context(pipe)->screen->base.push_mutex);
    IMMED_NVC0(push, NVC0_3D(SERIALIZE), 0);
    IMMED_NVC0(push, NVC0_3D(TEX_CACHE_CTL), 0);
+   mtx_unlock(&nvc0_context(pipe)->screen->base.push_mutex);
 }
 
 static void
@@ -59,6 +63,8 @@ nvc0_memory_barrier(struct pipe_context *pipe, unsigned flags)
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    int i, s;
+
+   mtx_lock(&nvc0_context(pipe)->screen->base.push_mutex);
 
    if (flags & PIPE_BARRIER_MAPPED_BUFFER) {
       for (i = 0; i < nvc0->num_vtxbufs; ++i) {
@@ -105,6 +111,8 @@ nvc0_memory_barrier(struct pipe_context *pipe, unsigned flags)
       nvc0->cb_dirty = true;
    if (flags & (PIPE_BARRIER_VERTEX_BUFFER | PIPE_BARRIER_INDEX_BUFFER))
       nvc0->base.vbo_dirty = true;
+
+   mtx_unlock(&nvc0_context(pipe)->screen->base.push_mutex);
 }
 
 static void
@@ -121,6 +129,7 @@ nvc0_emit_string_marker(struct pipe_context *pipe, const char *str, int len)
       data_words = string_words;
    else
       data_words = string_words + !!(len & 3);
+   mtx_lock(&nvc0_context(pipe)->screen->base.push_mutex);
    BEGIN_NIC0(push, SUBC_3D(NV04_GRAPH_NOP), data_words);
    if (string_words)
       PUSH_DATAp(push, str, string_words);
@@ -129,6 +138,7 @@ nvc0_emit_string_marker(struct pipe_context *pipe, const char *str, int len)
       memcpy(&data, &str[string_words * 4], len & 3);
       PUSH_DATA (push, data);
    }
+   mtx_unlock(&nvc0_context(pipe)->screen->base.push_mutex);
 }
 
 static void
@@ -366,6 +376,8 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
       return NULL;
    pipe = &nvc0->base.pipe;
 
+   mtx_lock(&screen->base.push_mutex);
+
    if (!nvc0_blitctx_create(nvc0))
       goto out_err;
 
@@ -478,9 +490,12 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
 
    util_dynarray_init(&nvc0->global_residents, NULL);
 
+   mtx_unlock(&screen->base.push_mutex);
+
    return pipe;
 
 out_err:
+   mtx_unlock(&screen->base.push_mutex);
    if (nvc0) {
       if (pipe->stream_uploader)
          u_upload_destroy(pipe->stream_uploader);
