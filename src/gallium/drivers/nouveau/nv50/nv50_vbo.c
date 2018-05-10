@@ -770,6 +770,8 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    bool tex_dirty = false;
    int s;
 
+   mtx_lock(&nv50->screen->base.push_mutex);
+
    if (info->index_size && !info->has_user_indices)
       BCTX_REFN(nv50->bufctx_3d, 3D_INDEX, nv04_resource(info->index.resource), RD);
 
@@ -900,4 +902,5 @@ cleanup:
    nouveau_pushbuf_bufctx(push, NULL);
 
    nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_INDEX);
+   mtx_unlock(&nv50->screen->base.push_mutex);
 }
