@@ -380,6 +380,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
                             struct pipe_transfer **ptransfer)
 {
    struct nouveau_context *nv = nouveau_context(pipe);
+   struct nouveau_screen *screen = nv->screen;
    struct nv04_resource *buf = nv04_resource(resource);
    struct nouveau_transfer *tx = MALLOC_STRUCT(nouveau_transfer);
    uint8_t *map;
@@ -424,14 +425,19 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
                buf->data = NULL;
             }
             nouveau_transfer_staging(nv, tx, false);
+            mtx_lock(&screen->push_mutex);
             nouveau_transfer_read(nv, tx);
+            mtx_unlock(&screen->push_mutex);
          } else {
             /* The buffer is currently idle. Create a staging area for writes,
              * and make sure that the cached data is up-to-date. */
             if (usage & PIPE_TRANSFER_WRITE)
                nouveau_transfer_staging(nv, tx, true);
-            if (!buf->data)
+            if (!buf->data) {
+               mtx_lock(&screen->push_mutex);
                nouveau_buffer_cache(nv, buf);
+               mtx_unlock(&screen->push_mutex);
+            }
          }
       }
       return buf->data ? (buf->data + box->x) : tx->map;
@@ -477,7 +483,9 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
                             PIPE_TRANSFER_PERSISTENT))) {
          /* Discarding was not possible, must sync because
           * subsequent transfers might use UNSYNCHRONIZED. */
+         mtx_lock(&screen->push_mutex);
          nouveau_buffer_sync(nv, buf, usage & PIPE_TRANSFER_READ_WRITE);
+         mtx_unlock(&screen->push_mutex);
       } else
       if (usage & PIPE_TRANSFER_DISCARD_RANGE) {
          /* The whole range is being discarded, so it doesn't matter what was
@@ -486,10 +494,13 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
          map = tx->map;
       } else
       if (nouveau_buffer_busy(buf, PIPE_TRANSFER_READ)) {
-         if (usage & PIPE_TRANSFER_DONTBLOCK)
+         if (usage & PIPE_TRANSFER_DONTBLOCK) {
             map = NULL;
-         else
+         } else {
+            mtx_lock(&screen->push_mutex);
             nouveau_buffer_sync(nv, buf, usage & PIPE_TRANSFER_READ_WRITE);
+            mtx_unlock(&screen->push_mutex);
+         }
       } else {
          /* It is expected that the returned buffer be a representation of the
           * data in question, so we must copy it over from the buffer. */
@@ -513,9 +524,13 @@ nouveau_buffer_transfer_flush_region(struct pipe_context *pipe,
 {
    struct nouveau_transfer *tx = nouveau_transfer(transfer);
    struct nv04_resource *buf = nv04_resource(transfer->resource);
+   struct nouveau_screen *screen = nouveau_context(pipe)->screen;
 
-   if (tx->map)
+   if (tx->map) {
+      mtx_lock(&screen->push_mutex);
       nouveau_transfer_write(nouveau_context(pipe), tx, box->x, box->width);
+      mtx_unlock(&screen->push_mutex);
+   }
 
    util_range_add(&buf->valid_buffer_range,
                   tx->base.box.x + box->x,
@@ -535,11 +550,15 @@ nouveau_buffer_transfer_unmap(struct pipe_context *pipe,
    struct nouveau_context *nv = nouveau_context(pipe);
    struct nouveau_transfer *tx = nouveau_transfer(transfer);
    struct nv04_resource *buf = nv04_resource(transfer->resource);
+   struct nouveau_screen *screen = nouveau_context(pipe)->screen;
 
    if (tx->base.usage & PIPE_TRANSFER_WRITE) {
       if (!(tx->base.usage & PIPE_TRANSFER_FLUSH_EXPLICIT)) {
-         if (tx->map)
+         if (tx->map) {
+            mtx_lock(&screen->push_mutex);
             nouveau_transfer_write(nv, tx, 0, tx->base.box.width);
+            mtx_unlock(&screen->push_mutex);
+         }
 
          util_range_add(&buf->valid_buffer_range,
                         tx->base.box.x, tx->base.box.x + tx->base.box.width);
