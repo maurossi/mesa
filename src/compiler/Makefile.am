@@ -33,13 +33,16 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/src/compiler/glsl/glcpp\
 	-I$(top_builddir)/src/compiler/nir \
 	-I$(top_srcdir)/src/compiler/nir \
+	-I$(top_srcdir)/src/compiler/spirv \
 	-I$(top_srcdir)/src/gallium/include \
 	-I$(top_srcdir)/src/gallium/auxiliary \
 	-I$(top_srcdir)/src/gtest/include \
+	$(VALGRIND_CFLAGS) \
 	$(DEFINES)
 
 AM_CFLAGS = \
 	$(VISIBILITY_CFLAGS) \
+	$(WNO_OVERRIDE_INIT) \
 	$(MSVC2013_COMPAT_CFLAGS)
 
 AM_CXXFLAGS = \
@@ -54,7 +57,13 @@ check_PROGRAMS =
 TESTS =
 BUILT_SOURCES =
 CLEANFILES =
-EXTRA_DIST = SConscript
+EXTRA_DIST = \
+	SConscript \
+	glsl/glcpp/meson.build \
+	glsl/tests/meson.build \
+	glsl/meson.build \
+	nir/meson.build \
+	meson.build
 
 MKDIR_GEN = $(AM_V_at)$(MKDIR_P) $(@D)
 PYTHON_GEN = $(AM_V_GEN)$(PYTHON2) $(PYTHON_FLAGS)

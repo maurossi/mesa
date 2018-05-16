@@ -25,27 +25,26 @@
 #define SI_SHADER_PRIVATE_H
 
 #include "si_shader.h"
+#include "gallivm/lp_bld_flow.h"
 #include "gallivm/lp_bld_init.h"
 #include "gallivm/lp_bld_tgsi.h"
 #include "tgsi/tgsi_parse.h"
+#include "ac_shader_abi.h"
 #include "ac_llvm_util.h"
+#include "ac_llvm_build.h"
 
 #include <llvm-c/Core.h>
 #include <llvm-c/TargetMachine.h>
 
 struct pipe_debug_callback;
-struct radeon_shader_binary;
+struct ac_shader_binary;
 
 #define RADEON_LLVM_MAX_INPUT_SLOTS 32
 #define RADEON_LLVM_MAX_INPUTS 32 * 4
 #define RADEON_LLVM_MAX_OUTPUTS 32 * 4
 
-#define RADEON_LLVM_INITIAL_CF_DEPTH 4
-
-#define RADEON_LLVM_MAX_SYSTEM_VALUES 4
+#define RADEON_LLVM_MAX_SYSTEM_VALUES 11
 #define RADEON_LLVM_MAX_ADDRS 16
-
-struct si_llvm_flow;
 
 struct si_shader_context {
 	struct lp_build_tgsi_context bld_base;
@@ -56,8 +55,16 @@ struct si_shader_context {
 
 	unsigned type; /* PIPE_SHADER_* specifies the type of shader. */
 
+	/* For clamping the non-constant index in resource indexing: */
+	unsigned num_const_buffers;
+	unsigned num_shader_buffers;
+	unsigned num_images;
+	unsigned num_samplers;
+
 	/* Whether the prolog will be compiled separately. */
 	bool separate_prolog;
+
+	struct ac_shader_abi abi;
 
 	/** This function is responsible for initilizing the inputs array and will be
 	  * called once for each input declared in the TGSI shader.
@@ -66,13 +73,6 @@ struct si_shader_context {
 			   unsigned input_index,
 			   const struct tgsi_full_declaration *decl,
 			   LLVMValueRef out[4]);
-
-	void (*load_system_value)(struct si_shader_context *,
-				  unsigned index,
-				  const struct tgsi_full_declaration *decl);
-
-	void (*declare_memory_region)(struct si_shader_context *,
-				      const struct tgsi_full_declaration *decl);
 
 	/** This array contains the input values for the shader.  Typically these
 	  * values will be in the form of a target intrinsic that will inform the
@@ -94,9 +94,7 @@ struct si_shader_context {
 	LLVMValueRef *imms;
 	unsigned imms_num;
 
-	struct si_llvm_flow *flow;
-	unsigned flow_depth;
-	unsigned flow_depth_max;
+	struct lp_build_if_state merged_wrap_if_state;
 
 	struct tgsi_array_info *temp_arrays;
 	LLVMValueRef *temp_array_allocas;
@@ -106,41 +104,96 @@ struct si_shader_context {
 	LLVMValueRef main_fn;
 	LLVMTypeRef return_type;
 
+	/* Parameter indices for LLVMGetParam. */
+	int param_rw_buffers;
+	int param_const_and_shader_buffers;
+	int param_samplers_and_images;
+	int param_bindless_samplers_and_images;
+	/* Common inputs for merged shaders. */
+	int param_merged_wave_info;
+	int param_merged_scratch_offset;
+	/* API VS */
+	int param_vertex_buffers;
+	int param_rel_auto_id;
+	int param_vs_prim_id;
+	int param_vertex_index0;
+	/* VS states and layout of LS outputs / TCS inputs at the end
+	 *   [0] = clamp vertex color
+	 *   [1] = indexed
+	 *   [8:20] = stride between patches in DW = num_inputs * num_vertices * 4
+	 *            max = 32*32*4 + 32*4
+	 *   [24:31] = stride between vertices in DW = num_inputs * 4
+	 *             max = 32*4
+	 */
+	int param_vs_state_bits;
+	int param_vs_blit_inputs;
+	/* HW VS */
 	int param_streamout_config;
 	int param_streamout_write_index;
 	int param_streamout_offset[4];
-	int param_vertex_id;
-	int param_rel_auto_id;
-	int param_vs_prim_id;
-	int param_instance_id;
-	int param_vertex_index0;
+
+	/* API TCS & TES */
+	/* Layout of TCS outputs in the offchip buffer
+	 * # 6 bits
+	 *   [0:5] = the number of patches per threadgroup, max = NUM_PATCHES (40)
+	 * # 6 bits
+	 *   [6:11] = the number of output vertices per patch, max = 32
+	 * # 20 bits
+	 *   [12:31] = the offset of per patch attributes in the buffer in bytes.
+	 *             max = NUM_PATCHES*32*32*16
+	 */
+	int param_tcs_offchip_layout;
+
+	/* API TCS */
+	/* Offsets where TCS outputs and TCS patch outputs live in LDS:
+	 *   [0:15] = TCS output patch0 offset / 16, max = NUM_PATCHES * 32 * 32
+	 *   [16:31] = TCS output patch0 offset for per-patch / 16
+	 *             max = (NUM_PATCHES + 1) * 32*32
+	 */
+	int param_tcs_out_lds_offsets;
+	/* Layout of TCS outputs / TES inputs:
+	 *   [0:12] = stride between output patches in DW, num_outputs * num_vertices * 4
+	 *            max = 32*32*4 + 32*4
+	 *   [26:31] = gl_PatchVerticesIn, max = 32
+	 */
+	int param_tcs_out_lds_layout;
+	int param_tcs_offchip_addr_base64k;
+	int param_tcs_factor_addr_base64k;
+	int param_tcs_offchip_offset;
+	int param_tcs_factor_offset;
+
+	/* API TES */
 	int param_tes_u;
 	int param_tes_v;
 	int param_tes_rel_patch_id;
-	int param_tes_patch_id;
+	/* HW ES */
 	int param_es2gs_offset;
-	int param_oc_lds;
-
-	/* Sets a bit if the dynamic HS control word was 0x80000000. The bit is
-	 * 0x800000 for VS, 0x1 for ES.
-	 */
-	int param_tess_offchip;
+	/* API GS */
+	int param_gs2vs_offset;
+	int param_gs_wave_id; /* GFX6 */
+	LLVMValueRef gs_vtx_offset[6]; /* in dwords (GFX6) */
+	int param_gs_vtx01_offset; /* in dwords (GFX9) */
+	int param_gs_vtx23_offset; /* in dwords (GFX9) */
+	int param_gs_vtx45_offset; /* in dwords (GFX9) */
+	/* CS */
+	int param_grid_size;
+	int param_block_size;
+	int param_block_id[3];
+	int param_thread_id;
 
 	LLVMTargetMachineRef tm;
 
-	unsigned invariant_load_md_kind;
 	unsigned range_md_kind;
-	unsigned uniform_md_kind;
 	unsigned fpmath_md_kind;
 	LLVMValueRef fpmath_md_2p5_ulp;
-	LLVMValueRef empty_md;
 
 	/* Preloaded descriptors. */
 	LLVMValueRef esgs_ring;
 	LLVMValueRef gsvs_ring[4];
 
-	LLVMValueRef lds;
+	LLVMValueRef invoc0_tess_factors[6]; /* outer[4], inner[2] */
 	LLVMValueRef gs_next_vertex[4];
+	LLVMValueRef postponed_kill;
 	LLVMValueRef return_value;
 
 	LLVMTypeRef voidt;
@@ -150,13 +203,13 @@ struct si_shader_context {
 	LLVMTypeRef i64;
 	LLVMTypeRef i128;
 	LLVMTypeRef f32;
-	LLVMTypeRef v16i8;
 	LLVMTypeRef v2i32;
 	LLVMTypeRef v4i32;
 	LLVMTypeRef v4f32;
 	LLVMTypeRef v8i32;
 
-	LLVMValueRef shared_memory;
+	LLVMValueRef i32_0;
+	LLVMValueRef i32_1;
 };
 
 static inline struct si_shader_context *
@@ -165,12 +218,16 @@ si_shader_context(struct lp_build_tgsi_context *bld_base)
 	return (struct si_shader_context*)bld_base;
 }
 
+static inline struct si_shader_context *
+si_shader_context_from_abi(struct ac_shader_abi *abi)
+{
+	struct si_shader_context *ctx = NULL;
+	return container_of(abi, ctx, abi);
+}
+
 void si_llvm_add_attribute(LLVMValueRef F, const char *name, int value);
-void si_llvm_shader_type(LLVMValueRef F, unsigned type);
 
-LLVMTargetRef si_llvm_get_amdgpu_target(const char *triple);
-
-unsigned si_llvm_compile(LLVMModuleRef M, struct radeon_shader_binary *binary,
+unsigned si_llvm_compile(LLVMModuleRef M, struct ac_shader_binary *binary,
 			 LLVMTargetMachineRef tm,
 			 struct pipe_debug_callback *debug);
 
@@ -186,10 +243,9 @@ LLVMValueRef si_llvm_bound_index(struct si_shader_context *ctx,
 
 void si_llvm_context_init(struct si_shader_context *ctx,
 			  struct si_screen *sscreen,
-			  struct si_shader *shader,
-			  LLVMTargetMachineRef tm,
-			  const struct tgsi_shader_info *info,
-			  const struct tgsi_token *tokens);
+			  LLVMTargetMachineRef tm);
+void si_llvm_context_set_tgsi(struct si_shader_context *ctx,
+			      struct si_shader *shader);
 
 void si_llvm_create_func(struct si_shader_context *ctx,
 			 const char *name,
@@ -198,27 +254,90 @@ void si_llvm_create_func(struct si_shader_context *ctx,
 
 void si_llvm_dispose(struct si_shader_context *ctx);
 
-void si_llvm_finalize_module(struct si_shader_context *ctx,
-			     bool run_verifier);
+void si_llvm_optimize_module(struct si_shader_context *ctx);
 
 LLVMValueRef si_llvm_emit_fetch_64bit(struct lp_build_tgsi_context *bld_base,
-				      enum tgsi_opcode_type type,
+				      LLVMTypeRef type,
 				      LLVMValueRef ptr,
 				      LLVMValueRef ptr2);
-
-LLVMValueRef si_llvm_saturate(struct lp_build_tgsi_context *bld_base,
-			      LLVMValueRef value);
 
 LLVMValueRef si_llvm_emit_fetch(struct lp_build_tgsi_context *bld_base,
 				const struct tgsi_full_src_register *reg,
 				enum tgsi_opcode_type type,
 				unsigned swizzle);
 
+LLVMValueRef si_nir_load_input_tes(struct ac_shader_abi *abi,
+				   LLVMValueRef vertex_index,
+				   LLVMValueRef param_index,
+				   unsigned const_index,
+				   unsigned location,
+				   unsigned driver_location,
+				   unsigned component,
+				   unsigned num_components,
+				   bool is_patch,
+				   bool is_compact,
+				   bool load_input);
+
+LLVMValueRef si_llvm_load_input_gs(struct ac_shader_abi *abi,
+				   unsigned input_index,
+				   unsigned vtx_offset_param,
+				   LLVMTypeRef type,
+				   unsigned swizzle);
+
 void si_llvm_emit_store(struct lp_build_tgsi_context *bld_base,
 			const struct tgsi_full_instruction *inst,
 			const struct tgsi_opcode_info *info,
+			unsigned index,
 			LLVMValueRef dst[4]);
 
+/* Combine these with & instead of |. */
+#define NOOP_WAITCNT 0xf7f
+#define LGKM_CNT 0x07f
+#define VM_CNT 0xf70
+
+LLVMValueRef si_get_indirect_index(struct si_shader_context *ctx,
+				   const struct tgsi_ind_register *ind,
+				   unsigned addr_mul, int rel_index);
+LLVMValueRef si_get_bounded_indirect_index(struct si_shader_context *ctx,
+					   const struct tgsi_ind_register *ind,
+					   int rel_index, unsigned num);
+
+LLVMTypeRef si_const_array(LLVMTypeRef elem_type, int num_elements);
+
 void si_shader_context_init_alu(struct lp_build_tgsi_context *bld_base);
+void si_shader_context_init_mem(struct si_shader_context *ctx);
+
+LLVMValueRef si_load_sampler_desc(struct si_shader_context *ctx,
+				  LLVMValueRef list, LLVMValueRef index,
+				  enum ac_descriptor_type type);
+LLVMValueRef si_load_image_desc(struct si_shader_context *ctx,
+				LLVMValueRef list, LLVMValueRef index,
+				enum ac_descriptor_type desc_type, bool dcc_off);
+
+void si_load_system_value(struct si_shader_context *ctx,
+			  unsigned index,
+			  const struct tgsi_full_declaration *decl);
+void si_declare_compute_memory(struct si_shader_context *ctx,
+			       const struct tgsi_full_declaration *decl);
+
+void si_llvm_load_input_vs(
+	struct si_shader_context *ctx,
+	unsigned input_index,
+	LLVMValueRef out[4]);
+void si_llvm_load_input_fs(
+	struct si_shader_context *ctx,
+	unsigned input_index,
+	LLVMValueRef out[4]);
+
+bool si_nir_build_llvm(struct si_shader_context *ctx, struct nir_shader *nir);
+
+LLVMValueRef si_nir_load_input_gs(struct ac_shader_abi *abi,
+				  unsigned location,
+				  unsigned driver_location,
+				  unsigned component,
+				  unsigned num_components,
+				  unsigned vertex_index,
+				  unsigned const_index,
+				  LLVMTypeRef type);
 
 #endif

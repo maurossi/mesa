@@ -352,9 +352,9 @@ create_jit_vertex_buffer_type(struct gallivm_state *gallivm,
    LLVMTypeRef elem_types[4];
    LLVMTypeRef vb_type;
 
-   elem_types[0] =
-   elem_types[1] = LLVMInt32TypeInContext(gallivm->context);
-   elem_types[2] =
+   elem_types[0] = LLVMInt16TypeInContext(gallivm->context);
+   elem_types[1] = LLVMInt8TypeInContext(gallivm->context);
+   elem_types[2] = LLVMInt32TypeInContext(gallivm->context);
    elem_types[3] = LLVMPointerType(LLVMInt8TypeInContext(gallivm->context), 0);
 
    vb_type = LLVMStructTypeInContext(gallivm->context, elem_types,
@@ -363,8 +363,12 @@ create_jit_vertex_buffer_type(struct gallivm_state *gallivm,
    (void) target; /* silence unused var warning for non-debug build */
    LP_CHECK_MEMBER_OFFSET(struct pipe_vertex_buffer, stride,
                           target, vb_type, 0);
-   LP_CHECK_MEMBER_OFFSET(struct pipe_vertex_buffer, buffer_offset,
+   LP_CHECK_MEMBER_OFFSET(struct pipe_vertex_buffer, is_user_buffer,
                           target, vb_type, 1);
+   LP_CHECK_MEMBER_OFFSET(struct pipe_vertex_buffer, buffer_offset,
+                          target, vb_type, 2);
+   LP_CHECK_MEMBER_OFFSET(struct pipe_vertex_buffer, buffer.resource,
+                          target, vb_type, 3);
 
    LP_CHECK_STRUCT_SIZE(struct pipe_vertex_buffer, target, vb_type);
 
@@ -1670,8 +1674,6 @@ draw_llvm_generate(struct draw_llvm *llvm, struct draw_llvm_variant *variant)
       ind_vec = LLVMBuildInsertElement(builder, ind_vec, index, index, "");
    }
 
-   fetch_max = lp_build_alloca(gallivm, int32_type, "fetch_max");
-
    have_elts = LLVMBuildICmp(builder, LLVMIntNE,
                              LLVMConstPointerNull(arg_types[10]), fetch_elts, "");
 
@@ -1701,6 +1703,8 @@ draw_llvm_generate(struct draw_llvm *llvm, struct draw_llvm_variant *variant)
          vbuffer_ptr = LLVMBuildGEP(builder, vbuffers_ptr, &vb_index, 1, "");
          vb_info = LLVMBuildGEP(builder, vb_ptr, &vb_index, 1, "");
          vb_stride[j] = draw_jit_vbuffer_stride(gallivm, vb_info);
+         vb_stride[j] = LLVMBuildZExt(gallivm->builder, vb_stride[j],
+                                      LLVMInt32TypeInContext(context), "");
          vb_buffer_offset = draw_jit_vbuffer_offset(gallivm, vb_info);
          map_ptr[j] = draw_jit_dvbuffer_map(gallivm, vbuffer_ptr);
          buffer_size = draw_jit_dvbuffer_size(gallivm, vbuffer_ptr);
@@ -2068,7 +2072,7 @@ draw_llvm_dump_variant_key(struct draw_llvm_variant_key *key)
 
 void
 draw_llvm_set_mapped_texture(struct draw_context *draw,
-                             unsigned shader_stage,
+                             enum pipe_shader_type shader_stage,
                              unsigned sview_idx,
                              uint32_t width, uint32_t height, uint32_t depth,
                              uint32_t first_level, uint32_t last_level,
@@ -2113,7 +2117,7 @@ draw_llvm_set_mapped_texture(struct draw_context *draw,
 
 void
 draw_llvm_set_sampler_state(struct draw_context *draw, 
-                            unsigned shader_type)
+                            enum pipe_shader_type shader_type)
 {
    unsigned i;
 
@@ -2151,6 +2155,11 @@ void
 draw_llvm_destroy_variant(struct draw_llvm_variant *variant)
 {
    struct draw_llvm *llvm = variant->llvm;
+
+   if (gallivm_debug & (GALLIVM_DEBUG_TGSI | GALLIVM_DEBUG_IR)) {
+      debug_printf("Deleting VS variant: %u vs variants,\t%u total variants\n",
+                    variant->shader->variants_cached, llvm->nr_variants);
+   }
 
    gallivm_destroy(variant->gallivm);
 
@@ -2413,6 +2422,11 @@ void
 draw_gs_llvm_destroy_variant(struct draw_gs_llvm_variant *variant)
 {
    struct draw_llvm *llvm = variant->llvm;
+
+   if (gallivm_debug & (GALLIVM_DEBUG_TGSI | GALLIVM_DEBUG_IR)) {
+      debug_printf("Deleting GS variant: %u gs variants,\t%u total variants\n",
+                    variant->shader->variants_cached, llvm->nr_gs_variants);
+   }
 
    gallivm_destroy(variant->gallivm);
 

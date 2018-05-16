@@ -26,11 +26,12 @@
 #include "vc4_context.h"
 
 void
-vc4_init_cl(void *mem_ctx, struct vc4_cl *cl)
+vc4_init_cl(struct vc4_job *job, struct vc4_cl *cl)
 {
-        cl->base = rzalloc_size(mem_ctx, 1); /* TODO: don't use rzalloc */
+        cl->base = rzalloc_size(job, 1); /* TODO: don't use rzalloc */
         cl->next = cl->base;
         cl->size = 0;
+        cl->job = job;
 }
 
 void
@@ -60,10 +61,19 @@ vc4_gem_hindex(struct vc4_job *job, struct vc4_bo *bo)
 {
         uint32_t hindex;
         uint32_t *current_handles = job->bo_handles.base;
+        uint32_t cl_hindex_count = cl_offset(&job->bo_handles) / 4;
+        uint32_t last_hindex = bo->last_hindex; /* volatile read! */
 
-        for (hindex = 0; hindex < cl_offset(&job->bo_handles) / 4; hindex++) {
-                if (current_handles[hindex] == bo->handle)
+        if (last_hindex < cl_hindex_count &&
+            current_handles[last_hindex] == bo->handle) {
+                return last_hindex;
+        }
+
+        for (hindex = 0; hindex < cl_hindex_count; hindex++) {
+                if (current_handles[hindex] == bo->handle) {
+                        bo->last_hindex = hindex;
                         return hindex;
+                }
         }
 
         struct vc4_cl_out *out;
@@ -78,5 +88,6 @@ vc4_gem_hindex(struct vc4_job *job, struct vc4_bo *bo)
 
         job->bo_space += bo->size;
 
+        bo->last_hindex = hindex;
         return hindex;
 }

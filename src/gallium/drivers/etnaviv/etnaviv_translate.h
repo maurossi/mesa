@@ -33,10 +33,12 @@
 #include "etnaviv_tiling.h"
 #include "etnaviv_util.h"
 #include "hw/cmdstream.xml.h"
+#include "hw/common_3d.xml.h"
 #include "hw/state.xml.h"
 #include "hw/state_3d.xml.h"
 
 #include "util/u_format.h"
+#include "util/u_math.h"
 
 #include <stdio.h>
 
@@ -282,19 +284,19 @@ translate_msaa_format(enum pipe_format fmt)
    /* Note: Pipe format convention is LSB to MSB, VIVS is MSB to LSB */
    switch (fmt) {
    case PIPE_FORMAT_B4G4R4X4_UNORM:
-      return VIVS_TS_MEM_CONFIG_MSAA_FORMAT_A4R4G4B4;
+      return COLOR_COMPRESSION_FORMAT_A4R4G4B4;
    case PIPE_FORMAT_B4G4R4A4_UNORM:
-      return VIVS_TS_MEM_CONFIG_MSAA_FORMAT_A4R4G4B4;
+      return COLOR_COMPRESSION_FORMAT_A4R4G4B4;
    case PIPE_FORMAT_B5G5R5X1_UNORM:
-      return VIVS_TS_MEM_CONFIG_MSAA_FORMAT_A1R5G5B5;
+      return COLOR_COMPRESSION_FORMAT_A1R5G5B5;
    case PIPE_FORMAT_B5G5R5A1_UNORM:
-      return VIVS_TS_MEM_CONFIG_MSAA_FORMAT_A1R5G5B5;
+      return COLOR_COMPRESSION_FORMAT_A1R5G5B5;
    case PIPE_FORMAT_B5G6R5_UNORM:
-      return VIVS_TS_MEM_CONFIG_MSAA_FORMAT_R5G6B5;
+      return COLOR_COMPRESSION_FORMAT_R5G6B5;
    case PIPE_FORMAT_B8G8R8X8_UNORM:
-      return VIVS_TS_MEM_CONFIG_MSAA_FORMAT_X8R8G8B8;
+      return COLOR_COMPRESSION_FORMAT_X8R8G8B8;
    case PIPE_FORMAT_B8G8R8A8_UNORM:
-      return VIVS_TS_MEM_CONFIG_MSAA_FORMAT_A8R8G8B8;
+      return COLOR_COMPRESSION_FORMAT_A8R8G8B8;
    /* MSAA with YUYV not supported */
    default:
       return ETNA_NO_MATCH;
@@ -405,49 +407,16 @@ etna_layout_multiple(unsigned layout, unsigned pixel_pipes, bool rs_align,
    }
 }
 
-/* return 32-bit clear pattern for color */
-static inline uint32_t
-translate_clear_color(enum pipe_format format,
-                      const union pipe_color_union *color)
+static inline void etna_adjust_rs_align(unsigned num_pixelpipes,
+                                        unsigned *paddingX, unsigned *paddingY)
 {
-   uint32_t clear_value = 0;
+   unsigned alignX = ETNA_RS_WIDTH_MASK + 1;
+   unsigned alignY = (ETNA_RS_HEIGHT_MASK + 1) * num_pixelpipes;
 
-   // XXX util_pack_color
-   switch (format) {
-   case PIPE_FORMAT_B8G8R8A8_UNORM:
-   case PIPE_FORMAT_B8G8R8X8_UNORM:
-      clear_value = etna_cfloat_to_uintN(color->f[2], 8) |
-                    (etna_cfloat_to_uintN(color->f[1], 8) << 8) |
-                    (etna_cfloat_to_uintN(color->f[0], 8) << 16) |
-                    (etna_cfloat_to_uintN(color->f[3], 8) << 24);
-      break;
-   case PIPE_FORMAT_B4G4R4X4_UNORM:
-   case PIPE_FORMAT_B4G4R4A4_UNORM:
-      clear_value = etna_cfloat_to_uintN(color->f[2], 4) |
-                    (etna_cfloat_to_uintN(color->f[1], 4) << 4) |
-                    (etna_cfloat_to_uintN(color->f[0], 4) << 8) |
-                    (etna_cfloat_to_uintN(color->f[3], 4) << 12);
-      clear_value |= clear_value << 16;
-      break;
-   case PIPE_FORMAT_B5G5R5X1_UNORM:
-   case PIPE_FORMAT_B5G5R5A1_UNORM:
-      clear_value = etna_cfloat_to_uintN(color->f[2], 5) |
-                    (etna_cfloat_to_uintN(color->f[1], 5) << 5) |
-                    (etna_cfloat_to_uintN(color->f[0], 5) << 10) |
-                    (etna_cfloat_to_uintN(color->f[3], 1) << 15);
-      clear_value |= clear_value << 16;
-      break;
-   case PIPE_FORMAT_B5G6R5_UNORM:
-      clear_value = etna_cfloat_to_uintN(color->f[2], 5) |
-                    (etna_cfloat_to_uintN(color->f[1], 6) << 5) |
-                    (etna_cfloat_to_uintN(color->f[0], 5) << 11);
-      clear_value |= clear_value << 16;
-      break;
-   default:
-      DBG("Unhandled pipe format for color clear: %i", format);
-   }
-
-   return clear_value;
+   if (paddingX)
+      *paddingX = align(*paddingX, alignX);
+   if (paddingY)
+      *paddingY = align(*paddingY, alignY);
 }
 
 static inline uint32_t

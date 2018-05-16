@@ -20,6 +20,7 @@
 // OTHER DEALINGS IN THE SOFTWARE.
 //
 
+#include <unistd.h>
 #include "core/device.hpp"
 #include "core/platform.hpp"
 #include "pipe/p_screen.h"
@@ -186,8 +187,29 @@ device::image_support() const {
 
 bool
 device::has_doubles() const {
+   return pipe->get_param(pipe, PIPE_CAP_DOUBLES);
+}
+
+bool
+device::has_halves() const {
    return pipe->get_shader_param(pipe, PIPE_SHADER_COMPUTE,
-                                 PIPE_SHADER_CAP_DOUBLES);
+                                 PIPE_SHADER_CAP_FP16);
+}
+
+bool
+device::has_int64_atomics() const {
+   return pipe->get_shader_param(pipe, PIPE_SHADER_COMPUTE,
+                                 PIPE_SHADER_CAP_INT64_ATOMICS);
+}
+
+bool
+device::has_unified_memory() const {
+   return pipe->get_param(pipe, PIPE_CAP_UMA);
+}
+
+cl_uint
+device::mem_base_addr_align() const {
+   return sysconf(_SC_PAGESIZE);
 }
 
 std::vector<size_t>
@@ -235,4 +257,14 @@ device::ir_target() const {
 enum pipe_endian
 device::endianness() const {
    return (enum pipe_endian)pipe->get_param(pipe, PIPE_CAP_ENDIANNESS);
+}
+
+std::string
+device::device_version() const {
+    return "1.1";
+}
+
+std::string
+device::device_clc_version() const {
+    return "1.1";
 }

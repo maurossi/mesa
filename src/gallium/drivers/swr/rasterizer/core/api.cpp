@@ -43,7 +43,6 @@
 #include "core/clip.h"
 #include "core/utils.h"
 
-#include "common/simdintrin.h"
 #include "common/os.h"
 
 static const SWR_RECT g_MaxScissorRect = { 0, 0, KNOB_MAX_SCISSOR_X, KNOB_MAX_SCISSOR_Y };
@@ -75,13 +74,19 @@ HANDLE SwrCreateContext(
 
     pContext->privateStateSize = pCreateInfo->privateStateSize;
 
-    pContext->dcRing.Init(KNOB_MAX_DRAWS_IN_FLIGHT);
-    pContext->dsRing.Init(KNOB_MAX_DRAWS_IN_FLIGHT);
+    pContext->MAX_DRAWS_IN_FLIGHT = KNOB_MAX_DRAWS_IN_FLIGHT;
+    if (pCreateInfo->MAX_DRAWS_IN_FLIGHT != 0)
+    {
+        pContext->MAX_DRAWS_IN_FLIGHT = pCreateInfo->MAX_DRAWS_IN_FLIGHT;
+    }
 
-    pContext->pMacroTileManagerArray = (MacroTileMgr*)AlignedMalloc(sizeof(MacroTileMgr) * KNOB_MAX_DRAWS_IN_FLIGHT, 64);
-    pContext->pDispatchQueueArray = (DispatchQueue*)AlignedMalloc(sizeof(DispatchQueue) * KNOB_MAX_DRAWS_IN_FLIGHT, 64);
+    pContext->dcRing.Init(pContext->MAX_DRAWS_IN_FLIGHT);
+    pContext->dsRing.Init(pContext->MAX_DRAWS_IN_FLIGHT);
 
-    for (uint32_t dc = 0; dc < KNOB_MAX_DRAWS_IN_FLIGHT; ++dc)
+    pContext->pMacroTileManagerArray = (MacroTileMgr*)AlignedMalloc(sizeof(MacroTileMgr) * pContext->MAX_DRAWS_IN_FLIGHT, 64);
+    pContext->pDispatchQueueArray = (DispatchQueue*)AlignedMalloc(sizeof(DispatchQueue) * pContext->MAX_DRAWS_IN_FLIGHT, 64);
+
+    for (uint32_t dc = 0; dc < pContext->MAX_DRAWS_IN_FLIGHT; ++dc)
     {
         pContext->dcRing[dc].pArena = new CachingArena(pContext->cachingArenaAllocator);
         new (&pContext->pMacroTileManagerArray[dc]) MacroTileMgr(*pContext->dcRing[dc].pArena);
@@ -90,15 +95,31 @@ HANDLE SwrCreateContext(
         pContext->dsRing[dc].pArena = new CachingArena(pContext->cachingArenaAllocator);
     }
 
-    pContext->threadInfo.MAX_WORKER_THREADS        = KNOB_MAX_WORKER_THREADS;
-    pContext->threadInfo.MAX_NUMA_NODES            = KNOB_MAX_NUMA_NODES;
-    pContext->threadInfo.MAX_CORES_PER_NUMA_NODE   = KNOB_MAX_CORES_PER_NUMA_NODE;
-    pContext->threadInfo.MAX_THREADS_PER_CORE      = KNOB_MAX_THREADS_PER_CORE;
-    pContext->threadInfo.SINGLE_THREADED           = KNOB_SINGLE_THREADED;
-
     if (pCreateInfo->pThreadInfo)
     {
         pContext->threadInfo = *pCreateInfo->pThreadInfo;
+    }
+    else
+    {
+        pContext->threadInfo.MAX_WORKER_THREADS         = KNOB_MAX_WORKER_THREADS;
+        pContext->threadInfo.BASE_NUMA_NODE             = KNOB_BASE_NUMA_NODE;
+        pContext->threadInfo.BASE_CORE                  = KNOB_BASE_CORE;
+        pContext->threadInfo.BASE_THREAD                = KNOB_BASE_THREAD;
+        pContext->threadInfo.MAX_NUMA_NODES             = KNOB_MAX_NUMA_NODES;
+        pContext->threadInfo.MAX_CORES_PER_NUMA_NODE    = KNOB_MAX_CORES_PER_NUMA_NODE;
+        pContext->threadInfo.MAX_THREADS_PER_CORE       = KNOB_MAX_THREADS_PER_CORE;
+        pContext->threadInfo.SINGLE_THREADED            = KNOB_SINGLE_THREADED;
+    }
+
+    if (pCreateInfo->pApiThreadInfo)
+    {
+        pContext->apiThreadInfo = *pCreateInfo->pApiThreadInfo;
+    }
+    else
+    {
+        pContext->apiThreadInfo.bindAPIThread0          = true;
+        pContext->apiThreadInfo.numAPIReservedThreads   = 1;
+        pContext->apiThreadInfo.numAPIThreadsPerCore    = 1;
     }
 
     memset(&pContext->WaitLock, 0, sizeof(pContext->WaitLock));
@@ -108,8 +129,13 @@ HANDLE SwrCreateContext(
 
     CreateThreadPool(pContext, &pContext->threadPool);
 
+    if (pContext->apiThreadInfo.bindAPIThread0)
+    {
+        BindApiThread(pContext, 0);
+    }
+
     pContext->ppScratch = new uint8_t*[pContext->NumWorkerThreads];
-    pContext->pStats = new SWR_STATS[pContext->NumWorkerThreads];
+    pContext->pStats = (SWR_STATS*)AlignedMalloc(sizeof(SWR_STATS) * pContext->NumWorkerThreads, 64);
 
 #if defined(KNOB_ENABLE_AR)
     // Setup ArchRast thread contexts which includes +1 for API thread.
@@ -138,14 +164,16 @@ HANDLE SwrCreateContext(
 #endif
     }
 
+#if defined(KNOB_ENABLE_AR)
+    // cache the API thread event manager, for use with sim layer
+    pCreateInfo->hArEventManager = pContext->pArContext[pContext->NumWorkerThreads + 1];
+#endif
+
     // State setup AFTER context is fully initialized
     SetupDefaultState(pContext);
 
     // initialize hot tile manager
     pContext->pHotTileMgr = new HotTileMgr();
-
-    // initialize function pointer tables
-    InitClearTilesTable();
 
     // initialize callback functions
     pContext->pfnLoadTile = pCreateInfo->pfnLoadTile;
@@ -177,7 +205,7 @@ template<bool IsDraw>
 void QueueWork(SWR_CONTEXT *pContext)
 {
     DRAW_CONTEXT* pDC = pContext->pCurDrawContext;
-    uint32_t dcIndex = pDC->drawId % KNOB_MAX_DRAWS_IN_FLIGHT;
+    uint32_t dcIndex = pDC->drawId % pContext->MAX_DRAWS_IN_FLIGHT;
 
     if (IsDraw)
     {
@@ -193,7 +221,7 @@ void QueueWork(SWR_CONTEXT *pContext)
 
     if (IsDraw)
     {
-        InterlockedIncrement((volatile LONG*)&pContext->drawsOutstandingFE);
+        InterlockedIncrement(&pContext->drawsOutstandingFE);
     }
 
     _ReadWriteBarrier();
@@ -261,7 +289,7 @@ DRAW_CONTEXT* GetDrawContext(SWR_CONTEXT *pContext, bool isSplitDraw = false)
         }
 
         uint64_t curDraw = pContext->dcRing.GetHead();
-        uint32_t dcIndex = curDraw % KNOB_MAX_DRAWS_IN_FLIGHT;
+        uint32_t dcIndex = curDraw % pContext->MAX_DRAWS_IN_FLIGHT;
 
         if ((pContext->frameCount - pContext->lastFrameChecked) > 2 ||
             (curDraw - pContext->lastDrawChecked) > 0x10000)
@@ -277,7 +305,7 @@ DRAW_CONTEXT* GetDrawContext(SWR_CONTEXT *pContext, bool isSplitDraw = false)
         pContext->pCurDrawContext = pCurDrawContext;
 
         // Assign next available entry in DS ring to this DC.
-        uint32_t dsIndex = pContext->curStateId % KNOB_MAX_DRAWS_IN_FLIGHT;
+        uint32_t dsIndex = pContext->curStateId % pContext->MAX_DRAWS_IN_FLIGHT;
         pCurDrawContext->pState = &pContext->dsRing[dsIndex];
 
         // Copy previous state to current state.
@@ -333,7 +361,6 @@ DRAW_CONTEXT* GetDrawContext(SWR_CONTEXT *pContext, bool isSplitDraw = false)
         pCurDrawContext->drawId = pContext->dcRing.GetHead();
 
         pCurDrawContext->cleanupState = true;
-
     }
     else
     {
@@ -366,9 +393,9 @@ void SwrDestroyContext(HANDLE hContext)
     DestroyThreadPool(pContext, &pContext->threadPool);
 
     // free the fifos
-    for (uint32_t i = 0; i < KNOB_MAX_DRAWS_IN_FLIGHT; ++i)
+    for (uint32_t i = 0; i < pContext->MAX_DRAWS_IN_FLIGHT; ++i)
     {
-        delete[] pContext->dcRing[i].dynState.pStats;
+        AlignedFree(pContext->dcRing[i].dynState.pStats);
         delete pContext->dcRing[i].pArena;
         delete pContext->dsRing[i].pArena;
         pContext->pMacroTileManagerArray[i].~MacroTileMgr();
@@ -393,12 +420,18 @@ void SwrDestroyContext(HANDLE hContext)
     }
 
     delete[] pContext->ppScratch;
-    delete[] pContext->pStats;
+    AlignedFree(pContext->pStats);
 
     delete(pContext->pHotTileMgr);
 
     pContext->~SWR_CONTEXT();
     AlignedFree(GetContext(hContext));
+}
+
+void SwrBindApiThread(HANDLE hContext, uint32_t apiThreadId)
+{
+    SWR_CONTEXT *pContext = GetContext(hContext);
+    BindApiThread(pContext, apiThreadId);
 }
 
 void SWR_API SwrSaveState(
@@ -455,10 +488,20 @@ void SwrSync(HANDLE hContext, PFN_CALLBACK_FUNC pfnFunc, uint64_t userData, uint
     pDC->retireCallback.userData2 = userData2;
     pDC->retireCallback.userData3 = userData3;
 
+    AR_API_EVENT(SwrSyncEvent(pDC->drawId));
+
     //enqueue
     QueueDraw(pContext);
 
     AR_API_END(APISync, 1);
+}
+
+void SwrStallBE(HANDLE hContext)
+{
+    SWR_CONTEXT* pContext = GetContext(hContext);
+    DRAW_CONTEXT* pDC = GetDrawContext(pContext);
+
+    pDC->dependent = true;
 }
 
 void SwrWaitForIdle(HANDLE hContext)
@@ -591,12 +634,16 @@ void SwrSetCsFunc(
     HANDLE hContext,
     PFN_CS_FUNC pfnCsFunc,
     uint32_t totalThreadsInGroup,
-    uint32_t totalSpillFillSize)
+    uint32_t totalSpillFillSize,
+    uint32_t scratchSpaceSizePerInstance,
+    uint32_t numInstances)
 {
     API_STATE* pState = GetDrawState(GetContext(hContext));
     pState->pfnCsFunc = pfnCsFunc;
     pState->totalThreadsInGroup = totalThreadsInGroup;
     pState->totalSpillFillSize = totalSpillFillSize;
+    pState->scratchSpaceSize = scratchSpaceSizePerInstance;
+    pState->scratchSpaceNumInstances = numInstances;
 }
 
 void SwrSetTsState(
@@ -679,7 +726,7 @@ void SwrSetBlendFunc(
 // update guardband multipliers for the viewport
 void updateGuardbands(API_STATE *pState)
 {
-    uint32_t numGbs = pState->gsState.emitsRenderTargetArrayIndex ? KNOB_NUM_VIEWPORTS_SCISSORS : 1;
+    uint32_t numGbs = pState->backendState.readViewportArrayIndex ? KNOB_NUM_VIEWPORTS_SCISSORS : 1;
 
     for(uint32_t i = 0; i < numGbs; ++i)
     {
@@ -735,7 +782,7 @@ void SwrSetScissorRects(
 void SetupMacroTileScissors(DRAW_CONTEXT *pDC)
 {
     API_STATE *pState = &pDC->pState->state;
-    uint32_t numScissors = pState->gsState.emitsViewportArrayIndex ? KNOB_NUM_VIEWPORTS_SCISSORS : 1;
+    uint32_t numScissors = pState->backendState.readViewportArrayIndex ? KNOB_NUM_VIEWPORTS_SCISSORS : 1;
     pState->scissorsTileAligned = true;
 
     for (uint32_t index = 0; index < numScissors; ++index)
@@ -781,19 +828,15 @@ void SetupMacroTileScissors(DRAW_CONTEXT *pDC)
     }
 }
 
+
 // templated backend function tables
-extern PFN_BACKEND_FUNC gBackendNullPs[SWR_MULTISAMPLE_TYPE_COUNT];
-extern PFN_BACKEND_FUNC gBackendSingleSample[SWR_INPUT_COVERAGE_COUNT][2][2];
-extern PFN_BACKEND_FUNC gBackendPixelRateTable[SWR_MULTISAMPLE_TYPE_COUNT][SWR_MSAA_SAMPLE_PATTERN_COUNT][SWR_INPUT_COVERAGE_COUNT][2][2][2];
-extern PFN_BACKEND_FUNC gBackendSampleRateTable[SWR_MULTISAMPLE_TYPE_COUNT][SWR_INPUT_COVERAGE_COUNT][2][2];
+
 void SetupPipeline(DRAW_CONTEXT *pDC)
 {
-    SWR_CONTEXT* pContext = pDC->pContext;
     DRAW_STATE* pState = pDC->pState;
     const SWR_RASTSTATE &rastState = pState->state.rastState;
     const SWR_PS_STATE &psState = pState->state.psState;
     BACKEND_FUNCS& backendFuncs = pState->backendFuncs;
-    const uint32_t forcedSampleCount = (rastState.forcedSampleCount) ? 1 : 0;
 
     // setup backend
     if (psState.pfnPixelShader == nullptr)
@@ -802,10 +845,10 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
     }
     else
     {
-        const bool bMultisampleEnable = ((rastState.sampleCount > SWR_MULTISAMPLE_1X) || rastState.forcedSampleCount) ? 1 : 0;
+        const uint32_t forcedSampleCount = (rastState.forcedSampleCount) ? 1 : 0;
+        const bool bMultisampleEnable = ((rastState.sampleCount > SWR_MULTISAMPLE_1X) || forcedSampleCount) ? 1 : 0;
         const uint32_t centroid = ((psState.barycentricsMask & SWR_BARYCENTRIC_CENTROID_MASK) > 0) ? 1 : 0;
-        const uint32_t canEarlyZ = (psState.forceEarlyZ || (!psState.writesODepth && !psState.usesSourceDepth && !psState.usesUAV)) ? 1 : 0;
-
+        const uint32_t canEarlyZ = (psState.forceEarlyZ || (!psState.writesODepth && !psState.usesUAV)) ? 1 : 0;
         SWR_BARYCENTRICS_MASK barycentricsMask = (SWR_BARYCENTRICS_MASK)psState.barycentricsMask;
         
         // select backend function
@@ -816,7 +859,9 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
             {
                 // always need to generate I & J per sample for Z interpolation
                 barycentricsMask = (SWR_BARYCENTRICS_MASK)(barycentricsMask | SWR_BARYCENTRIC_PER_SAMPLE_MASK);
-                backendFuncs.pfnBackend = gBackendPixelRateTable[rastState.sampleCount][rastState.samplePattern][psState.inputCoverage][centroid][forcedSampleCount][canEarlyZ];
+                backendFuncs.pfnBackend = gBackendPixelRateTable[rastState.sampleCount][rastState.bIsCenterPattern][psState.inputCoverage]
+                                                                [centroid][forcedSampleCount][canEarlyZ]
+                    ;
             }
             else
             {
@@ -826,7 +871,7 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
             }
             break;
         case SWR_SHADING_RATE_SAMPLE:
-            SWR_ASSERT(rastState.samplePattern == SWR_MSAA_STANDARD_PATTERN);
+            SWR_ASSERT(rastState.bIsCenterPattern != true);
             // always need to generate I & J per sample for Z interpolation
             barycentricsMask = (SWR_BARYCENTRICS_MASK)(barycentricsMask | SWR_BARYCENTRIC_PER_SAMPLE_MASK);
             backendFuncs.pfnBackend = gBackendSampleRateTable[rastState.sampleCount][psState.inputCoverage][centroid][canEarlyZ];
@@ -836,13 +881,22 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
             break;
         }
     }
-    
+
+    SWR_ASSERT(backendFuncs.pfnBackend);
+
     PFN_PROCESS_PRIMS pfnBinner;
+#if USE_SIMD16_FRONTEND
+    PFN_PROCESS_PRIMS_SIMD16 pfnBinner_simd16;
+#endif
     switch (pState->state.topology)
     {
     case TOP_POINT_LIST:
         pState->pfnProcessPrims = ClipPoints;
         pfnBinner = BinPoints;
+#if USE_SIMD16_FRONTEND
+        pState->pfnProcessPrims_simd16 = ClipPoints_simd16;
+        pfnBinner_simd16 = BinPoints_simd16;
+#endif
         break;
     case TOP_LINE_LIST:
     case TOP_LINE_STRIP:
@@ -851,10 +905,18 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
     case TOP_LISTSTRIP_ADJ:
         pState->pfnProcessPrims = ClipLines;
         pfnBinner = BinLines;
+#if USE_SIMD16_FRONTEND
+        pState->pfnProcessPrims_simd16 = ClipLines_simd16;
+        pfnBinner_simd16 = BinLines_simd16;
+#endif
         break;
     default:
         pState->pfnProcessPrims = ClipTriangles;
         pfnBinner = GetBinTrianglesFunc((rastState.conservativeRast > 0));
+#if USE_SIMD16_FRONTEND
+        pState->pfnProcessPrims_simd16 = ClipTriangles_simd16;
+        pfnBinner_simd16 = GetBinTrianglesFunc_simd16((rastState.conservativeRast > 0));
+#endif
         break;
     };
 
@@ -863,6 +925,9 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
     if (pState->state.frontendState.vpTransformDisable)
     {
         pState->pfnProcessPrims = pfnBinner;
+#if USE_SIMD16_FRONTEND
+        pState->pfnProcessPrims_simd16 = pfnBinner_simd16;
+#endif
     }
 
     if ((pState->state.psState.pfnPixelShader == nullptr) &&
@@ -873,11 +938,17 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
         (pState->state.backendState.numAttributes == 0))
     {
         pState->pfnProcessPrims = nullptr;
+#if USE_SIMD16_FRONTEND
+        pState->pfnProcessPrims_simd16 = nullptr;
+#endif
     }
 
     if (pState->state.soState.rasterizerDisable == true)
     {
         pState->pfnProcessPrims = nullptr;
+#if USE_SIMD16_FRONTEND
+        pState->pfnProcessPrims_simd16 = nullptr;
+#endif
     }
 
 
@@ -932,19 +1003,30 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
                                           (pState->state.depthStencilState.stencilTestEnable  ||
                                            pState->state.depthStencilState.stencilWriteEnable)) ? true : false;
 
-    uint32_t numRTs = pState->state.psState.numRenderTargets;
-    pState->state.colorHottileEnable = 0;
+
+    uint32_t hotTileEnable = pState->state.psState.renderTargetMask;
+
+    // Disable hottile for surfaces with no writes
     if (psState.pfnPixelShader != nullptr)
     {
-        for (uint32_t rt = 0; rt < numRTs; ++rt)
+        DWORD rt;
+        uint32_t rtMask = pState->state.psState.renderTargetMask;
+        while (_BitScanForward(&rt, rtMask))
         {
-            pState->state.colorHottileEnable |=  
-                (!pState->state.blendState.renderTarget[rt].writeDisableAlpha ||
-                 !pState->state.blendState.renderTarget[rt].writeDisableRed ||
-                 !pState->state.blendState.renderTarget[rt].writeDisableGreen ||
-                 !pState->state.blendState.renderTarget[rt].writeDisableBlue) ? (1 << rt) : 0;
+            rtMask &= ~(1 << rt);
+
+            if (pState->state.blendState.renderTarget[rt].writeDisableAlpha &&
+                pState->state.blendState.renderTarget[rt].writeDisableRed &&
+                pState->state.blendState.renderTarget[rt].writeDisableGreen &&
+                pState->state.blendState.renderTarget[rt].writeDisableBlue)
+            {
+                hotTileEnable &= ~(1 << rt);
+            }
         }
     }
+
+    pState->state.colorHottileEnable = hotTileEnable;
+
 
     // Setup depth quantization function
     if (pState->state.depthHottileEnable)
@@ -955,7 +1037,7 @@ void SetupPipeline(DRAW_CONTEXT *pDC)
         case R32_FLOAT: pState->state.pfnQuantizeDepth = QuantizeDepth < R32_FLOAT > ; break;
         case R24_UNORM_X8_TYPELESS: pState->state.pfnQuantizeDepth = QuantizeDepth < R24_UNORM_X8_TYPELESS > ; break;
         case R16_UNORM: pState->state.pfnQuantizeDepth = QuantizeDepth < R16_UNORM > ; break;
-        default: SWR_ASSERT(false, "Unsupported depth format for depth quantiztion.");
+        default: SWR_INVALID("Unsupported depth format for depth quantiztion.");
             pState->state.pfnQuantizeDepth = QuantizeDepth < R32_FLOAT > ;
         }
     }
@@ -1108,7 +1190,6 @@ void DrawInstanced(
         pState->rastState.cullMode = SWR_CULLMODE_NONE;
     }
 
-
     int draw = 0;
     while (remainingVerts)
     {
@@ -1139,6 +1220,8 @@ void DrawInstanced(
         //enqueue DC
         QueueDraw(pContext);
 
+        AR_API_EVENT(DrawInstancedSplitEvent(pDC->drawId));
+
         remainingVerts -= numVertsForDraw;
         draw++;
     }
@@ -1146,7 +1229,6 @@ void DrawInstanced(
     // restore culling state
     pDC = GetDrawContext(pContext);
     pDC->pState->state.rastState.cullMode = oldCullMode;
-
 
     AR_API_END(APIDraw, numVertices * numInstances);
 }
@@ -1227,7 +1309,7 @@ void DrawIndexedInstance(
     case R16_UINT: indexSize = sizeof(uint16_t); break;
     case R8_UINT: indexSize = sizeof(uint8_t); break;
     default:
-        SWR_ASSERT(0);
+        SWR_INVALID("Invalid index buffer format: %d", pState->indexBuffer.format);
     }
 
     int draw = 0;
@@ -1248,7 +1330,6 @@ void DrawIndexedInstance(
     {
         pState->rastState.cullMode = SWR_CULLMODE_NONE;
     }
-
 
     while (remainingIndices)
     {
@@ -1284,6 +1365,8 @@ void DrawIndexedInstance(
         //enqueue DC
         QueueDraw(pContext);
 
+        AR_API_EVENT(DrawIndexedInstancedSplitEvent(pDC->drawId));
+
         pIB += maxIndicesPerDraw * indexSize;
         remainingIndices -= numIndicesForDraw;
         draw++;
@@ -1293,7 +1376,6 @@ void DrawIndexedInstance(
     pDC = GetDrawContext(pContext);
     pDC->pState->state.rastState.cullMode = oldCullMode;
  
-
     AR_API_END(APIDrawIndexed, numIndices * numInstances);
 }
 
@@ -1367,6 +1449,8 @@ void SWR_API SwrInvalidateTiles(
 
     //enqueue
     QueueDraw(pContext);
+
+    AR_API_EVENT(SwrInvalidateTilesEvent(pDC->drawId));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1400,6 +1484,8 @@ void SWR_API SwrDiscardRect(
 
     //enqueue
     QueueDraw(pContext);
+
+    AR_API_EVENT(SwrDiscardRectEvent(pDC->drawId));
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -1433,7 +1519,7 @@ void SwrDispatch(
     pTaskData->threadGroupCountZ = threadGroupCountZ;
 
     uint32_t totalThreadGroups = threadGroupCountX * threadGroupCountY * threadGroupCountZ;
-    uint32_t dcIndex = pDC->drawId % KNOB_MAX_DRAWS_IN_FLIGHT;
+    uint32_t dcIndex = pDC->drawId % pContext->MAX_DRAWS_IN_FLIGHT;
     pDC->pDispatch = &pContext->pDispatchQueueArray[dcIndex];
     pDC->pDispatch->initialize(totalThreadGroups, pTaskData, &ProcessComputeBE);
 
@@ -1468,6 +1554,8 @@ void SWR_API SwrStoreTiles(
 
     //enqueue
     QueueDraw(pContext);
+
+    AR_API_EVENT(SwrStoreTilesEvent(pDC->drawId));
 
     AR_API_END(APIStoreTiles, 1);
 }
@@ -1595,6 +1683,7 @@ void SWR_API SwrEndFrame(
 {
     SWR_CONTEXT *pContext = GetContext(hContext);
     DRAW_CONTEXT* pDC = GetDrawContext(pContext);
+    (void)pDC; // var used
 
     RDTSC_ENDFRAME();
     AR_API_EVENT(FrameEndEvent(pContext->frameCount, pDC->drawId));
@@ -1602,3 +1691,76 @@ void SWR_API SwrEndFrame(
     pContext->frameCount++;
 }
 
+void InitSimLoadTilesTable();
+void InitSimStoreTilesTable();
+void InitSimClearTilesTable();
+
+void InitClearTilesTable();
+void InitBackendFuncTables();
+
+//////////////////////////////////////////////////////////////////////////
+/// @brief Initialize swr backend and memory internal tables
+void SwrInit()
+{
+    InitSimLoadTilesTable();
+    InitSimStoreTilesTable();
+    InitSimClearTilesTable();
+
+    InitClearTilesTable();
+    InitBackendFuncTables();
+    InitRasterizerFunctions();
+}
+
+void SwrGetInterface(SWR_INTERFACE &out_funcs)
+{
+    out_funcs.pfnSwrCreateContext = SwrCreateContext;
+    out_funcs.pfnSwrDestroyContext = SwrDestroyContext;
+    out_funcs.pfnSwrBindApiThread = SwrBindApiThread;
+    out_funcs.pfnSwrSaveState = SwrSaveState;
+    out_funcs.pfnSwrRestoreState = SwrRestoreState;
+    out_funcs.pfnSwrSync = SwrSync;
+    out_funcs.pfnSwrStallBE = SwrStallBE;
+    out_funcs.pfnSwrWaitForIdle = SwrWaitForIdle;
+    out_funcs.pfnSwrWaitForIdleFE = SwrWaitForIdleFE;
+    out_funcs.pfnSwrSetVertexBuffers = SwrSetVertexBuffers;
+    out_funcs.pfnSwrSetIndexBuffer = SwrSetIndexBuffer;
+    out_funcs.pfnSwrSetFetchFunc = SwrSetFetchFunc;
+    out_funcs.pfnSwrSetSoFunc = SwrSetSoFunc;
+    out_funcs.pfnSwrSetSoState = SwrSetSoState;
+    out_funcs.pfnSwrSetSoBuffers = SwrSetSoBuffers;
+    out_funcs.pfnSwrSetVertexFunc = SwrSetVertexFunc;
+    out_funcs.pfnSwrSetFrontendState = SwrSetFrontendState;
+    out_funcs.pfnSwrSetGsState = SwrSetGsState;
+    out_funcs.pfnSwrSetGsFunc = SwrSetGsFunc;
+    out_funcs.pfnSwrSetCsFunc = SwrSetCsFunc;
+    out_funcs.pfnSwrSetTsState = SwrSetTsState;
+    out_funcs.pfnSwrSetHsFunc = SwrSetHsFunc;
+    out_funcs.pfnSwrSetDsFunc = SwrSetDsFunc;
+    out_funcs.pfnSwrSetDepthStencilState = SwrSetDepthStencilState;
+    out_funcs.pfnSwrSetBackendState = SwrSetBackendState;
+    out_funcs.pfnSwrSetDepthBoundsState = SwrSetDepthBoundsState;
+    out_funcs.pfnSwrSetPixelShaderState = SwrSetPixelShaderState;
+    out_funcs.pfnSwrSetBlendState = SwrSetBlendState;
+    out_funcs.pfnSwrSetBlendFunc = SwrSetBlendFunc;
+    out_funcs.pfnSwrDraw = SwrDraw;
+    out_funcs.pfnSwrDrawInstanced = SwrDrawInstanced;
+    out_funcs.pfnSwrDrawIndexed = SwrDrawIndexed;
+    out_funcs.pfnSwrDrawIndexedInstanced = SwrDrawIndexedInstanced;
+    out_funcs.pfnSwrInvalidateTiles = SwrInvalidateTiles;
+    out_funcs.pfnSwrDiscardRect = SwrDiscardRect;
+    out_funcs.pfnSwrDispatch = SwrDispatch;
+    out_funcs.pfnSwrStoreTiles = SwrStoreTiles;
+    out_funcs.pfnSwrClearRenderTarget = SwrClearRenderTarget;
+    out_funcs.pfnSwrSetRastState = SwrSetRastState;
+    out_funcs.pfnSwrSetViewports = SwrSetViewports;
+    out_funcs.pfnSwrSetScissorRects = SwrSetScissorRects;
+    out_funcs.pfnSwrGetPrivateContextState = SwrGetPrivateContextState;
+    out_funcs.pfnSwrAllocDrawContextMemory = SwrAllocDrawContextMemory;
+    out_funcs.pfnSwrEnableStatsFE = SwrEnableStatsFE;
+    out_funcs.pfnSwrEnableStatsBE = SwrEnableStatsBE;
+    out_funcs.pfnSwrEndFrame = SwrEndFrame;
+    out_funcs.pfnSwrInit = SwrInit;
+    out_funcs.pfnSwrLoadHotTile = SwrLoadHotTile;
+    out_funcs.pfnSwrStoreHotTileToSurface = SwrStoreHotTileToSurface;
+    out_funcs.pfnSwrStoreHotTileClear = SwrStoreHotTileClear;
+}

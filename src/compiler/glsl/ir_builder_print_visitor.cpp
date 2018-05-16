@@ -21,7 +21,6 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#define __STDC_FORMAT_MACROS 1
 #include <inttypes.h> /* for PRIx64 macro */
 #include "ir.h"
 #include "ir_hierarchical_visitor.h"
@@ -118,7 +117,7 @@ is_simple_operand(const ir_rvalue *ir, unsigned depth = 1)
    case ir_type_expression: {
       const ir_expression *expr = (ir_expression *) ir;
 
-      for (unsigned i = 0; i < expr->get_num_operands(); i++) {
+      for (unsigned i = 0; i < expr->num_operands; i++) {
          if (!is_simple_operand(expr->operands[i], depth - 1))
             return false;
       }
@@ -373,17 +372,17 @@ ir_builder_print_visitor::visit(ir_constant *ir)
          switch (ir->type->base_type) {
          case GLSL_TYPE_UINT:
             if (ir->value.u[i] != 0)
-               print_without_indent("r%04X_data.u[%u] = %u;\n",
+               print_with_indent("r%04X_data.u[%u] = %u;\n",
                                     my_index, i, ir->value.u[i]);
             break;
          case GLSL_TYPE_INT:
             if (ir->value.i[i] != 0)
-               print_without_indent("r%04X_data.i[%u] = %i;\n",
+               print_with_indent("r%04X_data.i[%u] = %i;\n",
                                     my_index, i, ir->value.i[i]);
             break;
          case GLSL_TYPE_FLOAT:
             if (ir->value.u[i] != 0)
-               print_without_indent("r%04X_data.u[%u] = 0x%08x; /* %f */\n",
+               print_with_indent("r%04X_data.u[%u] = 0x%08x; /* %f */\n",
                                     my_index,
                                     i,
                                     ir->value.u[i],
@@ -396,16 +395,27 @@ ir_builder_print_visitor::visit(ir_constant *ir)
 
             memcpy(&v, &ir->value.d[i], sizeof(v));
             if (v != 0)
-               /* FIXME: This won't actually work until ARB_gpu_shader_int64
-                * support lands.
-                */
-               print_without_indent("r%04X_data.u64[%u] = 0x%016" PRIx64 "; /* %g */\n",
+               print_with_indent("r%04X_data.u64[%u] = 0x%016" PRIx64 "; /* %g */\n",
                                     my_index, i, v, ir->value.d[i]);
             break;
          }
+         case GLSL_TYPE_UINT64:
+            if (ir->value.u64[i] != 0)
+               print_with_indent("r%04X_data.u64[%u] = %" PRIu64 ";\n",
+                                    my_index,
+                                    i,
+                                    ir->value.u64[i]);
+            break;
+         case GLSL_TYPE_INT64:
+            if (ir->value.i64[i] != 0)
+               print_with_indent("r%04X_data.i64[%u] = %" PRId64 ";\n",
+                                    my_index,
+                                    i,
+                                    ir->value.i64[i]);
+            break;
          case GLSL_TYPE_BOOL:
             if (ir->value.u[i] != 0)
-               print_without_indent("r%04X_data.u[%u] = 1;\n", my_index, i);
+               print_with_indent("r%04X_data.u[%u] = 1;\n", my_index, i);
             break;
          default:
             unreachable("Invalid constant type");
@@ -475,7 +485,7 @@ ir_builder_print_visitor::visit_enter(ir_assignment *ir)
       return visit_continue;
 
    if (rhs_expr != NULL) {
-      const unsigned num_op = rhs_expr->get_num_operands();
+      const unsigned num_op = rhs_expr->num_operands;
 
       for (unsigned i = 0; i < num_op; i++) {
          if (is_simple_operand(rhs_expr->operands[i]))
@@ -528,7 +538,7 @@ ir_builder_print_visitor::visit_leave(ir_assignment *ir)
 void
 ir_builder_print_visitor::print_without_declaration(const ir_expression *ir)
 {
-   const unsigned num_op = ir->get_num_operands();
+   const unsigned num_op = ir->num_operands;
 
    static const char *const arity[] = {
       "", "unop", "binop", "triop", "quadop"
@@ -541,8 +551,6 @@ ir_builder_print_visitor::print_without_declaration(const ir_expression *ir)
    case ir_binop_mul:
    case ir_binop_imul_high:
    case ir_binop_less:
-   case ir_binop_greater:
-   case ir_binop_lequal:
    case ir_binop_gequal:
    case ir_binop_equal:
    case ir_binop_nequal:
@@ -584,7 +592,7 @@ ir_builder_print_visitor::print_without_declaration(const ir_expression *ir)
 ir_visitor_status
 ir_builder_print_visitor::visit_enter(ir_expression *ir)
 {
-   const unsigned num_op = ir->get_num_operands();
+   const unsigned num_op = ir->num_operands;
 
    for (unsigned i = 0; i < num_op; i++) {
       if (is_simple_operand(ir->operands[i]))

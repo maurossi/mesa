@@ -26,7 +26,7 @@
  *
  **************************************************************************/
 
-#if HAVE_GALLIUM_EXTRA_HUD
+#ifdef HAVE_GALLIUM_EXTRA_HUD
 
 /* Purpose: Reading /sys/block/<*>/stat MB/s read/write throughput per second,
  * displaying on the HUD.
@@ -34,7 +34,7 @@
 
 #include "hud/hud_private.h"
 #include "util/list.h"
-#include "os/os_time.h"
+#include "util/os_time.h"
 #include "os/os_thread.h"
 #include "util/u_memory.h"
 #include <stdio.h>
@@ -82,7 +82,7 @@ struct diskstat_info
  */
 static int gdiskstat_count = 0;
 static struct list_head gdiskstat_list;
-pipe_static_mutex(gdiskstat_mutex);
+static mtx_t gdiskstat_mutex = _MTX_INITIALIZER_NP;
 
 static struct diskstat_info *
 find_dsi_by_name(const char *n, int mode)
@@ -117,7 +117,7 @@ get_file_values(const char *fn, struct stat_s *s)
 }
 
 static void
-query_dsi_load(struct hud_graph *gr)
+query_dsi_load(struct hud_graph *gr, struct pipe_context *pipe)
 {
    /* The framework calls us periodically, compensate for the
     * calling interval accordingly when reporting per second.
@@ -246,9 +246,9 @@ hud_get_num_disks(bool displayhelp)
    char name[64];
 
    /* Return the number of block devices and partitions. */
-   pipe_mutex_lock(gdiskstat_mutex);
+   mtx_lock(&gdiskstat_mutex);
    if (gdiskstat_count) {
-      pipe_mutex_unlock(gdiskstat_mutex);
+      mtx_unlock(&gdiskstat_mutex);
       return gdiskstat_count;
    }
 
@@ -258,7 +258,7 @@ hud_get_num_disks(bool displayhelp)
    list_inithead(&gdiskstat_list);
    DIR *dir = opendir("/sys/block/");
    if (!dir) {
-      pipe_mutex_unlock(gdiskstat_mutex);
+      mtx_unlock(&gdiskstat_mutex);
       return 0;
    }
 
@@ -285,7 +285,7 @@ hud_get_num_disks(bool displayhelp)
       struct dirent *dpart;
       DIR *pdir = opendir(basename);
       if (!pdir) {
-         pipe_mutex_unlock(gdiskstat_mutex);
+         mtx_unlock(&gdiskstat_mutex);
          closedir(dir);
          return 0;
       }
@@ -320,7 +320,7 @@ hud_get_num_disks(bool displayhelp)
          puts(line);
       }
    }
-   pipe_mutex_unlock(gdiskstat_mutex);
+   mtx_unlock(&gdiskstat_mutex);
 
    return gdiskstat_count;
 }

@@ -37,11 +37,9 @@ namespace nv50_ir {
 #if __cplusplus >= 201103L
 using std::hash;
 using std::unordered_map;
-#elif !defined(ANDROID)
+#else
 using std::tr1::hash;
 using std::tr1::unordered_map;
-#else
-#error Android release before Lollipop is not supported!
 #endif
 
 #define MAX_REGISTER_FILE_SIZE 256
@@ -1471,7 +1469,7 @@ GCRA::allocateRegisters(ArrayList& insns)
          if (lval->inFile(FILE_GPR) && lval->getInsn() != NULL &&
              prog->getTarget()->getChipset() < 0xc0) {
             Instruction *insn = lval->getInsn();
-            if (insn->op == OP_MAD || insn->op == OP_SAD)
+            if (insn->op == OP_MAD || insn->op == OP_FMA || insn->op == OP_SAD)
                // Short encoding only possible if they're all GPRs, no need to
                // affect them otherwise.
                if (insn->flagsDef < 0 &&
@@ -2333,9 +2331,21 @@ RegAlloc::InsertConstraintsPass::insertConstraintMoves()
             assert(cst->getSrc(s)->defs.size() == 1); // still SSA
 
             Instruction *defi = cst->getSrc(s)->defs.front()->getInsn();
+            bool imm = defi->op == OP_MOV &&
+               defi->src(0).getFile() == FILE_IMMEDIATE;
+            bool load = defi->op == OP_LOAD &&
+               defi->src(0).getFile() == FILE_MEMORY_CONST &&
+               !defi->src(0).isIndirect(0);
             // catch some cases where don't really need MOVs
-            if (cst->getSrc(s)->refCount() == 1 && !defi->constrainedDefs())
+            if (cst->getSrc(s)->refCount() == 1 && !defi->constrainedDefs()) {
+               if (imm || load) {
+                  // Move the defi right before the cst. No point in expanding
+                  // the range.
+                  defi->bb->remove(defi);
+                  cst->bb->insertBefore(cst, defi);
+               }
                continue;
+            }
 
             LValue *lval = new_LValue(func, cst->src(s).getFile());
             lval->reg.size = size;
@@ -2343,6 +2353,14 @@ RegAlloc::InsertConstraintsPass::insertConstraintMoves()
             mov = new_Instruction(func, OP_MOV, typeOfSize(size));
             mov->setDef(0, lval);
             mov->setSrc(0, cst->getSrc(s));
+
+            if (load) {
+               mov->op = OP_LOAD;
+               mov->setSrc(0, defi->getSrc(0));
+            } else if (imm) {
+               mov->setSrc(0, defi->getSrc(0));
+            }
+
             cst->setSrc(s, mov->getDef(0));
             cst->bb->insertBefore(cst, mov);
 

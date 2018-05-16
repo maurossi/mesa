@@ -55,6 +55,10 @@
 int ir3_delayslots(struct ir3_instruction *assigner,
 		struct ir3_instruction *consumer, unsigned n)
 {
+	/* don't count false-dependencies: */
+	if (__is_false_dep(consumer, n))
+		return 0;
+
 	/* worst case is cat1-3 (alu) -> cat4/5 needing 6 cycles, normal
 	 * alu -> alu needs 3 cycles, cat4 -> alu and texture fetch
 	 * handled with sync bits
@@ -159,11 +163,11 @@ ir3_depth(struct ir3 *ir)
 		if (ir->outputs[i])
 			ir3_instr_depth(ir->outputs[i]);
 
-	for (i = 0; i < ir->keeps_count; i++)
-		ir3_instr_depth(ir->keeps[i]);
-
-	/* We also need to account for if-condition: */
 	list_for_each_entry (struct ir3_block, block, &ir->block_list, node) {
+		for (i = 0; i < block->keeps_count; i++)
+			ir3_instr_depth(block->keeps[i]);
+
+		/* We also need to account for if-condition: */
 		if (block->condition)
 			ir3_instr_depth(block->condition);
 	}

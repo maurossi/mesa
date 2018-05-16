@@ -999,24 +999,34 @@ parse_texoffset_operand(
 static boolean
 match_inst(const char **pcur,
            unsigned *saturate,
+           unsigned *precise,
            const struct tgsi_opcode_info *info)
 {
    const char *cur = *pcur;
+   const char *mnemonic = tgsi_get_opcode_name(info->opcode);
 
    /* simple case: the whole string matches the instruction name */
-   if (str_match_nocase_whole(&cur, info->mnemonic)) {
+   if (str_match_nocase_whole(&cur, mnemonic)) {
       *pcur = cur;
       *saturate = 0;
+      *precise = 0;
       return TRUE;
    }
 
-   if (str_match_no_case(&cur, info->mnemonic)) {
+   if (str_match_no_case(&cur, mnemonic)) {
       /* the instruction has a suffix, figure it out */
-      if (str_match_nocase_whole(&cur, "_SAT")) {
+      if (str_match_no_case(&cur, "_SAT")) {
          *pcur = cur;
          *saturate = 1;
-         return TRUE;
       }
+
+      if (str_match_no_case(&cur, "_PRECISE")) {
+         *pcur = cur;
+         *precise = 1;
+      }
+
+      if (!is_digit_alpha_underscore(cur))
+         return TRUE;
    }
 
    return FALSE;
@@ -1029,49 +1039,13 @@ parse_instruction(
 {
    uint i;
    uint saturate = 0;
+   uint precise = 0;
    const struct tgsi_opcode_info *info;
    struct tgsi_full_instruction inst;
    const char *cur;
    uint advance;
 
    inst = tgsi_default_full_instruction();
-
-   /* Parse predicate.
-    */
-   eat_opt_white( &ctx->cur );
-   if (*ctx->cur == '(') {
-      uint file;
-      int index;
-      uint swizzle[4];
-      boolean parsed_swizzle;
-
-      inst.Instruction.Predicate = 1;
-
-      ctx->cur++;
-      if (*ctx->cur == '!') {
-         ctx->cur++;
-         inst.Predicate.Negate = 1;
-      }
-
-      if (!parse_register_1d( ctx, &file, &index ))
-         return FALSE;
-
-      if (parse_optional_swizzle( ctx, swizzle, &parsed_swizzle, 4 )) {
-         if (parsed_swizzle) {
-            inst.Predicate.SwizzleX = swizzle[0];
-            inst.Predicate.SwizzleY = swizzle[1];
-            inst.Predicate.SwizzleZ = swizzle[2];
-            inst.Predicate.SwizzleW = swizzle[3];
-         }
-      }
-
-      if (*ctx->cur != ')') {
-         report_error( ctx, "Expected `)'" );
-         return FALSE;
-      }
-
-      ctx->cur++;
-   }
 
    /* Parse instruction name.
     */
@@ -1080,7 +1054,7 @@ parse_instruction(
       cur = ctx->cur;
 
       info = tgsi_get_opcode_info( i );
-      if (match_inst(&cur, &saturate, info)) {
+      if (match_inst(&cur, &saturate, &precise, info)) {
          if (info->num_dst + info->num_src + info->is_tex == 0) {
             ctx->cur = cur;
             break;
@@ -1101,6 +1075,7 @@ parse_instruction(
 
    inst.Instruction.Opcode = i;
    inst.Instruction.Saturate = saturate;
+   inst.Instruction.Precise = precise;
    inst.Instruction.NumDstRegs = info->num_dst;
    inst.Instruction.NumSrcRegs = info->num_src;
 
@@ -1163,7 +1138,7 @@ parse_instruction(
 
    cur = ctx->cur;
    eat_opt_white( &cur );
-   for (i = 0; inst.Instruction.Texture && *cur == ','; i++) {
+   for (i = 0; inst.Instruction.Texture && *cur == ',' && i < TGSI_FULL_MAX_TEX_OFFSETS; i++) {
          cur++;
          eat_opt_white( &cur );
          ctx->cur = cur;

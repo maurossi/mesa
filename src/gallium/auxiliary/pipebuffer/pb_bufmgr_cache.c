@@ -30,7 +30,7 @@
  * Buffer cache.
  * 
  * \author Jose Fonseca <jfonseca-at-vmware-dot-com>
- * \author Thomas Hellström <thellstom-at-vmware-dot-com>
+ * \author Thomas Hellström <thellstrom-at-vmware-dot-com>
  */
 
 
@@ -39,7 +39,6 @@
 #include "os/os_thread.h"
 #include "util/u_memory.h"
 #include "util/list.h"
-#include "util/u_time.h"
 
 #include "pb_buffer.h"
 #include "pb_bufmgr.h"

@@ -33,6 +33,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
+#include <unistd.h>
+#include <stdlib.h>
 #ifdef MAJOR_IN_MKDEV
 #include <sys/mkdev.h>
 #endif
@@ -42,12 +44,10 @@
 #include "loader.h"
 
 #ifdef HAVE_LIBDRM
-#include <stdlib.h>
-#include <unistd.h>
 #include <xf86drm.h>
 #ifdef USE_DRICONF
-#include "xmlconfig.h"
-#include "xmlpool.h"
+#include "util/xmlconfig.h"
+#include "util/xmlpool.h"
 #endif
 #endif
 
@@ -145,7 +145,7 @@ static char *drm_get_id_path_tag_for_fd(int fd)
    drmDevicePtr device;
    char *tag;
 
-   if (drmGetDevice(fd, &device) != 0)
+   if (drmGetDevice2(fd, 0, &device) != 0)
        return NULL;
 
    tag = drm_construct_id_path_tag(device);
@@ -153,7 +153,7 @@ static char *drm_get_id_path_tag_for_fd(int fd)
    return tag;
 }
 
-int loader_get_user_preferred_fd(int default_fd, int *different_device)
+int loader_get_user_preferred_fd(int default_fd, bool *different_device)
 {
 /* Arbitrary "maximum" value of drm devices. */
 #define MAX_DRM_DEVICES 32
@@ -171,7 +171,7 @@ int loader_get_user_preferred_fd(int default_fd, int *different_device)
 #endif
 
    if (prime == NULL) {
-      *different_device = 0;
+      *different_device = false;
       return default_fd;
    }
 
@@ -179,7 +179,7 @@ int loader_get_user_preferred_fd(int default_fd, int *different_device)
    if (default_tag == NULL)
       goto err;
 
-   num_devices = drmGetDevices(devices, MAX_DRM_DEVICES);
+   num_devices = drmGetDevices2(0, devices, MAX_DRM_DEVICES);
    if (num_devices < 0)
       goto err;
 
@@ -230,40 +230,17 @@ int loader_get_user_preferred_fd(int default_fd, int *different_device)
    return fd;
 
  err:
-   *different_device = 0;
+   *different_device = false;
 
    free(default_tag);
    free(prime);
    return default_fd;
 }
 #else
-int loader_get_user_preferred_fd(int default_fd, int *different_device)
+int loader_get_user_preferred_fd(int default_fd, bool *different_device)
 {
-   *different_device = 0;
+   *different_device = false;
    return default_fd;
-}
-#endif
-
-#if defined(HAVE_LIBDRM)
-static int
-dev_node_from_fd(int fd, unsigned int *maj, unsigned int *min)
-{
-   struct stat buf;
-
-   if (fstat(fd, &buf) < 0) {
-      log_(_LOADER_WARNING, "MESA-LOADER: failed to stat fd %d\n", fd);
-      return -1;
-   }
-
-   if (!S_ISCHR(buf.st_mode)) {
-      log_(_LOADER_WARNING, "MESA-LOADER: fd %d not a character device\n", fd);
-      return -1;
-   }
-
-   *maj = major(buf.st_rdev);
-   *min = minor(buf.st_rdev);
-
-   return 0;
 }
 #endif
 
@@ -275,7 +252,7 @@ drm_get_pci_id_for_fd(int fd, int *vendor_id, int *chip_id)
    drmDevicePtr device;
    int ret;
 
-   if (drmGetDevice(fd, &device) == 0) {
+   if (drmGetDevice2(fd, 0, &device) == 0) {
       if (device->bustype == DRM_BUS_PCI) {
          *vendor_id = device->deviceinfo.pci->vendor_id;
          *chip_id = device->deviceinfo.pci->device_id;
@@ -307,35 +284,15 @@ loader_get_pci_id_for_fd(int fd, int *vendor_id, int *chip_id)
    return 0;
 }
 
-
-#if defined(HAVE_LIBDRM)
-static char *
-drm_get_device_name_for_fd(int fd)
-{
-   unsigned int maj, min;
-   char buf[0x40];
-   int n;
-
-   if (dev_node_from_fd(fd, &maj, &min) < 0)
-      return NULL;
-
-   n = snprintf(buf, sizeof(buf), DRM_DEV_NAME, DRM_DIR_NAME, min);
-   if (n == -1 || n >= sizeof(buf))
-      return NULL;
-
-   return strdup(buf);
-}
-#endif
-
 char *
 loader_get_device_name_for_fd(int fd)
 {
    char *result = NULL;
 
 #if HAVE_LIBDRM
-   if ((result = drm_get_device_name_for_fd(fd)))
-      return result;
+   result = drmGetDeviceNameFromFd2(fd);
 #endif
+
    return result;
 }
 
@@ -344,6 +301,17 @@ loader_get_driver_for_fd(int fd)
 {
    int vendor_id, chip_id, i, j;
    char *driver = NULL;
+
+   /* Allow an environment variable to force choosing a different driver
+    * binary.  If that driver binary can't survive on this FD, that's the
+    * user's problem, but this allows vc4 simulator to run on an i965 host,
+    * and may be useful for some touch testing of i915 on an i965 host.
+    */
+   if (geteuid() == getuid()) {
+      driver = getenv("MESA_LOADER_DRIVER_OVERRIDE");
+      if (driver)
+         return strdup(driver);
+   }
 
    if (!loader_get_pci_id_for_fd(fd, &vendor_id, &chip_id)) {
 

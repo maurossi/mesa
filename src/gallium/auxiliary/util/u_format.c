@@ -238,7 +238,7 @@ util_format_is_subsampled_422(enum pipe_format format)
 boolean
 util_format_is_supported(enum pipe_format format, unsigned bind)
 {
-   if (util_format_is_s3tc(format) && !util_format_s3tc_enabled) {
+   if (format >= PIPE_FORMAT_COUNT) {
       return FALSE;
    }
 
@@ -249,6 +249,8 @@ util_format_is_supported(enum pipe_format format, unsigned bind)
        util_format_is_float(format)) {
       return FALSE;
    }
+#else
+   (void)bind;
 #endif
 
    return TRUE;

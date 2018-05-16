@@ -31,7 +31,7 @@
 #include "util/u_format_s3tc.h"
 #include "util/u_video.h"
 #include "os/os_misc.h"
-#include "os/os_time.h"
+#include "util/os_time.h"
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "draw/draw_context.h"
@@ -69,8 +69,6 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
    case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
       return 1;
-   case PIPE_CAP_TWO_SIDED_STENCIL:
-      return 1;
    case PIPE_CAP_SM3:
       return 1;
    case PIPE_CAP_ANISOTROPIC_FILTER:
@@ -88,8 +86,6 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_QUERY_PIPELINE_STATISTICS:
       return 1;
    case PIPE_CAP_TEXTURE_MIRROR_CLAMP:
-      return 1;
-   case PIPE_CAP_TEXTURE_SHADOW_MAP:
       return 1;
    case PIPE_CAP_TEXTURE_SWIZZLE:
       return 1;
@@ -156,15 +152,17 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
       return 330;
    case PIPE_CAP_QUADS_FOLLOW_PROVOKING_VERTEX_CONVENTION:
+   case PIPE_CAP_TGSI_TEX_TXF_LZ:
       return 0;
    case PIPE_CAP_COMPUTE:
       return 1;
    case PIPE_CAP_USER_VERTEX_BUFFERS:
-   case PIPE_CAP_USER_INDEX_BUFFERS:
-   case PIPE_CAP_USER_CONSTANT_BUFFERS:
    case PIPE_CAP_STREAM_OUTPUT_PAUSE_RESUME:
    case PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS:
    case PIPE_CAP_TGSI_VS_LAYER_VIEWPORT:
+   case PIPE_CAP_DOUBLES:
+   case PIPE_CAP_INT64:
+   case PIPE_CAP_INT64_DIVMOD:
       return 1;
    case PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT:
       return 16;
@@ -217,6 +215,8 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 31;
    case PIPE_CAP_DRAW_INDIRECT:
       return 1;
+   case PIPE_CAP_QUERY_SO_OVERFLOW:
+      return 1;
 
    case PIPE_CAP_VENDOR_ID:
       return 0xFFFFFFFF;
@@ -257,6 +257,8 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_COPY_BETWEEN_COMPRESSED_AND_PLAIN_FORMATS:
    case PIPE_CAP_TGSI_ARRAY_COMPONENTS:
       return 1;
+   case PIPE_CAP_CLEAR_TEXTURE:
+      return 1;
    case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
    case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
    case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
@@ -265,7 +267,6 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_TGSI_TXQS:
    case PIPE_CAP_FORCE_PERSAMPLE_INTERP:
    case PIPE_CAP_SHAREABLE_SHADERS:
-   case PIPE_CAP_CLEAR_TEXTURE:
    case PIPE_CAP_DRAW_PARAMETERS:
    case PIPE_CAP_TGSI_PACK_HALF_FLOAT:
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
@@ -292,6 +293,24 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_NATIVE_FENCE_FD:
    case PIPE_CAP_GLSL_OPTIMIZE_CONSERVATIVELY:
    case PIPE_CAP_TGSI_FS_FBFETCH:
+   case PIPE_CAP_TGSI_MUL_ZERO_WINS:
+   case PIPE_CAP_TGSI_CLOCK:
+   case PIPE_CAP_POLYGON_MODE_FILL_RECTANGLE:
+   case PIPE_CAP_SPARSE_BUFFER_PAGE_SIZE:
+   case PIPE_CAP_TGSI_BALLOT:
+   case PIPE_CAP_TGSI_TES_LAYER_VIEWPORT:
+   case PIPE_CAP_CAN_BIND_CONST_BUFFER_AS_VERTEX:
+   case PIPE_CAP_ALLOW_MAPPED_BUFFERS_DURING_EXECUTION:
+   case PIPE_CAP_POST_DEPTH_COVERAGE:
+   case PIPE_CAP_BINDLESS_TEXTURE:
+   case PIPE_CAP_NIR_SAMPLERS_AS_DEREF:
+   case PIPE_CAP_MEMOBJ:
+   case PIPE_CAP_LOAD_CONSTBUF:
+   case PIPE_CAP_TGSI_ANY_REG_AS_ADDRESS:
+   case PIPE_CAP_TILE_RASTER_ORDER:
+   case PIPE_CAP_MAX_COMBINED_SHADER_OUTPUT_RESOURCES:
+   case PIPE_CAP_SIGNED_VERTEX_BUFFER_OFFSET:
+   case PIPE_CAP_CONTEXT_PRIORITY_MASK:
       return 0;
    case PIPE_CAP_SHADER_BUFFER_OFFSET_ALIGNMENT:
       return 4;
@@ -302,7 +321,9 @@ softpipe_get_param(struct pipe_screen *screen, enum pipe_cap param)
 }
 
 static int
-softpipe_get_shader_param(struct pipe_screen *screen, unsigned shader, enum pipe_shader_cap param)
+softpipe_get_shader_param(struct pipe_screen *screen,
+                          enum pipe_shader_type shader,
+                          enum pipe_shader_cap param)
 {
    struct softpipe_screen *sp_screen = softpipe_screen(screen);
    switch(shader)
@@ -439,10 +460,6 @@ softpipe_is_format_supported( struct pipe_screen *screen,
     * All other operations (sampling, transfer, etc).
     */
 
-   if (format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
-      return util_format_s3tc_enabled;
-   }
-
    /*
     * Everything else should be supported by u_format.
     */
@@ -568,8 +585,6 @@ softpipe_create_screen(struct sw_winsys *winsys)
    screen->base.flush_frontbuffer = softpipe_flush_frontbuffer;
    screen->base.get_compute_param = softpipe_get_compute_param;
    screen->use_llvm = debug_get_option_use_llvm();
-
-   util_format_s3tc_init();
 
    softpipe_init_screen_texture_funcs(&screen->base);
    softpipe_init_screen_fence_funcs(&screen->base);

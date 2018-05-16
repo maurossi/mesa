@@ -26,30 +26,87 @@
 /* based on Marek's patch to lp_bld_misc.cpp */
 
 // Workaround http://llvm.org/PR23628
-#if HAVE_LLVM >= 0x0307
-#  pragma push_macro("DEBUG")
-#  undef DEBUG
-#endif
+#pragma push_macro("DEBUG")
+#undef DEBUG
 
 #include "ac_llvm_util.h"
 #include <llvm-c/Core.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
 #include <llvm/IR/Attributes.h>
+#include <llvm/IR/CallSite.h>
+#include <llvm/IR/IRBuilder.h>
+
+#if HAVE_LLVM < 0x0500
+namespace llvm {
+typedef AttributeSet AttributeList;
+}
+#endif
 
 void ac_add_attr_dereferenceable(LLVMValueRef val, uint64_t bytes)
 {
    llvm::Argument *A = llvm::unwrap<llvm::Argument>(val);
+#if HAVE_LLVM < 0x0500
    llvm::AttrBuilder B;
    B.addDereferenceableAttr(bytes);
-   A->addAttr(llvm::AttributeSet::get(A->getContext(), A->getArgNo() + 1,  B));
+   A->addAttr(llvm::AttributeList::get(A->getContext(), A->getArgNo() + 1,  B));
+#else
+   A->addAttr(llvm::Attribute::getWithDereferenceableBytes(A->getContext(), bytes));
+#endif
 }
 
 bool ac_is_sgpr_param(LLVMValueRef arg)
 {
 	llvm::Argument *A = llvm::unwrap<llvm::Argument>(arg);
-	llvm::AttributeSet AS = A->getParent()->getAttributes();
+	llvm::AttributeList AS = A->getParent()->getAttributes();
 	unsigned ArgNo = A->getArgNo();
 	return AS.hasAttribute(ArgNo + 1, llvm::Attribute::ByVal) ||
 	       AS.hasAttribute(ArgNo + 1, llvm::Attribute::InReg);
+}
+
+LLVMValueRef ac_llvm_get_called_value(LLVMValueRef call)
+{
+#if HAVE_LLVM >= 0x0309
+	return LLVMGetCalledValue(call);
+#else
+	return llvm::wrap(llvm::CallSite(llvm::unwrap<llvm::Instruction>(call)).getCalledValue());
+#endif
+}
+
+bool ac_llvm_is_function(LLVMValueRef v)
+{
+#if HAVE_LLVM >= 0x0309
+	return LLVMGetValueKind(v) == LLVMFunctionValueKind;
+#else
+	return llvm::isa<llvm::Function>(llvm::unwrap(v));
+#endif
+}
+
+LLVMBuilderRef ac_create_builder(LLVMContextRef ctx,
+				 enum ac_float_mode float_mode)
+{
+	LLVMBuilderRef builder = LLVMCreateBuilderInContext(ctx);
+
+#if HAVE_LLVM >= 0x0308
+	llvm::FastMathFlags flags;
+
+	switch (float_mode) {
+	case AC_FLOAT_MODE_DEFAULT:
+		break;
+	case AC_FLOAT_MODE_NO_SIGNED_ZEROS_FP_MATH:
+		flags.setNoSignedZeros();
+		llvm::unwrap(builder)->setFastMathFlags(flags);
+		break;
+	case AC_FLOAT_MODE_UNSAFE_FP_MATH:
+#if HAVE_LLVM >= 0x0600
+		flags.setFast();
+#else
+		flags.setUnsafeAlgebra();
+#endif
+		llvm::unwrap(builder)->setFastMathFlags(flags);
+		break;
+	}
+#endif
+
+	return builder;
 }

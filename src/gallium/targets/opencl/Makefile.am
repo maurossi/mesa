@@ -19,6 +19,7 @@ lib@OPENCL_LIBNAME@_la_LIBADD = \
 	$(top_builddir)/src/gallium/state_trackers/clover/libclover.la \
 	$(top_builddir)/src/gallium/auxiliary/libgallium.la \
 	$(top_builddir)/src/util/libmesautil.la \
+	$(EXPAT_LIBS) \
 	$(LIBELF_LIBS) \
 	$(DLOPEN_LIBS) \
 	-lclangCodeGen \
@@ -41,10 +42,10 @@ nodist_EXTRA_lib@OPENCL_LIBNAME@_la_SOURCES = dummy.cpp
 lib@OPENCL_LIBNAME@_la_SOURCES =
 
 EXTRA_lib@OPENCL_LIBNAME@_la_DEPENDENCIES = opencl.sym
-EXTRA_DIST = mesa.icd opencl.sym
+EXTRA_DIST = mesa.icd opencl.sym meson.build
 
 if HAVE_CLOVER_ICD
-icddir = /etc/OpenCL/vendors/
+icddir = $(sysconfdir)/OpenCL/vendors/
 icd_DATA = mesa.icd
 endif
 

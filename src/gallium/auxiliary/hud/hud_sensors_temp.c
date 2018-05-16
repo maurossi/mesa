@@ -26,12 +26,12 @@
  *
  **************************************************************************/
 
-#if HAVE_LIBSENSORS
+#ifdef HAVE_LIBSENSORS
 /* Purpose: Extract lm-sensors data, expose temperature, power, voltage. */
 
 #include "hud/hud_private.h"
 #include "util/list.h"
-#include "os/os_time.h"
+#include "util/os_time.h"
 #include "os/os_thread.h"
 #include "util/u_memory.h"
 #include <stdio.h>
@@ -50,7 +50,7 @@
  */
 static int gsensors_temp_count = 0;
 static struct list_head gsensors_temp_list;
-pipe_static_mutex(gsensor_temp_mutex);
+static mtx_t gsensor_temp_mutex = _MTX_INITIALIZER_NP;
 
 struct sensors_temp_info
 {
@@ -154,7 +154,7 @@ find_sti_by_name(const char *n, unsigned int mode)
 }
 
 static void
-query_sti_load(struct hud_graph *gr)
+query_sti_load(struct hud_graph *gr, struct pipe_context *pipe)
 {
    struct sensors_temp_info *sti = gr->query_data;
    uint64_t now = os_time_get();
@@ -165,19 +165,19 @@ query_sti_load(struct hud_graph *gr)
 
          switch (sti->mode) {
          case SENSORS_TEMP_CURRENT:
-            hud_graph_add_value(gr, (uint64_t) sti->current);
+            hud_graph_add_value(gr, sti->current);
             break;
          case SENSORS_TEMP_CRITICAL:
-            hud_graph_add_value(gr, (uint64_t) sti->critical);
+            hud_graph_add_value(gr, sti->critical);
             break;
          case SENSORS_VOLTAGE_CURRENT:
-            hud_graph_add_value(gr, (uint64_t)(sti->current * 1000));
+            hud_graph_add_value(gr, sti->current * 1000);
             break;
          case SENSORS_CURRENT_CURRENT:
-            hud_graph_add_value(gr, (uint64_t) sti->current);
+            hud_graph_add_value(gr, sti->current);
             break;
          case SENSORS_POWER_CURRENT:
-            hud_graph_add_value(gr, (uint64_t) sti->current);
+            hud_graph_add_value(gr, sti->current);
             break;
          }
 
@@ -324,15 +324,15 @@ int
 hud_get_num_sensors(bool displayhelp)
 {
    /* Return the number of sensors detected. */
-   pipe_mutex_lock(gsensor_temp_mutex);
+   mtx_lock(&gsensor_temp_mutex);
    if (gsensors_temp_count) {
-      pipe_mutex_unlock(gsensor_temp_mutex);
+      mtx_unlock(&gsensor_temp_mutex);
       return gsensors_temp_count;
    }
 
    int ret = sensors_init(NULL);
    if (ret) {
-      pipe_mutex_unlock(gsensor_temp_mutex);
+      mtx_unlock(&gsensor_temp_mutex);
       return 0;
    }
 
@@ -368,7 +368,7 @@ hud_get_num_sensors(bool displayhelp)
       }
    }
 
-   pipe_mutex_unlock(gsensor_temp_mutex);
+   mtx_unlock(&gsensor_temp_mutex);
    return gsensors_temp_count;
 }
 

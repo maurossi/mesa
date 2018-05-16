@@ -73,7 +73,7 @@ nv50_get_query_result(struct pipe_context *pipe, struct pipe_query *pq,
 static void
 nv50_render_condition(struct pipe_context *pipe,
                       struct pipe_query *pq,
-                      boolean condition, uint mode)
+                      boolean condition, enum pipe_render_cond_flag mode)
 {
    struct nv50_context *nv50 = nv50_context(pipe);
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
@@ -97,6 +97,7 @@ nv50_render_condition(struct pipe_context *pipe,
          break;
       case PIPE_QUERY_OCCLUSION_COUNTER:
       case PIPE_QUERY_OCCLUSION_PREDICATE:
+      case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
          if (likely(!condition)) {
             if (unlikely(hq->nesting))
                cond = wait ? NV50_3D_COND_MODE_NOT_EQUAL :
