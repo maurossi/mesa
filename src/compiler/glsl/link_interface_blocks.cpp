@@ -114,7 +114,7 @@ intrastage_match(ir_variable *a,
        */
       if ((a->data.how_declared != ir_var_declared_implicitly ||
            b->data.how_declared != ir_var_declared_implicitly) &&
-          (!prog->IsES || prog->data->Version != 310 ||
+          (!prog->IsES ||
            interstage_member_mismatch(prog, a->get_interface_type(),
                                       b->get_interface_type())))
          return false;
@@ -137,7 +137,7 @@ intrastage_match(ir_variable *a,
    /* If a block is an array then it must match across the shader.
     * Unsized arrays are also processed and matched agaist sized arrays.
     */
-   if (b->type != a->type &&
+   if (b->type != a->type && (b->type->is_array() || a->type->is_array()) &&
        (b->is_interface_instance() || a->is_interface_instance()) &&
        !validate_intrastage_arrays(prog, b, a))
       return false;
@@ -363,6 +363,35 @@ validate_interstage_inout_blocks(struct gl_shader_program *prog,
    const bool extra_array_level = (producer->Stage == MESA_SHADER_VERTEX &&
                                    consumer->Stage != MESA_SHADER_FRAGMENT) ||
                                   consumer->Stage == MESA_SHADER_GEOMETRY;
+
+   /* Check that block re-declarations of gl_PerVertex are compatible
+    * across shaders: From OpenGL Shading Language 4.5, section
+    * "7.1 Built-In Language Variables", page 130 of the PDF:
+    *
+    *    "If multiple shaders using members of a built-in block belonging
+    *     to the same interface are linked together in the same program,
+    *     they must all redeclare the built-in block in the same way, as
+    *     described in section 4.3.9 “Interface Blocks” for interface-block
+    *     matching, or a link-time error will result."
+    *
+    * This is done explicitly outside of iterating the member variable
+    * declarations because it is possible that the variables are not used and
+    * so they would have been optimised out.
+    */
+   const glsl_type *consumer_iface =
+      consumer->symbols->get_interface("gl_PerVertex",
+                                       ir_var_shader_in);
+
+   const glsl_type *producer_iface =
+      producer->symbols->get_interface("gl_PerVertex",
+                                       ir_var_shader_out);
+
+   if (producer_iface && consumer_iface &&
+       interstage_member_mismatch(prog, consumer_iface, producer_iface)) {
+      linker_error(prog, "Incompatible or missing gl_PerVertex re-declaration "
+                   "in consecutive shaders");
+      return;
+   }
 
    /* Add output interfaces from the producer to the symbol table. */
    foreach_in_list(ir_instruction, node, producer->ir) {

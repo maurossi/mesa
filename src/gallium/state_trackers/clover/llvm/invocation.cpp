@@ -89,7 +89,7 @@ namespace {
    create_context(std::string &r_log) {
       init_targets();
       std::unique_ptr<LLVMContext> ctx { new LLVMContext };
-      ctx->setDiagnosticHandler(diagnostic_handler, &r_log);
+      compat::set_diagnostic_handler(*ctx, diagnostic_handler, &r_log);
       return ctx;
    }
 
@@ -126,7 +126,7 @@ namespace {
       c->getDiagnosticOpts().ShowCarets = false;
 
       compat::set_lang_defaults(c->getInvocation(), c->getLangOpts(),
-                                clang::IK_OpenCL, ::llvm::Triple(target.triple),
+                                compat::ik_opencl, ::llvm::Triple(target.triple),
                                 c->getPreprocessorOpts(),
                                 clang::LangStandard::lang_opencl11);
 
@@ -281,8 +281,12 @@ clover::llvm::link_program(const std::vector<module> &modules,
 
    optimize(*mod, c->getCodeGenOpts().OptimizationLevel, !create_library);
 
+   static std::atomic_uint seq(0);
+   const std::string id = "." + mod->getModuleIdentifier() + "-" +
+      std::to_string(seq++);
+
    if (has_flag(debug::llvm))
-      debug::log(".ll", print_module_bitcode(*mod));
+      debug::log(id + ".ll", print_module_bitcode(*mod));
 
    if (create_library) {
       return build_module_library(*mod, module::section::text_library);
@@ -292,7 +296,7 @@ clover::llvm::link_program(const std::vector<module> &modules,
 
    } else if (ir == PIPE_SHADER_IR_NATIVE) {
       if (has_flag(debug::native))
-         debug::log(".asm", print_module_native(*mod, target));
+         debug::log(id +  ".asm", print_module_native(*mod, target));
 
       return build_module_native(*mod, target, *c, r_log);
 

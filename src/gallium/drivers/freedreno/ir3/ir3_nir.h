@@ -34,11 +34,14 @@
 
 #include "ir3_shader.h"
 
+void ir3_nir_scan_driver_consts(nir_shader *shader, struct ir3_driver_const_layout *layout);
+
 bool ir3_nir_lower_if_else(nir_shader *shader);
 bool ir3_nir_apply_trig_workarounds(nir_shader *shader);
+bool ir3_nir_lower_tg4_to_tex(nir_shader *shader);
 
 struct nir_shader * ir3_tgsi_to_nir(const struct tgsi_token *tokens);
-const nir_shader_compiler_options * ir3_get_compiler_options(void);
+const nir_shader_compiler_options * ir3_get_compiler_options(struct ir3_compiler *compiler);
 bool ir3_key_lowers_nir(const struct ir3_shader_key *key);
 struct nir_shader * ir3_optimize_nir(struct ir3_shader *shader, nir_shader *s,
 		const struct ir3_shader_key *key);

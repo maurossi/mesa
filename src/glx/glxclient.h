@@ -56,7 +56,7 @@
 
 #include "glxextensions.h"
 
-#if defined(USE_LIBGLVND_GLX)
+#if defined(USE_LIBGLVND)
 #define _GLX_PUBLIC _X_HIDDEN
 #else
 #define _GLX_PUBLIC _X_EXPORT
@@ -840,6 +840,10 @@ indirect_create_context_attribs(struct glx_screen *base,
                                 unsigned num_attribs,
                                 const uint32_t *attribs,
                                 unsigned *error);
+
+
+extern int __glXGetDrawableAttribute(Display * dpy, GLXDrawable drawable,
+                                     int attribute, unsigned int *value);
 
 #ifdef __cplusplus
 }

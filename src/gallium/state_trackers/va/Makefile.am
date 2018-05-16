@@ -27,9 +27,12 @@ AM_CFLAGS = \
 	$(GALLIUM_CFLAGS) \
 	$(VISIBILITY_CFLAGS) \
 	$(VL_CFLAGS) \
+	$(XCB_DRI3_CFLAGS) \
 	$(VA_CFLAGS) \
 	-DVA_DRIVER_INIT_FUNC="__vaDriverInit_$(VA_MAJOR)_$(VA_MINOR)"
 
 noinst_LTLIBRARIES = libvatracker.la
 
 libvatracker_la_SOURCES = $(C_SOURCES)
+
+EXTRA_DIST = meson.build

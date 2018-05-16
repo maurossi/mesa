@@ -215,7 +215,7 @@ st_pbo_draw(struct st_context *st, const struct st_pbo_addresses *addr,
 
    /* Upload vertices */
    {
-      struct pipe_vertex_buffer vbo;
+      struct pipe_vertex_buffer vbo = {0};
       struct pipe_vertex_element velem;
 
       float x0 = (float) addr->xoffset / surface_width * 2.0f - 1.0f;
@@ -225,12 +225,10 @@ st_pbo_draw(struct st_context *st, const struct st_pbo_addresses *addr,
 
       float *verts = NULL;
 
-      vbo.user_buffer = NULL;
-      vbo.buffer = NULL;
       vbo.stride = 2 * sizeof(float);
 
-      u_upload_alloc(st->uploader, 0, 8 * sizeof(float), 4,
-                     &vbo.buffer_offset, &vbo.buffer, (void **) &verts);
+      u_upload_alloc(st->pipe->stream_uploader, 0, 8 * sizeof(float), 4,
+                     &vbo.buffer_offset, &vbo.buffer.resource, (void **) &verts);
       if (!verts)
          return false;
 
@@ -243,7 +241,7 @@ st_pbo_draw(struct st_context *st, const struct st_pbo_addresses *addr,
       verts[6] = x1;
       verts[7] = y1;
 
-      u_upload_unmap(st->uploader);
+      u_upload_unmap(st->pipe->stream_uploader);
 
       velem.src_offset = 0;
       velem.instance_divisor = 0;
@@ -254,28 +252,16 @@ st_pbo_draw(struct st_context *st, const struct st_pbo_addresses *addr,
 
       cso_set_vertex_buffers(cso, velem.vertex_buffer_index, 1, &vbo);
 
-      pipe_resource_reference(&vbo.buffer, NULL);
+      pipe_resource_reference(&vbo.buffer.resource, NULL);
    }
 
    /* Upload constants */
    {
       struct pipe_constant_buffer cb;
 
-      if (st->constbuf_uploader) {
-         cb.buffer = NULL;
-         cb.user_buffer = NULL;
-         u_upload_data(st->constbuf_uploader, 0, sizeof(addr->constants),
-                       st->ctx->Const.UniformBufferOffsetAlignment,
-                       &addr->constants, &cb.buffer_offset, &cb.buffer);
-         if (!cb.buffer)
-            return false;
-
-         u_upload_unmap(st->constbuf_uploader);
-      } else {
-         cb.buffer = NULL;
-         cb.user_buffer = &addr->constants;
-         cb.buffer_offset = 0;
-      }
+      cb.buffer = NULL;
+      cb.user_buffer = &addr->constants;
+      cb.buffer_offset = 0;
       cb.buffer_size = sizeof(addr->constants);
 
       cso_set_constant_buffer(cso, PIPE_SHADER_FRAGMENT, 0, &cb);
@@ -333,7 +319,8 @@ st_pbo_create_vs(struct st_context *st)
                         ureg_scalar(in_instanceid, TGSI_SWIZZLE_X));
       } else {
          /* out_layer = gl_InstanceID */
-         ureg_MOV(ureg, out_layer, in_instanceid);
+         ureg_MOV(ureg, ureg_writemask(out_layer, TGSI_WRITEMASK_X),
+                        ureg_scalar(in_instanceid, TGSI_SWIZZLE_X));
       }
    }
 

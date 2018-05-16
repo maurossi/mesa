@@ -84,11 +84,19 @@ struct tgsi_shader_info
 
    uint opcode_count[TGSI_OPCODE_LAST];  /**< opcode histogram */
 
+   /**
+    * If a tessellation control shader reads outputs, this describes which ones.
+    */
+   boolean reads_pervertex_outputs;
+   boolean reads_perpatch_outputs;
+   boolean reads_tessfactor_outputs;
+
    ubyte colors_read; /**< which color components are read by the FS */
    ubyte colors_written;
    boolean reads_position; /**< does fragment shader read position? */
    boolean reads_z; /**< does fragment shader read depth? */
    boolean reads_samplemask; /**< does fragment shader read sample mask? */
+   boolean reads_tess_factors; /**< If TES reads TESSINNER or TESSOUTER */
    boolean writes_z;  /**< does fragment shader write Z value? */
    boolean writes_stencil; /**< does fragment shader write stencil value? */
    boolean writes_samplemask; /**< does fragment shader write sample mask? */
@@ -113,6 +121,10 @@ struct tgsi_shader_info
    boolean uses_primid;
    boolean uses_frontface;
    boolean uses_invocationid;
+   boolean uses_thread_id[3];
+   boolean uses_block_id[3];
+   boolean uses_block_size;
+   boolean uses_grid_size;
    boolean writes_position;
    boolean writes_psize;
    boolean writes_clipvertex;
@@ -123,6 +135,8 @@ struct tgsi_shader_info
    boolean is_msaa_sampler[PIPE_MAX_SAMPLERS];
    boolean uses_doubles; /**< uses any of the double instructions */
    boolean uses_derivatives;
+   boolean uses_bindless_samplers;
+   boolean uses_bindless_images;
    unsigned clipdist_writemask;
    unsigned culldist_writemask;
    unsigned num_written_culldistance;
@@ -130,14 +144,12 @@ struct tgsi_shader_info
 
    unsigned images_declared; /**< bitmask of declared images */
    /**
-    * Bitmask indicating which images are written to (STORE / ATOM*).
-    * Indirect image accesses are not reflected in this mask.
-    */
-   unsigned images_writemask;
-   /**
     * Bitmask indicating which declared image is a buffer.
     */
    unsigned images_buffers;
+   unsigned images_load; /**< bitmask of images using loads */
+   unsigned images_store; /**< bitmask of images using stores */
+   unsigned images_atomic; /**< bitmask of images using atomics */
    unsigned shader_buffers_declared; /**< bitmask of declared shader buffers */
    unsigned shader_buffers_load; /**< bitmask of shader buffers using loads */
    unsigned shader_buffers_store; /**< bitmask of shader buffers using stores */
@@ -176,6 +188,12 @@ struct tgsi_array_info
    struct tgsi_declaration_range range;
 };
 
+struct tgsi_tessctrl_info
+{
+   /** Whether all codepaths write tess factors in all invocations. */
+   bool tessfactors_are_def_in_all_invocs;
+};
+
 extern void
 tgsi_scan_shader(const struct tgsi_token *tokens,
                  struct tgsi_shader_info *info);
@@ -186,8 +204,18 @@ tgsi_scan_arrays(const struct tgsi_token *tokens,
                  unsigned max_array_id,
                  struct tgsi_array_info *arrays);
 
-extern boolean
-tgsi_is_passthrough_shader(const struct tgsi_token *tokens);
+void
+tgsi_scan_tess_ctrl(const struct tgsi_token *tokens,
+                    const struct tgsi_shader_info *info,
+                    struct tgsi_tessctrl_info *out);
+
+static inline bool
+tgsi_is_bindless_image_file(unsigned file)
+{
+   return file != TGSI_FILE_IMAGE &&
+          file != TGSI_FILE_MEMORY &&
+          file != TGSI_FILE_BUFFER;
+}
 
 #ifdef __cplusplus
 } // extern "C"

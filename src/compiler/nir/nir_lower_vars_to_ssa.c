@@ -245,8 +245,12 @@ foreach_deref_node_worker(struct deref_node *node, nir_deref *deref,
 
       case nir_deref_type_struct: {
          nir_deref_struct *str = nir_deref_as_struct(deref->child);
-         return foreach_deref_node_worker(node->children[str->index],
-                                          deref->child, cb, state);
+         if (node->children[str->index] &&
+             !foreach_deref_node_worker(node->children[str->index],
+                                        deref->child, cb, state))
+            return false;
+
+         return true;
       }
 
       default:
@@ -460,7 +464,7 @@ lower_copies_to_load_store(struct deref_node *node,
 
          struct set_entry *arg_entry = _mesa_set_search(arg_node->copies, copy);
          assert(arg_entry);
-         _mesa_set_remove(node->copies, arg_entry);
+         _mesa_set_remove(arg_node->copies, arg_entry);
       }
 
       nir_instr_remove(&copy->instr);
@@ -475,7 +479,7 @@ lower_copies_to_load_store(struct deref_node *node,
  *
  * This algorithm is very similar to the one outlined in "Efficiently
  * Computing Static Single Assignment Form and the Control Dependence
- * Graph" by Cytron et. al.  The primary difference is that we only put one
+ * Graph" by Cytron et al.  The primary difference is that we only put one
  * SSA def on the stack per block.
  */
 static bool
@@ -737,11 +741,15 @@ nir_lower_vars_to_ssa_impl(nir_function_impl *impl)
    return progress;
 }
 
-void
+bool
 nir_lower_vars_to_ssa(nir_shader *shader)
 {
+   bool progress = false;
+
    nir_foreach_function(function, shader) {
       if (function->impl)
-         nir_lower_vars_to_ssa_impl(function->impl);
+         progress |= nir_lower_vars_to_ssa_impl(function->impl);
    }
+
+   return progress;
 }

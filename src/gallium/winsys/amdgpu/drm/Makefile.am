@@ -10,5 +10,9 @@ AM_CXXFLAGS = $(AM_CFLAGS)
 
 noinst_LTLIBRARIES = libamdgpuwinsys.la
 
-libamdgpuwinsys_la_LIBADD = $(top_builddir)/src/amd/addrlib/libamdgpu_addrlib.la
+libamdgpuwinsys_la_LIBADD = \
+   $(top_builddir)/src/amd/addrlib/libamdgpu_addrlib.la
+
 libamdgpuwinsys_la_SOURCES = $(C_SOURCES)
+
+EXTRA_DIST = meson.build

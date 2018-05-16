@@ -208,6 +208,8 @@ static const __DRI2rendererQueryExtension swrast_query_renderer_extension = {
 static const __DRIextension *dri_screen_extensions[] = {
     &swrastTexBufferExtension.base,
     &swrast_query_renderer_extension.base,
+    &dri2ConfigQueryExtension.base,
+    &dri2NoErrorExtension.base,
     NULL
 };
 
@@ -225,7 +227,7 @@ swrastFillInModes(__DRIscreen *psp,
      * support pageflipping at all.
      */
     static const GLenum back_buffer_modes[] = {
-	GLX_NONE, GLX_SWAP_UNDEFINED_OML
+	__DRI_ATTRIB_SWAP_NONE, __DRI_ATTRIB_SWAP_UNDEFINED
     };
 
     uint8_t depth_bits_array[4];
@@ -569,12 +571,12 @@ dri_create_buffer(__DRIscreen * sPriv,
 
     /* add front renderbuffer */
     frontrb = swrast_new_renderbuffer(visual, dPriv, GL_TRUE);
-    _mesa_add_renderbuffer(fb, BUFFER_FRONT_LEFT, &frontrb->Base.Base);
+    _mesa_attach_and_own_rb(fb, BUFFER_FRONT_LEFT, &frontrb->Base.Base);
 
     /* add back renderbuffer */
     if (visual->doubleBufferMode) {
 	backrb = swrast_new_renderbuffer(visual, dPriv, GL_FALSE);
-	_mesa_add_renderbuffer(fb, BUFFER_BACK_LEFT, &backrb->Base.Base);
+        _mesa_attach_and_own_rb(fb, BUFFER_BACK_LEFT, &backrb->Base.Base);
     }
 
     /* add software renderbuffers */
@@ -697,12 +699,16 @@ get_string(struct gl_context *ctx, GLenum pname)
 }
 
 static void
-update_state( struct gl_context *ctx, GLuint new_state )
+update_state(struct gl_context *ctx)
 {
+    GLuint new_state = ctx->NewState;
+
+    if (new_state & (_NEW_SCISSOR | _NEW_BUFFERS | _NEW_VIEWPORT))
+      _mesa_update_draw_buffer_bounds(ctx, ctx->DrawBuffer);
+
     /* not much to do here - pass it on */
     _swrast_InvalidateState( ctx, new_state );
     _swsetup_InvalidateState( ctx, new_state );
-    _vbo_InvalidateState( ctx, new_state );
     _tnl_InvalidateState( ctx, new_state );
 }
 
@@ -746,10 +752,7 @@ static GLboolean
 dri_create_context(gl_api api,
 		   const struct gl_config * visual,
 		   __DRIcontext * cPriv,
-		   unsigned major_version,
-		   unsigned minor_version,
-		   uint32_t flags,
-		   bool notify_reset,
+		   const struct __DriverContextConfig *ctx_config,
 		   unsigned *error,
 		   void *sharedContextPrivate)
 {
@@ -763,7 +766,13 @@ dri_create_context(gl_api api,
 
     /* Flag filtering is handled in dri2CreateContextAttribs.
      */
-    (void) flags;
+    (void) ctx_config->flags;
+
+    /* The swrast driver doesn't understand any of the attributes */
+    if (ctx_config->attribute_mask != 0) {
+	*error = __DRI_CTX_ERROR_UNKNOWN_ATTRIBUTE;
+	return false;
+    }
 
     ctx = CALLOC_STRUCT(dri_context);
     if (ctx == NULL) {
@@ -790,7 +799,7 @@ dri_create_context(gl_api api,
 	goto context_fail;
     }
 
-    driContextSetFlags(mesaCtx, flags);
+    driContextSetFlags(mesaCtx, ctx_config->flags);
 
     /* create module contexts */
     _swrast_CreateContext( mesaCtx );
@@ -808,6 +817,7 @@ dri_create_context(gl_api api,
     _mesa_meta_init(mesaCtx);
     _mesa_enable_sw_extensions(mesaCtx);
 
+   _mesa_override_extensions(mesaCtx);
     _mesa_compute_version(mesaCtx);
 
     _mesa_initialize_dispatch_tables(mesaCtx);
@@ -960,7 +970,6 @@ static const __DRIextension *swrast_driver_extensions[] = {
     &driCoreExtension.base,
     &driSWRastExtension.base,
     &driCopySubBufferExtension.base,
-    &dri2ConfigQueryExtension.base,
     &swrast_vtable.base,
     NULL
 };

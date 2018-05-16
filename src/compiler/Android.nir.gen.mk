@@ -38,54 +38,43 @@ LOCAL_C_INCLUDES += \
 
 LOCAL_EXPORT_C_INCLUDE_DIRS += \
 	$(intermediates)/nir \
+	$(MESA_TOP)/src/compiler \
 	$(MESA_TOP)/src/compiler/nir
 
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
-	$(NIR_GENERATED_FILES))
+	$(NIR_GENERATED_FILES) $(SPIRV_GENERATED_FILES))
 
 # Modules using libmesa_nir must set LOCAL_GENERATED_SOURCES to this
 MESA_GEN_NIR_H := $(addprefix $(call local-generated-sources-dir)/, \
 	nir/nir_opcodes.h \
 	nir/nir_builder_opcodes.h)
 
-nir_builder_opcodes_gen := $(LOCAL_PATH)/nir/nir_builder_opcodes_h.py
-nir_builder_opcodes_deps := \
-	$(LOCAL_PATH)/nir/nir_opcodes.py \
-	$(LOCAL_PATH)/nir/nir_builder_opcodes_h.py
-
 $(intermediates)/nir/nir_builder_opcodes.h: $(prebuilt_intermediates)/nir/nir_builder_opcodes.h
-	cp -a $< $@
-
-nir_constant_expressions_gen := $(LOCAL_PATH)/nir/nir_constant_expressions.py
-nir_constant_expressions_deps := \
-	$(LOCAL_PATH)/nir/nir_opcodes.py \
-	$(LOCAL_PATH)/nir/nir_constant_expressions.py
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
 
 $(intermediates)/nir/nir_constant_expressions.c: $(prebuilt_intermediates)/nir/nir_constant_expressions.c
-	cp -a $< $@
-
-nir_opcodes_h_gen := $(LOCAL_PATH)/nir/nir_opcodes_h.py
-nir_opcodes_h_deps := \
-	$(LOCAL_PATH)/nir/nir_opcodes.py \
-	$(LOCAL_PATH)/nir/nir_opcodes_h.py
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
 
 $(intermediates)/nir/nir_opcodes.h: $(prebuilt_intermediates)/nir/nir_opcodes.h
-	cp -a $< $@
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
 
 $(LOCAL_PATH)/nir/nir.h: $(intermediates)/nir/nir_opcodes.h
 
-nir_opcodes_c_gen := $(LOCAL_PATH)/nir/nir_opcodes_c.py
-nir_opcodes_c_deps := \
-	$(LOCAL_PATH)/nir/nir_opcodes.py \
-	$(LOCAL_PATH)/nir/nir_opcodes_c.py
-
 $(intermediates)/nir/nir_opcodes.c: $(prebuilt_intermediates)/nir/nir_opcodes.c
-	cp -a $< $@
-
-nir_opt_algebraic_gen := $(LOCAL_PATH)/nir/nir_opt_algebraic.py
-nir_opt_algebraic_deps := \
-	$(LOCAL_PATH)/nir/nir_opt_algebraic.py \
-	$(LOCAL_PATH)/nir/nir_algebraic.py
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
 
 $(intermediates)/nir/nir_opt_algebraic.c: $(prebuilt_intermediates)/nir/nir_opt_algebraic.c
-	cp -a $< $@
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+$(intermediates)/spirv/spirv_info.c: $(prebuilt_intermediates)/spirv/spirv_info.c
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+$(intermediates)/spirv/vtn_gather_types.c: $(prebuilt_intermediates)/spirv/vtn_gather_types.c
+	@mkdir -p $(dir $@)
+	@cp -f $< $@

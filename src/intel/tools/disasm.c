@@ -23,9 +23,8 @@
 
 #include <stdlib.h>
 
-#include "brw_context.h"
-#include "brw_inst.h"
-#include "brw_eu.h"
+#include "compiler/brw_inst.h"
+#include "compiler/brw_eu.h"
 
 #include "gen_disasm.h"
 
@@ -44,45 +43,21 @@ is_send(uint32_t opcode)
            opcode == BRW_OPCODE_SENDSC );
 }
 
-void
-gen_disasm_disassemble(struct gen_disasm *disasm, void *assembly,
-                       int start, FILE *out)
+static int
+gen_disasm_find_end(struct gen_disasm *disasm, void *assembly, int start)
 {
    struct gen_device_info *devinfo = &disasm->devinfo;
-   bool dump_hex = false;
    int offset = start;
 
    /* This loop exits when send-with-EOT or when opcode is 0 */
    while (true) {
       brw_inst *insn = assembly + offset;
-      brw_inst uncompacted;
-      bool compacted = brw_inst_cmpt_control(devinfo, insn);
-      if (0)
-         fprintf(out, "0x%08x: ", offset);
 
-      if (compacted) {
-         brw_compact_inst *compacted = (void *)insn;
-         if (dump_hex) {
-            fprintf(out, "0x%08x 0x%08x                       ",
-                   ((uint32_t *)insn)[1],
-                   ((uint32_t *)insn)[0]);
-         }
-
-         brw_uncompact_instruction(devinfo, &uncompacted, compacted);
-         insn = &uncompacted;
+      if (brw_inst_cmpt_control(devinfo, insn)) {
          offset += 8;
       } else {
-         if (dump_hex) {
-            fprintf(out, "0x%08x 0x%08x 0x%08x 0x%08x ",
-                   ((uint32_t *)insn)[3],
-                   ((uint32_t *)insn)[2],
-                   ((uint32_t *)insn)[1],
-                   ((uint32_t *)insn)[0]);
-         }
          offset += 16;
       }
-
-      brw_disassemble_inst(out, devinfo, insn, compacted);
 
       /* Simplistic, but efficient way to terminate disasm */
       uint32_t opcode = brw_inst_opcode(devinfo, insn);
@@ -90,10 +65,50 @@ gen_disasm_disassemble(struct gen_disasm *disasm, void *assembly,
          break;
       }
    }
+
+   return offset;
+}
+
+void
+gen_disasm_disassemble(struct gen_disasm *disasm, void *assembly,
+                       int start, FILE *out)
+{
+   struct gen_device_info *devinfo = &disasm->devinfo;
+   int end = gen_disasm_find_end(disasm, assembly, start);
+
+   /* Make a dummy disasm structure that brw_validate_instructions
+    * can work from.
+    */
+   struct disasm_info *disasm_info = disasm_initialize(devinfo, NULL);
+   disasm_new_inst_group(disasm_info, start);
+   disasm_new_inst_group(disasm_info, end);
+
+   brw_validate_instructions(devinfo, assembly, start, end, disasm_info);
+
+   foreach_list_typed(struct inst_group, group, link,
+                      &disasm_info->group_list) {
+      struct exec_node *next_node = exec_node_get_next(&group->link);
+      if (exec_node_is_tail_sentinel(next_node))
+         break;
+
+      struct inst_group *next =
+         exec_node_data(struct inst_group, next_node, link);
+
+      int start_offset = group->offset;
+      int end_offset = next->offset;
+
+      brw_disassemble(devinfo, assembly, start_offset, end_offset, out);
+
+      if (group->error) {
+         fputs(group->error, out);
+      }
+   }
+
+   ralloc_free(disasm_info);
 }
 
 struct gen_disasm *
-gen_disasm_create(int pciid)
+gen_disasm_create(const struct gen_device_info *devinfo)
 {
    struct gen_disasm *gd;
 
@@ -101,10 +116,7 @@ gen_disasm_create(int pciid)
    if (gd == NULL)
       return NULL;
 
-   if (!gen_get_device_info(pciid, &gd->devinfo)) {
-      free(gd);
-      return NULL;
-   }
+   gd->devinfo = *devinfo;
 
    brw_init_compaction_tables(&gd->devinfo);
 

@@ -111,4 +111,23 @@ svga_format_is_uncompressed_snorm(SVGA3dSurfaceFormat format);
 bool
 svga_format_is_typeless(SVGA3dSurfaceFormat format);
 
+bool
+svga_format_is_shareable(const struct svga_screen *ss,
+                         enum pipe_format pformat,
+                         SVGA3dSurfaceFormat sformat,
+                         unsigned bind,
+                         bool verbose);
+
+SVGA3dSurfaceFormat
+svga_linear_to_srgb(SVGA3dSurfaceFormat format);
+
+
+boolean
+svga_is_format_supported(struct pipe_screen *screen,
+                         enum pipe_format format,
+                         enum pipe_texture_target target,
+                         unsigned sample_count,
+                         unsigned bindings);
+
+
 #endif /* SVGA_FORMAT_H_ */

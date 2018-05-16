@@ -29,12 +29,17 @@ gallium_drv_video_la_LIBADD = \
 	$(top_builddir)/src/gallium/auxiliary/libgalliumvl.la \
 	$(top_builddir)/src/gallium/auxiliary/libgallium.la \
 	$(top_builddir)/src/util/libmesautil.la \
-	$(VL_LIBS) \
 	$(LIBDRM_LIBS) \
 	$(GALLIUM_COMMON_LIB_DEPS)
 
+if HAVE_PLATFORM_X11
+gallium_drv_video_la_LIBADD += \
+	$(VL_LIBS) \
+	$(XCB_DRI3_LIBS)
+endif
+
 EXTRA_gallium_drv_video_la_DEPENDENCIES = va.sym
-EXTRA_DIST = va.sym
+EXTRA_DIST = va.sym meson.build
 
 if HAVE_GALLIUM_STATIC_TARGETS
 
@@ -53,6 +58,7 @@ gallium_drv_video_la_LIBADD += \
 	$(top_builddir)/src/gallium/auxiliary/pipe-loader/libpipe_loader_static.la \
 	$(GALLIUM_PIPE_LOADER_WINSYS_LIBS) \
 	$(TARGET_LIB_DEPS) \
+	$(TARGET_COMPILER_LIB_DEPS) \
 	$(TARGET_RADEON_WINSYS) $(TARGET_RADEON_COMMON)
 
 else # HAVE_GALLIUM_STATIC_TARGETS

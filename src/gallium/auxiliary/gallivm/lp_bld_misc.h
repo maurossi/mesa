@@ -42,9 +42,6 @@ extern "C" {
 
 struct lp_generated_code;
 
-extern void
-gallivm_init_llvm_targets(void);
-
 extern LLVMTargetLibraryInfoRef
 gallivm_create_target_library_info(const char *triple);
 
@@ -73,17 +70,11 @@ lp_get_default_memory_manager();
 extern void
 lp_free_memory_manager(LLVMMCJITMemoryManagerRef memorymgr);
 
-extern void
-lp_add_attr_dereferenceable(LLVMValueRef val, uint64_t bytes);
-
 extern LLVMValueRef
 lp_get_called_value(LLVMValueRef call);
 
 extern bool
 lp_is_function(LLVMValueRef v);
-
-extern LLVMBuilderRef
-lp_create_builder(LLVMContextRef ctx, bool unsafe_fpmath);
 
 #ifdef __cplusplus
 }

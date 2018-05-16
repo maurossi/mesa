@@ -32,7 +32,6 @@
 #define TEXTOBJ_H
 
 
-#include "compiler.h"
 #include "glheader.h"
 #include "mtypes.h"
 #include "samplerobj.h"
@@ -53,12 +52,6 @@ _mesa_lookup_texture(struct gl_context *ctx, GLuint id);
 
 extern struct gl_texture_object *
 _mesa_lookup_texture_err(struct gl_context *ctx, GLuint id, const char* func);
-
-extern void
-_mesa_begin_texture_lookups(struct gl_context *ctx);
-
-extern void
-_mesa_end_texture_lookups(struct gl_context *ctx);
 
 extern struct gl_texture_object *
 _mesa_lookup_texture_locked(struct gl_context *ctx, GLuint id);
@@ -87,7 +80,8 @@ _mesa_copy_texture_object( struct gl_texture_object *dest,
 
 extern void
 _mesa_clear_texture_object(struct gl_context *ctx,
-                           struct gl_texture_object *obj);
+                           struct gl_texture_object *obj,
+                           struct gl_texture_image *retainTexImage);
 
 extern void
 _mesa_reference_texobj_(struct gl_texture_object **ptr,
@@ -180,7 +174,9 @@ extern void
 _mesa_delete_nameless_texture(struct gl_context *ctx,
                               struct gl_texture_object *texObj);
 
-
+extern void
+_mesa_bind_texture(struct gl_context *ctx, GLenum target,
+                   struct gl_texture_object *tex_obj);
 /*@}*/
 
 /**
@@ -188,21 +184,40 @@ _mesa_delete_nameless_texture(struct gl_context *ctx,
  */
 /*@{*/
 
+void GLAPIENTRY
+_mesa_GenTextures_no_error(GLsizei n, GLuint *textures);
+
 extern void GLAPIENTRY
 _mesa_GenTextures(GLsizei n, GLuint *textures);
 
+void GLAPIENTRY
+_mesa_CreateTextures_no_error(GLenum target, GLsizei n, GLuint *textures);
+
 extern void GLAPIENTRY
 _mesa_CreateTextures(GLenum target, GLsizei n, GLuint *textures);
+
+void GLAPIENTRY
+_mesa_DeleteTextures_no_error(GLsizei n, const GLuint *textures);
 
 extern void GLAPIENTRY
 _mesa_DeleteTextures( GLsizei n, const GLuint *textures );
 
 
+void GLAPIENTRY
+_mesa_BindTexture_no_error(GLenum target, GLuint texture);
+
 extern void GLAPIENTRY
 _mesa_BindTexture( GLenum target, GLuint texture );
 
+void GLAPIENTRY
+_mesa_BindTextureUnit_no_error(GLuint unit, GLuint texture);
+
 extern void GLAPIENTRY
 _mesa_BindTextureUnit(GLuint unit, GLuint texture);
+
+void GLAPIENTRY
+_mesa_BindTextures_no_error(GLuint first, GLsizei count,
+                            const GLuint *textures);
 
 extern void GLAPIENTRY
 _mesa_BindTextures( GLuint first, GLsizei count, const GLuint *textures );
@@ -220,10 +235,18 @@ _mesa_AreTexturesResident( GLsizei n, const GLuint *textures,
 extern GLboolean GLAPIENTRY
 _mesa_IsTexture( GLuint texture );
 
+void GLAPIENTRY
+_mesa_InvalidateTexSubImage_no_error(GLuint texture, GLint level, GLint xoffset,
+                                     GLint yoffset, GLint zoffset,
+                                     GLsizei width, GLsizei height,
+                                     GLsizei depth);
+
 extern void GLAPIENTRY
 _mesa_InvalidateTexSubImage(GLuint texture, GLint level, GLint xoffset,
                             GLint yoffset, GLint zoffset, GLsizei width,
                             GLsizei height, GLsizei depth);
+void GLAPIENTRY
+_mesa_InvalidateTexImage_no_error(GLuint texture, GLint level);
 
 extern void GLAPIENTRY
 _mesa_InvalidateTexImage(GLuint texture, GLint level);

@@ -35,7 +35,7 @@ class exec_info():
     Each of the attributes that is not None must have a valid value.  The
     valid ranges are:
 
-        compatiblity: [10, 30]
+        compatibility: [10, )
         core: [31, )
         es1: [10, 11]
         es2: [20, )
@@ -66,9 +66,8 @@ class exec_info():
         self.es2 = es2
 
 functions = {
-    # OpenGL 3.1 / GL_ARB_texture_buffer_object.  Mesa only exposes this
-    # extension with core profile.
-    "TexBuffer": exec_info(core=31, es2=31),
+    # OpenGL 3.1 / GL_ARB_texture_buffer_object.
+    "TexBuffer": exec_info(compatibility=20, core=31, es2=31),
 
     # OpenGL 3.2 / GL_OES_geometry_shader.
     "FramebufferTexture": exec_info(core=32, es2=31),
@@ -144,9 +143,8 @@ functions = {
     # GetFloati_v also GL_ARB_shader_atomic_counters
     # GetDoublei_v also GL_ARB_shader_atomic_counters
 
-    # OpenGL 4.3 / GL_ARB_texture_buffer_range.  Mesa can expose the extension
-    # with OpenGL 3.1.
-    "TexBufferRange": exec_info(core=31, es2=31),
+    # OpenGL 4.3 / GL_ARB_texture_buffer_range.
+    "TexBufferRange": exec_info(compatibility=20, core=31, es2=31),
 
     # OpenGL 4.3 / GL_ARB_framebuffer_no_attachments.  Mesa can expose the
     # extension with OpenGL 3.0.
@@ -252,4 +250,46 @@ functions = {
     "GetQueryBufferObjectuiv": exec_info(core=31),
     "GetQueryBufferObjecti64v": exec_info(core=31),
     "GetQueryBufferObjectui64v": exec_info(core=31),
+
+    # GL_ARB_gpu_shader_int64 - nominally requires OpenGL 4.0, and Mesa
+    # only supports 4.0 in core profile.
+    "Uniform1i64ARB": exec_info(core=31),
+    "Uniform2i64ARB": exec_info(core=31),
+    "Uniform3i64ARB": exec_info(core=31),
+    "Uniform4i64ARB": exec_info(core=31),
+    "Uniform1i64vARB": exec_info(core=31),
+    "Uniform2i64vARB": exec_info(core=31),
+    "Uniform3i64vARB": exec_info(core=31),
+    "Uniform4i64vARB": exec_info(core=31),
+    "Uniform1ui64ARB": exec_info(core=31),
+    "Uniform2ui64ARB": exec_info(core=31),
+    "Uniform3ui64ARB": exec_info(core=31),
+    "Uniform4ui64ARB": exec_info(core=31),
+    "Uniform1ui64vARB": exec_info(core=31),
+    "Uniform2ui64vARB": exec_info(core=31),
+    "Uniform3ui64vARB": exec_info(core=31),
+    "Uniform4ui64vARB": exec_info(core=31),
+    "GetUniformi64vARB": exec_info(core=31),
+    "GetUniformui64vARB": exec_info(core=31),
+    "GetnUniformi64vARB": exec_info(core=31),
+    "GetnUniformui64vARB": exec_info(core=31),
+    "ProgramUniform1i64ARB": exec_info(core=31),
+    "ProgramUniform2i64ARB": exec_info(core=31),
+    "ProgramUniform3i64ARB": exec_info(core=31),
+    "ProgramUniform4i64ARB": exec_info(core=31),
+    "ProgramUniform1i64vARB": exec_info(core=31),
+    "ProgramUniform2i64vARB": exec_info(core=31),
+    "ProgramUniform3i64vARB": exec_info(core=31),
+    "ProgramUniform4i64vARB": exec_info(core=31),
+    "ProgramUniform1ui64ARB": exec_info(core=31),
+    "ProgramUniform2ui64ARB": exec_info(core=31),
+    "ProgramUniform3ui64ARB": exec_info(core=31),
+    "ProgramUniform4ui64ARB": exec_info(core=31),
+    "ProgramUniform1ui64vARB": exec_info(core=31),
+    "ProgramUniform2ui64vARB": exec_info(core=31),
+    "ProgramUniform3ui64vARB": exec_info(core=31),
+    "ProgramUniform4ui64vARB": exec_info(core=31),
+
+    # GL_ARB_bindless_texture
+    "GetVertexAttribLui64vARB": exec_info(core=31),
 }

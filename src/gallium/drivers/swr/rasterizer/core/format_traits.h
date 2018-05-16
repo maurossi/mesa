@@ -20,7 +20,7 @@
 * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
 * IN THE SOFTWARE.
 *
-* @file gen_format_traits.h
+* @file format_traits.h
 *
 * @brief Format Traits.  auto-generated file
 *
@@ -30,16 +30,16 @@
 #pragma once
 
 #include "format_types.h"
-#include "utils.h"
+#include "format_utils.h"
 
 //////////////////////////////////////////////////////////////////////////
 /// FormatSwizzle - Component swizzle selects
 //////////////////////////////////////////////////////////////////////////
-template<UINT comp0 = 0, uint32_t comp1 = 0, uint32_t comp2 = 0, uint32_t comp3 = 0>
+template<uint32_t comp0 = 0, uint32_t comp1 = 0, uint32_t comp2 = 0, uint32_t comp3 = 0>
 struct FormatSwizzle
 {
     // Return swizzle select for component.
-    INLINE static uint32_t swizzle(UINT c)
+    INLINE static uint32_t swizzle(uint32_t c)
     {
         static const uint32_t s[4] = { comp0, comp1, comp2, comp3 };
         return s[c];
@@ -1237,7 +1237,7 @@ template<> struct FormatTraits<R11G11B10_FLOAT> :
 /// FormatTraits<R10G10B10_FLOAT_A2_UNORM> - Format traits specialization for R10G10B10_FLOAT_A2_UNORM
 //////////////////////////////////////////////////////////////////////////
 template<> struct FormatTraits<R10G10B10_FLOAT_A2_UNORM> :
-    ComponentTraits<SWR_TYPE_FLOAT, 10, SWR_TYPE_FLOAT, 10, SWR_TYPE_FLOAT, 10, SWR_TYPE_FLOAT, 2>,
+    ComponentTraits<SWR_TYPE_FLOAT, 10, SWR_TYPE_FLOAT, 10, SWR_TYPE_FLOAT, 10, SWR_TYPE_UNORM, 2>,
     FormatSwizzle<0, 1, 2, 3>,
     Defaults<0, 0, 0, 0x3f800000>
 {
@@ -2862,6 +2862,28 @@ template<> struct FormatTraits<I8_SINT> :
 };
 
 //////////////////////////////////////////////////////////////////////////
+/// FormatTraits<DXT1_RGB_SRGB> - Format traits specialization for DXT1_RGB_SRGB
+//////////////////////////////////////////////////////////////////////////
+template<> struct FormatTraits<DXT1_RGB_SRGB> :
+    ComponentTraits<SWR_TYPE_UNORM, 8>,
+    FormatSwizzle<0>,
+    Defaults<0, 0, 0, 0x3f800000>
+{
+    static const uint32_t bpp{ 64 };
+    static const uint32_t numComps{ 1 };
+    static const bool hasAlpha{ true };
+    static const uint32_t alphaComp{ 3 };
+    static const bool isSRGB{ false };
+    static const bool isBC{ true };
+    static const bool isSubsampled{ false };
+    static const uint32_t bcWidth{ 4 };
+    static const uint32_t bcHeight{ 4 };
+
+    typedef TransposeSingleComponent<8> TransposeT;
+    typedef Format1<8>                  FormatT;
+};
+
+//////////////////////////////////////////////////////////////////////////
 /// FormatTraits<YCRCB_SWAPUVY> - Format traits specialization for YCRCB_SWAPUVY
 //////////////////////////////////////////////////////////////////////////
 template<> struct FormatTraits<YCRCB_SWAPUVY> :
@@ -3079,6 +3101,28 @@ template<> struct FormatTraits<YCRCB_SWAPUV> :
 
     typedef Transpose8_8_8_8    TransposeT;
     typedef Format4<8, 8, 8, 8> FormatT;
+};
+
+//////////////////////////////////////////////////////////////////////////
+/// FormatTraits<DXT1_RGB> - Format traits specialization for DXT1_RGB
+//////////////////////////////////////////////////////////////////////////
+template<> struct FormatTraits<DXT1_RGB> :
+    ComponentTraits<SWR_TYPE_UNORM, 8>,
+    FormatSwizzle<0>,
+    Defaults<0, 0, 0, 0x3f800000>
+{
+    static const uint32_t bpp{ 64 };
+    static const uint32_t numComps{ 1 };
+    static const bool hasAlpha{ true };
+    static const uint32_t alphaComp{ 3 };
+    static const bool isSRGB{ false };
+    static const bool isBC{ true };
+    static const bool isSubsampled{ false };
+    static const uint32_t bcWidth{ 4 };
+    static const uint32_t bcHeight{ 4 };
+
+    typedef TransposeSingleComponent<8> TransposeT;
+    typedef Format1<8>                  FormatT;
 };
 
 //////////////////////////////////////////////////////////////////////////

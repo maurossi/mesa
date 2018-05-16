@@ -211,6 +211,7 @@ nvc0_rasterizer_state_create(struct pipe_context *pipe,
                              const struct pipe_rasterizer_state *cso)
 {
     struct nvc0_rasterizer_stateobj *so;
+    uint16_t class_3d = nouveau_screen(pipe->screen)->class_3d;
     uint32_t reg;
 
     so = CALLOC_STRUCT(nvc0_rasterizer_stateobj);
@@ -260,6 +261,12 @@ nvc0_rasterizer_state_create(struct pipe_context *pipe,
     SB_DATA    (so, ((cso->sprite_coord_enable & 0xff) << 3) | reg);
     SB_IMMED_3D(so, POINT_SPRITE_ENABLE, cso->point_quad_rasterization);
     SB_IMMED_3D(so, POINT_SMOOTH_ENABLE, cso->point_smooth);
+
+    if (class_3d >= GM200_3D_CLASS) {
+       SB_IMMED_3D(so, FILL_RECTANGLE,
+                   cso->fill_front == PIPE_POLYGON_MODE_FILL_RECTANGLE ?
+                   NVC0_3D_FILL_RECTANGLE_ENABLE : 0);
+    }
 
     SB_BEGIN_3D(so, MACRO_POLYGON_MODE_FRONT, 1);
     SB_DATA    (so, nvgl_polygon_mode(cso->fill_front));
@@ -712,7 +719,8 @@ nvc0_cp_state_bind(struct pipe_context *pipe, void *hwcso)
 }
 
 static void
-nvc0_set_constant_buffer(struct pipe_context *pipe, uint shader, uint index,
+nvc0_set_constant_buffer(struct pipe_context *pipe,
+                         enum pipe_shader_type shader, uint index,
                          const struct pipe_constant_buffer *cb)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
@@ -933,7 +941,7 @@ nvc0_set_vertex_buffers(struct pipe_context *pipe,
     for (i = 0; i < count; ++i) {
        unsigned dst_index = start_slot + i;
 
-       if (vb[i].user_buffer) {
+       if (vb[i].is_user_buffer) {
           nvc0->vbo_user |= 1 << dst_index;
           if (!vb[i].stride && nvc0->screen->eng3d->oclass < GM107_3D_CLASS)
              nvc0->constant_vbos |= 1 << dst_index;
@@ -944,37 +952,12 @@ nvc0_set_vertex_buffers(struct pipe_context *pipe,
           nvc0->vbo_user &= ~(1 << dst_index);
           nvc0->constant_vbos &= ~(1 << dst_index);
 
-          if (vb[i].buffer &&
-              vb[i].buffer->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT)
+          if (vb[i].buffer.resource &&
+              vb[i].buffer.resource->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT)
              nvc0->vtxbufs_coherent |= (1 << dst_index);
           else
              nvc0->vtxbufs_coherent &= ~(1 << dst_index);
        }
-    }
-}
-
-static void
-nvc0_set_index_buffer(struct pipe_context *pipe,
-                      const struct pipe_index_buffer *ib)
-{
-    struct nvc0_context *nvc0 = nvc0_context(pipe);
-
-    if (nvc0->idxbuf.buffer)
-       nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_IDX);
-
-    if (ib) {
-       pipe_resource_reference(&nvc0->idxbuf.buffer, ib->buffer);
-       nvc0->idxbuf.index_size = ib->index_size;
-       if (ib->buffer) {
-          nvc0->idxbuf.offset = ib->offset;
-          nvc0->dirty_3d |= NVC0_NEW_3D_IDXBUF;
-       } else {
-          nvc0->idxbuf.user_buffer = ib->user_buffer;
-          nvc0->dirty_3d &= ~NVC0_NEW_3D_IDXBUF;
-       }
-    } else {
-       nvc0->dirty_3d &= ~NVC0_NEW_3D_IDXBUF;
-       pipe_resource_reference(&nvc0->idxbuf.buffer, NULL);
     }
 }
 
@@ -1418,7 +1401,6 @@ nvc0_init_state_functions(struct nvc0_context *nvc0)
    pipe->bind_vertex_elements_state = nvc0_vertex_state_bind;
 
    pipe->set_vertex_buffers = nvc0_set_vertex_buffers;
-   pipe->set_index_buffer = nvc0_set_index_buffer;
 
    pipe->create_stream_output_target = nvc0_so_target_create;
    pipe->stream_output_target_destroy = nvc0_so_target_destroy;

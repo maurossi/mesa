@@ -43,6 +43,7 @@
 #ifdef GLX_USE_APPLEGL
 #include "apple/apple_glx_context.h"
 #include "apple/apple_glx.h"
+#include "util/debug.h"
 #else
 #include <sys/time.h>
 #ifdef XF86VIDMODE
@@ -235,19 +236,23 @@ Bool
 validate_renderType_against_config(const struct glx_config *config,
                                    int renderType)
 {
-    switch (renderType) {
-    case GLX_RGBA_TYPE:
-        return (config->renderType & GLX_RGBA_BIT) != 0;
-    case GLX_COLOR_INDEX_TYPE:
-        return (config->renderType & GLX_COLOR_INDEX_BIT) != 0;
-    case GLX_RGBA_FLOAT_TYPE_ARB:
-        return (config->renderType & GLX_RGBA_FLOAT_BIT_ARB) != 0;
-    case GLX_RGBA_UNSIGNED_FLOAT_TYPE_EXT:
-        return (config->renderType & GLX_RGBA_UNSIGNED_FLOAT_BIT_EXT) != 0;
-    default:
-        break;
-    }
-    return 0;
+   /* GLX_EXT_no_config_context supports any render type */
+   if (!config)
+      return True;
+
+   switch (renderType) {
+      case GLX_RGBA_TYPE:
+         return (config->renderType & GLX_RGBA_BIT) != 0;
+      case GLX_COLOR_INDEX_TYPE:
+         return (config->renderType & GLX_COLOR_INDEX_BIT) != 0;
+      case GLX_RGBA_FLOAT_TYPE_ARB:
+         return (config->renderType & GLX_RGBA_FLOAT_BIT_ARB) != 0;
+      case GLX_RGBA_UNSIGNED_FLOAT_TYPE_EXT:
+         return (config->renderType & GLX_RGBA_UNSIGNED_FLOAT_BIT_EXT) != 0;
+      default:
+         break;
+   }
+   return 0;
 }
 
 _X_HIDDEN Bool
@@ -388,15 +393,7 @@ glXCreateContext(Display * dpy, XVisualInfo * vis,
       config = glx_config_find_visual(psc->visuals, vis->visualid);
 
    if (config == NULL) {
-      xError error;
-
-      error.errorCode = BadValue;
-      error.resourceID = vis->visualid;
-      error.sequenceNumber = dpy->request;
-      error.type = X_Error;
-      error.majorCode = __glXSetupForCommand(dpy);
-      error.minorCode = X_GLXCreateContext;
-      _XError(dpy, &error);
+      __glXSendError(dpy, BadValue, vis->visualid, X_GLXCreateContext, True);
       return None;
    }
 
@@ -524,7 +521,7 @@ glXWaitGL(void)
 {
    struct glx_context *gc = __glXGetCurrentContext();
 
-   if (gc != &dummyContext && gc->vtable->wait_gl)
+   if (gc->vtable->wait_gl)
       gc->vtable->wait_gl(gc);
 }
 
@@ -537,7 +534,7 @@ glXWaitX(void)
 {
    struct glx_context *gc = __glXGetCurrentContext();
 
-   if (gc != &dummyContext && gc->vtable->wait_x)
+   if (gc->vtable->wait_x)
       gc->vtable->wait_x(gc);
 }
 
@@ -546,7 +543,7 @@ glXUseXFont(Font font, int first, int count, int listBase)
 {
    struct glx_context *gc = __glXGetCurrentContext();
 
-   if (gc != &dummyContext && gc->vtable->use_x_font)
+   if (gc->vtable->use_x_font)
       gc->vtable->use_x_font(gc, font, first, count, listBase);
 }
 
@@ -820,7 +817,7 @@ glXSwapBuffers(Display * dpy, GLXDrawable drawable)
 {
 #ifdef GLX_USE_APPLEGL
    struct glx_context * gc = __glXGetCurrentContext();
-   if(gc != &DummyContext && apple_glx_is_current_drawable(dpy, gc->driContext, drawable)) {
+   if(gc != &dummyContext && apple_glx_is_current_drawable(dpy, gc->driContext, drawable)) {
       apple_glx_swap_buffers(gc->driContext);
    } else {
       __glXSendError(dpy, GLXBadCurrentWindow, 0, X_GLXSwapBuffers, false);
@@ -1014,6 +1011,7 @@ fbconfigs_compatible(const struct glx_config * const a,
 
    MATCH_MASK(drawableType);
    MATCH_MASK(renderType);
+   MATCH_DONT_CARE(sRGBCapable);
 
    /* There is a bug in a few of the XFree86 DDX drivers.  They contain
     * visuals with a "transparent type" of 0 when they really mean GLX_NONE.
@@ -1287,7 +1285,7 @@ glXChooseVisual(Display * dpy, int screen, int *attribList)
    }
 
 #ifdef GLX_USE_APPLEGL
-   if(visualList && getenv("LIBGL_DUMP_VISUALID")) {
+   if(visualList && env_var_as_boolean("LIBGL_DUMP_VISUALID", false)) {
       printf("visualid 0x%lx\n", visualList[0].visualid);
    }
 #endif
@@ -1402,15 +1400,9 @@ glXImportContextEXT(Display *dpy, GLXContextID contextID)
    xGLXQueryContextReply reply;
    CARD8 opcode;
    struct glx_context *ctx;
-
-   /* This GLX implementation knows about 5 different properties, so
-    * allow the server to send us one of each.
-    */
-   int propList[5 * 2], *pProp, nPropListBytes;
-   int numProps;
-   int i, renderType;
-   XID share;
-   struct glx_config *mode;
+   int i, renderType = GLX_RGBA_TYPE; /* By default, assume RGBA context */
+   XID share = None;
+   struct glx_config *mode = NULL;
    uint32_t fbconfigID = 0;
    uint32_t visualID = 0;
    uint32_t screen = 0;
@@ -1468,41 +1460,35 @@ glXImportContextEXT(Display *dpy, GLXContextID contextID)
       req->context = contextID;
    }
 
-   _XReply(dpy, (xReply *) & reply, 0, False);
+   if (_XReply(dpy, (xReply *) & reply, 0, False) &&
+       reply.n < (INT32_MAX / 2)) {
 
-   if (reply.n <= __GLX_MAX_CONTEXT_PROPS)
-      nPropListBytes = reply.n * 2 * sizeof propList[0];
-   else
-      nPropListBytes = 0;
-   _XRead(dpy, (char *) propList, nPropListBytes);
+      for (i = 0; i < reply.n * 2; i++) {
+         int prop[2];
+
+         _XRead(dpy, (char *)prop, sizeof(prop));
+         switch (prop[0]) {
+         case GLX_SCREEN:
+            screen = prop[1];
+            got_screen = True;
+            break;
+         case GLX_SHARE_CONTEXT_EXT:
+            share = prop[1];
+            break;
+         case GLX_VISUAL_ID_EXT:
+            visualID = prop[1];
+            break;
+         case GLX_FBCONFIG_ID:
+            fbconfigID = prop[1];
+            break;
+         case GLX_RENDER_TYPE:
+            renderType = prop[1];
+            break;
+         }
+      }
+   }
    UnlockDisplay(dpy);
    SyncHandle();
-
-   numProps = nPropListBytes / (2 * sizeof(propList[0]));
-   share = None;
-   mode = NULL;
-   renderType = GLX_RGBA_TYPE; /* By default, assume RGBA context */
-   pProp = propList;
-
-   for (i = 0, pProp = propList; i < numProps; i++, pProp += 2)
-      switch (pProp[0]) {
-      case GLX_SCREEN:
-	 screen = pProp[1];
-	 got_screen = True;
-	 break;
-      case GLX_SHARE_CONTEXT_EXT:
-	 share = pProp[1];
-	 break;
-      case GLX_VISUAL_ID_EXT:
-	 visualID = pProp[1];
-	 break;
-      case GLX_FBCONFIG_ID:
-	 fbconfigID = pProp[1];
-	 break;
-      case GLX_RENDER_TYPE:
-	 renderType = pProp[1];
-	 break;
-      }
 
    if (!got_screen)
       return NULL;
@@ -2438,7 +2424,7 @@ __glXBindTexImageEXT(Display * dpy,
 {
    struct glx_context *gc = __glXGetCurrentContext();
 
-   if (gc == &dummyContext || gc->vtable->bind_tex_image == NULL)
+   if (gc->vtable->bind_tex_image == NULL)
       return;
 
    gc->vtable->bind_tex_image(dpy, drawable, buffer, attrib_list);
@@ -2449,7 +2435,7 @@ __glXReleaseTexImageEXT(Display * dpy, GLXDrawable drawable, int buffer)
 {
    struct glx_context *gc = __glXGetCurrentContext();
 
-   if (gc == &dummyContext || gc->vtable->release_tex_image == NULL)
+   if (gc->vtable->release_tex_image == NULL)
       return;
 
    gc->vtable->release_tex_image(dpy, drawable, buffer);
@@ -2651,7 +2637,7 @@ _GLX_PUBLIC void (*glXGetProcAddressARB(const GLubyte * procName)) (void)
    f = (gl_function) get_glx_proc_address((const char *) procName);
    if ((f == NULL) && (procName[0] == 'g') && (procName[1] == 'l')
        && (procName[2] != 'X')) {
-#ifdef GLX_SHARED_GLAPI
+#ifdef GLX_INDIRECT_RENDERING
       f = (gl_function) __indirect_get_proc_address((const char *) procName);
 #endif
       if (!f)

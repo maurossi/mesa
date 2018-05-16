@@ -28,11 +28,6 @@
 #include <string.h>
 #include <stdint.h>
 
-/* Android defines SIZE_MAX in limits.h, instead of the standard stdint.h */
-#ifdef ANDROID
-#include <limits.h>
-#endif
-
 /* Some versions of MinGW are missing _vscprintf's declaration, although they
  * still provide the symbol in the import library. */
 #ifdef __MINGW32__
@@ -290,7 +285,7 @@ ralloc_steal(const void *new_ctx, void *ptr)
       return;
 
    info = get_header(ptr);
-   parent = get_header(new_ctx);
+   parent = new_ctx ? get_header(new_ctx) : NULL;
 
    unlink_block(info);
 
@@ -316,10 +311,12 @@ ralloc_adopt(const void *new_ctx, void *old_ctx)
    for (child = old_info->child; child->next != NULL; child = child->next) {
       child->parent = new_info;
    }
+   child->parent = new_info;
 
    /* Connect the two lists together; parent them to new_ctx; make old_ctx empty. */
    child->next = new_info->child;
-   child->parent = new_info;
+   if (child->next)
+      child->next->prev = child;
    new_info->child = old_info->child;
    old_info->child = NULL;
 }
@@ -334,24 +331,6 @@ ralloc_parent(const void *ptr)
 
    info = get_header(ptr);
    return info->parent ? PTR_FROM_HEADER(info->parent) : NULL;
-}
-
-static void *autofree_context = NULL;
-
-static void
-autofree(void)
-{
-   ralloc_free(autofree_context);
-}
-
-void *
-ralloc_autofree_context(void)
-{
-   if (unlikely(autofree_context == NULL)) {
-      autofree_context = ralloc_context(NULL);
-      atexit(autofree);
-   }
-   return autofree_context;
 }
 
 void
@@ -423,12 +402,26 @@ ralloc_strcat(char **dest, const char *str)
 bool
 ralloc_strncat(char **dest, const char *str, size_t n)
 {
-   /* Clamp n to the string length */
-   size_t str_length = strlen(str);
-   if (str_length < n)
-      n = str_length;
+   return cat(dest, str, strnlen(str, n));
+}
 
-   return cat(dest, str, n);
+bool
+ralloc_str_append(char **dest, const char *str,
+                  size_t existing_length, size_t str_size)
+{
+   char *both;
+   assert(dest != NULL && *dest != NULL);
+
+   both = resize(*dest, existing_length + str_size + 1);
+   if (unlikely(both == NULL))
+      return false;
+
+   memcpy(both + existing_length, str, str_size);
+   both[existing_length + str_size] = '\0';
+
+   *dest = both;
+
+   return true;
 }
 
 char *
@@ -637,7 +630,9 @@ linear_alloc_child(void *parent, unsigned size)
    linear_size_chunk *ptr;
    unsigned full_size;
 
+#ifdef DEBUG
    assert(first->magic == LMAGIC);
+#endif
    assert(!latest->next);
 
    size = ALIGN_POT(size, SUBALLOC_ALIGNMENT);
@@ -709,7 +704,9 @@ linear_free_parent(void *ptr)
       return;
 
    node = LINEAR_PARENT_TO_HEADER(ptr);
+#ifdef DEBUG
    assert(node->magic == LMAGIC);
+#endif
 
    while (node) {
       void *ptr = node;
@@ -728,7 +725,9 @@ ralloc_steal_linear_parent(void *new_ralloc_ctx, void *ptr)
       return;
 
    node = LINEAR_PARENT_TO_HEADER(ptr);
+#ifdef DEBUG
    assert(node->magic == LMAGIC);
+#endif
 
    while (node) {
       ralloc_steal(new_ralloc_ctx, node);
@@ -741,7 +740,9 @@ void *
 ralloc_parent_of_linear_parent(void *ptr)
 {
    linear_header *node = LINEAR_PARENT_TO_HEADER(ptr);
+#ifdef DEBUG
    assert(node->magic == LMAGIC);
+#endif
    return node->ralloc_parent;
 }
 

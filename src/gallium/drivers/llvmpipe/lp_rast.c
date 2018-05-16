@@ -32,8 +32,9 @@
 #include "util/u_surface.h"
 #include "util/u_pack_color.h"
 #include "util/u_string.h"
+#include "util/u_thread.h"
 
-#include "os/os_time.h"
+#include "util/os_time.h"
 
 #include "lp_scene_queue.h"
 #include "lp_context.h"
@@ -486,6 +487,7 @@ lp_rast_begin_query(struct lp_rasterizer_task *task,
    switch (pq->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
+   case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
       pq->start[task->thread_index] = task->thread_data.vis_counter;
       break;
    case PIPE_QUERY_PIPELINE_STATISTICS:
@@ -512,6 +514,7 @@ lp_rast_end_query(struct lp_rasterizer_task *task,
    switch (pq->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
+   case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
       pq->end[task->thread_index] +=
          task->thread_data.vis_counter - pq->start[task->thread_index];
       pq->start[task->thread_index] = 0;
@@ -781,7 +784,8 @@ lp_rast_finish( struct lp_rasterizer *rast )
  *   2. do work
  *   3. signal that we're done
  */
-static PIPE_THREAD_ROUTINE( thread_function, init_data )
+static int
+thread_function(void *init_data)
 {
    struct lp_rasterizer_task *task = (struct lp_rasterizer_task *) init_data;
    struct lp_rasterizer *rast = task->rast;
@@ -790,7 +794,7 @@ static PIPE_THREAD_ROUTINE( thread_function, init_data )
    unsigned fpstate;
 
    util_snprintf(thread_name, sizeof thread_name, "llvmpipe-%u", task->thread_index);
-   pipe_thread_setname(thread_name);
+   u_thread_setname(thread_name);
 
    /* Make sure that denorms are treated like zeros. This is 
     * the behavior required by D3D10. OpenGL doesn't care.
@@ -819,7 +823,7 @@ static PIPE_THREAD_ROUTINE( thread_function, init_data )
       /* Wait for all threads to get here so that threads[1+] don't
        * get a null rast->curr_scene pointer.
        */
-      pipe_barrier_wait( &rast->barrier );
+      util_barrier_wait( &rast->barrier );
 
       /* do work */
       if (debug)
@@ -829,7 +833,7 @@ static PIPE_THREAD_ROUTINE( thread_function, init_data )
                       rast->curr_scene);
       
       /* wait for all threads to finish with this scene */
-      pipe_barrier_wait( &rast->barrier );
+      util_barrier_wait( &rast->barrier );
 
       /* XXX: shouldn't be necessary:
        */
@@ -864,7 +868,7 @@ create_rast_threads(struct lp_rasterizer *rast)
    for (i = 0; i < rast->num_threads; i++) {
       pipe_semaphore_init(&rast->tasks[i].work_ready, 0);
       pipe_semaphore_init(&rast->tasks[i].work_done, 0);
-      rast->threads[i] = pipe_thread_create(thread_function,
+      rast->threads[i] = u_thread_create(thread_function,
                                             (void *) &rast->tasks[i]);
    }
 }
@@ -911,7 +915,7 @@ lp_rast_create( unsigned num_threads )
 
    /* for synchronizing rasterization threads */
    if (rast->num_threads > 0) {
-      pipe_barrier_init( &rast->barrier, rast->num_threads );
+      util_barrier_init( &rast->barrier, rast->num_threads );
    }
 
    memset(lp_dummy_tile, 0, sizeof lp_dummy_tile);
@@ -955,7 +959,7 @@ void lp_rast_destroy( struct lp_rasterizer *rast )
 #ifdef _WIN32
       pipe_semaphore_wait(&rast->tasks[i].work_done);
 #else
-      pipe_thread_wait(rast->threads[i]);
+      thrd_join(rast->threads[i], NULL);
 #endif
    }
 
@@ -970,7 +974,7 @@ void lp_rast_destroy( struct lp_rasterizer *rast )
 
    /* for synchronizing rasterization threads */
    if (rast->num_threads > 0) {
-      pipe_barrier_destroy( &rast->barrier );
+      util_barrier_destroy( &rast->barrier );
    }
 
    lp_scene_queue_destroy(rast->full_scenes);

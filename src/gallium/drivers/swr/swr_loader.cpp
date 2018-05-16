@@ -24,49 +24,103 @@
 #include "util/u_cpu_detect.h"
 #include "util/u_dl.h"
 #include "swr_public.h"
-
-#include "pipe/p_screen.h"
+#include "swr_screen.h"
 
 #include <stdio.h>
 
-typedef pipe_screen *(*screen_create_proc)(struct sw_winsys *winsys);
+// Helper function to resolve the backend filename based on architecture
+static bool
+swr_initialize_screen_interface(struct swr_screen *screen, const char arch[])
+{
+#ifdef HAVE_SWR_BUILTIN
+   screen->pLibrary = NULL;
+   screen->pfnSwrGetInterface = SwrGetInterface;
+   fprintf(stderr, "(using: builtin).\n");
+#else
+   char filename[256] = { 0 };
+   sprintf(filename, "%sswr%s%s", UTIL_DL_PREFIX, arch, UTIL_DL_EXT);
+
+   screen->pLibrary = util_dl_open(filename);
+   if (!screen->pLibrary) {
+      fprintf(stderr, "(skipping: %s).\n", util_dl_error());
+      return false;
+   }
+
+   util_dl_proc pApiProc = util_dl_get_proc_address(screen->pLibrary,
+      "SwrGetInterface");
+   if (!pApiProc) {
+      fprintf(stderr, "(skipping: %s).\n", util_dl_error());
+      util_dl_close(screen->pLibrary);
+      screen->pLibrary = NULL;
+      return false;
+   }
+
+   screen->pfnSwrGetInterface = (PFNSwrGetInterface)pApiProc;
+   fprintf(stderr, "(using: %s).\n", filename);
+#endif
+   return true;
+}
+
 
 struct pipe_screen *
 swr_create_screen(struct sw_winsys *winsys)
 {
-   char filename[256];
-   fprintf(stderr, "SWR detected ");
+   struct pipe_screen *p_screen = swr_create_screen_internal(winsys);
+   if (!p_screen) {
+      return NULL;
+   }
 
-   util_dl_library *pLibrary = nullptr;
+   struct swr_screen *screen = swr_screen(p_screen);
+   screen->is_knl = false;
 
    util_cpu_detect();
+
+   if (util_cpu_caps.has_avx512f && util_cpu_caps.has_avx512er) {
+      fprintf(stderr, "SWR detected KNL instruction support ");
+#ifndef HAVE_SWR_KNL
+      fprintf(stderr, "(skipping: not built).\n");
+#else
+      if (swr_initialize_screen_interface(screen, "KNL")) {
+         screen->is_knl = true;
+         return p_screen;
+      }
+#endif
+   }
+
+   if (util_cpu_caps.has_avx512f && util_cpu_caps.has_avx512bw) {
+      fprintf(stderr, "SWR detected SKX instruction support ");
+#ifndef HAVE_SWR_SKX
+      fprintf(stderr, "(skipping not built).\n");
+#else
+      if (swr_initialize_screen_interface(screen, "SKX"))
+         return p_screen;
+#endif
+   }
+
    if (util_cpu_caps.has_avx2) {
-      fprintf(stderr, "AVX2\n");
-      sprintf(filename, "%s%s%s", UTIL_DL_PREFIX, "swrAVX2", UTIL_DL_EXT);
-   } else if (util_cpu_caps.has_avx) {
-      fprintf(stderr, "AVX\n");
-      sprintf(filename, "%s%s%s", UTIL_DL_PREFIX, "swrAVX", UTIL_DL_EXT);
-   } else {
-      fprintf(stderr, "no AVX/AVX2 support.  Aborting!\n");
-      exit(-1);
-   }
-   pLibrary = util_dl_open(filename);
-
-   if (!pLibrary) {
-      fprintf(stderr, "SWR library load failure: %s\n", util_dl_error());
-      exit(-1);
+      fprintf(stderr, "SWR detected AVX2 instruction support ");
+#ifndef HAVE_SWR_AVX2
+      fprintf(stderr, "(skipping not built).\n");
+#else
+      if (swr_initialize_screen_interface(screen, "AVX2"))
+         return p_screen;
+#endif
    }
 
-   util_dl_proc pScreenProc = util_dl_get_proc_address(pLibrary, "swr_create_screen_internal");
-
-   if (!pScreenProc) {
-      fprintf(stderr, "SWR library search failure: %s\n", util_dl_error());
-      exit(-1);
+   if (util_cpu_caps.has_avx) {
+      fprintf(stderr, "SWR detected AVX instruction support ");
+#ifndef HAVE_SWR_AVX
+      fprintf(stderr, "(skipping not built).\n");
+#else
+      if (swr_initialize_screen_interface(screen, "AVX"))
+         return p_screen;
+#endif
    }
 
-   screen_create_proc pScreenCreate = (screen_create_proc)pScreenProc;
+   fprintf(stderr, "SWR could not initialize a supported CPU architecture.\n");
+   swr_destroy_screen_internal(&screen);
 
-   return pScreenCreate(winsys);
+   return NULL;
 }
 
 
