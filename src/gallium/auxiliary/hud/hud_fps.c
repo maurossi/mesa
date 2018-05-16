@@ -29,7 +29,7 @@
  */
 
 #include "hud/hud_private.h"
-#include "os/os_time.h"
+#include "util/os_time.h"
 #include "util/u_memory.h"
 
 struct fps_info {
@@ -38,7 +38,7 @@ struct fps_info {
 };
 
 static void
-query_fps(struct hud_graph *gr)
+query_fps(struct hud_graph *gr, struct pipe_context *pipe)
 {
    struct fps_info *info = gr->query_data;
    uint64_t now = os_time_get();
@@ -47,12 +47,12 @@ query_fps(struct hud_graph *gr)
 
    if (info->last_time) {
       if (info->last_time + gr->pane->period <= now) {
-         double fps = (uint64_t)info->frames * 1000000 /
+         double fps = ((uint64_t)info->frames) * 1000000 /
                       (double)(now - info->last_time);
          info->frames = 0;
          info->last_time = now;
 
-         hud_graph_add_value(gr, (uint64_t) fps);
+         hud_graph_add_value(gr, fps);
       }
    }
    else {
@@ -61,7 +61,7 @@ query_fps(struct hud_graph *gr)
 }
 
 static void
-free_query_data(void *p)
+free_query_data(void *p, struct pipe_context *pipe)
 {
    FREE(p);
 }
@@ -87,8 +87,6 @@ hud_fps_graph_install(struct hud_pane *pane)
     * memory debugger.  Use simple free_query_data() wrapper.
     */
    gr->free_query_data = free_query_data;
-
-   hud_graph_set_dump_file(gr);
 
    hud_pane_add_graph(pane, gr);
 }

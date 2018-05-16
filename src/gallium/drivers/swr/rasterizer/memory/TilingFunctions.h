@@ -622,9 +622,9 @@ uint32_t TileSwizzle2D(uint32_t xOffsetBytes, uint32_t yOffsetRows, const SWR_SU
     case SWR_TILE_MODE_XMAJOR: return ComputeTileSwizzle2D<TilingTraits<SWR_TILE_MODE_XMAJOR, 8> >(xOffsetBytes, yOffsetRows, pState);
     case SWR_TILE_MODE_YMAJOR: return ComputeTileSwizzle2D<TilingTraits<SWR_TILE_MODE_YMAJOR, 32> >(xOffsetBytes, yOffsetRows, pState);
     case SWR_TILE_MODE_WMAJOR: return ComputeTileSwizzle2D<TilingTraits<SWR_TILE_MODE_WMAJOR, 8> >(xOffsetBytes, yOffsetRows, pState);
-    default: SWR_ASSERT(0, "Unsupported tiling mode");
+    default: SWR_INVALID("Unsupported tiling mode");
     }
-    return (uint32_t) NULL;
+    return 0;
 }
 
 //////////////////////////////////////////////////////////////////////////
@@ -642,9 +642,9 @@ uint32_t TileSwizzle3D(uint32_t xOffsetBytes, uint32_t yOffsetRows, uint32_t zOf
     case SWR_TILE_NONE: return ComputeTileSwizzle3D<TilingTraits<SWR_TILE_NONE, 32> >(xOffsetBytes, yOffsetRows, zOffsetSlices, pState);
     case SWR_TILE_SWRZ: return ComputeTileSwizzle3D<TilingTraits<SWR_TILE_SWRZ, 32> >(xOffsetBytes, yOffsetRows, zOffsetSlices, pState);
     case SWR_TILE_MODE_YMAJOR: return ComputeTileSwizzle3D<TilingTraits<SWR_TILE_MODE_YMAJOR, 32> >(xOffsetBytes, yOffsetRows, zOffsetSlices, pState);
-    default: SWR_ASSERT(0, "Unsupported tiling mode");
+    default: SWR_INVALID("Unsupported tiling mode");
     }
-    return (uint32_t) NULL;
+    return 0;
 }
 
 template<bool UseCachedOffsets>
@@ -674,10 +674,10 @@ uint32_t ComputeSurfaceOffset(uint32_t x, uint32_t y, uint32_t z, uint32_t array
         ComputeSurfaceOffset2D<UseCachedOffsets>(x, y, array, sampleNum, lod, pState, offsetX, offsetY);
         return TileSwizzle2D(offsetX, offsetY, pState);
         break;
-    default: SWR_ASSERT(0, "Unsupported format");
+    default: SWR_INVALID("Unsupported format");
     }
 
-    return (uint32_t) NULL;
+    return 0;
 }
 
 typedef void*(*PFN_COMPUTESURFADDR)(uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t, const SWR_SURFACE_STATE*);
@@ -694,5 +694,5 @@ template<bool UseCachedOffsets, bool IsRead>
 INLINE
 void* ComputeSurfaceAddress(uint32_t x, uint32_t y, uint32_t z, uint32_t array, uint32_t sampleNum, uint32_t lod, const SWR_SURFACE_STATE *pState)
 {
-    return pState->pBaseAddress + ComputeSurfaceOffset<UseCachedOffsets>(x, y, z, array, sampleNum, lod, pState);
+    return (void*)(pState->xpBaseAddress + ComputeSurfaceOffset<UseCachedOffsets>(x, y, z, array, sampleNum, lod, pState));
 }

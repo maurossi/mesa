@@ -33,16 +33,22 @@
 #include "tgsi/tgsi_parse.h"
 #include "compiler/nir/nir.h"
 #include "compiler/nir/nir_builder.h"
+#include "compiler/nir_types.h"
 #include "nir/tgsi_to_nir.h"
 #include "vc4_context.h"
 #include "vc4_qpu.h"
 #include "vc4_qir.h"
-#include "mesa/state_tracker/st_glsl_types.h"
 
 static struct qreg
 ntq_get_src(struct vc4_compile *c, nir_src src, int i);
 static void
 ntq_emit_cf_list(struct vc4_compile *c, struct exec_list *list);
+
+static int
+type_size(const struct glsl_type *type)
+{
+   return glsl_count_attribute_slots(type, false);
+}
 
 static void
 resize_qreg_array(struct vc4_compile *c,
@@ -599,9 +605,11 @@ ntq_ffract(struct vc4_compile *c, struct qreg src)
         struct qreg trunc = qir_ITOF(c, qir_FTOI(c, src));
         struct qreg diff = qir_FSUB(c, src, trunc);
         qir_SF(c, diff);
-        return qir_MOV(c, qir_SEL(c, QPU_COND_NS,
-                                  qir_FADD(c, diff, qir_uniform_f(c, 1.0)),
-                                  diff));
+
+        qir_FADD_dest(c, diff,
+                      diff, qir_uniform_f(c, 1.0))->cond = QPU_COND_NS;
+
+        return qir_MOV(c, diff);
 }
 
 /**
@@ -611,16 +619,18 @@ ntq_ffract(struct vc4_compile *c, struct qreg src)
 static struct qreg
 ntq_ffloor(struct vc4_compile *c, struct qreg src)
 {
-        struct qreg trunc = qir_ITOF(c, qir_FTOI(c, src));
+        struct qreg result = qir_ITOF(c, qir_FTOI(c, src));
 
         /* This will be < 0 if we truncated and the truncation was of a value
          * that was < 0 in the first place.
          */
-        qir_SF(c, qir_FSUB(c, src, trunc));
+        qir_SF(c, qir_FSUB(c, src, result));
 
-        return qir_MOV(c, qir_SEL(c, QPU_COND_NS,
-                                  qir_FSUB(c, trunc, qir_uniform_f(c, 1.0)),
-                                  trunc));
+        struct qinst *sub = qir_FSUB_dest(c, result,
+                                          result, qir_uniform_f(c, 1.0));
+        sub->cond = QPU_COND_NS;
+
+        return qir_MOV(c, result);
 }
 
 /**
@@ -630,16 +640,17 @@ ntq_ffloor(struct vc4_compile *c, struct qreg src)
 static struct qreg
 ntq_fceil(struct vc4_compile *c, struct qreg src)
 {
-        struct qreg trunc = qir_ITOF(c, qir_FTOI(c, src));
+        struct qreg result = qir_ITOF(c, qir_FTOI(c, src));
 
         /* This will be < 0 if we truncated and the truncation was of a value
          * that was > 0 in the first place.
          */
-        qir_SF(c, qir_FSUB(c, trunc, src));
+        qir_SF(c, qir_FSUB(c, result, src));
 
-        return qir_MOV(c, qir_SEL(c, QPU_COND_NS,
-                                  qir_FADD(c, trunc, qir_uniform_f(c, 1.0)),
-                                  trunc));
+        qir_FADD_dest(c, result,
+                      result, qir_uniform_f(c, 1.0))->cond = QPU_COND_NS;
+
+        return qir_MOV(c, result);
 }
 
 static struct qreg
@@ -1145,12 +1156,12 @@ ntq_emit_alu(struct vc4_compile *c, nir_alu_instr *instr)
                 result = qir_FMAX(c, src[0], src[1]);
                 break;
 
-        case nir_op_f2i:
-        case nir_op_f2u:
+        case nir_op_f2i32:
+        case nir_op_f2u32:
                 result = qir_FTOI(c, src[0]);
                 break;
-        case nir_op_i2f:
-        case nir_op_u2f:
+        case nir_op_i2f32:
+        case nir_op_u2f32:
                 result = qir_ITOF(c, src[0]);
                 break;
         case nir_op_b2f:
@@ -1342,7 +1353,7 @@ emit_frag_end(struct vc4_compile *c)
         }
 
         uint32_t discard_cond = QPU_COND_ALWAYS;
-        if (c->s->info->fs.uses_discard) {
+        if (c->s->info.fs.uses_discard) {
                 qir_SF(c, c->discard);
                 discard_cond = QPU_COND_ZS;
         }
@@ -1506,7 +1517,7 @@ emit_vert_end(struct vc4_compile *c,
 static void
 emit_coord_end(struct vc4_compile *c)
 {
-        struct qreg rcp_w = qir_RCP(c, c->outputs[c->output_position_index + 3]);
+        struct qreg rcp_w = ntq_rcp(c, c->outputs[c->output_position_index + 3]);
 
         emit_stub_vpm_read(c);
 
@@ -1648,7 +1659,7 @@ static void
 ntq_setup_uniforms(struct vc4_compile *c)
 {
         nir_foreach_variable(var, &c->s->uniforms) {
-                uint32_t vec4_count = st_glsl_type_size(var->type);
+                uint32_t vec4_count = type_size(var->type);
                 unsigned vec4_size = 4 * sizeof(float);
 
                 declare_uniform_range(c, var->data.driver_location * vec4_size,
@@ -1698,6 +1709,46 @@ ntq_emit_ssa_undef(struct vc4_compile *c, nir_ssa_undef_instr *instr)
          */
         for (int i = 0; i < instr->def.num_components; i++)
                 qregs[i] = qir_uniform_ui(c, 0);
+}
+
+static void
+ntq_emit_color_read(struct vc4_compile *c, nir_intrinsic_instr *instr)
+{
+        assert(nir_src_as_const_value(instr->src[0])->u32[0] == 0);
+
+        /* Reads of the per-sample color need to be done in
+         * order.
+         */
+        int sample_index = (nir_intrinsic_base(instr) -
+                            VC4_NIR_TLB_COLOR_READ_INPUT);
+        for (int i = 0; i <= sample_index; i++) {
+                if (c->color_reads[i].file == QFILE_NULL) {
+                        c->color_reads[i] =
+                                qir_TLB_COLOR_READ(c);
+                }
+        }
+        ntq_store_dest(c, &instr->dest, 0,
+                       qir_MOV(c, c->color_reads[sample_index]));
+}
+
+static void
+ntq_emit_load_input(struct vc4_compile *c, nir_intrinsic_instr *instr)
+{
+        assert(instr->num_components == 1);
+
+        nir_const_value *const_offset = nir_src_as_const_value(instr->src[0]);
+        assert(const_offset && "vc4 doesn't support indirect inputs");
+
+        if (c->stage == QSTAGE_FRAG &&
+            nir_intrinsic_base(instr) >= VC4_NIR_TLB_COLOR_READ_INPUT) {
+                ntq_emit_color_read(c, instr);
+                return;
+        }
+
+        uint32_t offset = nir_intrinsic_base(instr) + const_offset->u32[0];
+        int comp = nir_intrinsic_component(instr);
+        ntq_store_dest(c, &instr->dest, 0,
+                       qir_MOV(c, c->inputs[offset * 4 + comp]));
 }
 
 static void
@@ -1777,31 +1828,7 @@ ntq_emit_intrinsic(struct vc4_compile *c, nir_intrinsic_instr *instr)
                 break;
 
         case nir_intrinsic_load_input:
-                assert(instr->num_components == 1);
-                const_offset = nir_src_as_const_value(instr->src[0]);
-                assert(const_offset && "vc4 doesn't support indirect inputs");
-                if (c->stage == QSTAGE_FRAG &&
-                    nir_intrinsic_base(instr) >= VC4_NIR_TLB_COLOR_READ_INPUT) {
-                        assert(const_offset->u32[0] == 0);
-                        /* Reads of the per-sample color need to be done in
-                         * order.
-                         */
-                        int sample_index = (nir_intrinsic_base(instr) -
-                                           VC4_NIR_TLB_COLOR_READ_INPUT);
-                        for (int i = 0; i <= sample_index; i++) {
-                                if (c->color_reads[i].file == QFILE_NULL) {
-                                        c->color_reads[i] =
-                                                qir_TLB_COLOR_READ(c);
-                                }
-                        }
-                        ntq_store_dest(c, &instr->dest, 0,
-                                       qir_MOV(c, c->color_reads[sample_index]));
-                } else {
-                        offset = nir_intrinsic_base(instr) + const_offset->u32[0];
-                        int comp = nir_intrinsic_component(instr);
-                        ntq_store_dest(c, &instr->dest, 0,
-                                       qir_MOV(c, c->inputs[offset * 4 + comp]));
-                }
+                ntq_emit_load_input(c, instr);
                 break;
 
         case nir_intrinsic_store_output:
@@ -1951,11 +1978,12 @@ ntq_emit_if(struct vc4_compile *c, nir_if *if_stmt)
         qir_link_blocks(c->cur_block, after_block);
 
         qir_set_emit_block(c, after_block);
-        if (was_top_level)
+        if (was_top_level) {
                 c->execute = c->undef;
-        else
+                c->last_top_block = c->cur_block;
+        } else {
                 ntq_activate_execute_for_block(c);
-
+        }
 }
 
 static void
@@ -2079,10 +2107,12 @@ ntq_emit_loop(struct vc4_compile *c, nir_loop *loop)
         qir_link_blocks(c->cur_block, c->loop_break_block);
 
         qir_set_emit_block(c, c->loop_break_block);
-        if (was_top_level)
+        if (was_top_level) {
                 c->execute = c->undef;
-        else
+                c->last_top_block = c->cur_block;
+        } else {
                 ntq_activate_execute_for_block(c);
+        }
 
         c->loop_break_block = save_loop_break_block;
         c->loop_cont_block = save_loop_cont_block;
@@ -2133,7 +2163,7 @@ ntq_emit_impl(struct vc4_compile *c, nir_function_impl *impl)
 static void
 nir_to_qir(struct vc4_compile *c)
 {
-        if (c->stage == QSTAGE_FRAG && c->s->info->fs.uses_discard)
+        if (c->stage == QSTAGE_FRAG && c->s->info.fs.uses_discard)
                 c->discard = qir_MOV(c, qir_uniform_ui(c, 0));
 
         ntq_setup_inputs(c);
@@ -2164,7 +2194,8 @@ static const nir_shader_compiler_options nir_options = {
 
 const void *
 vc4_screen_get_compiler_options(struct pipe_screen *pscreen,
-                                enum pipe_shader_ir ir, unsigned shader)
+                                enum pipe_shader_ir ir,
+                                enum pipe_shader_type shader)
 {
         return &nir_options;
 }
@@ -2219,8 +2250,15 @@ vc4_shader_ntq(struct vc4_context *vc4, enum qstage stage,
 
         c->s = nir_shader_clone(c, key->shader_state->base.ir.nir);
 
-        if (stage == QSTAGE_FRAG)
+        if (stage == QSTAGE_FRAG) {
+                if (c->fs_key->alpha_test_func != COMPARE_FUNC_ALWAYS) {
+                        NIR_PASS_V(c->s, nir_lower_alpha_test,
+                                   c->fs_key->alpha_test_func,
+                                   c->fs_key->sample_alpha_to_one &&
+                                   c->fs_key->msaa);
+                }
                 NIR_PASS_V(c->s, vc4_nir_lower_blend, c);
+        }
 
         struct nir_lower_tex_options tex_options = {
                 /* We would need to implement txs, but we don't want the
@@ -2396,6 +2434,9 @@ vc4_shader_state_create(struct pipe_context *pctx,
                  * creation.
                  */
                 s = cso->ir.nir;
+
+                NIR_PASS_V(s, nir_lower_io, nir_var_all, type_size,
+                           (nir_lower_io_options)0);
         } else {
                 assert(cso->type == PIPE_SHADER_IR_TGSI);
 
@@ -2426,7 +2467,7 @@ vc4_shader_state_create(struct pipe_context *pctx,
 
         if (vc4_debug & VC4_DEBUG_NIR) {
                 fprintf(stderr, "%s prog %d NIR:\n",
-                        gl_shader_stage_name(s->stage),
+                        gl_shader_stage_name(s->info.stage),
                         so->program_id);
                 nir_print_shader(s, stderr);
                 fprintf(stderr, "\n");
@@ -2557,7 +2598,7 @@ vc4_get_compiled_shader(struct vc4_context *vc4, enum qstage stage,
 
                 /* Note: the temporary clone in c->s has been freed. */
                 nir_shader *orig_shader = key->shader_state->base.ir.nir;
-                if (orig_shader->info->outputs_written & (1 << FRAG_RESULT_DEPTH))
+                if (orig_shader->info.outputs_written & (1 << FRAG_RESULT_DEPTH))
                         shader->disable_early_z = true;
         } else {
                 shader->num_inputs = c->num_inputs;
@@ -2615,6 +2656,13 @@ vc4_get_compiled_shader(struct vc4_context *vc4, enum qstage stage,
                                 c->program_id, c->variant_id,
                                 shader->ubo_size / 4);
                 }
+        }
+
+        if ((vc4_debug & VC4_DEBUG_SHADERDB) && stage == QSTAGE_FRAG) {
+                fprintf(stderr, "SHADER-DB: %s prog %d/%d: %d FS threads\n",
+                        qir_get_stage_name(c->stage),
+                        c->program_id, c->variant_id,
+                        1 + shader->fs_threaded);
         }
 
         qir_compile_destroy(c);
@@ -2694,8 +2742,7 @@ vc4_update_compiled_fs(struct vc4_context *vc4, uint8_t prim_mode)
         }
         if (job->msaa) {
                 key->msaa = vc4->rasterizer->base.multisample;
-                key->sample_coverage = (vc4->rasterizer->base.multisample &&
-                                        vc4->sample_mask != (1 << VC4_MAX_SAMPLES) - 1);
+                key->sample_coverage = (vc4->sample_mask != (1 << VC4_MAX_SAMPLES) - 1);
                 key->sample_alpha_to_coverage = vc4->blend->alpha_to_coverage;
                 key->sample_alpha_to_one = vc4->blend->alpha_to_one;
         }
@@ -2708,10 +2755,10 @@ vc4_update_compiled_fs(struct vc4_context *vc4, uint8_t prim_mode)
         key->stencil_full_writemasks = vc4->zsa->stencil_uniforms[2] != 0;
         key->depth_enabled = (vc4->zsa->base.depth.enabled ||
                               key->stencil_enabled);
-        if (vc4->zsa->base.alpha.enabled) {
-                key->alpha_test = true;
+        if (vc4->zsa->base.alpha.enabled)
                 key->alpha_test_func = vc4->zsa->base.alpha.func;
-        }
+        else
+                key->alpha_test_func = COMPARE_FUNC_ALWAYS;
 
         if (key->is_points) {
                 key->point_sprite_mask =
@@ -2731,11 +2778,11 @@ vc4_update_compiled_fs(struct vc4_context *vc4, uint8_t prim_mode)
         vc4->dirty |= VC4_DIRTY_COMPILED_FS;
 
         if (vc4->rasterizer->base.flatshade &&
-            old_fs && vc4->prog.fs->color_inputs != old_fs->color_inputs) {
+            (!old_fs || vc4->prog.fs->color_inputs != old_fs->color_inputs)) {
                 vc4->dirty |= VC4_DIRTY_FLAT_SHADE_FLAGS;
         }
 
-        if (old_fs && vc4->prog.fs->fs_inputs != old_fs->fs_inputs)
+        if (!old_fs || vc4->prog.fs->fs_inputs != old_fs->fs_inputs)
                 vc4->dirty |= VC4_DIRTY_FS_INPUTS;
 }
 
@@ -2845,6 +2892,7 @@ fs_inputs_compare(const void *key1, const void *key2)
 
 static void
 delete_from_cache_if_matches(struct hash_table *ht,
+                             struct vc4_compiled_shader **last_compile,
                              struct hash_entry *entry,
                              struct vc4_uncompiled_shader *so)
 {
@@ -2854,6 +2902,10 @@ delete_from_cache_if_matches(struct hash_table *ht,
                 struct vc4_compiled_shader *shader = entry->data;
                 _mesa_hash_table_remove(ht, entry);
                 vc4_bo_unreference(&shader->bo);
+
+                if (shader == *last_compile)
+                        *last_compile = NULL;
+
                 ralloc_free(shader);
         }
 }
@@ -2865,10 +2917,14 @@ vc4_shader_state_delete(struct pipe_context *pctx, void *hwcso)
         struct vc4_uncompiled_shader *so = hwcso;
 
         struct hash_entry *entry;
-        hash_table_foreach(vc4->fs_cache, entry)
-                delete_from_cache_if_matches(vc4->fs_cache, entry, so);
-        hash_table_foreach(vc4->vs_cache, entry)
-                delete_from_cache_if_matches(vc4->vs_cache, entry, so);
+        hash_table_foreach(vc4->fs_cache, entry) {
+                delete_from_cache_if_matches(vc4->fs_cache, &vc4->prog.fs,
+                                             entry, so);
+        }
+        hash_table_foreach(vc4->vs_cache, entry) {
+                delete_from_cache_if_matches(vc4->vs_cache, &vc4->prog.vs,
+                                             entry, so);
+        }
 
         ralloc_free(so->base.ir.nir);
         free(so);

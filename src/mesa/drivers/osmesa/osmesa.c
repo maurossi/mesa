@@ -117,15 +117,22 @@ get_string( struct gl_context *ctx, GLenum name )
 
 
 static void
-osmesa_update_state( struct gl_context *ctx, GLuint new_state )
+osmesa_update_state(struct gl_context *ctx, GLuint new_state)
 {
+   if (new_state & (_NEW_SCISSOR | _NEW_BUFFERS | _NEW_VIEWPORT))
+      _mesa_update_draw_buffer_bounds(ctx, ctx->DrawBuffer);
+
    /* easy - just propogate */
    _swrast_InvalidateState( ctx, new_state );
    _swsetup_InvalidateState( ctx, new_state );
    _tnl_InvalidateState( ctx, new_state );
-   _vbo_InvalidateState( ctx, new_state );
 }
 
+static void
+osmesa_update_state_wrapper(struct gl_context *ctx)
+{
+   osmesa_update_state(ctx, ctx->NewState);
+}
 
 
 /**
@@ -207,7 +214,6 @@ osmesa_choose_line_function( struct gl_context *ctx )
    }
 
    if (ctx->RenderMode != GL_RENDER ||
-       ctx->Line.SmoothFlag ||
        ctx->Texture._MaxEnabledTexImageUnit == -1 ||
        ctx->Light.ShadeModel != GL_FLAT ||
        ctx->Line.Width != 1.0F ||
@@ -549,7 +555,6 @@ new_osmesa_renderbuffer(struct gl_context *ctx, GLenum format, GLenum type)
       _mesa_init_renderbuffer(&srb->Base, name);
 
       srb->Base.ClassID = OSMESA_RENDERBUFFER_CLASS;
-      srb->Base.RefCount = 1;
       srb->Base.Delete = osmesa_delete_renderbuffer;
       srb->Base.AllocStorage = osmesa_renderbuffer_storage;
 
@@ -829,7 +834,7 @@ OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
       _mesa_init_driver_functions(&functions);
       /* override with our functions */
       functions.GetString = get_string;
-      functions.UpdateState = osmesa_update_state;
+      functions.UpdateState = osmesa_update_state_wrapper;
 
       if (!_mesa_initialize_context(&osmesa->mesa,
                                     api_profile,
@@ -907,6 +912,7 @@ OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
          swrast->choose_line = osmesa_choose_line;
          swrast->choose_triangle = osmesa_choose_triangle;
 
+         _mesa_override_extensions(ctx);
          _mesa_compute_version(ctx);
 
          if (ctx->Version < version_major * 10 + version_minor) {
@@ -1021,15 +1027,15 @@ OSMesaMakeCurrent( OSMesaContext osmesa, void *buffer, GLenum type,
     * There is no back color buffer.
     * If the user tries to use a 8, 16 or 32-bit/channel buffer that
     * doesn't match what Mesa was compiled for (CHAN_BITS) the
-    * _mesa_add_renderbuffer() function will create a "wrapper" renderbuffer
-    * that converts rendering from CHAN_BITS to the user-requested channel
-    * size.
+    * _mesa_attach_and_reference_rb() function will create a "wrapper"
+    * renderbuffer that converts rendering from CHAN_BITS to the
+    * user-requested channel size.
     */
    if (!osmesa->srb) {
       osmesa->srb = new_osmesa_renderbuffer(&osmesa->mesa, osmesa->format, type);
       _mesa_remove_renderbuffer(osmesa->gl_buffer, BUFFER_FRONT_LEFT);
-      _mesa_add_renderbuffer(osmesa->gl_buffer, BUFFER_FRONT_LEFT,
-                             &osmesa->srb->Base);
+      _mesa_attach_and_reference_rb(osmesa->gl_buffer, BUFFER_FRONT_LEFT,
+                                    &osmesa->srb->Base);
       assert(osmesa->srb->Base.RefCount == 2);
    }
 
@@ -1052,8 +1058,8 @@ OSMesaMakeCurrent( OSMesaContext osmesa, void *buffer, GLenum type,
     * renderbuffer adaptor/wrapper if needed (for bpp conversion).
     */
    _mesa_remove_renderbuffer(osmesa->gl_buffer, BUFFER_FRONT_LEFT);
-   _mesa_add_renderbuffer(osmesa->gl_buffer, BUFFER_FRONT_LEFT,
-                          &osmesa->srb->Base);
+   _mesa_attach_and_reference_rb(osmesa->gl_buffer, BUFFER_FRONT_LEFT,
+                                 &osmesa->srb->Base);
 
 
    /* this updates the visual's red/green/blue/alphaBits fields */
@@ -1285,7 +1291,7 @@ OSMesaPostprocess(OSMesaContext osmesa, const char *filter,
 #define GL_GLEXT_PROTOTYPES
 #include "GL/gl.h"
 #include "glapi/glapi.h"
-#include "glapi/glapitable.h"
+#include "glapitable.h"
 
 #if defined(USE_MGL_NAMESPACE)
 #define NAME(func)  mgl##func
@@ -1301,6 +1307,6 @@ OSMesaPostprocess(OSMesaContext osmesa, const char *filter,
 
 /* skip normal ones */
 #define _GLAPI_SKIP_NORMAL_ENTRY_POINTS
-#include "glapi/glapitemp.h"
+#include "glapitemp.h"
 
 #endif /* GLX_INDIRECT_RENDERING */

@@ -37,7 +37,7 @@
 #include "util/simple_list.h"
 
 
-static mtx_t DynamicIDMutex = _MTX_INITIALIZER_NP;
+static simple_mtx_t DynamicIDMutex = _SIMPLE_MTX_INITIALIZER_NP;
 static GLuint NextDynamicID = 1;
 
 
@@ -194,10 +194,10 @@ void
 _mesa_debug_get_id(GLuint *id)
 {
    if (!(*id)) {
-      mtx_lock(&DynamicIDMutex);
+      simple_mtx_lock(&DynamicIDMutex);
       if (!(*id))
          *id = NextDynamicID++;
-      mtx_unlock(&DynamicIDMutex);
+      simple_mtx_unlock(&DynamicIDMutex);
    }
 }
 
@@ -502,6 +502,28 @@ debug_clear_group(struct gl_debug_state *debug)
 }
 
 /**
+ * Delete the oldest debug messages out of the log.
+ */
+static void
+debug_delete_messages(struct gl_debug_state *debug, int count)
+{
+   struct gl_debug_log *log = &debug->Log;
+
+   if (count > log->NumMessages)
+      count = log->NumMessages;
+
+   while (count--) {
+      struct gl_debug_message *msg = &log->Messages[log->NextMessage];
+
+      debug_message_clear(msg);
+
+      log->NumMessages--;
+      log->NextMessage++;
+      log->NextMessage %= MAX_DEBUG_LOGGED_MESSAGES;
+   }
+}
+
+/**
  * Loop through debug group stack tearing down states for
  * filtering debug messages.  Then free debug output state.
  */
@@ -514,6 +536,7 @@ debug_destroy(struct gl_debug_state *debug)
    }
 
    debug_clear_group(debug);
+   debug_delete_messages(debug, debug->Log.NumMessages);
    free(debug);
 }
 
@@ -648,28 +671,6 @@ debug_fetch_message(const struct gl_debug_state *debug)
    return (log->NumMessages) ? &log->Messages[log->NextMessage] : NULL;
 }
 
-/**
- * Delete the oldest debug messages out of the log.
- */
-static void
-debug_delete_messages(struct gl_debug_state *debug, int count)
-{
-   struct gl_debug_log *log = &debug->Log;
-
-   if (count > log->NumMessages)
-      count = log->NumMessages;
-
-   while (count--) {
-      struct gl_debug_message *msg = &log->Messages[log->NextMessage];
-
-      debug_message_clear(msg);
-
-      log->NumMessages--;
-      log->NextMessage++;
-      log->NextMessage %= MAX_DEBUG_LOGGED_MESSAGES;
-   }
-}
-
 static struct gl_debug_message *
 debug_get_group_message(struct gl_debug_state *debug)
 {
@@ -702,13 +703,13 @@ debug_pop_group(struct gl_debug_state *debug)
 static struct gl_debug_state *
 _mesa_lock_debug_state(struct gl_context *ctx)
 {
-   mtx_lock(&ctx->DebugMutex);
+   simple_mtx_lock(&ctx->DebugMutex);
 
    if (!ctx->Debug) {
       ctx->Debug = debug_create();
       if (!ctx->Debug) {
          GET_CURRENT_CONTEXT(cur);
-         mtx_unlock(&ctx->DebugMutex);
+         simple_mtx_unlock(&ctx->DebugMutex);
 
          /*
           * This function may be called from other threads.  When that is the
@@ -727,7 +728,7 @@ _mesa_lock_debug_state(struct gl_context *ctx)
 static void
 _mesa_unlock_debug_state(struct gl_context *ctx)
 {
-   mtx_unlock(&ctx->DebugMutex);
+   simple_mtx_unlock(&ctx->DebugMutex);
 }
 
 /**
@@ -1273,7 +1274,7 @@ _mesa_PopDebugGroup(void)
 void
 _mesa_init_debug_output(struct gl_context *ctx)
 {
-   mtx_init(&ctx->DebugMutex, mtx_plain);
+   simple_mtx_init(&ctx->DebugMutex, mtx_plain);
 
    if (MESA_DEBUG_FLAGS & DEBUG_CONTEXT) {
       /* If the MESA_DEBUG env is set to "context", we'll turn on the
@@ -1301,7 +1302,7 @@ _mesa_free_errors_data(struct gl_context *ctx)
       ctx->Debug = NULL;
    }
 
-   mtx_destroy(&ctx->DebugMutex);
+   simple_mtx_destroy(&ctx->DebugMutex);
 }
 
 void GLAPIENTRY

@@ -24,10 +24,6 @@
  * next paragraph) shall be included in all copies or substantial portions
  * of the Software.
  */
-/*
- * Authors:
- *      Marek Olšák <maraeo@gmail.com>
- */
 
 #ifndef AMDGPU_WINSYS_H
 #define AMDGPU_WINSYS_H
@@ -36,13 +32,15 @@
 #include "pipebuffer/pb_slab.h"
 #include "gallium/drivers/radeon/radeon_winsys.h"
 #include "addrlib/addrinterface.h"
+#include "util/simple_mtx.h"
 #include "util/u_queue.h"
 #include <amdgpu.h>
 
 struct amdgpu_cs;
 
-#define AMDGPU_SLAB_MIN_SIZE_LOG2 9
-#define AMDGPU_SLAB_MAX_SIZE_LOG2 14
+#define AMDGPU_SLAB_MIN_SIZE_LOG2   9  /* 512 bytes */
+#define AMDGPU_SLAB_MAX_SIZE_LOG2   16 /* 64 KB */
+#define AMDGPU_SLAB_BO_SIZE_LOG2    17 /* 128 KB */
 
 struct amdgpu_winsys {
    struct radeon_winsys base;
@@ -52,9 +50,12 @@ struct amdgpu_winsys {
 
    amdgpu_device_handle dev;
 
-   pipe_mutex bo_fence_lock;
+   simple_mtx_t bo_fence_lock;
 
    int num_cs; /* The number of command streams created. */
+   unsigned num_total_rejected_cs;
+   uint32_t surf_index_color;
+   uint32_t surf_index_fmask;
    uint32_t next_bo_unique_id;
    uint64_t allocated_vram;
    uint64_t allocated_gtt;
@@ -63,6 +64,9 @@ struct amdgpu_winsys {
    uint64_t buffer_wait_time; /* time spent in buffer_wait in ns */
    uint64_t num_gfx_IBs;
    uint64_t num_sdma_IBs;
+   uint64_t num_mapped_buffers;
+   uint64_t gfx_bo_list_counter;
+   uint64_t gfx_ib_size_counter;
 
    struct radeon_info info;
 
@@ -71,13 +75,13 @@ struct amdgpu_winsys {
 
    struct amdgpu_gpu_info amdinfo;
    ADDR_HANDLE addrlib;
-   uint32_t rev_id;
-   unsigned family;
 
    bool check_vm;
+   bool debug_all_bos;
+   bool reserve_vmid;
 
    /* List of all allocated buffers */
-   pipe_mutex global_bo_list_lock;
+   simple_mtx_t global_bo_list_lock;
    struct list_head global_bo_list;
    unsigned num_buffers;
 };
@@ -89,6 +93,5 @@ amdgpu_winsys(struct radeon_winsys *base)
 }
 
 void amdgpu_surface_init_functions(struct amdgpu_winsys *ws);
-ADDR_HANDLE amdgpu_addr_create(struct amdgpu_winsys *ws);
 
 #endif

@@ -21,10 +21,10 @@
  * Authors:
  *      Adam Rak <adam.rak@streamnovation.com>
  */
- 
 #ifndef EVERGREEN_COMPUTE_INTERNAL_H
 #define EVERGREEN_COMPUTE_INTERNAL_H
 
+#include "ac_binary.h"
 #include "r600_asm.h"
 #ifdef HAVE_OPENCL
 #include <llvm-c/Core.h>
@@ -33,7 +33,13 @@
 struct r600_pipe_compute {
 	struct r600_context *ctx;
 
-	struct radeon_shader_binary binary;
+	struct ac_shader_binary binary;
+
+	enum pipe_shader_ir ir_type;
+
+	/* tgsi selector */
+	struct r600_pipe_shader_selector *sel;
+
 	struct r600_resource *code_bo;
 	struct r600_bytecode bc;
 

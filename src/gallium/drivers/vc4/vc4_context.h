@@ -67,7 +67,7 @@
 #define VC4_DIRTY_CONSTBUF      (1 << 13)
 #define VC4_DIRTY_VTXSTATE      (1 << 14)
 #define VC4_DIRTY_VTXBUF        (1 << 15)
-#define VC4_DIRTY_INDEXBUF      (1 << 16)
+
 #define VC4_DIRTY_SCISSOR       (1 << 17)
 #define VC4_DIRTY_FLAT_SHADE_FLAGS (1 << 18)
 #define VC4_DIRTY_PRIM_MODE     (1 << 19)
@@ -84,6 +84,13 @@ struct vc4_sampler_view {
         uint32_t texture_p0;
         uint32_t texture_p1;
         bool force_first_level;
+        /**
+         * Resource containing the actual texture that will be sampled.
+         *
+         * We may need to rebase the .base.texture resource to work around the
+         * lack of GL_TEXTURE_BASE_LEVEL, or to upload the texture as tiled.
+         */
+        struct pipe_resource *texture;
 };
 
 struct vc4_sampler_state {
@@ -236,6 +243,9 @@ struct vc4_job {
          */
         uint32_t bo_space;
 
+        /* Last BO hindex referenced from VC4_PACKET_GEM_HANDLES. */
+        uint32_t last_gem_handle_hindex;
+
         /** @{ Surfaces to submit rendering for. */
         struct pipe_surface *color_read;
         struct pipe_surface *color_write;
@@ -295,6 +305,9 @@ struct vc4_job {
          * the current job.
          */
         uint32_t draw_calls_queued;
+
+        /** Any flags to be passed in drm_vc4_submit_cl.flags. */
+        uint32_t flags;
 
         struct vc4_job_key key;
 };
@@ -377,7 +390,6 @@ struct vc4_context {
         struct pipe_viewport_state viewport;
         struct vc4_constbuf_stateobj constbuf[PIPE_SHADER_TYPES];
         struct vc4_vertexbuf_stateobj vertexbuf;
-        struct pipe_index_buffer indexbuf;
         /** @} */
 };
 
@@ -385,27 +397,23 @@ struct vc4_rasterizer_state {
         struct pipe_rasterizer_state base;
 
         /* VC4_CONFIGURATION_BITS */
-        uint8_t config_bits[3];
+        uint8_t config_bits[V3D21_CONFIGURATION_BITS_length];
 
-        float point_size;
+        struct PACKED {
+                uint8_t depth_offset[V3D21_DEPTH_OFFSET_length];
+                uint8_t point_size[V3D21_POINT_SIZE_length];
+                uint8_t line_width[V3D21_LINE_WIDTH_length];
+        } packed;
 
-        /**
-         * Half-float (1/8/7 bits) value of polygon offset units for
-         * VC4_PACKET_DEPTH_OFFSET
-         */
-        uint16_t offset_units;
-        /**
-         * Half-float (1/8/7 bits) value of polygon offset scale for
-         * VC4_PACKET_DEPTH_OFFSET
-         */
-        uint16_t offset_factor;
+        /** Raster order flags to be passed in struct drm_vc4_submit_cl.flags. */
+        uint32_t tile_raster_order_flags;
 };
 
 struct vc4_depth_stencil_alpha_state {
         struct pipe_depth_stencil_alpha_state base;
 
         /* VC4_CONFIGURATION_BITS */
-        uint8_t config_bits[3];
+        uint8_t config_bits[V3D21_CONFIGURATION_BITS_length];
 
         /** Uniforms for stencil state.
          *

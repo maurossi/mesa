@@ -19,10 +19,6 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
- * Authors:
- *  Nicolai Hähnle <nicolai.haehnle@amd.com>
- *
  */
 
 #include "radeon/r600_cs.h"
@@ -377,7 +373,7 @@ static struct si_pc_block groups_CIK[] = {
 };
 
 static struct si_pc_block groups_VI[] = {
-	{ &cik_CB, 396, 4 },
+	{ &cik_CB, 405, 4 },
 	{ &cik_CPF, 19 },
 	{ &cik_DB, 257, 4 },
 	{ &cik_GRBM, 34 },
@@ -401,6 +397,30 @@ static struct si_pc_block groups_VI[] = {
 	{ &cik_CPG, 48 },
 	{ &cik_CPC, 24 },
 
+};
+
+static struct si_pc_block groups_gfx9[] = {
+	{ &cik_CB, 438, 4 },
+	{ &cik_CPF, 32 },
+	{ &cik_DB, 328, 4 },
+	{ &cik_GRBM, 38 },
+	{ &cik_GRBMSE, 16 },
+	{ &cik_PA_SU, 292 },
+	{ &cik_PA_SC, 491 },
+	{ &cik_SPI, 196 },
+	{ &cik_SQ, 374 },
+	{ &cik_SX, 208 },
+	{ &cik_TA, 119, 16 },
+	{ &cik_TCA, 35, 2 },
+	{ &cik_TCC, 256, 16 },
+	{ &cik_TD, 57, 16 },
+	{ &cik_TCP, 85, 16 },
+	{ &cik_GDS, 121 },
+	{ &cik_VGT, 148 },
+	{ &cik_IA, 32 },
+	{ &cik_WD, 58 },
+	{ &cik_CPG, 59 },
+	{ &cik_CPC, 35 },
 };
 
 static void si_pc_get_size(struct r600_perfcounter_block *group,
@@ -578,7 +598,7 @@ static void si_pc_emit_start(struct r600_common_context *ctx,
 	radeon_set_uconfig_reg(cs, R_036020_CP_PERFMON_CNTL,
 			       S_036020_PERFMON_STATE(V_036020_DISABLE_AND_RESET));
 	radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
-	radeon_emit(cs, EVENT_TYPE(EVENT_TYPE_PERFCOUNTER_START) | EVENT_INDEX(0));
+	radeon_emit(cs, EVENT_TYPE(V_028A90_PERFCOUNTER_START) | EVENT_INDEX(0));
 	radeon_set_uconfig_reg(cs, R_036020_CP_PERFMON_CNTL,
 			       S_036020_PERFMON_STATE(V_036020_START_COUNTING));
 }
@@ -590,14 +610,15 @@ static void si_pc_emit_stop(struct r600_common_context *ctx,
 {
 	struct radeon_winsys_cs *cs = ctx->gfx.cs;
 
-	r600_gfx_write_event_eop(ctx, EVENT_TYPE_BOTTOM_OF_PIPE_TS, 0, 1,
-				 buffer, va, 1, 0);
-	r600_gfx_wait_fence(ctx, va, 0, 0xffffffff);
+	si_gfx_write_event_eop(ctx, V_028A90_BOTTOM_OF_PIPE_TS, 0,
+				 EOP_DATA_SEL_VALUE_32BIT,
+				 buffer, va, 0, SI_NOT_QUERY);
+	si_gfx_wait_fence(ctx, va, 0, 0xffffffff);
 
 	radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
-	radeon_emit(cs, EVENT_TYPE(EVENT_TYPE_PERFCOUNTER_SAMPLE) | EVENT_INDEX(0));
+	radeon_emit(cs, EVENT_TYPE(V_028A90_PERFCOUNTER_SAMPLE) | EVENT_INDEX(0));
 	radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
-	radeon_emit(cs, EVENT_TYPE(EVENT_TYPE_PERFCOUNTER_STOP) | EVENT_INDEX(0));
+	radeon_emit(cs, EVENT_TYPE(V_028A90_PERFCOUNTER_STOP) | EVENT_INDEX(0));
 	radeon_set_uconfig_reg(cs, R_036020_CP_PERFMON_CNTL,
 			       S_036020_PERFMON_STATE(V_036020_STOP_COUNTING) |
 			       S_036020_PERFMON_SAMPLE_ENABLE(1));
@@ -649,10 +670,10 @@ static void si_pc_emit_read(struct r600_common_context *ctx,
 	}
 }
 
-static void si_pc_cleanup(struct r600_common_screen *rscreen)
+static void si_pc_cleanup(struct si_screen *sscreen)
 {
-	r600_perfcounters_do_destroy(rscreen->perfcounters);
-	rscreen->perfcounters = NULL;
+	si_perfcounters_do_destroy(sscreen->perfcounters);
+	sscreen->perfcounters = NULL;
 }
 
 void si_init_perfcounters(struct si_screen *screen)
@@ -662,7 +683,7 @@ void si_init_perfcounters(struct si_screen *screen)
 	unsigned num_blocks;
 	unsigned i;
 
-	switch (screen->b.chip_class) {
+	switch (screen->info.chip_class) {
 	case CIK:
 		blocks = groups_CIK;
 		num_blocks = ARRAY_SIZE(groups_CIK);
@@ -671,16 +692,20 @@ void si_init_perfcounters(struct si_screen *screen)
 		blocks = groups_VI;
 		num_blocks = ARRAY_SIZE(groups_VI);
 		break;
+	case GFX9:
+		blocks = groups_gfx9;
+		num_blocks = ARRAY_SIZE(groups_gfx9);
+		break;
 	case SI:
 	default:
 		return; /* not implemented */
 	}
 
-	if (screen->b.info.max_sh_per_se != 1) {
+	if (screen->info.max_sh_per_se != 1) {
 		/* This should not happen on non-SI chips. */
 		fprintf(stderr, "si_init_perfcounters: max_sh_per_se = %d not "
 			"supported (inaccurate performance counters)\n",
-			screen->b.info.max_sh_per_se);
+			screen->info.max_sh_per_se);
 	}
 
 	pc = CALLOC_STRUCT(r600_perfcounters);
@@ -688,7 +713,7 @@ void si_init_perfcounters(struct si_screen *screen)
 		return;
 
 	pc->num_start_cs_dwords = 14;
-	pc->num_stop_cs_dwords = 14 + r600_gfx_write_fence_dwords(&screen->b);
+	pc->num_stop_cs_dwords = 14 + si_gfx_write_fence_dwords(screen);
 	pc->num_instance_cs_dwords = 3;
 	pc->num_shaders_cs_dwords = 4;
 
@@ -705,7 +730,7 @@ void si_init_perfcounters(struct si_screen *screen)
 	pc->emit_read = si_pc_emit_read;
 	pc->cleanup = si_pc_cleanup;
 
-	if (!r600_perfcounters_init(pc, num_blocks))
+	if (!si_perfcounters_init(pc, num_blocks))
 		goto error;
 
 	for (i = 0; i < num_blocks; ++i) {
@@ -713,11 +738,11 @@ void si_init_perfcounters(struct si_screen *screen)
 		unsigned instances = block->instances;
 
 		if (!strcmp(block->b->name, "IA")) {
-			if (screen->b.info.max_se > 2)
+			if (screen->info.max_se > 2)
 				instances = 2;
 		}
 
-		r600_perfcounters_add_block(&screen->b, pc,
+		si_perfcounters_add_block(screen, pc,
 					    block->b->name,
 					    block->b->flags,
 					    block->b->num_counters,
@@ -726,9 +751,9 @@ void si_init_perfcounters(struct si_screen *screen)
 					    block);
 	}
 
-	screen->b.perfcounters = pc;
+	screen->perfcounters = pc;
 	return;
 
 error:
-	r600_perfcounters_do_destroy(pc);
+	si_perfcounters_do_destroy(pc);
 }

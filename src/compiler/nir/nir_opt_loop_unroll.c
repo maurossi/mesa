@@ -26,11 +26,23 @@
 #include "nir_control_flow.h"
 #include "nir_loop_analyze.h"
 
+
+/* This limit is chosen fairly arbitrarily.  GLSL IR max iteration is 32
+ * instructions. (Multiply counting nodes and magic number 5.)  But there is
+ * no 1:1 mapping between GLSL IR and NIR so 25 was picked because it seemed
+ * to give about the same results. Around 5 instructions per node.  But some
+ * loops that would unroll with GLSL IR fail to unroll if we set this to 25 so
+ * we set it to 26.
+ * This was bumped to 96 because it unrolled more loops with a positive
+ * effect (vulkan ssao demo).
+ */
+#define LOOP_UNROLL_LIMIT 96
+
 /* Prepare this loop for unrolling by first converting to lcssa and then
- * converting the phis from the loops first block and the block that follows
- * the loop into regs.  Partially converting out of SSA allows us to unroll
- * the loop without having to keep track of and update phis along the way
- * which gets tricky and doesn't add much value over conveting to regs.
+ * converting the phis from the top level of the loop body to regs.
+ * Partially converting out of SSA allows us to unroll the loop without having
+ * to keep track of and update phis along the way which gets tricky and
+ * doesn't add much value over converting to regs.
  *
  * The loop may have a continue instruction at the end of the loop which does
  * nothing.  Once we're out of SSA, we can safely delete it so we don't have
@@ -41,13 +53,20 @@ loop_prepare_for_unroll(nir_loop *loop)
 {
    nir_convert_loop_to_lcssa(loop);
 
-   nir_lower_phis_to_regs_block(nir_loop_first_block(loop));
+   /* Lower phis at the top level of the loop body */
+   foreach_list_typed_safe(nir_cf_node, node, node, &loop->body) {
+      if (nir_cf_node_block == node->type) {
+         nir_lower_phis_to_regs_block(nir_cf_node_as_block(node));
+      }
+   }
 
+   /* Lower phis after the loop */
    nir_block *block_after_loop =
       nir_cf_node_as_block(nir_cf_node_next(&loop->cf_node));
 
    nir_lower_phis_to_regs_block(block_after_loop);
 
+   /* Remove continue if its the last instruction in the loop */
    nir_instr *last_instr = nir_block_last_instr(nir_loop_last_block(loop));
    if (last_instr && last_instr->type == nir_instr_type_jump) {
       assert(nir_instr_as_jump(last_instr)->type == nir_jump_continue);
@@ -460,7 +479,7 @@ is_loop_small_enough_to_unroll(nir_shader *shader, nir_loop_info *li)
       return true;
 
    bool loop_not_too_large =
-      li->num_instructions * li->trip_count <= max_iter * 25;
+      li->num_instructions * li->trip_count <= max_iter * LOOP_UNROLL_LIMIT;
 
    return loop_not_too_large;
 }

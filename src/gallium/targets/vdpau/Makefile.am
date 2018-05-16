@@ -35,6 +35,7 @@ libvdpau_gallium_la_LIBADD = \
 	$(top_builddir)/src/gallium/auxiliary/libgallium.la \
 	$(top_builddir)/src/util/libmesautil.la \
 	$(VL_LIBS) \
+	$(XCB_DRI3_LIBS) \
 	$(LIBDRM_LIBS) \
 	$(GALLIUM_COMMON_LIB_DEPS)
 
@@ -43,7 +44,8 @@ EXTRA_libvdpau_gallium_la_DEPENDENCIES = \
 	$(top_srcdir)/src/gallium/targets/dri-vdpau.dyn
 EXTRA_DIST = \
 	vdpau.sym \
-	$(top_srcdir)/src/gallium/targets/dri-vdpau.dyn
+	$(top_srcdir)/src/gallium/targets/dri-vdpau.dyn \
+	meson.build
 
 TARGET_DRIVERS =
 TARGET_CPPFLAGS =
@@ -63,6 +65,7 @@ libvdpau_gallium_la_LIBADD += \
 	$(top_builddir)/src/gallium/auxiliary/pipe-loader/libpipe_loader_static.la \
 	$(GALLIUM_PIPE_LOADER_WINSYS_LIBS) \
 	$(TARGET_LIB_DEPS) \
+	$(TARGET_COMPILER_LIB_DEPS) \
 	$(TARGET_RADEON_WINSYS) $(TARGET_RADEON_COMMON)
 
 else # HAVE_GALLIUM_STATIC_TARGETS
@@ -120,7 +123,8 @@ install-data-hook:
 		ln -sf $${l}						\
 		       $${dest_dir}/$${k};				\
 	done;								\
-	$(RM) $${dest_dir}/libvdpau_gallium.*
+	$(RM) $${dest_dir}/libvdpau_gallium.*;				\
+	$(RM) -d $${dest_dir} &>/dev/null || true
 
 uninstall-hook:
 	for i in $(TARGET_DRIVERS); do					\

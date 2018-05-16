@@ -39,6 +39,8 @@ glsl_get_array_element(const glsl_type* type)
 {
    if (type->is_matrix())
       return type->column_type();
+   else if (type->is_vector())
+      return type->get_scalar_type();
    return type->fields.array;
 }
 
@@ -46,6 +48,13 @@ const glsl_type *
 glsl_without_array(const glsl_type *type)
 {
    return type->without_array();
+}
+
+const glsl_type *
+glsl_get_array_instance(const glsl_type *type,
+                        unsigned array_size)
+{
+   return glsl_type::get_array_instance(type, array_size);
 }
 
 const glsl_type *
@@ -140,6 +149,12 @@ glsl_get_record_location_offset(const struct glsl_type *type,
                                 unsigned length)
 {
    return type->record_location_offset(length);
+}
+
+bool
+glsl_type_is_64bit(const glsl_type *type)
+{
+   return type->is_64bit();
 }
 
 bool
@@ -259,6 +274,12 @@ glsl_double_type(void)
 }
 
 const glsl_type *
+glsl_float16_t_type(void)
+{
+   return glsl_type::float16_t_type;
+}
+
+const glsl_type *
 glsl_vec_type(unsigned n)
 {
    return glsl_type::vec(n);
@@ -277,6 +298,12 @@ glsl_vec4_type(void)
 }
 
 const glsl_type *
+glsl_uvec4_type(void)
+{
+   return glsl_type::uvec4_type;
+}
+
+const glsl_type *
 glsl_int_type(void)
 {
    return glsl_type::int_type;
@@ -286,6 +313,30 @@ const glsl_type *
 glsl_uint_type(void)
 {
    return glsl_type::uint_type;
+}
+
+const glsl_type *
+glsl_int64_t_type(void)
+{
+   return glsl_type::int64_t_type;
+}
+
+const glsl_type *
+glsl_uint64_t_type(void)
+{
+   return glsl_type::uint64_t_type;
+}
+
+const glsl_type *
+glsl_int16_t_type(void)
+{
+   return glsl_type::int16_t_type;
+}
+
+const glsl_type *
+glsl_uint16_t_type(void)
+{
+   return glsl_type::uint16_t_type;
 }
 
 const glsl_type *
@@ -327,6 +378,17 @@ glsl_struct_type(const glsl_struct_field *fields,
    return glsl_type::get_record_instance(fields, num_fields, name);
 }
 
+const glsl_type *
+glsl_interface_type(const glsl_struct_field *fields,
+                    unsigned num_fields,
+                    enum glsl_interface_packing packing,
+                    bool row_major,
+                    const char *block_name)
+{
+   return glsl_type::get_interface_instance(fields, num_fields, packing,
+                                            row_major, block_name);
+}
+
 const struct glsl_type *
 glsl_sampler_type(enum glsl_sampler_dim dim, bool is_shadow, bool is_array,
                   enum glsl_base_type base_type)
@@ -360,4 +422,31 @@ glsl_transposed_type(const struct glsl_type *type)
    assert(glsl_type_is_matrix(type));
    return glsl_type::get_instance(type->base_type, type->matrix_columns,
                                   type->vector_elements);
+}
+
+const glsl_type *
+glsl_channel_type(const glsl_type *t)
+{
+   switch (glsl_get_base_type(t)) {
+   case GLSL_TYPE_ARRAY: {
+      const glsl_type *base = glsl_channel_type(glsl_get_array_element(t));
+      return glsl_array_type(base, glsl_get_length(t));
+   }
+   case GLSL_TYPE_UINT:
+      return glsl_uint_type();
+   case GLSL_TYPE_INT:
+      return glsl_int_type();
+   case GLSL_TYPE_FLOAT:
+      return glsl_float_type();
+   case GLSL_TYPE_BOOL:
+      return glsl_bool_type();
+   case GLSL_TYPE_DOUBLE:
+      return glsl_double_type();
+   case GLSL_TYPE_UINT64:
+      return glsl_uint64_t_type();
+   case GLSL_TYPE_INT64:
+      return glsl_int64_t_type();
+   default:
+      unreachable("Unhandled base type glsl_channel_type()");
+   }
 }

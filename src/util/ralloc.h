@@ -247,15 +247,6 @@ void ralloc_adopt(const void *new_ctx, void *old_ctx);
 void *ralloc_parent(const void *ptr);
 
 /**
- * Return a context whose memory will be automatically freed at program exit.
- *
- * The first call to this function creates a context and registers a handler
- * to free it using \c atexit.  This may cause trouble if used in a library
- * loaded with \c dlopen.
- */
-void *ralloc_autofree_context(void);
-
-/**
  * Set a callback to occur just before an object is freed.
  */
 void ralloc_set_destructor(const void *ptr, void(*destructor)(void *));
@@ -300,6 +291,24 @@ bool ralloc_strcat(char **dest, const char *str);
  * \return True unless allocation failed.
  */
 bool ralloc_strncat(char **dest, const char *str, size_t n);
+
+/**
+ * Concatenate two strings, allocating the necessary space.
+ *
+ * This appends \p n bytes of \p str to \p *dest, using ralloc_resize
+ * to expand \p *dest to the appropriate size.  \p dest will be updated to the
+ * new pointer unless allocation fails.
+ *
+ * The result will always be null-terminated.
+ *
+ * This function differs from ralloc_strcat() and ralloc_strncat() in that it
+ * does not do any strlen() calls which can become costly on large strings.
+ *
+ * \return True unless allocation failed.
+ */
+bool
+ralloc_str_append(char **dest, const char *str,
+                  size_t existing_length, size_t str_size);
 
 /**
  * Print to a string.

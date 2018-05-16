@@ -505,7 +505,6 @@ lp_build_fetch_rgba_soa(struct gallivm_state *gallivm,
        * First, figure out fetch order.
        */
       fetch_width = util_next_power_of_two(format_desc->block.bits);
-      num_gather = fetch_width / type.width;
       /*
        * fp64 are treated like fp32 except we fetch twice wide values
        * (as we shuffle after trunc). The shuffles for that work out
@@ -651,7 +650,13 @@ lp_build_fetch_rgba_soa(struct gallivm_state *gallivm,
          for (i = 0; i < format_desc->nr_channels; i++) {
             struct util_format_channel_description chan_desc = format_desc->channel[i];
             unsigned blockbits = type.width;
-            unsigned vec_nr = chan_desc.shift / type.width;
+            unsigned vec_nr;
+
+#ifdef PIPE_ARCH_BIG_ENDIAN
+            vec_nr = (format_desc->block.bits - (chan_desc.shift + chan_desc.size)) / type.width;
+#else
+            vec_nr = chan_desc.shift / type.width;
+#endif
             chan_desc.shift %= type.width;
 
             output[i] = lp_build_extract_soa_chan(&bld,

@@ -204,9 +204,9 @@ fixup_raddr_conflict(struct qblock *block,
 static void
 set_last_dst_pack(struct qblock *block, struct qinst *inst)
 {
-        bool had_pm = *last_inst(block) & QPU_PM;
-        bool had_ws = *last_inst(block) & QPU_WS;
-        uint32_t unpack = QPU_GET_FIELD(*last_inst(block), QPU_UNPACK);
+        MAYBE_UNUSED bool had_pm = *last_inst(block) & QPU_PM;
+        MAYBE_UNUSED bool had_ws = *last_inst(block) & QPU_WS;
+        MAYBE_UNUSED uint32_t unpack = QPU_GET_FIELD(*last_inst(block), QPU_UNPACK);
 
         if (!inst->dst.pack)
                 return;
@@ -226,10 +226,14 @@ static void
 handle_r4_qpu_write(struct qblock *block, struct qinst *qinst,
                     struct qpu_reg dst)
 {
-        if (dst.mux != QPU_MUX_R4)
+        if (dst.mux != QPU_MUX_R4) {
                 queue(block, qpu_a_MOV(dst, qpu_r4()));
-        else if (qinst->sf)
-                queue(block, qpu_a_MOV(qpu_ra(QPU_W_NOP), qpu_r4()));
+                set_last_cond_add(block, qinst->cond);
+        } else {
+                assert(qinst->cond == QPU_COND_ALWAYS);
+                if (qinst->sf)
+                        queue(block, qpu_a_MOV(qpu_ra(QPU_W_NOP), qpu_r4()));
+        }
 }
 
 static void
@@ -415,7 +419,7 @@ vc4_generate_code_block(struct vc4_compile *c,
                         break;
                 }
 
-                bool handled_qinst_cond = false;
+                MAYBE_UNUSED bool handled_qinst_cond = false;
 
                 switch (qinst->op) {
                 case QOP_RCP:
@@ -444,6 +448,7 @@ vc4_generate_code_block(struct vc4_compile *c,
                         }
 
                         handle_r4_qpu_write(block, qinst, dst);
+                        handled_qinst_cond = true;
 
                         break;
 
@@ -495,6 +500,7 @@ vc4_generate_code_block(struct vc4_compile *c,
                         *last_inst(block) = qpu_set_sig(*last_inst(block),
                                                         QPU_SIG_COLOR_LOAD);
                         handle_r4_qpu_write(block, qinst, dst);
+                        handled_qinst_cond = true;
                         break;
 
                 case QOP_VARY_ADD_C:
@@ -507,6 +513,7 @@ vc4_generate_code_block(struct vc4_compile *c,
                         *last_inst(block) = qpu_set_sig(*last_inst(block),
                                                         QPU_SIG_LOAD_TMU0);
                         handle_r4_qpu_write(block, qinst, dst);
+                        handled_qinst_cond = true;
                         break;
 
                 case QOP_THRSW:

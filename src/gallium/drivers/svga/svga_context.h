@@ -31,7 +31,7 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_state.h"
 
-#include "os/os_time.h"
+#include "util/os_time.h"
 
 #include "util/u_blitter.h"
 #include "util/list.h"
@@ -72,6 +72,8 @@ enum svga_hud {
    SVGA_QUERY_NUM_STATE_OBJECTS,
    SVGA_QUERY_NUM_SURFACE_VIEWS,
    SVGA_QUERY_NUM_GENERATE_MIPMAP,
+   SVGA_QUERY_NUM_FAILED_ALLOCATIONS,
+   SVGA_QUERY_NUM_COMMANDS_PER_DRAW,
 
 /*SVGA_QUERY_MAX has to be last because it is size of an array*/
    SVGA_QUERY_MAX
@@ -105,6 +107,7 @@ struct svga_blend_state {
    unsigned need_white_fragments:1;
    unsigned independent_blend_enable:1;
    unsigned alpha_to_coverage:1;
+   unsigned alpha_to_one:1;
    unsigned blend_color_alpha:1;  /**< set blend color to alpha value */
 
    /** Per-render target state */
@@ -115,7 +118,7 @@ struct svga_blend_state {
       uint8_t srcblend;
       uint8_t dstblend;
       uint8_t blendeq;
-      
+
       boolean separate_alpha_blend_enable;
       uint8_t srcblend_alpha;
       uint8_t dstblend_alpha;
@@ -132,7 +135,7 @@ struct svga_depth_stencil_state {
 
    unsigned alphatestenable:1;
    unsigned alphafunc:8;
-  
+
    struct {
       unsigned enabled:1;
       unsigned func:8;
@@ -140,7 +143,7 @@ struct svga_depth_stencil_state {
       unsigned zfail:8;
       unsigned pass:8;
    } stencil[2];
-   
+
    /* SVGA3D has one ref/mask/writemask triple shared between front &
     * back face stencil.  We really need two:
     */
@@ -177,7 +180,7 @@ struct svga_rasterizer_state {
    float depthbias;
    float pointsize;
    float linewidth;
-   
+
    unsigned hw_fillmode:2;         /* PIPE_POLYGON_MODE_x */
 
    /** Which prims do we need help for?  Bitmask of (1 << PIPE_PRIM_x) flags */
@@ -209,7 +212,7 @@ struct svga_sampler_state {
    unsigned view_min_lod;
    unsigned view_max_lod;
 
-   SVGA3dSamplerId id;
+   SVGA3dSamplerId id[2];
 };
 
 
@@ -249,10 +252,11 @@ struct svga_velems_state {
    SVGA3dElementLayoutId id; /**< VGPU10 */
 };
 
+
 /* Use to calculate differences between state emitted to hardware and
- * current driver-calculated state.  
+ * current driver-calculated state.
  */
-struct svga_state 
+struct svga_state
 {
    const struct svga_blend_state *blend;
    const struct svga_depth_stencil_state *depth;
@@ -267,7 +271,6 @@ struct svga_state
    struct svga_geometry_shader *gs;      /* derived GS */
 
    struct pipe_vertex_buffer vb[PIPE_MAX_ATTRIBS];
-   struct pipe_index_buffer ib;
    /** Constant buffers for each shader.
     * The size should probably always match with that of
     * svga_shader_emitter_v10.num_shader_consts.
@@ -292,7 +295,7 @@ struct svga_state
    unsigned num_samplers[PIPE_SHADER_TYPES];
    unsigned num_sampler_views[PIPE_SHADER_TYPES];
    unsigned num_vertex_buffers;
-   unsigned reduced_prim;
+   enum pipe_prim_type reduced_prim;
 
    struct {
       unsigned flag_1d;
@@ -320,9 +323,14 @@ struct svga_hw_clear_state
    struct {
       float zmin, zmax;
    } depthrange;
-   
+
    struct pipe_framebuffer_state framebuffer;
    struct svga_prescale prescale;
+
+   /* VGPU10 state */
+   unsigned num_rendertargets;
+   struct pipe_surface *rtv[SVGA3D_MAX_RENDER_TARGETS];
+   struct pipe_surface *dsv;
 };
 
 struct svga_hw_view_state
@@ -342,9 +350,12 @@ struct svga_hw_draw_state
    unsigned rs[SVGA3D_RS_MAX];
    /** VGPU9 texture sampler and bindings state */
    unsigned ts[SVGA3D_PIXEL_SAMPLERREG_MAX][SVGA3D_TS_MAX];
+
    /** VGPU9 texture views */
    unsigned num_views;
+   unsigned num_backed_views; /* views with backing copy of texture */
    struct svga_hw_view_state views[PIPE_MAX_SAMPLERS];
+
    /** VGPU9 constant buffer values */
    float cb[PIPE_SHADER_TYPES][SVGA3D_CONSTREG_MAX][4];
 
@@ -392,12 +403,11 @@ struct svga_hw_draw_state
    struct pipe_sampler_view
       *sampler_views[PIPE_SHADER_TYPES][PIPE_MAX_SAMPLERS];
 
-   unsigned num_rendertargets;
-   struct pipe_surface *rtv[SVGA3D_MAX_RENDER_TARGETS];
-   struct pipe_surface *dsv;
-
    /* used for rebinding */
    unsigned default_constbuf_size[PIPE_SHADER_TYPES];
+
+   boolean rasterizer_discard; /* set if rasterization is disabled */
+   boolean has_backed_views;   /* set if any of the rtv/dsv is a backed surface view */
 };
 
 
@@ -494,8 +504,6 @@ struct svga_context
 
       unsigned texture_timestamp;
 
-      /* 
-       */
       struct svga_sw_state          sw;
       struct svga_hw_draw_state     hw_draw;
       struct svga_hw_clear_state    hw_clear;
@@ -584,6 +592,9 @@ struct svga_context
    /** Alternate rasterizer states created for point sprite */
    struct svga_rasterizer_state *rasterizer_no_cull[2];
 
+   /** Depth stencil state created to disable depth stencil test */
+   struct svga_depth_stencil_state *depthstencil_disable;
+
    /** Current conditional rendering predicate */
    struct {
       SVGA3dQueryId query_id;
@@ -591,6 +602,7 @@ struct svga_context
    } pred;
 
    boolean render_condition;
+   boolean disable_rasterizer; /* Set if to disable rasterization */
 };
 
 /* A flag for each state_tracker state object:
@@ -667,8 +679,11 @@ void svga_surfaces_flush(struct svga_context *svga);
 
 struct pipe_context *
 svga_context_create(struct pipe_screen *screen,
-		    void *priv, unsigned flags);
+                    void *priv, unsigned flags);
 
+void svga_toggle_render_condition(struct svga_context *svga,
+                                  boolean render_condition_enabled,
+                                  boolean on);
 
 /***********************************************************************
  * Inline conversion functions.  These are better-typed than the

@@ -28,6 +28,7 @@
 #include "dd_pipe.h"
 #include "dd_public.h"
 #include "util/u_memory.h"
+#include <ctype.h>
 #include <stdio.h>
 
 
@@ -53,6 +54,24 @@ dd_screen_get_device_vendor(struct pipe_screen *_screen)
    struct pipe_screen *screen = dd_screen(_screen)->screen;
 
    return screen->get_device_vendor(screen);
+}
+
+static const void *
+dd_screen_get_compiler_options(struct pipe_screen *_screen,
+                               enum pipe_shader_ir ir,
+                               enum pipe_shader_type shader)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   return screen->get_compiler_options(screen, ir, shader);
+}
+
+static struct disk_cache *
+dd_screen_get_disk_shader_cache(struct pipe_screen *_screen)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   return screen->get_disk_shader_cache(screen);
 }
 
 static int
@@ -85,7 +104,8 @@ dd_screen_get_compute_param(struct pipe_screen *_screen,
 }
 
 static int
-dd_screen_get_shader_param(struct pipe_screen *_screen, unsigned shader,
+dd_screen_get_shader_param(struct pipe_screen *_screen,
+                           enum pipe_shader_type shader,
                            enum pipe_shader_cap param)
 {
    struct pipe_screen *screen = dd_screen(_screen)->screen;
@@ -178,6 +198,22 @@ dd_screen_get_driver_query_group_info(struct pipe_screen *_screen,
 }
 
 
+static void
+dd_screen_get_driver_uuid(struct pipe_screen *_screen, char *uuid)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   screen->get_driver_uuid(screen, uuid);
+}
+
+static void
+dd_screen_get_device_uuid(struct pipe_screen *_screen, char *uuid)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   screen->get_device_uuid(screen, uuid);
+}
+
 /********************************************************************
  * resource
  */
@@ -226,6 +262,31 @@ dd_screen_resource_from_user_memory(struct pipe_screen *_screen,
    return res;
 }
 
+static struct pipe_resource *
+dd_screen_resource_from_memobj(struct pipe_screen *_screen,
+                               const struct pipe_resource *templ,
+                               struct pipe_memory_object *memobj,
+                               uint64_t offset)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+   struct pipe_resource *res =
+      screen->resource_from_memobj(screen, templ, memobj, offset);
+
+   if (!res)
+      return NULL;
+   res->screen = _screen;
+   return res;
+}
+
+static void
+dd_screen_resource_changed(struct pipe_screen *_screen,
+                           struct pipe_resource *res)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   screen->resource_changed(screen, res);
+}
+
 static void
 dd_screen_resource_destroy(struct pipe_screen *_screen,
                            struct pipe_resource *res)
@@ -246,6 +307,16 @@ dd_screen_resource_get_handle(struct pipe_screen *_screen,
    struct pipe_context *pipe = _pipe ? dd_context(_pipe)->pipe : NULL;
 
    return screen->resource_get_handle(screen, pipe, resource, handle, usage);
+}
+
+static bool
+dd_screen_check_resource_capability(struct pipe_screen *_screen,
+                                    struct pipe_resource *resource,
+                                    unsigned bind)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   return screen->check_resource_capability(screen, resource, bind);
 }
 
 
@@ -275,7 +346,28 @@ dd_screen_fence_finish(struct pipe_screen *_screen,
    return screen->fence_finish(screen, ctx, fence, timeout);
 }
 
+/********************************************************************
+ * memobj
+ */
 
+static struct pipe_memory_object *
+dd_screen_memobj_create_from_handle(struct pipe_screen *_screen,
+                                    struct winsys_handle *handle,
+                                    bool dedicated)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   return screen->memobj_create_from_handle(screen, handle, dedicated);
+}
+
+static void
+dd_screen_memobj_destroy(struct pipe_screen *_screen,
+                         struct pipe_memory_object *memobj)
+{
+   struct pipe_screen *screen = dd_screen(_screen)->screen;
+
+   screen->memobj_destroy(screen, memobj);
+}
 /********************************************************************
  * screen
  */
@@ -290,15 +382,56 @@ dd_screen_destroy(struct pipe_screen *_screen)
    FREE(dscreen);
 }
 
+static void
+skip_space(const char **p)
+{
+   while (isspace(**p))
+      (*p)++;
+}
+
+static bool
+match_word(const char **cur, const char *word)
+{
+   size_t len = strlen(word);
+   if (strncmp(*cur, word, len) != 0)
+      return false;
+
+   const char *p = *cur + len;
+   if (*p) {
+      if (!isspace(*p))
+         return false;
+
+      *cur = p + 1;
+   } else {
+      *cur = p;
+   }
+
+   return true;
+}
+
+static bool
+match_uint(const char **cur, unsigned *value)
+{
+   char *end;
+   unsigned v = strtoul(*cur, &end, 0);
+   if (end == *cur || (*end && !isspace(*end)))
+      return false;
+   *cur = end;
+   *value = v;
+   return true;
+}
+
 struct pipe_screen *
 ddebug_screen_create(struct pipe_screen *screen)
 {
    struct dd_screen *dscreen;
    const char *option;
-   bool no_flush;
-   unsigned timeout = 0;
+   bool flush = false;
+   bool verbose = false;
+   bool transfers = false;
+   unsigned timeout = 1000;
    unsigned apitrace_dump_call = 0;
-   enum dd_mode mode;
+   enum dd_dump_mode mode = DD_DUMP_ONLY_HANGS;
 
    option = debug_get_option("GALLIUM_DDEBUG", NULL);
    if (!option)
@@ -309,53 +442,75 @@ ddebug_screen_create(struct pipe_screen *screen)
       puts("");
       puts("Usage:");
       puts("");
-      puts("  GALLIUM_DDEBUG=\"always [noflush] [verbose]\"");
-      puts("    Flush and dump context and driver information after every draw call into");
-      puts("    $HOME/"DD_DIR"/.");
-      puts("");
-      puts("  GALLIUM_DDEBUG=\"[timeout in ms] [noflush] [verbose]\"");
-      puts("    Flush and detect a device hang after every draw call based on the given");
-      puts("    fence timeout and dump context and driver information into");
-      puts("    $HOME/"DD_DIR"/ when a hang is detected.");
-      puts("");
-      puts("  GALLIUM_DDEBUG=\"pipelined [timeout in ms] [verbose]\"");
-      puts("    Detect a device hang after every draw call based on the given fence");
-      puts("    timeout without flushes and dump context and driver information into");
-      puts("    $HOME/"DD_DIR"/ when a hang is detected.");
-      puts("");
-      puts("  GALLIUM_DDEBUG=\"apitrace [call#] [verbose]\"");
-      puts("    Dump apitrace draw call information into $HOME/"DD_DIR"/. Implies 'noflush'.");
-      puts("");
-      puts("  If 'noflush' is specified, do not flush on every draw call. In hang");
-      puts("  detection mode, this only detect hangs in pipe->flush.");
-      puts("  If 'verbose' is specified, additional information is written to stderr.");
-      puts("");
+      puts("  GALLIUM_DDEBUG=\"[<timeout in ms>] [(always|apitrace <call#)] [flush] [transfers] [verbose]\"");
       puts("  GALLIUM_DDEBUG_SKIP=[count]");
-      puts("    Skip flush and hang detection for the given initial number of draw calls.");
+      puts("");
+      puts("Dump context and driver information of draw calls into");
+      puts("$HOME/"DD_DIR"/. By default, watch for GPU hangs and only dump information");
+      puts("about draw calls related to the hang.");
+      puts("");
+      puts("<timeout in ms>");
+      puts("  Change the default timeout for GPU hang detection (default=1000ms).");
+      puts("  Setting this to 0 will disable GPU hang detection entirely.");
+      puts("");
+      puts("always");
+      puts("  Dump information about all draw calls.");
+      puts("");
+      puts("transfers");
+      puts("  Also dump and do hang detection on transfers.");
+      puts("");
+      puts("apitrace <call#>");
+      puts("  Dump information about the draw call corresponding to the given");
+      puts("  apitrace call number and exit.");
+      puts("");
+      puts("flush");
+      puts("  Flush after every draw call.");
+      puts("");
+      puts("verbose");
+      puts("  Write additional information to stderr.");
+      puts("");
+      puts("GALLIUM_DDEBUG_SKIP=count");
+      puts("  Skip dumping on the first count draw calls (only relevant with 'always').");
       puts("");
       exit(0);
    }
 
-   no_flush = strstr(option, "noflush") != NULL;
+   for (;;) {
+      skip_space(&option);
+      if (!*option)
+         break;
 
-   if (!strncmp(option, "always", 6)) {
-      mode = DD_DUMP_ALL_CALLS;
-   } else if (!strncmp(option, "apitrace", 8)) {
-      mode = DD_DUMP_APITRACE_CALL;
-      no_flush = true;
+      if (match_word(&option, "always")) {
+         if (mode == DD_DUMP_APITRACE_CALL) {
+            printf("ddebug: both 'always' and 'apitrace' specified\n");
+            exit(1);
+         }
 
-      if (sscanf(option+8, "%u", &apitrace_dump_call) != 1)
-         return screen;
-   } else if (!strncmp(option, "pipelined", 8)) {
-      mode = DD_DETECT_HANGS_PIPELINED;
+         mode = DD_DUMP_ALL_CALLS;
+      } else if (match_word(&option, "flush")) {
+         flush = true;
+      } else if (match_word(&option, "transfers")) {
+         transfers = true;
+      } else if (match_word(&option, "verbose")) {
+         verbose = true;
+      } else if (match_word(&option, "apitrace")) {
+         if (mode != DD_DUMP_ONLY_HANGS) {
+            printf("ddebug: 'apitrace' can only appear once and not mixed with 'always'\n");
+            exit(1);
+         }
 
-      if (sscanf(option+10, "%u", &timeout) != 1)
-         return screen;
-   } else {
-      mode = DD_DETECT_HANGS;
+         if (!match_uint(&option, &apitrace_dump_call)) {
+            printf("ddebug: expected call number after 'apitrace'\n");
+            exit(1);
+         }
 
-      if (sscanf(option, "%u", &timeout) != 1)
-         return screen;
+         mode = DD_DUMP_APITRACE_CALL;
+      } else if (match_uint(&option, &timeout)) {
+         /* no-op */
+      } else {
+         printf("ddebug: bad options: %s\n", option);
+         exit(1);
+      }
    }
 
    dscreen = CALLOC_STRUCT(dd_screen);
@@ -369,6 +524,7 @@ ddebug_screen_create(struct pipe_screen *screen)
    dscreen->base.get_name = dd_screen_get_name;
    dscreen->base.get_vendor = dd_screen_get_vendor;
    dscreen->base.get_device_vendor = dd_screen_get_device_vendor;
+   SCR_INIT(get_disk_shader_cache);
    dscreen->base.get_param = dd_screen_get_param;
    dscreen->base.get_paramf = dd_screen_get_paramf;
    dscreen->base.get_compute_param = dd_screen_get_compute_param;
@@ -383,39 +539,49 @@ ddebug_screen_create(struct pipe_screen *screen)
    SCR_INIT(can_create_resource);
    dscreen->base.resource_create = dd_screen_resource_create;
    dscreen->base.resource_from_handle = dd_screen_resource_from_handle;
+   SCR_INIT(resource_from_memobj);
    SCR_INIT(resource_from_user_memory);
+   SCR_INIT(check_resource_capability);
    dscreen->base.resource_get_handle = dd_screen_resource_get_handle;
+   SCR_INIT(resource_changed);
    dscreen->base.resource_destroy = dd_screen_resource_destroy;
    SCR_INIT(flush_frontbuffer);
    SCR_INIT(fence_reference);
    SCR_INIT(fence_finish);
+   SCR_INIT(memobj_create_from_handle);
+   SCR_INIT(memobj_destroy);
    SCR_INIT(get_driver_query_info);
    SCR_INIT(get_driver_query_group_info);
+   SCR_INIT(get_compiler_options);
+   SCR_INIT(get_driver_uuid);
+   SCR_INIT(get_device_uuid);
 
 #undef SCR_INIT
 
    dscreen->screen = screen;
    dscreen->timeout_ms = timeout;
-   dscreen->mode = mode;
-   dscreen->no_flush = no_flush;
-   dscreen->verbose = strstr(option, "verbose") != NULL;
+   dscreen->dump_mode = mode;
+   dscreen->flush_always = flush;
+   dscreen->transfers = transfers;
+   dscreen->verbose = verbose;
    dscreen->apitrace_dump_call = apitrace_dump_call;
 
-   switch (dscreen->mode) {
+   switch (dscreen->dump_mode) {
    case DD_DUMP_ALL_CALLS:
       fprintf(stderr, "Gallium debugger active. Logging all calls.\n");
-      break;
-   case DD_DETECT_HANGS:
-   case DD_DETECT_HANGS_PIPELINED:
-      fprintf(stderr, "Gallium debugger active. "
-              "The hang detection timeout is %i ms.\n", timeout);
       break;
    case DD_DUMP_APITRACE_CALL:
       fprintf(stderr, "Gallium debugger active. Going to dump an apitrace call.\n");
       break;
    default:
-      assert(0);
+      fprintf(stderr, "Gallium debugger active.\n");
+      break;
    }
+
+   if (dscreen->timeout_ms > 0)
+      fprintf(stderr, "Hang detection timeout is %ums.\n", dscreen->timeout_ms);
+   else
+      fprintf(stderr, "Hang detection is disabled.\n");
 
    dscreen->skip_count = debug_get_num_option("GALLIUM_DDEBUG_SKIP", 0);
    if (dscreen->skip_count > 0) {

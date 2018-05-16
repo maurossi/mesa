@@ -312,7 +312,7 @@ alu_group_tracker::alu_group_tracker(shader &sh)
 	  gpr(), lt(), slots(),
 	  max_slots(sh.get_ctx().is_cayman() ? 4 : 5),
 	  has_mova(), uses_ar(), has_predset(), has_kill(),
-	  updates_exec_mask(), chan_count(), interp_param(), next_id() {
+	  updates_exec_mask(), consumes_lds_oqa(), produces_lds_oqa(), chan_count(), interp_param(), next_id() {
 
 	available_slots = sh.get_ctx().has_trans ? 0x1F : 0x0F;
 }
@@ -461,6 +461,10 @@ bool alu_group_tracker::try_reserve(alu_node* n) {
 	if (n->uses_ar() && has_mova)
 		return false;
 
+	if (consumes_lds_oqa)
+		return false;
+	if (n->consumes_lds_oq() && available_slots != (sh.get_ctx().has_trans ? 0x1F : 0x0F))
+		return false;
 	for (unsigned i = 0; i < nsrc; ++i) {
 
 		unsigned last_id = next_id;
@@ -680,6 +684,8 @@ void alu_group_tracker::reset(bool keep_packed) {
 	memset(slots, 0, sizeof(slots));
 	vmap.clear();
 	next_id = 0;
+	produces_lds_oqa = 0;
+	consumes_lds_oqa = 0;
 	has_mova = false;
 	uses_ar = false;
 	has_predset = false;
@@ -703,7 +709,8 @@ void alu_group_tracker::update_flags(alu_node* n) {
 	has_mova |= (flags & AF_MOVA);
 	has_predset |= (flags & AF_ANY_PRED);
 	uses_ar |= n->uses_ar();
-
+	consumes_lds_oqa |= n->consumes_lds_oq();
+	produces_lds_oqa |= n->produces_lds_oq();
 	if (flags & AF_ANY_PRED) {
 		if (n->dst[2] != NULL)
 			updates_exec_mask = true;
@@ -711,22 +718,24 @@ void alu_group_tracker::update_flags(alu_node* n) {
 }
 
 int post_scheduler::run() {
-	run_on(sh.root);
-	return 0;
+	return run_on(sh.root) ? 0 : 1;
 }
 
-void post_scheduler::run_on(container_node* n) {
-
+bool post_scheduler::run_on(container_node* n) {
+	int r = true;
 	for (node_riterator I = n->rbegin(), E = n->rend(); I != E; ++I) {
 		if (I->is_container()) {
 			if (I->subtype == NST_BB) {
 				bb_node* bb = static_cast<bb_node*>(*I);
-				schedule_bb(bb);
+				r = schedule_bb(bb);
 			} else {
-				run_on(static_cast<container_node*>(*I));
+				r = run_on(static_cast<container_node*>(*I));
 			}
+			if (!r)
+				break;
 		}
 	}
+	return r;
 }
 
 void post_scheduler::init_uc_val(container_node *c, value *v) {
@@ -758,7 +767,7 @@ unsigned post_scheduler::init_ucm(container_node *c, node *n) {
 	return F == ucm.end() ? 0 : F->second;
 }
 
-void post_scheduler::schedule_bb(bb_node* bb) {
+bool post_scheduler::schedule_bb(bb_node* bb) {
 	PSC_DUMP(
 		sblog << "scheduling BB " << bb->id << "\n";
 		if (!pending.empty())
@@ -791,8 +800,10 @@ void post_scheduler::schedule_bb(bb_node* bb) {
 
 		if (n->is_alu_clause()) {
 			n->remove();
-			process_alu(static_cast<container_node*>(n));
-			continue;
+			bool r = process_alu(static_cast<container_node*>(n));
+			if (r)
+				continue;
+			return false;
 		}
 
 		n->remove();
@@ -800,6 +811,7 @@ void post_scheduler::schedule_bb(bb_node* bb) {
 	}
 
 	this->cur_bb = NULL;
+	return true;
 }
 
 void post_scheduler::init_regmap() {
@@ -933,10 +945,10 @@ void post_scheduler::process_fetch(container_node *c) {
 	cur_bb->push_front(c);
 }
 
-void post_scheduler::process_alu(container_node *c) {
+bool post_scheduler::process_alu(container_node *c) {
 
 	if (c->empty())
-		return;
+		return true;
 
 	ucm.clear();
 	alu.reset();
@@ -973,7 +985,7 @@ void post_scheduler::process_alu(container_node *c) {
 		}
 	}
 
-	schedule_alu(c);
+	return schedule_alu(c);
 }
 
 void post_scheduler::update_local_interferences() {
@@ -1125,6 +1137,9 @@ void post_scheduler::emit_clause() {
 	if (alu.current_ar) {
 		emit_load_ar();
 		process_group();
+		if (!alu.check_clause_limits()) {
+			// Can't happen since clause only contains MOVA/CF_SET_IDX0/1
+		}
 		alu.emit_group();
 	}
 
@@ -1135,15 +1150,20 @@ void post_scheduler::emit_clause() {
 	emit_index_registers();
 }
 
-void post_scheduler::schedule_alu(container_node *c) {
+bool post_scheduler::schedule_alu(container_node *c) {
 
 	assert(!ready.empty() || !ready_copies.empty());
 
-	while (1) {
-
+	bool improving = true;
+	int last_pending = pending.count();
+	while (improving) {
 		prev_regmap = regmap;
-
 		if (!prepare_alu_group()) {
+
+			int new_pending = pending.count();
+			improving = (new_pending < last_pending) || (last_pending == 0);
+			last_pending = new_pending;
+
 			if (alu.current_idx[0] || alu.current_idx[1]) {
 				regmap = prev_regmap;
 				emit_clause();
@@ -1186,6 +1206,7 @@ void post_scheduler::schedule_alu(container_node *c) {
 		dump::dump_op_list(&pending);
 		assert(!"unscheduled pending instructions");
 	}
+	return improving;
 }
 
 void post_scheduler::add_interferences(value *v, sb_bitset &rb, val_set &vs) {
@@ -1649,7 +1670,7 @@ unsigned post_scheduler::try_add_instruction(node *n) {
 		value *d = a->dst.empty() ? NULL : a->dst[0];
 
 		if (d && d->is_special_reg()) {
-			assert((a->bc.op_ptr->flags & AF_MOVA) || d->is_geometry_emit());
+			assert((a->bc.op_ptr->flags & AF_MOVA) || d->is_geometry_emit() || d->is_lds_oq() || d->is_lds_access());
 			d = NULL;
 		}
 
@@ -1944,6 +1965,7 @@ void alu_kcache_tracker::reset() {
 void alu_clause_tracker::reset() {
 	group = 0;
 	slot_count = 0;
+	outstanding_lds_oqa_reads = 0;
 	grp0.reset();
 	grp1.reset();
 }
@@ -1952,7 +1974,7 @@ alu_clause_tracker::alu_clause_tracker(shader &sh)
 	: sh(sh), kt(sh.get_ctx().hw_class), slot_count(),
 	  grp0(sh), grp1(sh),
 	  group(), clause(),
-	  push_exec_mask(),
+	  push_exec_mask(), outstanding_lds_oqa_reads(),
 	  current_ar(), current_pr(), current_idx() {}
 
 void alu_clause_tracker::emit_group() {
@@ -1974,6 +1996,8 @@ void alu_clause_tracker::emit_group() {
 
 	clause->push_front(g);
 
+	outstanding_lds_oqa_reads += grp().get_consumes_lds_oqa();
+	outstanding_lds_oqa_reads -= grp().get_produces_lds_oqa();
 	slot_count += grp().slot_count();
 
 	new_group();
@@ -1986,6 +2010,7 @@ void alu_clause_tracker::emit_clause(container_node *c) {
 
 	kt.init_clause(clause->bc);
 
+	assert(!outstanding_lds_oqa_reads);
 	assert(!current_ar);
 	assert(!current_pr);
 
@@ -2012,6 +2037,9 @@ bool alu_clause_tracker::check_clause_limits() {
 	unsigned reserve_slots = (current_ar ? 1 : 0) + (current_pr ? 1 : 0);
 	// ...and index registers
 	reserve_slots += (current_idx[0] != NULL) + (current_idx[1] != NULL);
+
+	if (gt.get_consumes_lds_oqa() && !outstanding_lds_oqa_reads)
+		reserve_slots += 60;
 
 	if (slot_count + slots > MAX_ALU_SLOTS - reserve_slots)
 		return false;

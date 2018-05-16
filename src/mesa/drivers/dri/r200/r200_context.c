@@ -65,7 +65,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "radeon_span.h"
 
 #include "utils.h"
-#include "xmlpool.h" /* for symbolic values of enum-type options */
+#include "util/xmlpool.h" /* for symbolic values of enum-type options */
 
 /* Return various strings for glGetString().
  */
@@ -174,10 +174,7 @@ static void r200_init_vtbl(radeonContextPtr radeon)
 GLboolean r200CreateContext( gl_api api,
 			     const struct gl_config *glVisual,
 			     __DRIcontext *driContextPriv,
-			     unsigned major_version,
-			     unsigned minor_version,
-			     uint32_t flags,
-                             bool notify_reset,
+			     const struct __DriverContextConfig *ctx_config,
 			     unsigned *error,
 			     void *sharedContextPrivate)
 {
@@ -189,17 +186,16 @@ GLboolean r200CreateContext( gl_api api,
    int i;
    int tcl_mode;
 
-   if (flags & ~__DRI_CTX_FLAG_DEBUG) {
+   if (ctx_config->flags & ~(__DRI_CTX_FLAG_DEBUG | __DRI_CTX_FLAG_NO_ERROR)) {
       *error = __DRI_CTX_ERROR_UNKNOWN_FLAG;
       return false;
    }
 
-   if (notify_reset) {
+   if (ctx_config->attribute_mask) {
       *error = __DRI_CTX_ERROR_UNKNOWN_ATTRIBUTE;
       return false;
    }
 
-   assert(glVisual);
    assert(driContextPriv);
    assert(screen);
 
@@ -251,7 +247,7 @@ GLboolean r200CreateContext( gl_api api,
 
    ctx = &rmesa->radeon.glCtx;
 
-   driContextSetFlags(ctx, flags);
+   driContextSetFlags(ctx, ctx_config->flags);
 
    /* Initialize the software rasterizer and helper modules.
     */
@@ -340,6 +336,7 @@ GLboolean r200CreateContext( gl_api api,
    ctx->Extensions.ARB_texture_env_combine = true;
    ctx->Extensions.ARB_texture_env_dot3 = true;
    ctx->Extensions.ARB_texture_env_crossbar = true;
+   ctx->Extensions.ARB_texture_filter_anisotropic = true;
    ctx->Extensions.ARB_texture_mirror_clamp_to_edge = true;
    ctx->Extensions.ARB_vertex_program = true;
    ctx->Extensions.ATI_fragment_shader = (ctx->Const.MaxTextureUnits == 6);
@@ -363,14 +360,8 @@ GLboolean r200CreateContext( gl_api api,
 	others get the bit ordering right but don't actually do YUV-RGB conversion */
       ctx->Extensions.MESA_ycbcr_texture = true;
    }
-   if (rmesa->radeon.glCtx.Mesa_DXTn) {
-      ctx->Extensions.EXT_texture_compression_s3tc = true;
-      ctx->Extensions.ANGLE_texture_compression_dxt = true;
-   }
-   else if (driQueryOptionb (&rmesa->radeon.optionCache, "force_s3tc_enable")) {
-      ctx->Extensions.EXT_texture_compression_s3tc = true;
-      ctx->Extensions.ANGLE_texture_compression_dxt = true;
-   }
+   ctx->Extensions.EXT_texture_compression_s3tc = true;
+   ctx->Extensions.ANGLE_texture_compression_dxt = true;
 
 #if 0
    r200InitDriverFuncs( ctx );
@@ -403,6 +394,7 @@ GLboolean r200CreateContext( gl_api api,
       TCL_FALLBACK(&rmesa->radeon.glCtx, R200_TCL_FALLBACK_TCL_DISABLE, 1);
    }
 
+   _mesa_override_extensions(ctx);
    _mesa_compute_version(ctx);
 
    /* Exec table initialization requires the version to be computed */

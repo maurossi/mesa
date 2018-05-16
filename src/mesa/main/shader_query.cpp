@@ -37,8 +37,7 @@
 #include "compiler/glsl/glsl_symbol_table.h"
 #include "compiler/glsl/ir.h"
 #include "compiler/glsl/program.h"
-#include "util/string_to_uint_map.h"
-#include "util/strndup.h"
+#include "compiler/glsl/string_to_uint_map.h"
 
 
 static GLint
@@ -63,30 +62,26 @@ DECL_RESOURCE_FUNC(XFV, gl_transform_feedback_varying_info);
 DECL_RESOURCE_FUNC(XFB, gl_transform_feedback_buffer);
 DECL_RESOURCE_FUNC(SUB, gl_subroutine_function);
 
-void GLAPIENTRY
-_mesa_BindAttribLocation(GLuint program, GLuint index,
-                         const GLchar *name)
+static void
+bind_attrib_location(struct gl_context *ctx,
+                     struct gl_shader_program *const shProg, GLuint index,
+                     const GLchar *name, bool no_error)
 {
-   GET_CURRENT_CONTEXT(ctx);
-
-   struct gl_shader_program *const shProg =
-      _mesa_lookup_shader_program_err(ctx, program, "glBindAttribLocation");
-   if (!shProg)
-      return;
-
    if (!name)
       return;
 
-   if (strncmp(name, "gl_", 3) == 0) {
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "glBindAttribLocation(illegal name)");
-      return;
-   }
+   if (!no_error) {
+      if (strncmp(name, "gl_", 3) == 0) {
+         _mesa_error(ctx, GL_INVALID_OPERATION,
+                     "glBindAttribLocation(illegal name)");
+         return;
+      }
 
-   if (index >= ctx->Const.Program[MESA_SHADER_VERTEX].MaxAttribs) {
-      _mesa_error(ctx, GL_INVALID_VALUE, "glBindAttribLocation(%u >= %u)",
-                  index, ctx->Const.Program[MESA_SHADER_VERTEX].MaxAttribs);
-      return;
+      if (index >= ctx->Const.Program[MESA_SHADER_VERTEX].MaxAttribs) {
+         _mesa_error(ctx, GL_INVALID_VALUE, "glBindAttribLocation(%u >= %u)",
+                     index, ctx->Const.Program[MESA_SHADER_VERTEX].MaxAttribs);
+         return;
+      }
    }
 
    /* Replace the current value if it's already in the list.  Add
@@ -99,6 +94,31 @@ _mesa_BindAttribLocation(GLuint program, GLuint index,
     * Note that this attribute binding won't go into effect until
     * glLinkProgram is called again.
     */
+}
+
+void GLAPIENTRY
+_mesa_BindAttribLocation_no_error(GLuint program, GLuint index,
+                                  const GLchar *name)
+{
+   GET_CURRENT_CONTEXT(ctx);
+
+   struct gl_shader_program *const shProg =
+      _mesa_lookup_shader_program(ctx, program);
+   bind_attrib_location(ctx, shProg, index, name, true);
+}
+
+void GLAPIENTRY
+_mesa_BindAttribLocation(GLuint program, GLuint index,
+                         const GLchar *name)
+{
+   GET_CURRENT_CONTEXT(ctx);
+
+   struct gl_shader_program *const shProg =
+      _mesa_lookup_shader_program_err(ctx, program, "glBindAttribLocation");
+   if (!shProg)
+      return;
+
+   bind_attrib_location(ctx, shProg, index, name, false);
 }
 
 void GLAPIENTRY
@@ -198,9 +218,10 @@ _mesa_count_active_attribs(struct gl_shader_program *shProg)
       return 0;
    }
 
-   struct gl_program_resource *res = shProg->ProgramResourceList;
+   struct gl_program_resource *res = shProg->data->ProgramResourceList;
    unsigned count = 0;
-   for (unsigned j = 0; j < shProg->NumProgramResourceList; j++, res++) {
+   for (unsigned j = 0; j < shProg->data->NumProgramResourceList;
+        j++, res++) {
       if (res->Type == GL_PROGRAM_INPUT &&
           res->StageReferences & (1 << MESA_SHADER_VERTEX))
          count++;
@@ -217,9 +238,10 @@ _mesa_longest_attribute_name_length(struct gl_shader_program *shProg)
       return 0;
    }
 
-   struct gl_program_resource *res = shProg->ProgramResourceList;
+   struct gl_program_resource *res = shProg->data->ProgramResourceList;
    size_t longest = 0;
-   for (unsigned j = 0; j < shProg->NumProgramResourceList; j++, res++) {
+   for (unsigned j = 0; j < shProg->data->NumProgramResourceList;
+        j++, res++) {
       if (res->Type == GL_PROGRAM_INPUT &&
           res->StageReferences & (1 << MESA_SHADER_VERTEX)) {
 
@@ -232,11 +254,44 @@ _mesa_longest_attribute_name_length(struct gl_shader_program *shProg)
    return longest;
 }
 
+void static
+bind_frag_data_location(struct gl_shader_program *const shProg,
+                        const char *name, unsigned colorNumber,
+                        unsigned index)
+{
+   /* Replace the current value if it's already in the list.  Add
+    * FRAG_RESULT_DATA0 because that's how the linker differentiates
+    * between built-in attributes and user-defined attributes.
+    */
+   shProg->FragDataBindings->put(colorNumber + FRAG_RESULT_DATA0, name);
+   shProg->FragDataIndexBindings->put(index, name);
+
+   /*
+    * Note that this binding won't go into effect until
+    * glLinkProgram is called again.
+    */
+}
+
 void GLAPIENTRY
 _mesa_BindFragDataLocation(GLuint program, GLuint colorNumber,
 			   const GLchar *name)
 {
    _mesa_BindFragDataLocationIndexed(program, colorNumber, 0, name);
+}
+
+void GLAPIENTRY
+_mesa_BindFragDataLocation_no_error(GLuint program, GLuint colorNumber,
+                                    const GLchar *name)
+{
+   GET_CURRENT_CONTEXT(ctx);
+
+   if (!name)
+      return;
+
+   struct gl_shader_program *const shProg =
+      _mesa_lookup_shader_program(ctx, program);
+
+   bind_frag_data_location(shProg, name, colorNumber, 0);
 }
 
 void GLAPIENTRY
@@ -273,17 +328,22 @@ _mesa_BindFragDataLocationIndexed(GLuint program, GLuint colorNumber,
       return;
    }
 
-   /* Replace the current value if it's already in the list.  Add
-    * FRAG_RESULT_DATA0 because that's how the linker differentiates
-    * between built-in attributes and user-defined attributes.
-    */
-   shProg->FragDataBindings->put(colorNumber + FRAG_RESULT_DATA0, name);
-   shProg->FragDataIndexBindings->put(index, name);
-   /*
-    * Note that this binding won't go into effect until
-    * glLinkProgram is called again.
-    */
+   bind_frag_data_location(shProg, name, colorNumber, index);
+}
 
+void GLAPIENTRY
+_mesa_BindFragDataLocationIndexed_no_error(GLuint program, GLuint colorNumber,
+                                           GLuint index, const GLchar *name)
+{
+   GET_CURRENT_CONTEXT(ctx);
+
+   if (!name)
+      return;
+
+   struct gl_shader_program *const shProg =
+      _mesa_lookup_shader_program(ctx, program);
+
+   bind_frag_data_location(shProg, name, colorNumber, index);
 }
 
 GLint GLAPIENTRY
@@ -466,8 +526,9 @@ _mesa_program_resource_find_name(struct gl_shader_program *shProg,
                                  GLenum programInterface, const char *name,
                                  unsigned *array_index)
 {
-   struct gl_program_resource *res = shProg->ProgramResourceList;
-   for (unsigned i = 0; i < shProg->NumProgramResourceList; i++, res++) {
+   struct gl_program_resource *res = shProg->data->ProgramResourceList;
+   for (unsigned i = 0; i < shProg->data->NumProgramResourceList;
+        i++, res++) {
       if (res->Type != programInterface)
          continue;
 
@@ -570,10 +631,10 @@ calc_resource_index(struct gl_shader_program *shProg,
 {
    unsigned i;
    GLuint index = 0;
-   for (i = 0; i < shProg->NumProgramResourceList; i++) {
-      if (&shProg->ProgramResourceList[i] == res)
+   for (i = 0; i < shProg->data->NumProgramResourceList; i++) {
+      if (&shProg->data->ProgramResourceList[i] == res)
          return index;
-      if (shProg->ProgramResourceList[i].Type == res->Type)
+      if (shProg->data->ProgramResourceList[i].Type == res->Type)
          index++;
    }
    return GL_INVALID_INDEX;
@@ -614,8 +675,9 @@ _mesa_program_resource_index(struct gl_shader_program *shProg,
 static struct gl_program_resource*
 program_resource_find_data(struct gl_shader_program *shProg, void *data)
 {
-   struct gl_program_resource *res = shProg->ProgramResourceList;
-   for (unsigned i = 0; i < shProg->NumProgramResourceList; i++, res++) {
+   struct gl_program_resource *res = shProg->data->ProgramResourceList;
+   for (unsigned i = 0; i < shProg->data->NumProgramResourceList;
+        i++, res++) {
       if (res->Data == data)
          return res;
    }
@@ -628,10 +690,11 @@ struct gl_program_resource *
 _mesa_program_resource_find_index(struct gl_shader_program *shProg,
                                   GLenum programInterface, GLuint index)
 {
-   struct gl_program_resource *res = shProg->ProgramResourceList;
+   struct gl_program_resource *res = shProg->data->ProgramResourceList;
    int idx = -1;
 
-   for (unsigned i = 0; i < shProg->NumProgramResourceList; i++, res++) {
+   for (unsigned i = 0; i < shProg->data->NumProgramResourceList;
+        i++, res++) {
       if (res->Type != programInterface)
          continue;
 
@@ -1042,7 +1105,7 @@ get_buffer_property(struct gl_shader_program *shProg,
          return 1;
       case GL_ACTIVE_VARIABLES:
          struct gl_transform_feedback_info *linked_xfb =
-            shProg->xfb_program->sh.LinkedTransformFeedback;
+            shProg->last_vert_prog->sh.LinkedTransformFeedback;
          for (int i = 0; i < linked_xfb->NumVarying; i++) {
             unsigned index = linked_xfb->Varyings[i].BufferIndex;
             struct gl_program_resource *buf_res =
@@ -1368,24 +1431,22 @@ _mesa_get_program_resourceiv(struct gl_shader_program *shProg,
 }
 
 static bool
-validate_io(struct gl_shader_program *producer,
-            struct gl_shader_program *consumer,
-            gl_shader_stage producer_stage,
-            gl_shader_stage consumer_stage)
+validate_io(struct gl_program *producer, struct gl_program *consumer)
 {
-   if (producer == consumer)
+   if (producer->sh.data->linked_stages == consumer->sh.data->linked_stages)
       return true;
 
-   const bool nonarray_stage_to_array_stage =
-      producer_stage != MESA_SHADER_TESS_CTRL &&
-      (consumer_stage == MESA_SHADER_GEOMETRY ||
-       consumer_stage == MESA_SHADER_TESS_CTRL ||
-       consumer_stage == MESA_SHADER_TESS_EVAL);
+   const bool producer_is_array_stage =
+      producer->info.stage == MESA_SHADER_TESS_CTRL;
+   const bool consumer_is_array_stage =
+      consumer->info.stage == MESA_SHADER_GEOMETRY ||
+      consumer->info.stage == MESA_SHADER_TESS_CTRL ||
+      consumer->info.stage == MESA_SHADER_TESS_EVAL;
 
    bool valid = true;
 
    gl_shader_variable const **outputs =
-      (gl_shader_variable const **) calloc(producer->NumProgramResourceList,
+      (gl_shader_variable const **) calloc(producer->sh.data->NumProgramResourceList,
                                            sizeof(gl_shader_variable *));
    if (outputs == NULL)
       return false;
@@ -1408,8 +1469,9 @@ validate_io(struct gl_shader_program *producer,
     * some output that did not have an input.
     */
    unsigned num_outputs = 0;
-   for (unsigned i = 0; i < producer->NumProgramResourceList; i++) {
-      struct gl_program_resource *res = &producer->ProgramResourceList[i];
+   for (unsigned i = 0; i < producer->sh.data->NumProgramResourceList; i++) {
+      struct gl_program_resource *res =
+         &producer->sh.data->ProgramResourceList[i];
 
       if (res->Type != GL_PROGRAM_OUTPUT)
          continue;
@@ -1428,8 +1490,9 @@ validate_io(struct gl_shader_program *producer,
    }
 
    unsigned match_index = 0;
-   for (unsigned i = 0; i < consumer->NumProgramResourceList; i++) {
-      struct gl_program_resource *res = &consumer->ProgramResourceList[i];
+   for (unsigned i = 0; i < consumer->sh.data->NumProgramResourceList; i++) {
+      struct gl_program_resource *res =
+         &consumer->sh.data->ProgramResourceList[i];
 
       if (res->Type != GL_PROGRAM_INPUT)
          continue;
@@ -1491,6 +1554,56 @@ validate_io(struct gl_shader_program *producer,
       if (match_index < num_outputs)
          outputs[match_index] = outputs[num_outputs];
 
+      /* Section 7.4.1 (Shader Interface Matching) of the ES 3.2 spec says:
+       *
+       *    "Tessellation control shader per-vertex output variables and
+       *     blocks and tessellation control, tessellation evaluation, and
+       *     geometry shader per-vertex input variables and blocks are
+       *     required to be declared as arrays, with each element representing
+       *     input or output values for a single vertex of a multi-vertex
+       *     primitive. For the purposes of interface matching, such variables
+       *     and blocks are treated as though they were not declared as
+       *     arrays."
+       *
+       * So we unwrap those types before matching.
+       */
+      const glsl_type *consumer_type = consumer_var->type;
+      const glsl_type *consumer_interface_type = consumer_var->interface_type;
+      const glsl_type *producer_type = producer_var->type;
+      const glsl_type *producer_interface_type = producer_var->interface_type;
+
+      if (consumer_is_array_stage) {
+         if (consumer_interface_type) {
+            /* the interface is the array; the underlying types should match */
+            if (consumer_interface_type->is_array() && !consumer_var->patch)
+               consumer_interface_type = consumer_interface_type->fields.array;
+         } else {
+            if (consumer_type->is_array() && !consumer_var->patch)
+               consumer_type = consumer_type->fields.array;
+         }
+      }
+
+      if (producer_is_array_stage) {
+         if (producer_interface_type) {
+            /* the interface is the array; the underlying types should match */
+            if (producer_interface_type->is_array() && !producer_var->patch)
+               producer_interface_type = producer_interface_type->fields.array;
+         } else {
+            if (producer_type->is_array() && !producer_var->patch)
+               producer_type = producer_type->fields.array;
+         }
+      }
+
+      if (producer_type != consumer_type) {
+         valid = false;
+         goto out;
+      }
+
+      if (producer_interface_type != consumer_interface_type) {
+         valid = false;
+         goto out;
+      }
+
       /* Section 9.2.2 (Separable Programs) of the GLSL ES spec says:
        *
        *    Qualifier Class|  Qualifier  |in/out
@@ -1521,44 +1634,13 @@ validate_io(struct gl_shader_program *producer,
        * Note that location mismatches are detected by the loops above that
        * find the producer variable that goes with the consumer variable.
        */
-      if (nonarray_stage_to_array_stage) {
-         if (consumer_var->interface_type != NULL) {
-            /* the interface is the array; underlying types should match */
-            if (producer_var->type != consumer_var->type) {
-               valid = false;
-               goto out;
-            }
-
-            if (!consumer_var->interface_type->is_array() ||
-                consumer_var->interface_type->fields.array != producer_var->interface_type) {
-               valid = false;
-               goto out;
-            }
-         } else {
-            if (producer_var->interface_type != NULL) {
-               valid = false;
-               goto out;
-            }
-
-            if (!consumer_var->type->is_array() ||
-                consumer_var->type->fields.array != producer_var->type) {
-               valid = false;
-               goto out;
-            }
-         }
-      } else {
-         if (producer_var->type != consumer_var->type) {
-            valid = false;
-            goto out;
-         }
-
-         if (producer_var->interface_type != consumer_var->interface_type) {
-            valid = false;
-            goto out;
-         }
-      }
-
-      if (producer_var->interpolation != consumer_var->interpolation) {
+      unsigned producer_interpolation = producer_var->interpolation;
+      unsigned consumer_interpolation = consumer_var->interpolation;
+      if (producer_interpolation == INTERP_MODE_NONE)
+         producer_interpolation = INTERP_MODE_SMOOTH;
+      if (consumer_interpolation == INTERP_MODE_NONE)
+         consumer_interpolation = INTERP_MODE_SMOOTH;
+      if (producer_interpolation != consumer_interpolation) {
          valid = false;
          goto out;
       }
@@ -1585,30 +1667,27 @@ validate_io(struct gl_shader_program *producer,
 extern "C" bool
 _mesa_validate_pipeline_io(struct gl_pipeline_object *pipeline)
 {
-   struct gl_shader_program **shProg =
-      (struct gl_shader_program **) pipeline->CurrentProgram;
+   struct gl_program **prog = (struct gl_program **) pipeline->CurrentProgram;
 
    /* Find first active stage in pipeline. */
    unsigned idx, prev = 0;
    for (idx = 0; idx < ARRAY_SIZE(pipeline->CurrentProgram); idx++) {
-      if (shProg[idx]) {
+      if (prog[idx]) {
          prev = idx;
          break;
       }
    }
 
    for (idx = prev + 1; idx < ARRAY_SIZE(pipeline->CurrentProgram); idx++) {
-      if (shProg[idx]) {
+      if (prog[idx]) {
          /* Pipeline might include both non-compute and a compute program, do
           * not attempt to validate varyings between non-compute and compute
           * stage.
           */
-         if (shProg[idx]->_LinkedShaders[idx]->Stage == MESA_SHADER_COMPUTE)
+         if (prog[idx]->info.stage == MESA_SHADER_COMPUTE)
             break;
 
-         if (!validate_io(shProg[prev], shProg[idx],
-                          shProg[prev]->_LinkedShaders[prev]->Stage,
-                          shProg[idx]->_LinkedShaders[idx]->Stage))
+         if (!validate_io(prog[prev], prog[idx]))
             return false;
 
          prev = idx;

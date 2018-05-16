@@ -38,13 +38,14 @@
 #include "os/os_thread.h"
 
 #include "freedreno_batch_cache.h"
+#include "freedreno_util.h"
 
 struct fd_bo;
 
 struct fd_screen {
 	struct pipe_screen base;
 
-	pipe_mutex lock;
+	mtx_t lock;
 
 	/* it would be tempting to use pipe_reference here, but that
 	 * really doesn't work well if it isn't the first member of
@@ -65,12 +66,22 @@ struct fd_screen {
 	uint32_t max_freq;
 	uint32_t max_rts;        /* max # of render targets */
 	uint32_t gmem_alignw, gmem_alignh;
+	uint32_t num_vsc_pipes;
+	uint32_t priority_mask;
 	bool has_timestamp;
 
 	void *compiler;          /* currently unused for a2xx */
 
 	struct fd_device *dev;
+
+	/* NOTE: we still need a pipe associated with the screen in a few
+	 * places, like screen->get_timestamp().  For anything context
+	 * related, use ctx->pipe instead.
+	 */
 	struct fd_pipe *pipe;
+
+	uint32_t (*setup_slices)(struct fd_resource *rsc);
+	unsigned (*tile_mode)(const struct pipe_resource *prsc);
 
 	int64_t cpu_gpu_time_delta;
 
@@ -125,6 +136,12 @@ static inline boolean
 is_ir3(struct fd_screen *screen)
 {
 	return is_a3xx(screen) || is_a4xx(screen) || is_a5xx(screen);
+}
+
+static inline bool
+has_compute(struct fd_screen *screen)
+{
+	return is_a5xx(screen);
 }
 
 #endif /* FREEDRENO_SCREEN_H_ */

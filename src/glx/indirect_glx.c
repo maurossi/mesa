@@ -30,8 +30,12 @@
  *   Kristian Høgsberg (krh@bitplanet.net)
  */
 
+#include <stdbool.h>
+
 #include "glapi.h"
 #include "glxclient.h"
+
+#include "util/debug.h"
 
 #ifndef GLX_USE_APPLEGL
 
@@ -58,13 +62,13 @@ indirect_destroy_context(struct glx_context *gc)
 }
 
 static Bool
-SendMakeCurrentRequest(Display * dpy, CARD8 opcode,
-                       GLXContextID gc_id, GLXContextTag gc_tag,
-                       GLXDrawable draw, GLXDrawable read,
-                       GLXContextTag *out_tag)
+SendMakeCurrentRequest(Display * dpy, GLXContextID gc_id,
+                       GLXContextTag gc_tag, GLXDrawable draw,
+                       GLXDrawable read, GLXContextTag *out_tag)
 {
    xGLXMakeCurrentReply reply;
    Bool ret;
+   int opcode = __glXSetupForCommand(dpy);
 
    LockDisplay(dpy);
 
@@ -132,7 +136,6 @@ indirect_bind_context(struct glx_context *gc, struct glx_context *old,
 {
    GLXContextTag tag;
    Display *dpy = gc->psc->dpy;
-   int opcode = __glXSetupForCommand(dpy);
    Bool sent;
 
    if (old != &dummyContext && !old->isDirect && old->psc->dpy == dpy) {
@@ -142,7 +145,7 @@ indirect_bind_context(struct glx_context *gc, struct glx_context *old,
       tag = 0;
    }
 
-   sent = SendMakeCurrentRequest(dpy, opcode, gc->xid, tag, draw, read,
+   sent = SendMakeCurrentRequest(dpy, gc->xid, tag, draw, read,
 				 &gc->currentContextTag);
 
    if (!IndirectAPI)
@@ -156,7 +159,6 @@ static void
 indirect_unbind_context(struct glx_context *gc, struct glx_context *new)
 {
    Display *dpy = gc->psc->dpy;
-   int opcode = __glXSetupForCommand(dpy);
 
    if (gc == new)
       return;
@@ -166,8 +168,8 @@ indirect_unbind_context(struct glx_context *gc, struct glx_context *new)
     * to send a request to the dpy to unbind the previous context.
     */
    if (!new || new->isDirect || new->psc->dpy != dpy) {
-      SendMakeCurrentRequest(dpy, opcode, None,
-			     gc->currentContextTag, None, None, NULL);
+      SendMakeCurrentRequest(dpy, None, gc->currentContextTag, None, None,
+                             NULL);
       gc->currentContextTag = 0;
    }
 }
@@ -371,7 +373,7 @@ indirect_create_context(struct glx_screen *psc,
       return NULL;
    }
    gc->client_state_private = state;
-   state->NoDrawArraysProtocol = (getenv("LIBGL_NO_DRAWARRAYS") != NULL);
+   state->NoDrawArraysProtocol = env_var_as_boolean("LIBGL_NO_DRAWARRAYS", false);
 
    /*
     ** Create a temporary buffer to hold GLX rendering commands.  The size

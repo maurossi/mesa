@@ -42,7 +42,7 @@
 #include <stdbool.h>
 #include "dri_util.h"
 #include "utils.h"
-#include "xmlpool.h"
+#include "util/xmlpool.h"
 #include "main/mtypes.h"
 #include "main/framebuffer.h"
 #include "main/version.h"
@@ -75,6 +75,8 @@ setupLoaderExtensions(__DRIscreen *psp,
 	    psp->dri2.image = (__DRIimageLookupExtension *) extensions[i];
 	if (strcmp(extensions[i]->name, __DRI_USE_INVALIDATE) == 0)
 	    psp->dri2.useInvalidate = (__DRIuseInvalidateExtension *) extensions[i];
+        if (strcmp(extensions[i]->name, __DRI_BACKGROUND_CALLABLE) == 0)
+            psp->dri2.backgroundCallable = (__DRIbackgroundCallableExtension *) extensions[i];
 	if (strcmp(extensions[i]->name, __DRI_SWRAST_LOADER) == 0)
 	    psp->swrast_loader = (__DRIswrastLoaderExtension *) extensions[i];
         if (strcmp(extensions[i]->name, __DRI_IMAGE_LOADER) == 0)
@@ -142,6 +144,10 @@ driCreateNewScreen2(int scrn, int fd,
     psp->fd = fd;
     psp->myNum = scrn;
 
+    /* Option parsing before ->InitScreen(), as some options apply there. */
+    driParseOptionInfo(&psp->optionInfo, __dri2ConfigOptions);
+    driParseConfigFiles(&psp->optionCache, &psp->optionInfo, psp->myNum, "dri2");
+
     *driver_configs = psp->driver->InitScreen(psp);
     if (*driver_configs == NULL) {
 	free(psp);
@@ -158,11 +164,9 @@ driCreateNewScreen2(int scrn, int fd,
 
     api = API_OPENGL_COMPAT;
     if (_mesa_override_gl_version_contextless(&consts, &api, &version)) {
-       if (api == API_OPENGL_CORE) {
-          psp->max_gl_core_version = version;
-       } else {
+       psp->max_gl_core_version = version;
+       if (api == API_OPENGL_COMPAT)
           psp->max_gl_compat_version = version;
-       }
     }
 
     psp->api_mask = 0;
@@ -176,10 +180,6 @@ driCreateNewScreen2(int scrn, int fd,
        psp->api_mask |= (1 << __DRI_API_GLES2);
     if (psp->max_gl_es2_version >= 30)
        psp->api_mask |= (1 << __DRI_API_GLES3);
-
-    driParseOptionInfo(&psp->optionInfo, __dri2ConfigOptions);
-    driParseConfigFiles(&psp->optionCache, &psp->optionInfo, psp->myNum, "dri2");
-
 
     return psp;
 }
@@ -300,10 +300,13 @@ driCreateContextAttribs(__DRIscreen *screen, int api,
     const struct gl_config *modes = (config != NULL) ? &config->modes : NULL;
     void *shareCtx = (shared != NULL) ? shared->driverPrivate : NULL;
     gl_api mesa_api;
-    unsigned major_version = 1;
-    unsigned minor_version = 0;
-    uint32_t flags = 0;
-    bool notify_reset = false;
+    struct __DriverContextConfig ctx_config;
+
+    ctx_config.major_version = 1;
+    ctx_config.minor_version = 0;
+    ctx_config.flags = 0;
+    ctx_config.attribute_mask = 0;
+    ctx_config.priority = __DRI_CTX_PRIORITY_MEDIUM;
 
     assert((num_attribs == 0) || (attribs != NULL));
 
@@ -334,17 +337,37 @@ driCreateContextAttribs(__DRIscreen *screen, int api,
     for (unsigned i = 0; i < num_attribs; i++) {
 	switch (attribs[i * 2]) {
 	case __DRI_CTX_ATTRIB_MAJOR_VERSION:
-	    major_version = attribs[i * 2 + 1];
+            ctx_config.major_version = attribs[i * 2 + 1];
 	    break;
 	case __DRI_CTX_ATTRIB_MINOR_VERSION:
-	    minor_version = attribs[i * 2 + 1];
+	    ctx_config.minor_version = attribs[i * 2 + 1];
 	    break;
 	case __DRI_CTX_ATTRIB_FLAGS:
-	    flags = attribs[i * 2 + 1];
+	    ctx_config.flags = attribs[i * 2 + 1];
 	    break;
         case __DRI_CTX_ATTRIB_RESET_STRATEGY:
-            notify_reset = (attribs[i * 2 + 1]
-                            != __DRI_CTX_RESET_NO_NOTIFICATION);
+            if (attribs[i * 2 + 1] != __DRI_CTX_RESET_NO_NOTIFICATION) {
+                ctx_config.attribute_mask |=
+                    __DRIVER_CONTEXT_ATTRIB_RESET_STRATEGY;
+                ctx_config.reset_strategy = attribs[i * 2 + 1];
+            } else {
+                ctx_config.attribute_mask &=
+                    ~__DRIVER_CONTEXT_ATTRIB_RESET_STRATEGY;
+            }
+            break;
+	case __DRI_CTX_ATTRIB_PRIORITY:
+            ctx_config.attribute_mask |= __DRIVER_CONTEXT_ATTRIB_PRIORITY;
+	    ctx_config.priority = attribs[i * 2 + 1];
+	    break;
+        case __DRI_CTX_ATTRIB_RELEASE_BEHAVIOR:
+            if (attribs[i * 2 + 1] != __DRI_CTX_RELEASE_BEHAVIOR_FLUSH) {
+                ctx_config.attribute_mask |=
+                    __DRIVER_CONTEXT_ATTRIB_RELEASE_BEHAVIOR;
+                ctx_config.release_behavior = attribs[i * 2 + 1];
+            } else {
+                ctx_config.attribute_mask &=
+                    ~__DRIVER_CONTEXT_ATTRIB_RELEASE_BEHAVIOR;
+            }
             break;
 	default:
 	    /* We can't create a context that satisfies the requirements of an
@@ -360,12 +383,14 @@ driCreateContextAttribs(__DRIscreen *screen, int api,
      * compatibility profile.  This means that we treat a API_OPENGL_COMPAT 3.1 as
      * API_OPENGL_CORE and reject API_OPENGL_COMPAT 3.2+.
      */
-    if (mesa_api == API_OPENGL_COMPAT && major_version == 3 && minor_version == 1)
+    if (mesa_api == API_OPENGL_COMPAT &&
+        ctx_config.major_version == 3 && ctx_config.minor_version == 1)
        mesa_api = API_OPENGL_CORE;
 
     if (mesa_api == API_OPENGL_COMPAT
-        && ((major_version > 3)
-            || (major_version == 3 && minor_version >= 2))) {
+        && ((ctx_config.major_version > 3)
+            || (ctx_config.major_version == 3 &&
+                ctx_config.minor_version >= 2))) {
        *error = __DRI_CTX_ERROR_BAD_API;
        return NULL;
     }
@@ -400,8 +425,9 @@ driCreateContextAttribs(__DRIscreen *screen, int api,
      */
     if (mesa_api != API_OPENGL_COMPAT
         && mesa_api != API_OPENGL_CORE
-        && (flags & ~(__DRI_CTX_FLAG_DEBUG |
-	              __DRI_CTX_FLAG_ROBUST_BUFFER_ACCESS))) {
+        && (ctx_config.flags & ~(__DRI_CTX_FLAG_DEBUG |
+                                 __DRI_CTX_FLAG_ROBUST_BUFFER_ACCESS |
+                                 __DRI_CTX_FLAG_NO_ERROR))) {
 	*error = __DRI_CTX_ERROR_BAD_FLAG;
 	return NULL;
     }
@@ -417,20 +443,23 @@ driCreateContextAttribs(__DRIscreen *screen, int api,
      *
      * In Mesa, a debug context is the same as a regular context.
      */
-    if ((flags & __DRI_CTX_FLAG_FORWARD_COMPATIBLE) != 0) {
+    if ((ctx_config.flags & __DRI_CTX_FLAG_FORWARD_COMPATIBLE) != 0) {
        mesa_api = API_OPENGL_CORE;
     }
 
     const uint32_t allowed_flags = (__DRI_CTX_FLAG_DEBUG
                                     | __DRI_CTX_FLAG_FORWARD_COMPATIBLE
-                                    | __DRI_CTX_FLAG_ROBUST_BUFFER_ACCESS);
-    if (flags & ~allowed_flags) {
+                                    | __DRI_CTX_FLAG_ROBUST_BUFFER_ACCESS
+                                    | __DRI_CTX_FLAG_NO_ERROR);
+    if (ctx_config.flags & ~allowed_flags) {
 	*error = __DRI_CTX_ERROR_UNKNOWN_FLAG;
 	return NULL;
     }
 
     if (!validate_context_version(screen, mesa_api,
-                                  major_version, minor_version, error))
+                                  ctx_config.major_version,
+                                  ctx_config.minor_version,
+                                  error))
        return NULL;
 
     context = calloc(1, sizeof *context);
@@ -446,8 +475,7 @@ driCreateContextAttribs(__DRIscreen *screen, int api,
     context->driReadablePriv = NULL;
 
     if (!screen->driver->CreateContext(mesa_api, modes, context,
-                                       major_version, minor_version,
-                                       flags, notify_reset, error, shareCtx)) {
+                                       &ctx_config, error, shareCtx)) {
         free(context);
         return NULL;
     }
@@ -465,6 +493,8 @@ driContextSetFlags(struct gl_context *ctx, uint32_t flags)
        _mesa_set_debug_state_int(ctx, GL_DEBUG_OUTPUT, GL_TRUE);
         ctx->Const.ContextFlags |= GL_CONTEXT_FLAG_DEBUG_BIT;
     }
+    if ((flags & __DRI_CTX_FLAG_NO_ERROR) != 0)
+        ctx->Const.ContextFlags |= GL_CONTEXT_FLAG_NO_ERROR_BIT_KHR;
 }
 
 static __DRIcontext *
@@ -761,7 +791,7 @@ driSwapBuffers(__DRIdrawable *pdp)
 
 /** Core interface */
 const __DRIcoreExtension driCoreExtension = {
-    .base = { __DRI_CORE, 1 },
+    .base = { __DRI_CORE, 2 },
 
     .createNewScreen            = NULL,
     .destroyScreen              = driDestroyScreen,
@@ -809,6 +839,10 @@ const __DRI2configQueryExtension dri2ConfigQueryExtension = {
    .configQueryb        = dri2ConfigQueryb,
    .configQueryi        = dri2ConfigQueryi,
    .configQueryf        = dri2ConfigQueryf,
+};
+
+const __DRI2flushControlExtension dri2FlushControlExtension = {
+   .base = { __DRI2_FLUSH_CONTROL, 1 }
 };
 
 void
@@ -893,8 +927,12 @@ driImageFormatToGLFormat(uint32_t image_format)
       return MESA_FORMAT_R8G8B8X8_UNORM;
    case __DRI_IMAGE_FORMAT_R8:
       return MESA_FORMAT_R_UNORM8;
+   case __DRI_IMAGE_FORMAT_R16:
+      return MESA_FORMAT_R_UNORM16;
    case __DRI_IMAGE_FORMAT_GR88:
       return MESA_FORMAT_R8G8_UNORM;
+   case __DRI_IMAGE_FORMAT_GR1616:
+      return MESA_FORMAT_R16G16_UNORM;
    case __DRI_IMAGE_FORMAT_SARGB8:
       return MESA_FORMAT_B8G8R8A8_SRGB;
    case __DRI_IMAGE_FORMAT_NONE:
@@ -928,4 +966,8 @@ const __DRIcopySubBufferExtension driCopySubBufferExtension = {
    .base = { __DRI_COPY_SUB_BUFFER, 1 },
 
    .copySubBuffer               = driCopySubBuffer,
+};
+
+const __DRInoErrorExtension dri2NoErrorExtension = {
+   .base = { __DRI2_NO_ERROR, 1 },
 };

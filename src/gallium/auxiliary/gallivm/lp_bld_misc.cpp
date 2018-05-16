@@ -32,14 +32,6 @@
  */
 
 
-#ifndef __STDC_LIMIT_MACROS
-#define __STDC_LIMIT_MACROS
-#endif
-
-#ifndef __STDC_CONSTANT_MACROS
-#define __STDC_CONSTANT_MACROS
-#endif
-
 // Undef these vars just to silence warnings
 #undef PACKAGE_BUGREPORT
 #undef PACKAGE_NAME
@@ -57,6 +49,9 @@
 #endif
 
 #include <llvm-c/Core.h>
+#if HAVE_LLVM >= 0x0306
+#include <llvm-c/Support.h>
+#endif
 #include <llvm-c/ExecutionEngine.h>
 #include <llvm/Target/TargetOptions.h>
 #include <llvm/ExecutionEngine/ExecutionEngine.h>
@@ -130,20 +125,26 @@ static void init_native_targets()
    llvm::InitializeNativeTargetAsmPrinter();
 
    llvm::InitializeNativeTargetDisassembler();
-}
-
-/**
- * The llvm target registry is not thread-safe, so drivers and state-trackers
- * that want to initialize targets should use the gallivm_init_llvm_targets()
- * function to safely initialize targets.
- *
- * LLVM targets should be initialized before the driver or state-tracker tries
- * to access the registry.
- */
-extern "C" void
-gallivm_init_llvm_targets(void)
-{
-   call_once(&init_native_targets_once_flag, init_native_targets);
+#if DEBUG && HAVE_LLVM >= 0x0306
+   {
+      char *env_llc_options = getenv("GALLIVM_LLC_OPTIONS");
+      if (env_llc_options) {
+         char *option;
+         char *options[64] = {(char *) "llc"};      // Warning without cast
+         int   n;
+         for (n = 0, option = strtok(env_llc_options, " "); option; n++, option = strtok(NULL, " ")) {
+            options[n + 1] = option;
+         }
+         if (gallivm_debug & (GALLIVM_DEBUG_IR | GALLIVM_DEBUG_ASM | GALLIVM_DEBUG_DUMP_BC)) {
+            debug_printf("llc additional options (%d):\n", n);
+            for (int i = 1; i <= n; i++)
+               debug_printf("\t%s\n", options[i]);
+            debug_printf("\n");
+         }
+         LLVMParseCommandLineOptions(n + 1, options, NULL);
+      }
+   }
+#endif
 }
 
 extern "C" void
@@ -158,7 +159,14 @@ lp_set_target_options(void)
    llvm::DisablePrettyStackTrace = true;
 #endif
 
-   gallivm_init_llvm_targets();
+   /* The llvm target registry is not thread-safe, so drivers and state-trackers
+    * that want to initialize targets should use the lp_set_target_options()
+    * function to safely initialize targets.
+    *
+    * LLVM targets should be initialized before the driver or state-tracker tries
+    * to access the registry.
+    */
+   call_once(&init_native_targets_once_flag, init_native_targets);
 }
 
 extern "C"
@@ -350,12 +358,18 @@ class DelegatingJITMemoryManager : public BaseMemoryManager {
       virtual void registerEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size) {
          mgr()->registerEHFrames(Addr, LoadAddr, Size);
       }
-      virtual void deregisterEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size) {
-         mgr()->deregisterEHFrames(Addr, LoadAddr, Size);
-      }
 #else
       virtual void registerEHFrames(llvm::StringRef SectionData) {
          mgr()->registerEHFrames(SectionData);
+      }
+#endif
+#if HAVE_LLVM >= 0x0500
+      virtual void deregisterEHFrames() {
+         mgr()->deregisterEHFrames();
+      }
+#elif HAVE_LLVM >= 0x0304
+      virtual void deregisterEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size) {
+         mgr()->deregisterEHFrames(Addr, LoadAddr, Size);
       }
 #endif
       virtual void *getPointerToNamedFunction(const std::string &Name,
@@ -616,23 +630,46 @@ lp_build_create_jit_compiler_for_module(LLVMExecutionEngineRef *OutJIT,
 #if defined(PIPE_ARCH_PPC)
    MAttrs.push_back(util_cpu_caps.has_altivec ? "+altivec" : "-altivec");
 #if (HAVE_LLVM >= 0x0304)
-#if (HAVE_LLVM <= 0x0307) || (HAVE_LLVM == 0x0308 && MESA_LLVM_VERSION_PATCH == 0)
+#if (HAVE_LLVM < 0x0400)
    /*
     * Make sure VSX instructions are disabled
-    * See LLVM bug https://llvm.org/bugs/show_bug.cgi?id=25503#c7
+    * See LLVM bugs:
+    * https://llvm.org/bugs/show_bug.cgi?id=25503#c7 (fixed in 3.8.1)
+    * https://llvm.org/bugs/show_bug.cgi?id=26775 (fixed in 3.8.1)
+    * https://llvm.org/bugs/show_bug.cgi?id=33531 (fixed in 4.0)
+    * https://llvm.org/bugs/show_bug.cgi?id=34647 (llc performance on certain unusual shader IR; intro'd in 4.0, pending as of 5.0)
     */
    if (util_cpu_caps.has_altivec) {
       MAttrs.push_back("-vsx");
    }
 #else
    /*
-    * However, bug 25503 is fixed, by the same fix that fixed
-    * bug 26775, in versions of LLVM later than 3.8 (starting with 3.8.1):
-    * Make sure VSX instructions are ENABLED
-    * See LLVM bug https://llvm.org/bugs/show_bug.cgi?id=26775
+    * Bug 25503 is fixed, by the same fix that fixed
+    * bug 26775, in versions of LLVM later than 3.8 (starting with 3.8.1).
+    * BZ 33531 actually comprises more than one bug, all of
+    * which are fixed in LLVM 4.0.
+    *
+    * With LLVM 4.0 or higher:
+    * Make sure VSX instructions are ENABLED, unless
+    * a) the entire -mattr option is overridden via GALLIVM_MATTRS, or
+    * b) VSX instructions are explicitly enabled/disabled via GALLIVM_VSX=1 or 0.
     */
    if (util_cpu_caps.has_altivec) {
-      MAttrs.push_back("+vsx");
+      char *env_mattrs = getenv("GALLIVM_MATTRS");
+      if (env_mattrs) {
+         MAttrs.push_back(env_mattrs);
+      }
+      else {
+         boolean enable_vsx = true;
+         char *env_vsx = getenv("GALLIVM_VSX");
+         if (env_vsx && env_vsx[0] == '0') {
+            enable_vsx = false;
+         }
+         if (enable_vsx)
+            MAttrs.push_back("+vsx");
+         else
+            MAttrs.push_back("-vsx");
+      }
    }
 #endif
 #endif
@@ -755,17 +792,6 @@ lp_free_memory_manager(LLVMMCJITMemoryManagerRef memorymgr)
    delete reinterpret_cast<BaseMemoryManager*>(memorymgr);
 }
 
-extern "C" void
-lp_add_attr_dereferenceable(LLVMValueRef val, uint64_t bytes)
-{
-#if HAVE_LLVM >= 0x0306
-   llvm::Argument *A = llvm::unwrap<llvm::Argument>(val);
-   llvm::AttrBuilder B;
-   B.addDereferenceableAttr(bytes);
-   A->addAttr(llvm::AttributeSet::get(A->getContext(), A->getArgNo() + 1,  B));
-#endif
-}
-
 extern "C" LLVMValueRef
 lp_get_called_value(LLVMValueRef call)
 {
@@ -786,20 +812,4 @@ lp_is_function(LLVMValueRef v)
 #else
 	return llvm::isa<llvm::Function>(llvm::unwrap(v));
 #endif
-}
-
-extern "C" LLVMBuilderRef
-lp_create_builder(LLVMContextRef ctx, bool unsafe_fpmath)
-{
-   LLVMBuilderRef builder = LLVMCreateBuilderInContext(ctx);
-
-#if HAVE_LLVM >= 0x0308
-   if (unsafe_fpmath) {
-      llvm::FastMathFlags flags;
-      flags.setUnsafeAlgebra();
-      llvm::unwrap(builder)->setFastMathFlags(flags);
-   }
-#endif
-
-   return builder;
 }

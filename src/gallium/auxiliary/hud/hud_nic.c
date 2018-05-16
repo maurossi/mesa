@@ -26,7 +26,7 @@
  *
  **************************************************************************/
 
-#if HAVE_GALLIUM_EXTRA_HUD
+#ifdef HAVE_GALLIUM_EXTRA_HUD
 
 /* Purpose: Reading network interface RX/TX throughput per second,
  * displaying on the HUD.
@@ -34,7 +34,7 @@
 
 #include "hud/hud_private.h"
 #include "util/list.h"
-#include "os/os_time.h"
+#include "util/os_time.h"
 #include "os/os_thread.h"
 #include "util/u_memory.h"
 #include <stdio.h>
@@ -67,7 +67,7 @@ struct nic_info
  */
 static int gnic_count = 0;
 static struct list_head gnic_list;
-pipe_static_mutex(gnic_mutex);
+static mtx_t gnic_mutex = _MTX_INITIALIZER_NP;
 
 static struct nic_info *
 find_nic_by_name(const char *n, int mode)
@@ -171,7 +171,7 @@ query_nic_rssi(const struct nic_info *nic, uint64_t *leveldBm)
 }
 
 static void
-query_nic_load(struct hud_graph *gr)
+query_nic_load(struct hud_graph *gr, struct pipe_context *pipe)
 {
    /* The framework calls us at a regular but indefined period,
     * not once per second, compensate the statistics accordingly.
@@ -263,11 +263,11 @@ hud_nic_graph_install(struct hud_pane *pane, const char *nic_name,
 
    nic->mode = mode;
    if (nic->mode == NIC_DIRECTION_RX) {
-      snprintf(gr->name, sizeof(gr->name), "%s-rx-%lldMbps", nic->name,
+      snprintf(gr->name, sizeof(gr->name), "%s-rx-%"PRId64"Mbps", nic->name,
          nic->speedMbps);
    }
    else if (nic->mode == NIC_DIRECTION_TX) {
-      snprintf(gr->name, sizeof(gr->name), "%s-tx-%lldMbps", nic->name,
+      snprintf(gr->name, sizeof(gr->name), "%s-tx-%"PRId64"Mbps", nic->name,
          nic->speedMbps);
    }
    else if (nic->mode == NIC_RSSI_DBM)
@@ -331,9 +331,9 @@ hud_get_num_nics(bool displayhelp)
    char name[64];
 
    /* Return the number if network interfaces. */
-   pipe_mutex_lock(gnic_mutex);
+   mtx_lock(&gnic_mutex);
    if (gnic_count) {
-      pipe_mutex_unlock(gnic_mutex);
+      mtx_unlock(&gnic_mutex);
       return gnic_count;
    }
 
@@ -343,7 +343,7 @@ hud_get_num_nics(bool displayhelp)
    list_inithead(&gnic_list);
    DIR *dir = opendir("/sys/class/net/");
    if (!dir) {
-      pipe_mutex_unlock(gnic_mutex);
+      mtx_unlock(&gnic_mutex);
       return 0;
    }
 
@@ -419,7 +419,7 @@ hud_get_num_nics(bool displayhelp)
 
    }
 
-   pipe_mutex_unlock(gnic_mutex);
+   mtx_unlock(&gnic_mutex);
    return gnic_count;
 }
 

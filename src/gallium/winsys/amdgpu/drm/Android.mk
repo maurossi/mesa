@@ -21,6 +21,8 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+ifeq ($(MESA_ENABLE_LLVM),true)
+
 LOCAL_PATH := $(call my-dir)
 
 # get C_SOURCES
@@ -30,19 +32,21 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_CFLAGS := \
-	$(AMDGPU_CFLAGS) \
-	-DBRAHMA_BUILD=1
+LOCAL_CFLAGS := $(AMDGPU_CFLAGS)
 
-LOCAL_C_INCLUDES := \
-	$(MESA_TOP)/src \
-	$(MESA_TOP)/src/amd \
-	$(MESA_TOP)/src/amd/addrlib/core \
-	$(MESA_TOP)/src/amd/addrlib/inc/chip/r800 \
-	$(MESA_TOP)/src/amd/addrlib/r800/chip
+LOCAL_STATIC_LIBRARIES := libmesa_amdgpu_addrlib
 
 LOCAL_SHARED_LIBRARIES := libdrm_amdgpu
 LOCAL_MODULE := libmesa_winsys_amdgpu
 
+$(call mesa-build-with-llvm)
+
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
+
+ifneq ($(HAVE_GALLIUM_RADEONSI),)
+$(eval GALLIUM_LIBS += $(LOCAL_MODULE) $(LOCAL_STATIC_LIBRARIES))
+$(eval GALLIUM_SHARED_LIBS += $(LOCAL_SHARED_LIBRARIES))
+endif
+
+endif # MESA_ENABLE_LLVM==true

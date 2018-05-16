@@ -57,7 +57,6 @@ struct sampler_info
 {
    struct cso_sampler *cso_samplers[PIPE_MAX_SAMPLERS];
    void *samplers[PIPE_MAX_SAMPLERS];
-   unsigned nr_samplers;
 };
 
 
@@ -82,6 +81,11 @@ struct cso_context {
 
    struct sampler_info fragment_samplers_saved;
    struct sampler_info samplers[PIPE_SHADER_TYPES];
+
+   /* Temporary number until cso_single_sampler_done is called.
+    * It tracks the highest sampler seen in cso_single_sampler.
+    */
+   int max_sampler_seen;
 
    struct pipe_vertex_buffer aux_vertex_buffer_current;
    struct pipe_vertex_buffer aux_vertex_buffer_saved;
@@ -124,6 +128,10 @@ struct cso_context {
    struct pipe_stencil_ref stencil_ref, stencil_ref_saved;
 };
 
+struct pipe_context *cso_get_pipe_context(struct cso_context *cso)
+{
+   return cso->pipe;
+}
 
 static boolean delete_blend_state(struct cso_context *ctx, void *state)
 {
@@ -240,7 +248,7 @@ sanitize_hash(struct cso_hash *hash, enum cso_cache_type type,
        * table, to prevent them from being deleted
        */
       for (i = 0; i < PIPE_SHADER_TYPES; i++) {
-         for (j = 0; j < ctx->samplers[i].nr_samplers; j++) {
+         for (j = 0; j < PIPE_MAX_SAMPLERS; j++) {
             struct cso_sampler *sampler = ctx->samplers[i].cso_samplers[j];
 
             if (sampler && cso_hash_take(hash, sampler->hash_key))
@@ -277,18 +285,19 @@ sanitize_hash(struct cso_hash *hash, enum cso_cache_type type,
    }
 }
 
-static void cso_init_vbuf(struct cso_context *cso)
+static void cso_init_vbuf(struct cso_context *cso, unsigned flags)
 {
    struct u_vbuf_caps caps;
 
    /* Install u_vbuf if there is anything unsupported. */
-   if (u_vbuf_get_caps(cso->pipe->screen, &caps)) {
+   if (u_vbuf_get_caps(cso->pipe->screen, &caps, flags)) {
       cso->vbuf = u_vbuf_create(cso->pipe, &caps,
                                 cso->aux_vertex_buffer_index);
    }
 }
 
-struct cso_context *cso_create_context( struct pipe_context *pipe )
+struct cso_context *
+cso_create_context(struct pipe_context *pipe, unsigned u_vbuf_flags)
 {
    struct cso_context *ctx = CALLOC_STRUCT(cso_context);
    if (!ctx)
@@ -306,7 +315,7 @@ struct cso_context *cso_create_context( struct pipe_context *pipe )
 
    ctx->aux_vertex_buffer_index = 0; /* 0 for now */
 
-   cso_init_vbuf(ctx);
+   cso_init_vbuf(ctx, u_vbuf_flags);
 
    /* Enable for testing: */
    if (0) cso_set_maximum_cache_size( ctx->cache, 4 );
@@ -333,6 +342,7 @@ struct cso_context *cso_create_context( struct pipe_context *pipe )
       ctx->has_streamout = TRUE;
    }
 
+   ctx->max_sampler_seen = -1;
    return ctx;
 
 out:
@@ -348,8 +358,6 @@ void cso_destroy_context( struct cso_context *ctx )
    unsigned i;
 
    if (ctx->pipe) {
-      ctx->pipe->set_index_buffer(ctx->pipe, NULL);
-
       ctx->pipe->bind_blend_state( ctx->pipe, NULL );
       ctx->pipe->bind_rasterizer_state( ctx->pipe, NULL );
 
@@ -407,8 +415,8 @@ void cso_destroy_context( struct cso_context *ctx )
    util_unreference_framebuffer_state(&ctx->fb);
    util_unreference_framebuffer_state(&ctx->fb_saved);
 
-   pipe_resource_reference(&ctx->aux_vertex_buffer_current.buffer, NULL);
-   pipe_resource_reference(&ctx->aux_vertex_buffer_saved.buffer, NULL);
+   pipe_vertex_buffer_unreference(&ctx->aux_vertex_buffer_current);
+   pipe_vertex_buffer_unreference(&ctx->aux_vertex_buffer_saved);
 
    for (i = 0; i < PIPE_SHADER_TYPES; i++) {
       pipe_resource_reference(&ctx->aux_constbuf_current[i].buffer, NULL);
@@ -583,6 +591,11 @@ enum pipe_error cso_set_rasterizer(struct cso_context *ctx,
                                                        CSO_RASTERIZER,
                                                        (void*)templ, key_size);
    void *handle = NULL;
+
+   /* We can't have both point_quad_rasterization (sprites) and point_smooth
+    * (round AA points) enabled at the same time.
+    */
+   assert(!(templ->point_quad_rasterization && templ->point_smooth));
 
    if (cso_hash_iter_is_null(iter)) {
       struct cso_rasterizer *cso = MALLOC(sizeof(struct cso_rasterizer));
@@ -851,7 +864,8 @@ cso_restore_stencil_ref(struct cso_context *ctx)
 
 void cso_set_render_condition(struct cso_context *ctx,
                               struct pipe_query *query,
-                              boolean condition, uint mode)
+                              boolean condition,
+                              enum pipe_render_cond_flag mode)
 {
    struct pipe_context *pipe = ctx->pipe;
 
@@ -1148,15 +1162,9 @@ void cso_set_vertex_buffers(struct cso_context *ctx,
          const struct pipe_vertex_buffer *vb =
                buffers + (ctx->aux_vertex_buffer_index - start_slot);
 
-         pipe_resource_reference(&ctx->aux_vertex_buffer_current.buffer,
-                                 vb->buffer);
-         memcpy(&ctx->aux_vertex_buffer_current, vb,
-                sizeof(struct pipe_vertex_buffer));
-      }
-      else {
-         pipe_resource_reference(&ctx->aux_vertex_buffer_current.buffer,
-                                 NULL);
-         ctx->aux_vertex_buffer_current.user_buffer = NULL;
+         pipe_vertex_buffer_reference(&ctx->aux_vertex_buffer_current, vb);
+      } else {
+         pipe_vertex_buffer_unreference(&ctx->aux_vertex_buffer_current);
       }
    }
 
@@ -1173,10 +1181,8 @@ cso_save_aux_vertex_buffer_slot(struct cso_context *ctx)
       return;
    }
 
-   pipe_resource_reference(&ctx->aux_vertex_buffer_saved.buffer,
-                           ctx->aux_vertex_buffer_current.buffer);
-   memcpy(&ctx->aux_vertex_buffer_saved, &ctx->aux_vertex_buffer_current,
-          sizeof(struct pipe_vertex_buffer));
+   pipe_vertex_buffer_reference(&ctx->aux_vertex_buffer_saved,
+                                &ctx->aux_vertex_buffer_current);
 }
 
 static void
@@ -1191,7 +1197,7 @@ cso_restore_aux_vertex_buffer_slot(struct cso_context *ctx)
 
    cso_set_vertex_buffers(ctx, ctx->aux_vertex_buffer_index, 1,
                           &ctx->aux_vertex_buffer_saved);
-   pipe_resource_reference(&ctx->aux_vertex_buffer_saved.buffer, NULL);
+   pipe_vertex_buffer_unreference(&ctx->aux_vertex_buffer_saved);
 }
 
 unsigned cso_get_aux_vertex_buffer_slot(struct cso_context *ctx)
@@ -1201,8 +1207,8 @@ unsigned cso_get_aux_vertex_buffer_slot(struct cso_context *ctx)
 
 
 
-enum pipe_error
-cso_single_sampler(struct cso_context *ctx, unsigned shader_stage,
+void
+cso_single_sampler(struct cso_context *ctx, enum pipe_shader_type shader_stage,
                    unsigned idx, const struct pipe_sampler_state *templ)
 {
    if (templ) {
@@ -1217,7 +1223,7 @@ cso_single_sampler(struct cso_context *ctx, unsigned shader_stage,
       if (cso_hash_iter_is_null(iter)) {
          cso = MALLOC(sizeof(struct cso_sampler));
          if (!cso)
-            return PIPE_ERROR_OUT_OF_MEMORY;
+            return;
 
          memcpy(&cso->state, templ, sizeof(*templ));
          cso->data = ctx->pipe->create_sampler_state(ctx->pipe, &cso->state);
@@ -1229,7 +1235,7 @@ cso_single_sampler(struct cso_context *ctx, unsigned shader_stage,
          iter = cso_insert_state(ctx->cache, hash_key, CSO_SAMPLER, cso);
          if (cso_hash_iter_is_null(iter)) {
             FREE(cso);
-            return PIPE_ERROR_OUT_OF_MEMORY;
+            return;
          }
       }
       else {
@@ -1238,12 +1244,8 @@ cso_single_sampler(struct cso_context *ctx, unsigned shader_stage,
 
       ctx->samplers[shader_stage].cso_samplers[idx] = cso;
       ctx->samplers[shader_stage].samplers[idx] = cso->data;
-   } else {
-      ctx->samplers[shader_stage].cso_samplers[idx] = NULL;
-      ctx->samplers[shader_stage].samplers[idx] = NULL;
+      ctx->max_sampler_seen = MAX2(ctx->max_sampler_seen, (int)idx);
    }
-
-   return PIPE_OK;
 }
 
 
@@ -1255,19 +1257,14 @@ cso_single_sampler_done(struct cso_context *ctx,
                         enum pipe_shader_type shader_stage)
 {
    struct sampler_info *info = &ctx->samplers[shader_stage];
-   const unsigned old_nr_samplers = info->nr_samplers;
-   unsigned i;
 
-   /* find highest non-null sampler */
-   for (i = PIPE_MAX_SAMPLERS; i > 0; i--) {
-      if (info->samplers[i - 1] != NULL)
-         break;
-   }
+   if (ctx->max_sampler_seen == -1)
+      return;
 
-   info->nr_samplers = i;
    ctx->pipe->bind_sampler_states(ctx->pipe, shader_stage, 0,
-                                  MAX2(old_nr_samplers, info->nr_samplers),
+                                  ctx->max_sampler_seen + 1,
                                   info->samplers);
+   ctx->max_sampler_seen = -1;
 }
 
 
@@ -1276,31 +1273,16 @@ cso_single_sampler_done(struct cso_context *ctx,
  * last one. Done to always try to set as many samplers
  * as possible.
  */
-enum pipe_error
+void
 cso_set_samplers(struct cso_context *ctx,
                  enum pipe_shader_type shader_stage,
                  unsigned nr,
                  const struct pipe_sampler_state **templates)
 {
-   struct sampler_info *info = &ctx->samplers[shader_stage];
-   unsigned i;
-   enum pipe_error temp, error = PIPE_OK;
-
-   for (i = 0; i < nr; i++) {
-      temp = cso_single_sampler(ctx, shader_stage, i, templates[i]);
-      if (temp != PIPE_OK)
-         error = temp;
-   }
-
-   for ( ; i < info->nr_samplers; i++) {
-      temp = cso_single_sampler(ctx, shader_stage, i, NULL);
-      if (temp != PIPE_OK)
-         error = temp;
-   }
+   for (unsigned i = 0; i < nr; i++)
+      cso_single_sampler(ctx, shader_stage, i, templates[i]);
 
    cso_single_sampler_done(ctx, shader_stage);
-
-   return error;
 }
 
 static void
@@ -1309,11 +1291,9 @@ cso_save_fragment_samplers(struct cso_context *ctx)
    struct sampler_info *info = &ctx->samplers[PIPE_SHADER_FRAGMENT];
    struct sampler_info *saved = &ctx->fragment_samplers_saved;
 
-   saved->nr_samplers = info->nr_samplers;
-   memcpy(saved->cso_samplers, info->cso_samplers, info->nr_samplers *
-          sizeof(*info->cso_samplers));
-   memcpy(saved->samplers, info->samplers, info->nr_samplers *
-          sizeof(*info->samplers));
+   memcpy(saved->cso_samplers, info->cso_samplers,
+          sizeof(info->cso_samplers));
+   memcpy(saved->samplers, info->samplers, sizeof(info->samplers));
 }
 
 
@@ -1322,18 +1302,16 @@ cso_restore_fragment_samplers(struct cso_context *ctx)
 {
    struct sampler_info *info = &ctx->samplers[PIPE_SHADER_FRAGMENT];
    struct sampler_info *saved = &ctx->fragment_samplers_saved;
-   int delta = (int)info->nr_samplers - saved->nr_samplers;
 
    memcpy(info->cso_samplers, saved->cso_samplers,
-          saved->nr_samplers * sizeof(*info->cso_samplers));
-   memcpy(info->samplers, saved->samplers,
-          saved->nr_samplers * sizeof(*info->samplers));
+          sizeof(info->cso_samplers));
+   memcpy(info->samplers, saved->samplers, sizeof(info->samplers));
 
-   if (delta > 0) {
-      memset(&info->cso_samplers[saved->nr_samplers], 0,
-             delta * sizeof(*info->cso_samplers));
-      memset(&info->samplers[saved->nr_samplers], 0,
-             delta * sizeof(*info->samplers));
+   for (int i = PIPE_MAX_SAMPLERS - 1; i >= 0; i--) {
+      if (info->samplers[i]) {
+         ctx->max_sampler_seen = i;
+         break;
+      }
    }
 
    cso_single_sampler_done(ctx, PIPE_SHADER_FRAGMENT);
@@ -1536,7 +1514,8 @@ cso_restore_stream_outputs(struct cso_context *ctx)
 /* constant buffers */
 
 void
-cso_set_constant_buffer(struct cso_context *cso, unsigned shader_stage,
+cso_set_constant_buffer(struct cso_context *cso,
+                        enum pipe_shader_type shader_stage,
                         unsigned index, struct pipe_constant_buffer *cb)
 {
    struct pipe_context *pipe = cso->pipe;
@@ -1550,7 +1529,7 @@ cso_set_constant_buffer(struct cso_context *cso, unsigned shader_stage,
 
 void
 cso_set_constant_buffer_resource(struct cso_context *cso,
-                                 unsigned shader_stage,
+                                 enum pipe_shader_type shader_stage,
                                  unsigned index,
                                  struct pipe_resource *buffer)
 {
@@ -1568,7 +1547,7 @@ cso_set_constant_buffer_resource(struct cso_context *cso,
 
 void
 cso_save_constant_buffer_slot0(struct cso_context *cso,
-                                  unsigned shader_stage)
+                               enum pipe_shader_type shader_stage)
 {
    util_copy_constant_buffer(&cso->aux_constbuf_saved[shader_stage],
                              &cso->aux_constbuf_current[shader_stage]);
@@ -1576,7 +1555,7 @@ cso_save_constant_buffer_slot0(struct cso_context *cso,
 
 void
 cso_restore_constant_buffer_slot0(struct cso_context *cso,
-                                     unsigned shader_stage)
+                                  enum pipe_shader_type shader_stage)
 {
    cso_set_constant_buffer(cso, shader_stage, 0,
                            &cso->aux_constbuf_saved[shader_stage]);
@@ -1700,20 +1679,6 @@ cso_restore_state(struct cso_context *cso)
 
 
 /* drawing */
-
-void
-cso_set_index_buffer(struct cso_context *cso,
-                     const struct pipe_index_buffer *ib)
-{
-   struct u_vbuf *vbuf = cso->vbuf;
-
-   if (vbuf) {
-      u_vbuf_set_index_buffer(vbuf, ib);
-   } else {
-      struct pipe_context *pipe = cso->pipe;
-      pipe->set_index_buffer(pipe, ib);
-   }
-}
 
 void
 cso_draw_vbo(struct cso_context *cso,

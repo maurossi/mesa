@@ -22,14 +22,14 @@
  */
 
 #include "brw_context.h"
-#include "brw_shader.h"
-#include "brw_fs.h"
-#include "brw_nir.h"
+#include "compiler/brw_nir.h"
 #include "brw_program.h"
 #include "compiler/glsl/ir.h"
 #include "compiler/glsl/ir_optimization.h"
 #include "compiler/glsl/program.h"
+#include "compiler/nir/nir_serialize.h"
 #include "program/program.h"
+#include "main/mtypes.h"
 #include "main/shaderapi.h"
 #include "main/shaderobj.h"
 #include "main/uniforms.h"
@@ -75,10 +75,12 @@ static void
 brw_lower_packing_builtins(struct brw_context *brw,
                            exec_list *ir)
 {
+   const struct gen_device_info *devinfo = &brw->screen->devinfo;
+
    /* Gens < 7 don't have instructions to convert to or from half-precision,
     * and Gens < 6 don't expose that functionality.
     */
-   if (brw->gen != 6)
+   if (devinfo->gen != 6)
       return;
 
    lower_packing_builtins(ir, LOWER_PACK_HALF_2x16 | LOWER_UNPACK_HALF_2x16);
@@ -89,10 +91,8 @@ process_glsl_ir(struct brw_context *brw,
                 struct gl_shader_program *shader_prog,
                 struct gl_linked_shader *shader)
 {
+   const struct gen_device_info *devinfo = &brw->screen->devinfo;
    struct gl_context *ctx = &brw->ctx;
-   const struct brw_compiler *compiler = brw->screen->compiler;
-   const struct gl_shader_compiler_options *options =
-      &ctx->Const.ShaderCompilerOptions[shader->Stage];
 
    /* Temporary memory context for any new IR. */
    void *mem_ctx = ralloc_context(NULL);
@@ -112,7 +112,7 @@ process_glsl_ir(struct brw_context *brw,
                                      EXP_TO_EXP2 |
                                      LOG_TO_LOG2 |
                                      DFREXP_DLDEXP_TO_ARITH);
-   if (brw->gen < 7) {
+   if (devinfo->gen < 7) {
       instructions_to_lower |= BIT_COUNT_TO_MATH |
                                EXTRACT_TO_SHIFTS |
                                INSERT_TO_SHIFTS |
@@ -124,7 +124,7 @@ process_glsl_ir(struct brw_context *brw,
    /* Pre-gen6 HW can only nest if-statements 16 deep.  Beyond this,
     * if-statements need to be flattened.
     */
-   if (brw->gen < 6)
+   if (devinfo->gen < 6)
       lower_if_to_cond_assign(shader->Stage, shader->ir, 16);
 
    do_lower_texture_projection(shader->ir);
@@ -133,21 +133,6 @@ process_glsl_ir(struct brw_context *brw,
    lower_offset_arrays(shader->ir);
    lower_noise(shader->ir);
    lower_quadop_vector(shader->ir, false);
-
-   bool progress;
-   do {
-      progress = false;
-
-      if (compiler->scalar_stage[shader->Stage]) {
-         if (shader->Stage == MESA_SHADER_VERTEX ||
-             shader->Stage == MESA_SHADER_FRAGMENT)
-            brw_do_channel_expressions(shader->ir);
-         brw_do_vector_splitting(shader->ir);
-      }
-
-      progress = do_common_optimization(shader->ir, true, true,
-                                        options, ctx->Const.NativeIntegers) || progress;
-   } while (progress);
 
    validate_ir_tree(shader->ir);
 
@@ -196,6 +181,42 @@ unify_interfaces(struct shader_info **infos)
    }
 }
 
+static void
+update_xfb_info(struct gl_transform_feedback_info *xfb_info,
+                struct shader_info *info)
+{
+   if (!xfb_info)
+      return;
+
+   for (unsigned i = 0; i < xfb_info->NumOutputs; i++) {
+      struct gl_transform_feedback_output *output = &xfb_info->Outputs[i];
+
+      /* The VUE header contains three scalar fields packed together:
+       * - gl_PointSize is stored in VARYING_SLOT_PSIZ.w
+       * - gl_Layer is stored in VARYING_SLOT_PSIZ.y
+       * - gl_ViewportIndex is stored in VARYING_SLOT_PSIZ.z
+       */
+      switch (output->OutputRegister) {
+      case VARYING_SLOT_LAYER:
+         assert(output->NumComponents == 1);
+         output->OutputRegister = VARYING_SLOT_PSIZ;
+         output->ComponentOffset = 1;
+         break;
+      case VARYING_SLOT_VIEWPORT:
+         assert(output->NumComponents == 1);
+         output->OutputRegister = VARYING_SLOT_PSIZ;
+         output->ComponentOffset = 2;
+         break;
+      case VARYING_SLOT_PSIZ:
+         assert(output->NumComponents == 1);
+         output->ComponentOffset = 3;
+         break;
+      }
+
+      info->outputs_written |= 1ull << output->OutputRegister;
+   }
+}
+
 extern "C" GLboolean
 brw_link_shader(struct gl_context *ctx, struct gl_shader_program *shProg)
 {
@@ -203,6 +224,9 @@ brw_link_shader(struct gl_context *ctx, struct gl_shader_program *shProg)
    const struct brw_compiler *compiler = brw->screen->compiler;
    unsigned int stage;
    struct shader_info *infos[MESA_SHADER_STAGES] = { 0, };
+
+   if (shProg->data->LinkStatus == linking_skipped)
+      return GL_TRUE;
 
    for (stage = 0; stage < ARRAY_SIZE(shProg->_LinkedShaders); stage++) {
       struct gl_linked_shader *shader = shProg->_LinkedShaders[stage];
@@ -219,8 +243,6 @@ brw_link_shader(struct gl_context *ctx, struct gl_shader_program *shProg)
       prog->ShadowSamplers = shader->shadow_samplers;
       _mesa_update_shader_textures_used(shProg, prog);
 
-      brw_add_texrect_params(prog);
-
       bool debug_enabled =
          (INTEL_DEBUG & intel_debug_flag_for_shader_stage(shader->Stage));
 
@@ -233,7 +255,56 @@ brw_link_shader(struct gl_context *ctx, struct gl_shader_program *shProg)
 
       prog->nir = brw_create_nir(brw, shProg, prog, (gl_shader_stage) stage,
                                  compiler->scalar_stage[stage]);
-      infos[stage] = prog->nir->info;
+   }
+
+   /* Determine first and last stage. */
+   unsigned first = MESA_SHADER_STAGES;
+   unsigned last = 0;
+   for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
+      if (!shProg->_LinkedShaders[i])
+         continue;
+      if (first == MESA_SHADER_STAGES)
+         first = i;
+      last = i;
+   }
+
+   /* Linking the stages in the opposite order (from fragment to vertex)
+    * ensures that inter-shader outputs written to in an earlier stage
+    * are eliminated if they are (transitively) not used in a later
+    * stage.
+    *
+    * TODO: Look into Shadow of Mordor regressions on HSW and enable this for
+    * all platforms. See: https://bugs.freedesktop.org/show_bug.cgi?id=103537
+    */
+    if (first != last && brw->screen->devinfo.gen >= 8) {
+       int next = last;
+       for (int i = next - 1; i >= 0; i--) {
+          if (shProg->_LinkedShaders[i] == NULL)
+             continue;
+
+          brw_nir_link_shaders(compiler,
+                               &shProg->_LinkedShaders[i]->Program->nir,
+                               &shProg->_LinkedShaders[next]->Program->nir);
+          next = i;
+       }
+    }
+
+   for (stage = 0; stage < ARRAY_SIZE(shProg->_LinkedShaders); stage++) {
+      struct gl_linked_shader *shader = shProg->_LinkedShaders[stage];
+      if (!shader)
+         continue;
+
+      struct gl_program *prog = shader->Program;
+      brw_shader_gather_info(prog->nir, prog);
+
+      NIR_PASS_V(prog->nir, nir_lower_samplers, shProg);
+      NIR_PASS_V(prog->nir, nir_lower_atomics, shProg);
+      NIR_PASS_V(prog->nir, nir_lower_atomics_to_ssbo,
+                 prog->nir->info.num_abos);
+
+      infos[stage] = &prog->nir->info;
+
+      update_xfb_info(prog->sh.LinkedTransformFeedback, infos[stage]);
 
       /* Make a pass over the IR to add state references for any built-in
        * uniforms that are used.  This has to be done now (during linking).
@@ -274,6 +345,17 @@ brw_link_shader(struct gl_context *ctx, struct gl_shader_program *shProg)
                  i, shProg->Name);
          fprintf(stderr, "%s", sh->Source);
          fprintf(stderr, "\n");
+      }
+   }
+
+   if (brw->ctx.Cache) {
+      for (stage = 0; stage < ARRAY_SIZE(shProg->_LinkedShaders); stage++) {
+         struct gl_linked_shader *shader = shProg->_LinkedShaders[stage];
+         if (!shader)
+            continue;
+
+         struct gl_program *prog = shader->Program;
+         brw_program_serialize_nir(ctx, prog);
       }
    }
 
