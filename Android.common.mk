@@ -75,6 +75,7 @@ LOCAL_CFLAGS += \
 	-DHAVE_ZLIB \
 	-DMAJOR_IN_SYSMACROS \
 	-DTEXTURE_FLOAT_ENABLED \
+	-DVK_USE_PLATFORM_ANDROID_KHR \
 	-fvisibility=hidden \
 	-Wno-sign-compare
 
