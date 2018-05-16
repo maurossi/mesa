@@ -60,6 +60,8 @@
 
 /* GPU chip 3D specs */
 struct etna_specs {
+   /* HALTI (gross architecture) level. -1 for pre-HALTI. */
+   int halti : 8;
    /* supports SUPERTILE (64x64) tiling? */
    unsigned can_supertile : 1;
    /* needs z=(z+w)/2, for older GCxxx */
@@ -70,8 +72,20 @@ struct etna_specs {
    unsigned has_sign_floor_ceil : 1;
    /* can use VS_RANGE, PS_RANGE registers*/
    unsigned has_shader_range_registers : 1;
-   /* has the new sin/cos functions */
-   unsigned has_new_sin_cos : 1;
+   /* has the new sin/cos/log functions */
+   unsigned has_new_transcendentals : 1;
+   /* has the new dp2/dpX_norm instructions, among others */
+   unsigned has_halti2_instructions : 1;
+   /* supports single-buffer rendering with multiple pixel pipes */
+   unsigned single_buffer : 1;
+   /* has unified uniforms memory */
+   unsigned has_unified_uniforms : 1;
+   /* can load shader instructions from memory */
+   unsigned has_icache : 1;
+   /* ASTC texture support (and has associated states) */
+   unsigned tex_astc : 1;
+   /* has BLT engine instead of RS */
+   unsigned use_blt : 1;
    /* can use any kind of wrapping mode on npot textures */
    unsigned npot_tex_any_wrap;
    /* number of bits per TS tile */
@@ -98,6 +112,10 @@ struct etna_specs {
    uint32_t vs_offset;
    /* pixel shader memory address*/
    uint32_t ps_offset;
+   /* vertex shader uniforms address*/
+   uint32_t vs_uniforms_offset;
+   /* pixel shader uniforms address*/
+   uint32_t ps_uniforms_offset;
    /* vertex/fragment shader max instructions */
    uint32_t max_instructions;
    /* maximum number of varyings */
@@ -124,6 +142,7 @@ struct etna_specs {
 
 /* Compiled pipe_blend_color */
 struct compiled_blend_color {
+   float color[4];
    uint32_t PE_ALPHA_BLEND_COLOR;
 };
 
@@ -191,6 +210,7 @@ struct compiled_framebuffer_state {
    uint32_t TS_COLOR_CLEAR_VALUE;
    struct etna_reloc TS_COLOR_STATUS_BASE;
    struct etna_reloc TS_COLOR_SURFACE_BASE;
+   uint32_t PE_LOGIC_OP;
    bool msaa_mode; /* adds input (and possible temp) to PS */
 };
 
@@ -198,11 +218,15 @@ struct compiled_framebuffer_state {
 struct compiled_vertex_elements_state {
    unsigned num_elements;
    uint32_t FE_VERTEX_ELEMENT_CONFIG[VIVS_FE_VERTEX_ELEMENT_CONFIG__LEN];
+   uint32_t NFE_GENERIC_ATTRIB_CONFIG0[VIVS_NFE_GENERIC_ATTRIB__LEN];
+   uint32_t NFE_GENERIC_ATTRIB_SCALE[VIVS_NFE_GENERIC_ATTRIB__LEN];
+   uint32_t NFE_GENERIC_ATTRIB_CONFIG1[VIVS_NFE_GENERIC_ATTRIB__LEN];
 };
 
 /* Compiled context->set_vertex_buffer result */
 struct compiled_set_vertex_buffer {
    uint32_t FE_VERTEX_STREAM_CONTROL;
+   uint32_t FE_VERTEX_STREAM_UNK14680;
    struct etna_reloc FE_VERTEX_STREAM_BASE_ADDR;
 };
 
@@ -232,6 +256,7 @@ struct compiled_shader_state {
    uint32_t GL_VARYING_TOTAL_COMPONENTS;
    uint32_t GL_VARYING_NUM_COMPONENTS;
    uint32_t GL_VARYING_COMPONENT_USE[2];
+   uint32_t GL_HALTI5_SH_SPECIALS;
    unsigned vs_inst_mem_size;
    unsigned vs_uniforms_size;
    unsigned ps_inst_mem_size;
@@ -240,6 +265,8 @@ struct compiled_shader_state {
    uint32_t VS_UNIFORMS[ETNA_MAX_UNIFORMS * 4];
    uint32_t *PS_INST_MEM;
    uint32_t PS_UNIFORMS[ETNA_MAX_UNIFORMS * 4];
+   struct etna_reloc PS_INST_ADDR;
+   struct etna_reloc VS_INST_ADDR;
 };
 
 /* state of some 3d and common registers relevant to etna driver */

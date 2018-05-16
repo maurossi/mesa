@@ -27,7 +27,7 @@
 
 
 /*
- *  Test case for pipe_barrier.
+ *  Test case for util_barrier.
  *
  *  The test succeeds if no thread exits before all the other threads reach
  *  the barrier.
@@ -36,18 +36,19 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
-#include "os/os_thread.h"
-#include "os/os_time.h"
+#include "util/os_time.h"
 #include "util/u_atomic.h"
+#include "util/u_thread.h"
 
 
 #define NUM_THREADS 10
 
 static int verbosity = 0;
 
-static pipe_thread threads[NUM_THREADS];
-static pipe_barrier barrier;
+static thrd_t threads[NUM_THREADS];
+static util_barrier barrier;
 static int thread_ids[NUM_THREADS];
 
 static volatile int waiting = 0;
@@ -66,7 +67,8 @@ static volatile int proceeded = 0;
    }
 
 
-static PIPE_THREAD_ROUTINE(thread_function, thread_data)
+static int
+thread_function(void *thread_data)
 {
    int thread_id = *((int *) thread_data);
 
@@ -77,7 +79,7 @@ static PIPE_THREAD_ROUTINE(thread_function, thread_data)
    CHECK(p_atomic_read(&proceeded) == 0);
    p_atomic_inc(&waiting);
 
-   pipe_barrier_wait(&barrier);
+   util_barrier_wait(&barrier);
 
    CHECK(p_atomic_read(&waiting) == NUM_THREADS);
 
@@ -108,20 +110,20 @@ int main(int argc, char *argv[])
 
    LOG("pipe_barrier_test starting\n");
 
-   pipe_barrier_init(&barrier, NUM_THREADS);
+   util_barrier_init(&barrier, NUM_THREADS);
 
    for (i = 0; i < NUM_THREADS; i++) {
       thread_ids[i] = i;
-      threads[i] = pipe_thread_create(thread_function, (void *) &thread_ids[i]);
+      threads[i] = u_thread_create(thread_function, (void *) &thread_ids[i]);
    }
 
    for (i = 0; i < NUM_THREADS; i++ ) {
-      pipe_thread_wait(threads[i]);
+      thrd_join(threads[i], NULL);
    }
 
    CHECK(p_atomic_read(&proceeded) == NUM_THREADS);
 
-   pipe_barrier_destroy(&barrier);
+   util_barrier_destroy(&barrier);
 
    LOG("pipe_barrier_test exiting\n");
 

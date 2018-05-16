@@ -31,6 +31,7 @@
 
 #include "freedreno_batch.h"
 #include "freedreno_context.h"
+#include "freedreno_fence.h"
 #include "freedreno_resource.h"
 #include "freedreno_query_hw.h"
 
@@ -53,15 +54,20 @@ batch_init(struct fd_batch *batch)
 		size = 0x100000;
 	}
 
-	batch->draw    = fd_ringbuffer_new(ctx->screen->pipe, size);
-	batch->binning = fd_ringbuffer_new(ctx->screen->pipe, size);
-	batch->gmem    = fd_ringbuffer_new(ctx->screen->pipe, size);
+	batch->draw    = fd_ringbuffer_new(ctx->pipe, size);
+	if (!batch->nondraw) {
+		batch->binning = fd_ringbuffer_new(ctx->pipe, size);
+		batch->gmem    = fd_ringbuffer_new(ctx->pipe, size);
 
-	fd_ringbuffer_set_parent(batch->gmem, NULL);
-	fd_ringbuffer_set_parent(batch->draw, batch->gmem);
-	fd_ringbuffer_set_parent(batch->binning, batch->gmem);
+		fd_ringbuffer_set_parent(batch->gmem, NULL);
+		fd_ringbuffer_set_parent(batch->draw, batch->gmem);
+		fd_ringbuffer_set_parent(batch->binning, batch->gmem);
+	} else {
+		fd_ringbuffer_set_parent(batch->draw, NULL);
+	}
 
 	batch->in_fence_fd = -1;
+	batch->fence = fd_fence_create(batch);
 
 	batch->cleared = batch->partial_cleared = 0;
 	batch->restore = batch->resolve = 0;
@@ -76,18 +82,18 @@ batch_init(struct fd_batch *batch)
 	batch->max_scissor.minx = batch->max_scissor.miny = ~0;
 	batch->max_scissor.maxx = batch->max_scissor.maxy = 0;
 
-	util_dynarray_init(&batch->draw_patches);
+	util_dynarray_init(&batch->draw_patches, NULL);
 
 	if (is_a3xx(ctx->screen))
-		util_dynarray_init(&batch->rbrc_patches);
+		util_dynarray_init(&batch->rbrc_patches, NULL);
 
 	assert(batch->resources->entries == 0);
 
-	util_dynarray_init(&batch->samples);
+	util_dynarray_init(&batch->samples, NULL);
 }
 
 struct fd_batch *
-fd_batch_create(struct fd_context *ctx)
+fd_batch_create(struct fd_context *ctx, bool nondraw)
 {
 	struct fd_batch *batch = CALLOC_STRUCT(fd_batch);
 
@@ -98,6 +104,7 @@ fd_batch_create(struct fd_context *ctx)
 
 	pipe_reference_init(&batch->reference, 1);
 	batch->ctx = ctx;
+	batch->nondraw = nondraw;
 
 	batch->resources = _mesa_set_create(NULL, _mesa_hash_pointer,
 			_mesa_key_pointer_equal);
@@ -115,9 +122,23 @@ batch_fini(struct fd_batch *batch)
 	if (batch->in_fence_fd != -1)
 		close(batch->in_fence_fd);
 
+	/* in case batch wasn't flushed but fence was created: */
+	fd_fence_populate(batch->fence, 0, -1);
+
+	fd_fence_ref(NULL, &batch->fence, NULL);
+
 	fd_ringbuffer_del(batch->draw);
-	fd_ringbuffer_del(batch->binning);
-	fd_ringbuffer_del(batch->gmem);
+	if (!batch->nondraw) {
+		fd_ringbuffer_del(batch->binning);
+		fd_ringbuffer_del(batch->gmem);
+	} else {
+		debug_assert(!batch->binning);
+		debug_assert(!batch->gmem);
+	}
+	if (batch->lrz_clear) {
+		fd_ringbuffer_del(batch->lrz_clear);
+		batch->lrz_clear = NULL;
+	}
 
 	util_dynarray_fini(&batch->draw_patches);
 
@@ -143,7 +164,7 @@ batch_flush_reset_dependencies(struct fd_batch *batch, bool flush)
 
 	foreach_batch(dep, cache, batch->dependents_mask) {
 		if (flush)
-			fd_batch_flush(dep, false);
+			fd_batch_flush(dep, false, false);
 		fd_batch_reference(&dep, NULL);
 	}
 
@@ -170,9 +191,9 @@ batch_reset_resources_locked(struct fd_batch *batch)
 static void
 batch_reset_resources(struct fd_batch *batch)
 {
-	pipe_mutex_lock(batch->ctx->screen->lock);
+	mtx_lock(&batch->ctx->screen->lock);
 	batch_reset_resources_locked(batch);
-	pipe_mutex_unlock(batch->ctx->screen->lock);
+	mtx_unlock(&batch->ctx->screen->lock);
 }
 
 static void
@@ -203,9 +224,9 @@ __fd_batch_destroy(struct fd_batch *batch)
 
 	util_copy_framebuffer_state(&batch->framebuffer, NULL);
 
-	pipe_mutex_lock(batch->ctx->screen->lock);
+	mtx_lock(&batch->ctx->screen->lock);
 	fd_bc_invalidate_batch(batch, true);
-	pipe_mutex_unlock(batch->ctx->screen->lock);
+	mtx_unlock(&batch->ctx->screen->lock);
 
 	batch_fini(batch);
 
@@ -230,7 +251,7 @@ fd_batch_sync(struct fd_batch *batch)
 {
 	if (!batch->ctx->screen->reorder)
 		return;
-	util_queue_job_wait(&batch->flush_fence);
+	util_queue_fence_wait(&batch->flush_fence);
 }
 
 static void
@@ -250,21 +271,26 @@ batch_cleanup_func(void *job, int id)
 }
 
 static void
-batch_flush(struct fd_batch *batch)
+batch_flush(struct fd_batch *batch, bool force)
 {
 	DBG("%p: needs_flush=%d", batch, batch->needs_flush);
 
-	if (!batch->needs_flush)
+	if (!batch->needs_flush) {
+		if (force) {
+			fd_gmem_render_noop(batch);
+			goto out;
+		}
 		return;
+	}
 
 	batch->needs_flush = false;
 
 	/* close out the draw cmds by making sure any active queries are
 	 * paused:
 	 */
-	fd_hw_query_set_stage(batch, batch->draw, FD_STAGE_NULL);
+	fd_batch_set_stage(batch, FD_STAGE_NULL);
 
-	batch->ctx->dirty = ~0;
+	fd_context_all_dirty(batch->ctx);
 	batch_flush_reset_dependencies(batch, true);
 
 	if (batch->ctx->screen->reorder) {
@@ -272,7 +298,7 @@ batch_flush(struct fd_batch *batch)
 		fd_batch_reference(&tmp, batch);
 
 		if (!util_queue_is_initialized(&batch->ctx->flush_queue))
-			util_queue_init(&batch->ctx->flush_queue, "flush_queue", 16, 1);
+			util_queue_init(&batch->ctx->flush_queue, "flush_queue", 16, 1, 0);
 
 		util_queue_add_job(&batch->ctx->flush_queue,
 				batch, &batch->flush_fence,
@@ -284,26 +310,35 @@ batch_flush(struct fd_batch *batch)
 
 	debug_assert(batch->reference.count > 0);
 
+out:
 	if (batch == batch->ctx->batch) {
 		batch_reset(batch);
 	} else {
-		pipe_mutex_lock(batch->ctx->screen->lock);
+		mtx_lock(&batch->ctx->screen->lock);
 		fd_bc_invalidate_batch(batch, false);
-		pipe_mutex_unlock(batch->ctx->screen->lock);
+		mtx_unlock(&batch->ctx->screen->lock);
 	}
 }
 
-/* NOTE: could drop the last ref to batch */
+/* NOTE: could drop the last ref to batch
+ *
+ * @sync: synchronize with flush_queue, ensures batch is *actually* flushed
+ *   to kernel before this returns, as opposed to just being queued to be
+ *   flushed
+ * @force: force a flush even if no rendering, mostly useful if you need
+ *   a fence to sync on
+ */
 void
-fd_batch_flush(struct fd_batch *batch, bool sync)
+fd_batch_flush(struct fd_batch *batch, bool sync, bool force)
 {
 	/* NOTE: we need to hold an extra ref across the body of flush,
 	 * since the last ref to this batch could be dropped when cleaning
 	 * up used_resources
 	 */
 	struct fd_batch *tmp = NULL;
+
 	fd_batch_reference(&tmp, batch);
-	batch_flush(tmp);
+	batch_flush(tmp, force);
 	if (sync)
 		fd_batch_sync(tmp);
 	fd_batch_reference(&tmp, NULL);
@@ -326,8 +361,8 @@ batch_depends_on(struct fd_batch *batch, struct fd_batch *other)
 	return false;
 }
 
-static void
-batch_add_dep(struct fd_batch *batch, struct fd_batch *dep)
+void
+fd_batch_add_dep(struct fd_batch *batch, struct fd_batch *dep)
 {
 	if (batch->dependents_mask & (1 << dep->idx))
 		return;
@@ -337,9 +372,9 @@ batch_add_dep(struct fd_batch *batch, struct fd_batch *dep)
 	 */
 	if (batch_depends_on(dep, batch)) {
 		DBG("%p: flush forced on %p!", batch, dep);
-		pipe_mutex_unlock(batch->ctx->screen->lock);
-		fd_batch_flush(dep, false);
-		pipe_mutex_lock(batch->ctx->screen->lock);
+		mtx_unlock(&batch->ctx->screen->lock);
+		fd_batch_flush(dep, false, false);
+		mtx_lock(&batch->ctx->screen->lock);
 	} else {
 		struct fd_batch *other = NULL;
 		fd_batch_reference_locked(&other, dep);
@@ -358,6 +393,9 @@ fd_batch_resource_used(struct fd_batch *batch, struct fd_resource *rsc, bool wri
 
 	DBG("%p: %s %p", batch, write ? "write" : "read", rsc);
 
+	if (write)
+		rsc->valid = true;
+
 	/* note, invalidate write batch, to avoid further writes to rsc
 	 * resulting in a write-after-read hazard.
 	 */
@@ -369,12 +407,14 @@ fd_batch_resource_used(struct fd_batch *batch, struct fd_resource *rsc, bool wri
 			struct fd_batch *dep;
 			foreach_batch(dep, cache, rsc->batch_mask) {
 				struct fd_batch *b = NULL;
+				if (dep == batch)
+					continue;
 				/* note that batch_add_dep could flush and unref dep, so
 				 * we need to hold a reference to keep it live for the
 				 * fd_bc_invalidate_batch()
 				 */
 				fd_batch_reference(&b, dep);
-				batch_add_dep(batch, b);
+				fd_batch_add_dep(batch, b);
 				fd_bc_invalidate_batch(b, false);
 				fd_batch_reference_locked(&b, NULL);
 			}
@@ -382,7 +422,7 @@ fd_batch_resource_used(struct fd_batch *batch, struct fd_resource *rsc, bool wri
 		fd_batch_reference_locked(&rsc->write_batch, batch);
 	} else {
 		if (rsc->write_batch) {
-			batch_add_dep(batch, rsc->write_batch);
+			fd_batch_add_dep(batch, rsc->write_batch);
 			fd_bc_invalidate_batch(rsc->write_batch, false);
 		}
 	}
@@ -405,7 +445,7 @@ fd_batch_check_size(struct fd_batch *batch)
 	struct fd_ringbuffer *ring = batch->draw;
 	if (((ring->cur - ring->start) > (ring->size/4 - 0x1000)) ||
 			(fd_mesa_debug & FD_DBG_FLUSH))
-		fd_batch_flush(batch, true);
+		fd_batch_flush(batch, true, false);
 }
 
 /* emit a WAIT_FOR_IDLE only if needed, ie. if there has not already

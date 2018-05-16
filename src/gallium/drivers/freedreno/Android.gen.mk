@@ -24,15 +24,12 @@ ifeq ($(LOCAL_MODULE_CLASS),)
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 endif
 
-ir3_nir_trig_deps := \
-	$(LOCAL_PATH)/ir3/ir3_nir_trig.py \
-	$(MESA_TOP)/src/compiler/nir/nir_algebraic.py
-
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
-$(intermediates)/ir3/ir3_nir_trig.c: $(ir3_nir_trig_deps)
+$(intermediates)/ir3/ir3_nir_trig.c: $(prebuilt_intermediates)/ir3/ir3_nir_trig.c
 	@mkdir -p $(dir $@)
-	$(hide) PYTHONPATH=$(MESA_TOP)/src/compiler/nir $(MESA_PYTHON2) $< > $@
+	@cp -f $< $@
 
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
 	$(ir3_GENERATED_FILES))

@@ -119,10 +119,10 @@ enum etna_compile_frame_type {
  */
 struct etna_compile_frame {
    enum etna_compile_frame_type type;
-   struct etna_compile_label *lbl_else;
-   struct etna_compile_label *lbl_endif;
-   struct etna_compile_label *lbl_loop_bgn;
-   struct etna_compile_label *lbl_loop_end;
+   int lbl_else_idx;
+   int lbl_endif_idx;
+   int lbl_loop_bgn_idx;
+   int lbl_loop_end_idx;
 };
 
 struct etna_compile_file {
@@ -178,10 +178,12 @@ struct etna_compile {
    /* Fields for handling nested conditionals */
    struct etna_compile_frame frame_stack[ETNA_MAX_DEPTH];
    int frame_sp;
-   struct etna_compile_label *lbl_usage[ETNA_MAX_INSTRUCTIONS];
+   int lbl_usage[ETNA_MAX_INSTRUCTIONS];
 
    unsigned labels_count, labels_sz;
    struct etna_compile_label *labels;
+
+   unsigned num_loops;
 
    /* Code generation */
    int inst_ptr; /* current instruction pointer */
@@ -194,6 +196,8 @@ struct etna_compile {
 
    /* GPU hardware specs */
    const struct etna_specs *specs;
+
+   const struct etna_shader_key *key;
 };
 
 static struct etna_reg_desc *
@@ -881,6 +885,8 @@ etna_amode(struct tgsi_ind_register indirect)
    default:
       assert(!"Invalid swizzle");
    }
+
+   unreachable("bad swizzle");
 }
 
 /* convert destination operand */
@@ -986,7 +992,7 @@ etna_src_uniforms_conflict(struct etna_inst_src a, struct etna_inst_src b)
 }
 
 /* create a new label */
-static struct etna_compile_label *
+static unsigned int
 alloc_new_label(struct etna_compile *c)
 {
    struct etna_compile_label label = {
@@ -995,7 +1001,7 @@ alloc_new_label(struct etna_compile *c)
 
    array_insert(c->labels, label);
 
-   return &c->labels[c->labels_count - 1];
+   return c->labels_count - 1;
 }
 
 /* place label at current instruction pointer */
@@ -1011,10 +1017,10 @@ label_place(struct etna_compile *c, struct etna_compile_label *label)
  * as the value becomes known.
  */
 static void
-label_mark_use(struct etna_compile *c, struct etna_compile_label *label)
+label_mark_use(struct etna_compile *c, int lbl_idx)
 {
    assert(c->inst_ptr < ETNA_MAX_INSTRUCTIONS);
-   c->lbl_usage[c->inst_ptr] = label;
+   c->lbl_usage[c->inst_ptr] = lbl_idx;
 }
 
 /* walk the frame stack and return first frame with matching type */
@@ -1095,8 +1101,8 @@ trans_if(const struct instr_translater *t, struct etna_compile *c,
    /* push IF to stack */
    f->type = ETNA_COMPILE_FRAME_IF;
    /* create "else" label */
-   f->lbl_else = alloc_new_label(c);
-   f->lbl_endif = NULL;
+   f->lbl_else_idx = alloc_new_label(c);
+   f->lbl_endif_idx = -1;
 
    /* We need to avoid the emit_inst() below becoming two instructions */
    if (etna_src_uniforms_conflict(src[0], imm_0))
@@ -1104,7 +1110,7 @@ trans_if(const struct instr_translater *t, struct etna_compile *c,
 
    /* mark position in instruction stream of label reference so that it can be
     * filled in in next pass */
-   label_mark_use(c, f->lbl_else);
+   label_mark_use(c, f->lbl_else_idx);
 
    /* create conditional branch to label if src0 EQ 0 */
    emit_inst(c, &(struct etna_inst){
@@ -1125,8 +1131,8 @@ trans_else(const struct instr_translater *t, struct etna_compile *c,
    assert(f->type == ETNA_COMPILE_FRAME_IF);
 
    /* create "endif" label, and branch to endif label */
-   f->lbl_endif = alloc_new_label(c);
-   label_mark_use(c, f->lbl_endif);
+   f->lbl_endif_idx = alloc_new_label(c);
+   label_mark_use(c, f->lbl_endif_idx);
    emit_inst(c, &(struct etna_inst) {
       .opcode = INST_OPCODE_BRANCH,
       .cond = INST_CONDITION_TRUE,
@@ -1134,7 +1140,7 @@ trans_else(const struct instr_translater *t, struct etna_compile *c,
    });
 
    /* mark "else" label at this position in instruction stream */
-   label_place(c, f->lbl_else);
+   label_place(c, &c->labels[f->lbl_else_idx]);
 }
 
 static void
@@ -1147,10 +1153,10 @@ trans_endif(const struct instr_translater *t, struct etna_compile *c,
 
    /* assign "endif" or "else" (if no ELSE) label to current position in
     * instruction stream, pop IF */
-   if (f->lbl_endif != NULL)
-      label_place(c, f->lbl_endif);
+   if (f->lbl_endif_idx != -1)
+      label_place(c, &c->labels[f->lbl_endif_idx]);
    else
-      label_place(c, f->lbl_else);
+      label_place(c, &c->labels[f->lbl_else_idx]);
 }
 
 static void
@@ -1162,10 +1168,12 @@ trans_loop_bgn(const struct instr_translater *t, struct etna_compile *c,
 
    /* push LOOP to stack */
    f->type = ETNA_COMPILE_FRAME_LOOP;
-   f->lbl_loop_bgn = alloc_new_label(c);
-   f->lbl_loop_end = alloc_new_label(c);
+   f->lbl_loop_bgn_idx = alloc_new_label(c);
+   f->lbl_loop_end_idx = alloc_new_label(c);
 
-   label_place(c, f->lbl_loop_bgn);
+   label_place(c, &c->labels[f->lbl_loop_bgn_idx]);
+
+   c->num_loops++;
 }
 
 static void
@@ -1179,7 +1187,7 @@ trans_loop_end(const struct instr_translater *t, struct etna_compile *c,
 
    /* mark position in instruction stream of label reference so that it can be
     * filled in in next pass */
-   label_mark_use(c, f->lbl_loop_bgn);
+   label_mark_use(c, f->lbl_loop_bgn_idx);
 
    /* create branch to loop_bgn label */
    emit_inst(c, &(struct etna_inst) {
@@ -1189,7 +1197,7 @@ trans_loop_end(const struct instr_translater *t, struct etna_compile *c,
       /* imm is filled in later */
    });
 
-   label_place(c, f->lbl_loop_end);
+   label_place(c, &c->labels[f->lbl_loop_end_idx]);
 }
 
 static void
@@ -1201,7 +1209,7 @@ trans_brk(const struct instr_translater *t, struct etna_compile *c,
 
    /* mark position in instruction stream of label reference so that it can be
     * filled in in next pass */
-   label_mark_use(c, f->lbl_loop_end);
+   label_mark_use(c, f->lbl_loop_end_idx);
 
    /* create branch to loop_end label */
    emit_inst(c, &(struct etna_inst) {
@@ -1221,7 +1229,7 @@ trans_cont(const struct instr_translater *t, struct etna_compile *c,
 
    /* mark position in instruction stream of label reference so that it can be
     * filled in in next pass */
-   label_mark_use(c, f->lbl_loop_bgn);
+   label_mark_use(c, f->lbl_loop_bgn_idx);
 
    /* create branch to loop_end label */
    emit_inst(c, &(struct etna_inst) {
@@ -1383,12 +1391,27 @@ trans_lit(const struct instr_translater *t, struct etna_compile *c,
    else
       src_w = swizzle(src[0], SWIZZLE(W, W, W, W));
 
-   struct etna_inst ins[3] = { };
-   ins[0].opcode = INST_OPCODE_LOG;
-   ins[0].dst = etna_native_to_dst(inner_temp, INST_COMPS_X);
-   ins[0].src[2] = src_y;
+   if (c->specs->has_new_transcendentals) { /* Alternative LOG sequence */
+      emit_inst(c, &(struct etna_inst) {
+         .opcode = INST_OPCODE_LOG,
+         .dst = etna_native_to_dst(inner_temp, INST_COMPS_X | INST_COMPS_Y),
+         .src[2] = src_y,
+         .tex = { .amode=1 }, /* Unknown bit needs to be set */
+      });
+      emit_inst(c, &(struct etna_inst) {
+         .opcode = INST_OPCODE_MUL,
+         .dst = etna_native_to_dst(inner_temp, INST_COMPS_X),
+         .src[0] = etna_native_to_src(inner_temp, SWIZZLE(X, X, X, X)),
+         .src[1] = etna_native_to_src(inner_temp, SWIZZLE(Y, Y, Y, Y)),
+      });
+   } else {
+      struct etna_inst ins[3] = { };
+      ins[0].opcode = INST_OPCODE_LOG;
+      ins[0].dst = etna_native_to_dst(inner_temp, INST_COMPS_X);
+      ins[0].src[2] = src_y;
 
-   emit_inst(c, &ins[0]);
+      emit_inst(c, &ins[0]);
+   }
    emit_inst(c, &(struct etna_inst) {
       .opcode = INST_OPCODE_MUL,
       .sat = 0,
@@ -1444,16 +1467,13 @@ static void
 trans_trig(const struct instr_translater *t, struct etna_compile *c,
            const struct tgsi_full_instruction *inst, struct etna_inst_src *src)
 {
-   if (c->specs->has_new_sin_cos) { /* Alternative SIN/COS */
+   if (c->specs->has_new_transcendentals) { /* Alternative SIN/COS */
       /* On newer chips alternative SIN/COS instructions are implemented,
        * which:
        * - Need their input scaled by 1/pi instead of 2/pi
        * - Output an x and y component, which need to be multiplied to
        *   get the result
        */
-      /* TGSI lowering should deal with SCS */
-      assert(inst->Instruction.Opcode != TGSI_OPCODE_SCS);
-
       struct etna_native_reg temp = etna_compile_get_inner_temp(c); /* only using .xyz */
       emit_inst(c, &(struct etna_inst) {
          .opcode = INST_OPCODE_MUL,
@@ -1480,9 +1500,6 @@ trans_trig(const struct instr_translater *t, struct etna_compile *c,
       });
 
    } else if (c->specs->has_sin_cos_sqrt) {
-      /* TGSI lowering should deal with SCS */
-      assert(inst->Instruction.Opcode != TGSI_OPCODE_SCS);
-
       struct etna_native_reg temp = etna_compile_get_inner_temp(c);
       /* add divide by PI/2, using a temp register. GC2000
        * fails with src==dst for the trig instruction. */
@@ -1517,8 +1534,6 @@ trans_trig(const struct instr_translater *t, struct etna_compile *c,
        *  DP3 t.x___, t.xyww, C, void         (for scs)
        *  MAD t._y_w, t,xxzz, |t.xxzz|, -t.xxzz
        *  MAD dst, t.ywyw, .2225, t.xzxz
-       *
-       * TODO: we don't set dst.zw correctly for SCS.
        */
       struct etna_inst *p, ins[9] = { };
       struct etna_native_reg t0 = etna_compile_get_inner_temp(c);
@@ -1574,19 +1589,7 @@ trans_trig(const struct instr_translater *t, struct etna_compile *c,
       ins[4].src[0] = swizzle(t0s, dp3_swiz);
       ins[4].src[1] = swizzle(sincos[0], SWIZZLE(Z, W, W, W));
 
-      if (inst->Instruction.Opcode == TGSI_OPCODE_SCS) {
-         ins[5] = ins[3];
-         ins[6] = ins[4];
-         ins[4].dst.comps = INST_COMPS_X;
-         ins[6].dst.comps = INST_COMPS_Z;
-         ins[5].src[0] = swizzle(t0s, SWIZZLE(W, Z, W, W));
-         ins[6].src[0] = swizzle(t0s, SWIZZLE(Z, Y, W, W));
-         ins[5].src[1] = absolute(ins[5].src[0]);
-         p = &ins[7];
-      } else {
-         p = &ins[5];
-      }
-
+      p = &ins[5];
       p->opcode = INST_OPCODE_MAD;
       p->dst = etna_native_to_dst(t0, INST_COMPS_Y | INST_COMPS_W);
       p->src[0] = swizzle(t0s, SWIZZLE(X, X, Z, Z));
@@ -1607,30 +1610,37 @@ trans_trig(const struct instr_translater *t, struct etna_compile *c,
 }
 
 static void
-trans_dph(const struct instr_translater *t, struct etna_compile *c,
-          const struct tgsi_full_instruction *inst, struct etna_inst_src *src)
+trans_lg2(const struct instr_translater *t, struct etna_compile *c,
+            const struct tgsi_full_instruction *inst, struct etna_inst_src *src)
 {
-   /*
-   DP3 tmp.xyzw, src0.xyzw, src1,xyzw, void
-   ADD dst.xyzw, tmp.xyzw, void, src1.wwww
-   */
-   struct etna_native_reg temp = etna_compile_get_inner_temp(c);
-   struct etna_inst ins[2] = { };
-
-   ins[0].opcode = INST_OPCODE_DP3;
-   ins[0].dst = etna_native_to_dst(temp, INST_COMPS_X | INST_COMPS_Y |
-                                         INST_COMPS_Z | INST_COMPS_W);
-   ins[0].src[0] = src[0];
-   ins[0].src[1] = src[1];
-
-   ins[1].opcode = INST_OPCODE_ADD;
-   ins[1].sat = inst->Instruction.Saturate;
-   ins[1].dst = convert_dst(c, &inst->Dst[0]);
-   ins[1].src[0] = etna_native_to_src(temp, INST_SWIZ_IDENTITY);
-   ins[1].src[2] = swizzle(src[1], SWIZZLE(W, W, W, W));
-
-   emit_inst(c, &ins[0]);
-   emit_inst(c, &ins[1]);
+   if (c->specs->has_new_transcendentals) {
+      /* On newer chips alternative LOG instruction is implemented,
+       * which outputs an x and y component, which need to be multiplied to
+       * get the result.
+       */
+      struct etna_native_reg temp = etna_compile_get_inner_temp(c); /* only using .xy */
+      emit_inst(c, &(struct etna_inst) {
+         .opcode = INST_OPCODE_LOG,
+         .sat = 0,
+         .dst = etna_native_to_dst(temp, INST_COMPS_X | INST_COMPS_Y),
+         .src[2] = src[0],
+         .tex = { .amode=1 }, /* Unknown bit needs to be set */
+      });
+      emit_inst(c, &(struct etna_inst) {
+         .opcode = INST_OPCODE_MUL,
+         .sat = inst->Instruction.Saturate,
+         .dst = convert_dst(c, &inst->Dst[0]),
+         .src[0] = etna_native_to_src(temp, SWIZZLE(X, X, X, X)),
+         .src[1] = etna_native_to_src(temp, SWIZZLE(Y, Y, Y, Y)),
+      });
+   } else {
+      emit_inst(c, &(struct etna_inst) {
+         .opcode = INST_OPCODE_LOG,
+         .sat = inst->Instruction.Saturate,
+         .dst = convert_dst(c, &inst->Dst[0]),
+         .src[2] = src[0],
+      });
+   }
 }
 
 static void
@@ -1742,12 +1752,13 @@ static const struct instr_translater translaters[TGSI_OPCODE_LAST] = {
    INSTR(RSQ, trans_instr, .opc = INST_OPCODE_RSQ, .src = {2, -1, -1}),
    INSTR(MUL, trans_instr, .opc = INST_OPCODE_MUL, .src = {0, 1, -1}),
    INSTR(ADD, trans_instr, .opc = INST_OPCODE_ADD, .src = {0, 2, -1}),
+   INSTR(DP2, trans_instr, .opc = INST_OPCODE_DP2, .src = {0, 1, -1}),
    INSTR(DP3, trans_instr, .opc = INST_OPCODE_DP3, .src = {0, 1, -1}),
    INSTR(DP4, trans_instr, .opc = INST_OPCODE_DP4, .src = {0, 1, -1}),
    INSTR(DST, trans_instr, .opc = INST_OPCODE_DST, .src = {0, 1, -1}),
    INSTR(MAD, trans_instr, .opc = INST_OPCODE_MAD, .src = {0, 1, 2}),
    INSTR(EX2, trans_instr, .opc = INST_OPCODE_EXP, .src = {2, -1, -1}),
-   INSTR(LG2, trans_instr, .opc = INST_OPCODE_LOG, .src = {2, -1, -1}),
+   INSTR(LG2, trans_lg2),
    INSTR(SQRT, trans_instr, .opc = INST_OPCODE_SQRT, .src = {2, -1, -1}),
    INSTR(FRC, trans_instr, .opc = INST_OPCODE_FRC, .src = {2, -1, -1}),
    INSTR(CEIL, trans_instr, .opc = INST_OPCODE_CEIL, .src = {2, -1, -1}),
@@ -1776,11 +1787,9 @@ static const struct instr_translater translaters[TGSI_OPCODE_LAST] = {
    INSTR(LRP, trans_lrp),
    INSTR(LIT, trans_lit),
    INSTR(SSG, trans_ssg),
-   INSTR(DPH, trans_dph),
 
    INSTR(SIN, trans_trig),
    INSTR(COS, trans_trig),
-   INSTR(SCS, trans_trig),
 
    INSTR(SLT, trans_instr, .opc = INST_OPCODE_SET, .src = {0, 1, -1}, .cond = INST_CONDITION_LT),
    INSTR(SGE, trans_instr, .opc = INST_OPCODE_SET, .src = {0, 1, -1}, .cond = INST_CONDITION_GE),
@@ -1904,6 +1913,22 @@ etna_compile_add_z_div_if_needed(struct etna_compile *c)
    }
 }
 
+static void
+etna_compile_frag_rb_swap(struct etna_compile *c)
+{
+   if (c->info.processor == PIPE_SHADER_FRAGMENT && c->key->frag_rb_swap) {
+      /* find color out */
+      struct etna_reg_desc *color_reg =
+         find_decl_by_semantic(c, TGSI_FILE_OUTPUT, TGSI_SEMANTIC_COLOR, 0);
+
+      emit_inst(c, &(struct etna_inst) {
+         .opcode = INST_OPCODE_MOV,
+         .dst = etna_native_to_dst(color_reg->native, INST_COMPS_X | INST_COMPS_Y | INST_COMPS_Z | INST_COMPS_W),
+         .src[2] = etna_native_to_src(color_reg->native, SWIZZLE(Z, Y, X, W)),
+      });
+   }
+}
+
 /** add a NOP to the shader if
  * a) the shader is empty
  * or
@@ -1976,8 +2001,9 @@ static void
 etna_compile_fill_in_labels(struct etna_compile *c)
 {
    for (int idx = 0; idx < c->inst_ptr; ++idx) {
-      if (c->lbl_usage[idx])
-         etna_assemble_set_imm(&c->code[idx * 4], c->lbl_usage[idx]->inst_idx);
+      if (c->lbl_usage[idx] != -1)
+         etna_assemble_set_imm(&c->code[idx * 4],
+                               c->labels[c->lbl_usage[idx]].inst_idx);
    }
 }
 
@@ -2040,7 +2066,7 @@ permute_ps_inputs(struct etna_compile *c)
 
 /* fill in ps inputs into shader object */
 static void
-fill_in_ps_inputs(struct etna_shader *sobj, struct etna_compile *c)
+fill_in_ps_inputs(struct etna_shader_variant *sobj, struct etna_compile *c)
 {
    struct etna_shader_io_file *sf = &sobj->infile;
 
@@ -2070,7 +2096,7 @@ fill_in_ps_inputs(struct etna_shader *sobj, struct etna_compile *c)
 
 /* fill in output mapping for ps into shader object */
 static void
-fill_in_ps_outputs(struct etna_shader *sobj, struct etna_compile *c)
+fill_in_ps_outputs(struct etna_shader_variant *sobj, struct etna_compile *c)
 {
    sobj->outfile.num_reg = 0;
 
@@ -2092,7 +2118,7 @@ fill_in_ps_outputs(struct etna_shader *sobj, struct etna_compile *c)
 
 /* fill in inputs for vs into shader object */
 static void
-fill_in_vs_inputs(struct etna_shader *sobj, struct etna_compile *c)
+fill_in_vs_inputs(struct etna_shader_variant *sobj, struct etna_compile *c)
 {
    struct etna_shader_io_file *sf = &sobj->infile;
 
@@ -2100,6 +2126,10 @@ fill_in_vs_inputs(struct etna_shader *sobj, struct etna_compile *c)
    for (int idx = 0; idx < c->file[TGSI_FILE_INPUT].reg_size; ++idx) {
       struct etna_reg_desc *reg = &c->file[TGSI_FILE_INPUT].reg[idx];
       assert(sf->num_reg < ETNA_NUM_INPUTS);
+
+      if (!reg->native.valid)
+         continue;
+
       /* XXX exclude inputs with special semantics such as gl_frontFacing */
       sf->reg[sf->num_reg].reg = reg->native.id;
       sf->reg[sf->num_reg].semantic = reg->semantic;
@@ -2112,7 +2142,7 @@ fill_in_vs_inputs(struct etna_shader *sobj, struct etna_compile *c)
 
 /* build two-level output index [Semantic][Index] for fast linking */
 static void
-build_output_index(struct etna_shader *sobj)
+build_output_index(struct etna_shader_variant *sobj)
 {
    int total = 0;
    int offset = 0;
@@ -2136,7 +2166,7 @@ build_output_index(struct etna_shader *sobj)
 
 /* fill in outputs for vs into shader object */
 static void
-fill_in_vs_outputs(struct etna_shader *sobj, struct etna_compile *c)
+fill_in_vs_outputs(struct etna_shader_variant *sobj, struct etna_compile *c)
 {
    struct etna_shader_io_file *sf = &sobj->outfile;
 
@@ -2203,7 +2233,7 @@ etna_compile_check_limits(struct etna_compile *c)
    /* round up number of uniforms, including immediates, in units of four */
    int num_uniforms = c->imm_base / 4 + (c->imm_size + 3) / 4;
 
-   if (c->inst_ptr > c->specs->max_instructions) {
+   if (!c->specs->has_icache && c->inst_ptr > c->specs->max_instructions) {
       DBG("Number of instructions (%d) exceeds maximum %d", c->inst_ptr,
           c->specs->max_instructions);
       return false;
@@ -2236,7 +2266,7 @@ etna_compile_check_limits(struct etna_compile *c)
 }
 
 static void
-copy_uniform_state_to_shader(struct etna_compile *c, struct etna_shader *sobj)
+copy_uniform_state_to_shader(struct etna_compile *c, struct etna_shader_variant *sobj)
 {
    uint32_t count = c->imm_size;
    struct etna_shader_uniform_info *uinfo = &sobj->uniforms;
@@ -2249,38 +2279,39 @@ copy_uniform_state_to_shader(struct etna_compile *c, struct etna_shader *sobj)
    etna_set_shader_uniforms_dirty_flags(sobj);
 }
 
-struct etna_shader *
-etna_compile_shader(const struct etna_specs *specs,
-                    const struct tgsi_token *tokens)
+bool
+etna_compile_shader(struct etna_shader_variant *v)
 {
    /* Create scratch space that may be too large to fit on stack
     */
    bool ret;
    struct etna_compile *c;
-   struct etna_shader *shader;
+
+   if (unlikely(!v))
+      return false;
+
+   const struct etna_specs *specs = v->shader->specs;
 
    struct tgsi_lowering_config lconfig = {
-      .lower_SCS = specs->has_sin_cos_sqrt,
       .lower_FLR = !specs->has_sign_floor_ceil,
       .lower_CEIL = !specs->has_sign_floor_ceil,
       .lower_POW = true,
       .lower_EXP = true,
       .lower_LOG = true,
-      .lower_DP2 = true,
-      .lower_DP2A = true,
+      .lower_DP2 = !specs->has_halti2_instructions,
       .lower_TRUNC = true,
-      .lower_XPD = true
    };
 
    c = CALLOC_STRUCT(etna_compile);
    if (!c)
-      return NULL;
+      return false;
 
-   shader = CALLOC_STRUCT(etna_shader);
-   if (!shader)
-      goto out;
+   memset(&c->lbl_usage, -1, sizeof(c->lbl_usage));
+
+   const struct tgsi_token *tokens = v->shader->tokens;
 
    c->specs = specs;
+   c->key = &v->key;
    c->tokens = tgsi_transform_lowering(&lconfig, tokens, &c->info);
    c->free_tokens = !!c->tokens;
    if (!c->tokens) {
@@ -2404,33 +2435,34 @@ etna_compile_shader(const struct etna_specs *specs,
    /* pass 3: generate instructions */
    etna_compile_pass_generate_code(c);
    etna_compile_add_z_div_if_needed(c);
+   etna_compile_frag_rb_swap(c);
    etna_compile_add_nop_if_needed(c);
-   etna_compile_fill_in_labels(c);
 
    ret = etna_compile_check_limits(c);
-   if (!ret) {
-      FREE(shader);
-      shader = NULL;
+   if (!ret)
       goto out;
-   }
+
+   etna_compile_fill_in_labels(c);
 
    /* fill in output structure */
-   shader->processor = c->info.processor;
-   shader->code_size = c->inst_ptr * 4;
-   shader->code = mem_dup(c->code, c->inst_ptr * 16);
-   shader->num_temps = c->next_free_native;
-   shader->vs_pos_out_reg = -1;
-   shader->vs_pointsize_out_reg = -1;
-   shader->ps_color_out_reg = -1;
-   shader->ps_depth_out_reg = -1;
-   copy_uniform_state_to_shader(c, shader);
+   v->processor = c->info.processor;
+   v->code_size = c->inst_ptr * 4;
+   v->code = mem_dup(c->code, c->inst_ptr * 16);
+   v->num_loops = c->num_loops;
+   v->num_temps = c->next_free_native;
+   v->vs_pos_out_reg = -1;
+   v->vs_pointsize_out_reg = -1;
+   v->ps_color_out_reg = -1;
+   v->ps_depth_out_reg = -1;
+   v->needs_icache = c->inst_ptr > c->specs->max_instructions;
+   copy_uniform_state_to_shader(c, v);
 
    if (c->info.processor == PIPE_SHADER_VERTEX) {
-      fill_in_vs_inputs(shader, c);
-      fill_in_vs_outputs(shader, c);
+      fill_in_vs_inputs(v, c);
+      fill_in_vs_outputs(v, c);
    } else if (c->info.processor == PIPE_SHADER_FRAGMENT) {
-      fill_in_ps_inputs(shader, c);
-      fill_in_ps_outputs(shader, c);
+      fill_in_ps_inputs(v, c);
+      fill_in_ps_outputs(v, c);
    }
 
 out:
@@ -2440,12 +2472,12 @@ out:
    FREE(c->labels);
    FREE(c);
 
-   return shader;
+   return ret;
 }
 
 extern const char *tgsi_swizzle_names[];
 void
-etna_dump_shader(const struct etna_shader *shader)
+etna_dump_shader(const struct etna_shader_variant *shader)
 {
    if (shader->processor == PIPE_SHADER_VERTEX)
       printf("VERT\n");
@@ -2455,6 +2487,7 @@ etna_dump_shader(const struct etna_shader *shader)
 
    etna_disasm(shader->code, shader->code_size, PRINT_RAW);
 
+   printf("num loops: %i\n", shader->num_loops);
    printf("num temps: %i\n", shader->num_temps);
    printf("num const: %i\n", shader->uniforms.const_count);
    printf("immediates:\n");
@@ -2492,7 +2525,7 @@ etna_dump_shader(const struct etna_shader *shader)
 }
 
 void
-etna_destroy_shader(struct etna_shader *shader)
+etna_destroy_shader(struct etna_shader_variant *shader)
 {
    assert(shader);
 
@@ -2504,7 +2537,7 @@ etna_destroy_shader(struct etna_shader *shader)
 }
 
 static const struct etna_shader_inout *
-etna_shader_vs_lookup(const struct etna_shader *sobj,
+etna_shader_vs_lookup(const struct etna_shader_variant *sobj,
                       const struct etna_shader_inout *in)
 {
    if (in->semantic.Index < sobj->output_count_per_semantic[in->semantic.Name])
@@ -2515,19 +2548,22 @@ etna_shader_vs_lookup(const struct etna_shader *sobj,
 
 bool
 etna_link_shader(struct etna_shader_link_info *info,
-                 const struct etna_shader *vs, const struct etna_shader *fs)
+                 const struct etna_shader_variant *vs, const struct etna_shader_variant *fs)
 {
+   int comp_ofs = 0;
    /* For each fragment input we need to find the associated vertex shader
     * output, which can be found by matching on semantic name and index. A
     * binary search could be used because the vs outputs are sorted by their
     * semantic index and grouped by semantic type by fill_in_vs_outputs.
     */
    assert(fs->infile.num_reg < ETNA_NUM_INPUTS);
+   info->pcoord_varying_comp_ofs = -1;
 
    for (int idx = 0; idx < fs->infile.num_reg; ++idx) {
       const struct etna_shader_inout *fsio = &fs->infile.reg[idx];
       const struct etna_shader_inout *vsio = etna_shader_vs_lookup(vs, fsio);
       struct etna_varying *varying;
+      bool interpolate_always = fsio->semantic.Name != TGSI_SEMANTIC_COLOR;
 
       assert(fsio->reg > 0 && fsio->reg <= ARRAY_SIZE(info->varyings));
 
@@ -2537,28 +2573,32 @@ etna_link_shader(struct etna_shader_link_info *info,
       varying = &info->varyings[fsio->reg - 1];
       varying->num_components = fsio->num_components;
 
-      if (fsio->semantic.Name == TGSI_SEMANTIC_COLOR) /* colors affected by flat shading */
+      if (!interpolate_always) /* colors affected by flat shading */
          varying->pa_attributes = 0x200;
       else /* texture coord or other bypasses flat shading */
          varying->pa_attributes = 0x2f1;
 
-      if (fsio->semantic.Name == TGSI_SEMANTIC_PCOORD) {
-         varying->use[0] = VARYING_COMPONENT_USE_POINTCOORD_X;
-         varying->use[1] = VARYING_COMPONENT_USE_POINTCOORD_Y;
-         varying->use[2] = VARYING_COMPONENT_USE_USED;
-         varying->use[3] = VARYING_COMPONENT_USE_USED;
-         varying->reg = 0; /* replaced by point coord -- doesn't matter */
-         continue;
-      }
-
-      if (vsio == NULL)
-         return true; /* not found -- link error */
-
-      varying->use[0] = VARYING_COMPONENT_USE_USED;
-      varying->use[1] = VARYING_COMPONENT_USE_USED;
+      varying->use[0] = interpolate_always ? VARYING_COMPONENT_USE_POINTCOORD_X : VARYING_COMPONENT_USE_USED;
+      varying->use[1] = interpolate_always ? VARYING_COMPONENT_USE_POINTCOORD_Y : VARYING_COMPONENT_USE_USED;
       varying->use[2] = VARYING_COMPONENT_USE_USED;
       varying->use[3] = VARYING_COMPONENT_USE_USED;
-      varying->reg = vsio->reg;
+
+
+      /* point coord is an input to the PS without matching VS output,
+       * so it gets a varying slot without being assigned a VS register.
+       */
+      if (fsio->semantic.Name == TGSI_SEMANTIC_PCOORD) {
+         info->pcoord_varying_comp_ofs = comp_ofs;
+      } else {
+         if (vsio == NULL) { /* not found -- link error */
+            BUG("Semantic %d value %d not found in vertex shader outputs\n", fsio->semantic.Name, fsio->semantic.Index);
+            return true;
+         }
+
+         varying->reg = vsio->reg;
+      }
+
+      comp_ofs += varying->num_components;
    }
 
    assert(info->num_varyings == fs->infile.num_reg);

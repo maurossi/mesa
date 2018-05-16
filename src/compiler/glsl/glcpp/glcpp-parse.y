@@ -209,7 +209,7 @@ line:
 |	SPACE control_line
 |	text_line {
 		_glcpp_parser_print_expanded_token_list (parser, $1);
-		ralloc_asprintf_rewrite_tail (&parser->output, &parser->output_length, "\n");
+		_mesa_string_buffer_append_char(parser->output, '\n');
 	}
 |	expanded_line
 ;
@@ -228,20 +228,16 @@ expanded_line:
 |	LINE_EXPANDED integer_constant NEWLINE {
 		parser->has_new_line_number = 1;
 		parser->new_line_number = $2;
-		ralloc_asprintf_rewrite_tail (&parser->output,
-					      &parser->output_length,
-					      "#line %" PRIiMAX "\n",
-					      $2);
+		_mesa_string_buffer_printf(parser->output, "#line %" PRIiMAX "\n", $2);
 	}
 |	LINE_EXPANDED integer_constant integer_constant NEWLINE {
 		parser->has_new_line_number = 1;
 		parser->new_line_number = $2;
 		parser->has_new_source_number = 1;
 		parser->new_source_number = $3;
-		ralloc_asprintf_rewrite_tail (&parser->output,
-					      &parser->output_length,
-					      "#line %" PRIiMAX " %" PRIiMAX "\n",
-					      $2, $3);
+		_mesa_string_buffer_printf(parser->output,
+					   "#line %" PRIiMAX " %" PRIiMAX "\n",
+					    $2, $3);
 	}
 ;
 
@@ -259,7 +255,7 @@ define:
 
 control_line:
 	control_line_success {
-		ralloc_asprintf_rewrite_tail (&parser->output, &parser->output_length, "\n");
+		_mesa_string_buffer_append_char(parser->output, '\n');
 	}
 |	control_line_error
 |	HASH_TOKEN LINE pp_tokens NEWLINE {
@@ -284,30 +280,44 @@ control_line_success:
                  *    It is an error to undefine or to redefine a built-in
                  *    (pre-defined) macro name.
                  *
-                 * The GLSL ES 1.00 spec does not contain this text.
+                 * The GLSL ES 1.00 spec does not contain this text, but
+                 * dEQP's preprocess test in GLES2 checks for it.
                  *
-                 * Section 3.3 (Preprocessor) of the GLSL 1.30 spec says:
+                 * Section 3.3 (Preprocessor) revision 7, of the GLSL 4.50
+                 * spec says:
                  *
-                 *    #define and #undef functionality are defined as is
-                 *    standard for C++ preprocessors for macro definitions
-                 *    both with and without macro parameters.
+                 *    By convention, all macro names containing two consecutive
+                 *    underscores ( __ ) are reserved for use by underlying
+                 *    software layers. Defining or undefining such a name
+                 *    in a shader does not itself result in an error, but may
+                 *    result in unintended behaviors that stem from having
+                 *    multiple definitions of the same name. All macro names
+                 *    prefixed with "GL_" (...) are also reseved, and defining
+                 *    such a name results in a compile-time error.
                  *
-                 * At least as far as I can tell GCC allow '#undef __FILE__'.
-                 * Furthermore, there are desktop OpenGL conformance tests
-                 * that expect '#undef __VERSION__' and '#undef
-                 * GL_core_profile' to work.
-                 *
-                 * Only disallow #undef of pre-defined macros on GLSL ES >=
-                 * 3.00 shaders.
+                 * The code below implements the same checks as GLSLang.
                  */
-		if (parser->is_gles &&
-                    parser->version >= 300 &&
-                    (strcmp("__LINE__", $3) == 0
-                     || strcmp("__FILE__", $3) == 0
-                     || strcmp("__VERSION__", $3) == 0
-                     || strncmp("GL_", $3, 3) == 0))
+		if (strncmp("GL_", $3, 3) == 0)
 			glcpp_error(& @1, parser, "Built-in (pre-defined)"
-				    " macro names cannot be undefined.");
+				    " names beginning with GL_ cannot be undefined.");
+		else if (strstr($3, "__") != NULL) {
+			if (parser->is_gles
+			    && parser->version >= 300
+			    && (strcmp("__LINE__", $3) == 0
+				|| strcmp("__FILE__", $3) == 0
+				|| strcmp("__VERSION__", $3) == 0)) {
+				glcpp_error(& @1, parser, "Built-in (pre-defined)"
+					    " names cannot be undefined.");
+			} else if (parser->is_gles && parser->version <= 300) {
+				glcpp_error(& @1, parser,
+					    " names containing consecutive underscores"
+					    " are reserved.");
+			} else {
+				glcpp_warning(& @1, parser,
+					      " names containing consecutive underscores"
+					      " are reserved.");
+			}
+		}
 
 		entry = _mesa_hash_table_search (parser->defines, $3);
 		if (entry) {
@@ -435,7 +445,7 @@ control_line_success:
 		glcpp_parser_resolve_implicit_version(parser);
 	}
 |	HASH_TOKEN PRAGMA NEWLINE {
-		ralloc_asprintf_rewrite_tail (&parser->output, &parser->output_length, "#%s", $2);
+		_mesa_string_buffer_printf(parser->output, "#%s", $2);
 	}
 ;
 
@@ -1113,60 +1123,60 @@ _token_list_equal_ignoring_space(token_list_t *a, token_list_t *b)
 }
 
 static void
-_token_print(char **out, size_t *len, token_t *token)
+_token_print(struct _mesa_string_buffer *out, token_t *token)
 {
    if (token->type < 256) {
-      ralloc_asprintf_rewrite_tail (out, len, "%c", token->type);
+      _mesa_string_buffer_append_char(out, token->type);
       return;
    }
 
    switch (token->type) {
    case INTEGER:
-      ralloc_asprintf_rewrite_tail (out, len, "%" PRIiMAX, token->value.ival);
+      _mesa_string_buffer_printf(out, "%" PRIiMAX, token->value.ival);
       break;
    case IDENTIFIER:
    case INTEGER_STRING:
    case OTHER:
-      ralloc_asprintf_rewrite_tail (out, len, "%s", token->value.str);
+      _mesa_string_buffer_append(out, token->value.str);
       break;
    case SPACE:
-      ralloc_asprintf_rewrite_tail (out, len, " ");
+      _mesa_string_buffer_append_char(out, ' ');
       break;
    case LEFT_SHIFT:
-      ralloc_asprintf_rewrite_tail (out, len, "<<");
+      _mesa_string_buffer_append(out, "<<");
       break;
    case RIGHT_SHIFT:
-      ralloc_asprintf_rewrite_tail (out, len, ">>");
+      _mesa_string_buffer_append(out, ">>");
       break;
    case LESS_OR_EQUAL:
-      ralloc_asprintf_rewrite_tail (out, len, "<=");
+      _mesa_string_buffer_append(out, "<=");
       break;
    case GREATER_OR_EQUAL:
-      ralloc_asprintf_rewrite_tail (out, len, ">=");
+      _mesa_string_buffer_append(out, ">=");
       break;
    case EQUAL:
-      ralloc_asprintf_rewrite_tail (out, len, "==");
+      _mesa_string_buffer_append(out, "==");
       break;
    case NOT_EQUAL:
-      ralloc_asprintf_rewrite_tail (out, len, "!=");
+      _mesa_string_buffer_append(out, "!=");
       break;
    case AND:
-      ralloc_asprintf_rewrite_tail (out, len, "&&");
+      _mesa_string_buffer_append(out, "&&");
       break;
    case OR:
-      ralloc_asprintf_rewrite_tail (out, len, "||");
+      _mesa_string_buffer_append(out, "||");
       break;
    case PASTE:
-      ralloc_asprintf_rewrite_tail (out, len, "##");
+      _mesa_string_buffer_append(out, "##");
       break;
    case PLUS_PLUS:
-      ralloc_asprintf_rewrite_tail (out, len, "++");
+      _mesa_string_buffer_append(out, "++");
       break;
    case MINUS_MINUS:
-      ralloc_asprintf_rewrite_tail (out, len, "--");
+      _mesa_string_buffer_append(out, "--");
       break;
    case DEFINED:
-      ralloc_asprintf_rewrite_tail (out, len, "defined");
+      _mesa_string_buffer_append(out, "defined");
       break;
    case PLACEHOLDER:
       /* Nothing to print. */
@@ -1293,11 +1303,11 @@ _token_paste(glcpp_parser_t *parser, token_t *token, token_t *other)
 
     FAIL:
    glcpp_error (&token->location, parser, "");
-   ralloc_asprintf_rewrite_tail (&parser->info_log, &parser->info_log_length, "Pasting \"");
-   _token_print (&parser->info_log, &parser->info_log_length, token);
-   ralloc_asprintf_rewrite_tail (&parser->info_log, &parser->info_log_length, "\" and \"");
-   _token_print (&parser->info_log, &parser->info_log_length, other);
-   ralloc_asprintf_rewrite_tail (&parser->info_log, &parser->info_log_length, "\" does not give a valid preprocessing token.\n");
+   _mesa_string_buffer_append(parser->info_log, "Pasting \"");
+   _token_print(parser->info_log, token);
+   _mesa_string_buffer_append(parser->info_log, "\" and \"");
+   _token_print(parser->info_log, other);
+   _mesa_string_buffer_append(parser->info_log, "\" does not give a valid preprocessing token.\n");
 
    return token;
 }
@@ -1311,7 +1321,7 @@ _token_list_print(glcpp_parser_t *parser, token_list_t *list)
       return;
 
    for (node = list->head; node; node = node->next)
-      _token_print (&parser->output, &parser->output_length, node->token);
+      _token_print(parser->output, node->token);
 }
 
 void
@@ -1333,8 +1343,14 @@ add_builtin_define(glcpp_parser_t *parser, const char *name, int value)
    _define_object_macro(parser, NULL, name, list);
 }
 
+/* Initial output buffer size, 4096 minus ralloc() overhead. It was selected
+ * to minimize total amount of allocated memory during shader-db run.
+ */
+#define INITIAL_PP_OUTPUT_BUF_SIZE 4048
+
 glcpp_parser_t *
-glcpp_parser_create(glcpp_extension_iterator extensions, void *state, gl_api api)
+glcpp_parser_create(const struct gl_extensions *extension_list,
+                    glcpp_extension_iterator extensions, void *state, gl_api api)
 {
    glcpp_parser_t *parser;
 
@@ -1362,13 +1378,14 @@ glcpp_parser_create(glcpp_extension_iterator extensions, void *state, gl_api api
    parser->lex_from_list = NULL;
    parser->lex_from_node = NULL;
 
-   parser->output = ralloc_strdup(parser, "");
-   parser->output_length = 0;
-   parser->info_log = ralloc_strdup(parser, "");
-   parser->info_log_length = 0;
+   parser->output = _mesa_string_buffer_create(parser,
+                                               INITIAL_PP_OUTPUT_BUF_SIZE);
+   parser->info_log = _mesa_string_buffer_create(parser,
+                                                 INITIAL_PP_OUTPUT_BUF_SIZE);
    parser->error = 0;
 
    parser->extensions = extensions;
+   parser->extension_list = extension_list;
    parser->state = state;
    parser->api = api;
    parser->version = 0;
@@ -1830,11 +1847,15 @@ _glcpp_parser_expand_node(glcpp_parser_t *parser, token_node_t *node,
 
    /* Special handling for __LINE__ and __FILE__, (not through
     * the hash table). */
-   if (strcmp(identifier, "__LINE__") == 0)
-      return _token_list_create_with_one_integer(parser, node->token->location.first_line);
+   if (*identifier == '_') {
+      if (strcmp(identifier, "__LINE__") == 0)
+         return _token_list_create_with_one_integer(parser,
+                                                    node->token->location.first_line);
 
-   if (strcmp(identifier, "__FILE__") == 0)
-      return _token_list_create_with_one_integer(parser, node->token->location.source);
+      if (strcmp(identifier, "__FILE__") == 0)
+         return _token_list_create_with_one_integer(parser,
+                                                    node->token->location.source);
+   }
 
    /* Look up this identifier in the hash table. */
    entry = _mesa_hash_table_search(parser->defines, identifier);
@@ -2335,11 +2356,26 @@ _glcpp_parser_handle_version_declaration(glcpp_parser_t *parser, intmax_t versio
       parser->extensions(parser->state, add_builtin_define, parser,
                          version, parser->is_gles);
 
+   if (parser->extension_list) {
+      /* If MESA_shader_integer_functions is supported, then the building
+       * blocks required for the 64x64 => 64 multiply exist.  Add defines for
+       * those functions so that they can be tested.
+       */
+      if (parser->extension_list->MESA_shader_integer_functions) {
+         add_builtin_define(parser, "__have_builtin_builtin_sign64", 1);
+         add_builtin_define(parser, "__have_builtin_builtin_umul64", 1);
+         add_builtin_define(parser, "__have_builtin_builtin_udiv64", 1);
+         add_builtin_define(parser, "__have_builtin_builtin_umod64", 1);
+         add_builtin_define(parser, "__have_builtin_builtin_idiv64", 1);
+         add_builtin_define(parser, "__have_builtin_builtin_imod64", 1);
+      }
+   }
+
    if (explicitly_set) {
-      ralloc_asprintf_rewrite_tail(&parser->output, &parser->output_length,
-                                   "#version %" PRIiMAX "%s%s", version,
-                                   es_identifier ? " " : "",
-                                   es_identifier ? es_identifier : "");
+      _mesa_string_buffer_printf(parser->output,
+                                 "#version %" PRIiMAX "%s%s", version,
+                                 es_identifier ? " " : "",
+                                 es_identifier ? es_identifier : "");
    }
 }
 

@@ -25,7 +25,8 @@ include Makefile.sources
 
 EXTRA_DIST = \
 	radeon_maos_verts.c \
-	radeon_maos_arrays.c
+	radeon_maos_arrays.c \
+	meson.build
 
 AM_CFLAGS = \
 	-DRADEON_R100 \
@@ -35,7 +36,7 @@ AM_CFLAGS = \
 	-I$(top_srcdir)/src/mesa/ \
 	-I$(top_srcdir)/src/gallium/include \
 	-I$(top_srcdir)/src/gallium/auxiliary \
-	-I$(top_builddir)/src/mesa/drivers/dri/common \
+	-I$(top_builddir)/src/util \
 	-I$(top_srcdir)/src/mesa/drivers/dri/common \
 	-I$(top_srcdir)/src/mesa/drivers/dri/radeon/server \
 	$(DEFINES) \

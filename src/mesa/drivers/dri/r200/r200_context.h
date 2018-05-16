@@ -56,7 +56,6 @@ struct r200_context;
 typedef struct r200_context r200ContextRec;
 typedef struct r200_context *r200ContextPtr;
 
-#include "main/mm.h"
 
 struct r200_vertex_program {
         struct gl_program mesa_program; /* Must be first */
@@ -629,10 +628,8 @@ extern void r200DestroyContext( __DRIcontext *driContextPriv );
 extern GLboolean r200CreateContext( gl_api api,
 				    const struct gl_config *glVisual,
 				    __DRIcontext *driContextPriv,
-				    unsigned major_version,
-				    unsigned minor_version,
-				    uint32_t flags,
-                                    bool notify_reset,
+				    const struct __DriverContextConfig *
+				       ctx_config,
 				    unsigned *error,
 				    void *sharedContextPrivate);
 extern GLboolean r200MakeCurrent( __DRIcontext *driContextPriv,

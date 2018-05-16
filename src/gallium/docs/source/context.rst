@@ -53,8 +53,6 @@ buffers, surfaces) are bound to the driver.
 
 * ``set_vertex_buffers``
 
-* ``set_index_buffer``
-
 
 Non-CSO State
 ^^^^^^^^^^^^^
@@ -66,7 +64,10 @@ objects. They all follow simple, one-method binding calls, e.g.
 * ``set_stencil_ref`` sets the stencil front and back reference values
   which are used as comparison values in stencil test.
 * ``set_blend_color``
-* ``set_sample_mask``
+* ``set_sample_mask``  sets the per-context multisample sample mask.  Note
+  that this takes effect even if multisampling is not explicitly enabled if
+  the frambuffer surface(s) are multisampled.  Also, this mask is AND-ed
+  with the optional fragment shader sample mask output (when emitted).
 * ``set_min_samples`` sets the minimum number of samples that must be run.
 * ``set_clip_state``
 * ``set_polygon_stipple``
@@ -91,14 +92,24 @@ objects. They all follow simple, one-method binding calls, e.g.
   blits. (Blits have their own way to pass the requisite rectangles
   in.)
 * ``set_tess_state`` configures the default tessellation parameters:
+
   * ``default_outer_level`` is the default value for the outer tessellation
     levels. This corresponds to GL's ``PATCH_DEFAULT_OUTER_LEVEL``.
   * ``default_inner_level`` is the default value for the inner tessellation
     levels. This corresponds to GL's ``PATCH_DEFAULT_INNER_LEVEL``.
+
 * ``set_debug_callback`` sets the callback to be used for reporting
   various debug messages, eventually reported via KHR_debug and
   similar mechanisms.
 
+Samplers
+^^^^^^^^
+
+pipe_sampler_state objects control how textures are sampled (coordinate
+wrap modes, interpolation modes, etc).  Note that samplers are not used
+for texture buffer objects.  That is, pipe_context::bind_sampler_views()
+will not bind a sampler if the corresponding sampler view refers to a
+PIPE_BUFFER resource.
 
 Sampler Views
 ^^^^^^^^^^^^^
@@ -110,7 +121,7 @@ If texture format is different than template format, it is said the texture
 is being cast to another format. Casting can be done only between compatible
 formats, that is formats that have matching component order and sizes.
 
-Swizzle fields specify they way in which fetched texel components are placed
+Swizzle fields specify the way in which fetched texel components are placed
 in the result register. For example, ``swizzle_r`` specifies what is going to be
 placed in first component of result register.
 
@@ -136,6 +147,14 @@ to the array index which is used for sampling.
 
 * ``sampler_view_destroy`` destroys a sampler view and releases its reference
   to associated texture.
+
+Hardware Atomic buffers
+^^^^^^^^^^^^^^^^^^^^^^^
+
+Buffers containing hw atomics are required to support the feature
+on some drivers.
+
+Drivers that require this need to fill the ``set_hw_atomic_buffers`` method.
 
 Shader Resources
 ^^^^^^^^^^^^^^^^
@@ -252,6 +271,29 @@ multi-byte element value starting at offset bytes from resource start, going
 for size bytes. It is guaranteed that size % clear_value_size == 0.
 
 
+Uploading
+^^^^^^^^^
+
+For simple single-use uploads, use ``pipe_context::stream_uploader`` or
+``pipe_context::const_uploader``. The latter should be used for uploading
+constants, while the former should be used for uploading everything else.
+PIPE_USAGE_STREAM is implied in both cases, so don't use the uploaders
+for static allocations.
+
+Usage:
+
+Call u_upload_alloc or u_upload_data as many times as you want. After you are
+done, call u_upload_unmap. If the driver doesn't support persistent mappings,
+u_upload_unmap makes sure the previously mapped memory is unmapped.
+
+Gotchas:
+- Always fill the memory immediately after u_upload_alloc. Any following call
+to u_upload_alloc and u_upload_data can unmap memory returned by previous
+u_upload_alloc.
+- Don't interleave calls using stream_uploader and const_uploader. If you use
+one of them, do the upload, unmap, and only then can you use the other one.
+
+
 Drawing
 ^^^^^^^
 
@@ -265,8 +307,8 @@ the mode of the primitive and the vertices to be fetched, in the range between
 Every instance with instanceID in the range between ``start_instance`` and
 ``start_instance``+``instance_count``-1, inclusive, will be drawn.
 
-If there is an index buffer bound, and ``indexed`` field is true, all vertex
-indices will be looked up in the index buffer.
+If  ``index_size`` != 0, all vertex indices will be looked up from the index
+buffer.
 
 In indexed draw, ``min_index`` and ``max_index`` respectively provide a lower
 and upper bound of the indices contained in the index buffer inside the range
@@ -363,6 +405,12 @@ value of FALSE for cases where COUNTER would result in 0 and TRUE
 for all other cases.
 This query can be used with ``render_condition``.
 
+In cases where a conservative approximation of an occlusion query is enough,
+``PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE`` should be used. It behaves
+like ``PIPE_QUERY_OCCLUSION_PREDICATE``, except that it may return TRUE in
+additional, implementation-dependent cases.
+This query can be used with ``render_condition``.
+
 ``PIPE_QUERY_TIME_ELAPSED`` returns the amount of time, in nanoseconds,
 the context takes to perform operations.
 The result is an unsigned 64-bit integer.
@@ -397,9 +445,17 @@ XXX the 2nd value is equivalent to ``PIPE_QUERY_PRIMITIVES_GENERATED`` but it is
 unclear if it should be increased if stream output is not active.
 
 ``PIPE_QUERY_SO_OVERFLOW_PREDICATE`` returns a boolean value indicating
-whether the stream output targets have overflowed as a result of the
+whether a selected stream output target has overflowed as a result of the
 commands issued between ``begin_query`` and ``end_query``.
-This query can be used with ``render_condition``.
+This query can be used with ``render_condition``. The output stream is
+selected by the stream number passed to ``create_query``.
+
+``PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE`` returns a boolean value indicating
+whether any stream output target has overflowed as a result of the commands
+issued between ``begin_query`` and ``end_query``. This query can be used
+with ``render_condition``, and its result is the logical OR of multiple
+``PIPE_QUERY_SO_OVERFLOW_PREDICATE`` queries, one for each stream output
+target.
 
 ``PIPE_QUERY_GPU_FINISHED`` returns a boolean value indicating whether
 all commands issued before ``end_query`` have completed. However, this
@@ -475,6 +531,29 @@ to return a valid fence. If fence_finish is called with the returned fence
 and the context is still unflushed, and the ctx parameter of fence_finish is
 equal to the context where the fence was created, fence_finish will flush
 the context.
+
+PIPE_FLUSH_ASYNC: The flush is allowed to be asynchronous. Unlike
+``PIPE_FLUSH_DEFERRED``, the driver must still ensure that the returned fence
+will finish in finite time. However, subsequent operations in other contexts of
+the same screen are no longer guaranteed to happen after the flush. Drivers
+which use this flag must implement pipe_context::fence_server_sync.
+
+PIPE_FLUSH_HINT_FINISH: Hints to the driver that the caller will immediately
+wait for the returned fence.
+
+Additional flags may be set together with ``PIPE_FLUSH_DEFERRED`` for even
+finer-grained fences. Note that as a general rule, GPU caches may not have been
+flushed yet when these fences are signaled. Drivers are free to ignore these
+flags and create normal fences instead. At most one of the following flags can
+be specified:
+
+PIPE_FLUSH_TOP_OF_PIPE: The fence should be signaled as soon as the next
+command is ready to start executing at the top of the pipeline, before any of
+its data is actually read (including indirect draw parameters).
+
+PIPE_FLUSH_BOTTOM_OF_PIPE: The fence should be signaled as soon as the previous
+command has finished executing on the GPU entirely (but data written by the
+command may still be in caches and inaccessible to the CPU).
 
 
 ``flush_resource``
@@ -593,6 +672,31 @@ are set.
 
 
 
+.. _resource_commit:
+
+resource_commit
+%%%%%%%%%%%%%%%
+
+This function changes the commit state of a part of a sparse resource. Sparse
+resources are created by setting the ``PIPE_RESOURCE_FLAG_SPARSE`` flag when
+calling ``resource_create``. Initially, sparse resources only reserve a virtual
+memory region that is not backed by memory (i.e., it is uncommitted). The
+``resource_commit`` function can be called to commit or uncommit parts (or all)
+of a resource. The driver manages the underlying backing memory.
+
+The contents of newly committed memory regions are undefined. Calling this
+function to commit an already committed memory region is allowed and leaves its
+content unchanged. Similarly, calling this function to uncommit an already
+uncommitted memory region is allowed.
+
+For buffers, the given box must be aligned to multiples of
+``PIPE_CAP_SPARSE_BUFFER_PAGE_SIZE``. As an exception to this rule, if the size
+of the buffer is not a multiple of the page size, changing the commit state of
+the last (partial) page requires a box that ends at the end of the buffer
+(i.e., box->x + box->width == buffer->width0).
+
+
+
 .. _pipe_transfer:
 
 PIPE_TRANSFER
@@ -708,6 +812,26 @@ notifications are single-shot, i.e. subsequent calls to
   since the last call or since the last notification by callback.
 * ``set_device_reset_callback`` sets a callback which will be called when
   a device reset is detected. The callback is only called synchronously.
+
+Bindless
+^^^^^^^^
+
+If PIPE_CAP_BINDLESS_TEXTURE is TRUE, the following ``pipe_context`` functions
+are used to create/delete bindless handles, and to make them resident in the
+current context when they are going to be used by shaders.
+
+* ``create_texture_handle`` creates a 64-bit unsigned integer texture handle
+  that is going to be directly used in shaders.
+* ``delete_texture_handle`` deletes a 64-bit unsigned integer texture handle.
+* ``make_texture_handle_resident`` makes a 64-bit unsigned texture handle
+  resident in the current context to be accessible by shaders for texture
+  mapping.
+* ``create_image_handle`` creates a 64-bit unsigned integer image handle that
+  is going to be directly used in shaders.
+* ``delete_image_handle`` deletes a 64-bit unsigned integer image handle.
+* ``make_image_handle_resident`` makes a 64-bit unsigned integer image handle
+  resident in the current context to be accessible by shaders for image loads,
+  stores and atomic operations.
 
 Using several contexts
 ----------------------

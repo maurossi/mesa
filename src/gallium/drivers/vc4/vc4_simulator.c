@@ -55,6 +55,7 @@
 #include "util/ralloc.h"
 
 #include "vc4_screen.h"
+#include "vc4_cl_dump.h"
 #include "vc4_context.h"
 #include "kernel/vc4_drv.h"
 #include "vc4_simulator_validate.h"
@@ -387,7 +388,7 @@ vc4_simulator_flush(struct vc4_context *vc4,
                         ctex->bo->size);
 #endif
 
-                for (int y = 0; y < ctex->base.b.height0; y++) {
+                for (int y = 0; y < ctex->base.height0; y++) {
                         memcpy(ctex->bo->map + y * sim_stride,
                                csim_bo->winsys_map + y * winsys_stride,
                                row_len);
@@ -448,7 +449,7 @@ vc4_simulator_flush(struct vc4_context *vc4,
         }
 
         if (ctex && csim_bo->winsys_map) {
-                for (int y = 0; y < ctex->base.b.height0; y++) {
+                for (int y = 0; y < ctex->base.height0; y++) {
                         memcpy(csim_bo->winsys_map + y * winsys_stride,
                                ctex->bo->map + y * sim_stride,
                                row_len);
@@ -614,8 +615,13 @@ vc4_simulator_get_param_ioctl(int fd, struct drm_vc4_get_param *args)
         case DRM_VC4_PARAM_SUPPORTS_BRANCHES:
         case DRM_VC4_PARAM_SUPPORTS_ETC1:
         case DRM_VC4_PARAM_SUPPORTS_THREADED_FS:
+        case DRM_VC4_PARAM_SUPPORTS_FIXED_RCL_ORDER:
                 args->value = true;
                 return 0;
+
+        case DRM_VC4_PARAM_SUPPORTS_MADVISE:
+                errno = -EINVAL;
+                return -1;
 
         case DRM_VC4_PARAM_V3D_IDENT0:
                 args->value = 0x02000000;
@@ -651,6 +657,18 @@ vc4_simulator_ioctl(int fd, unsigned long request, void *args)
                  * front buffer rendering.
                  */
                 return 0;
+
+        case DRM_IOCTL_VC4_LABEL_BO:
+                /* This is just debug information, nothing to do. */
+                return 0;
+
+        case DRM_IOCTL_VC4_GET_TILING:
+        case DRM_IOCTL_VC4_SET_TILING:
+                /* Disable these for now, since the sharing with i965 requires
+                 * linear buffers.
+                 */
+                errno = -EINVAL;
+                return -1;
 
         case DRM_IOCTL_VC4_GET_PARAM:
                 return vc4_simulator_get_param_ioctl(fd, args);

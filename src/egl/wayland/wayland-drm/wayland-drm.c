@@ -39,26 +39,13 @@
 
 #define MIN(x,y) (((x)<(y))?(x):(y))
 
-struct wl_drm {
-	struct wl_display *display;
-	struct wl_global *wl_drm_global;
-
-	void *user_data;
-	char *device_name;
-        uint32_t flags;
-
-	struct wayland_drm_callbacks *callbacks;
-
-        struct wl_buffer_interface buffer_interface;
-};
-
 static void
 destroy_buffer(struct wl_resource *resource)
 {
-	struct wl_drm_buffer *buffer = resource->data;
+	struct wl_drm_buffer *buffer = wl_resource_get_user_data(resource);
 	struct wl_drm *drm = buffer->drm;
 
-	drm->callbacks->release_buffer(drm->user_data, buffer);
+	drm->callbacks.release_buffer(drm->user_data, buffer);
 	free(buffer);
 }
 
@@ -77,7 +64,7 @@ create_buffer(struct wl_client *client, struct wl_resource *resource,
               int32_t offset1, int32_t stride1,
               int32_t offset2, int32_t stride2)
 {
-	struct wl_drm *drm = resource->data;
+	struct wl_drm *drm = wl_resource_get_user_data(resource);
 	struct wl_drm_buffer *buffer;
 
 	buffer = calloc(1, sizeof *buffer);
@@ -97,7 +84,7 @@ create_buffer(struct wl_client *client, struct wl_resource *resource,
 	buffer->offset[2] = offset2;
 	buffer->stride[2] = stride2;
 
-        drm->callbacks->reference_buffer(drm->user_data, name, fd, buffer);
+        drm->callbacks.reference_buffer(drm->user_data, name, fd, buffer);
 	if (buffer->driver_buffer == NULL) {
 		wl_resource_post_error(resource,
 				       WL_DRM_ERROR_INVALID_NAME,
@@ -124,6 +111,8 @@ drm_create_buffer(struct wl_client *client, struct wl_resource *resource,
 		  uint32_t stride, uint32_t format)
 {
         switch (format) {
+        case WL_DRM_FORMAT_ARGB2101010:
+        case WL_DRM_FORMAT_XRGB2101010:
         case WL_DRM_FORMAT_ARGB8888:
         case WL_DRM_FORMAT_XRGB8888:
         case WL_DRM_FORMAT_YUYV:
@@ -187,9 +176,9 @@ static void
 drm_authenticate(struct wl_client *client,
 		 struct wl_resource *resource, uint32_t id)
 {
-	struct wl_drm *drm = resource->data;
+	struct wl_drm *drm = wl_resource_get_user_data(resource);
 
-	if (drm->callbacks->authenticate(drm->user_data, id) < 0)
+	if (drm->callbacks.authenticate(drm->user_data, id) < 0)
 		wl_resource_post_error(resource,
 				       WL_DRM_ERROR_AUTHENTICATE_FAIL,
 				       "authenicate failed");
@@ -222,6 +211,10 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 
 	wl_resource_post_event(resource, WL_DRM_DEVICE, drm->device_name);
 	wl_resource_post_event(resource, WL_DRM_FORMAT,
+			       WL_DRM_FORMAT_ARGB2101010);
+	wl_resource_post_event(resource, WL_DRM_FORMAT,
+			       WL_DRM_FORMAT_XRGB2101010);
+	wl_resource_post_event(resource, WL_DRM_FORMAT,
 			       WL_DRM_FORMAT_ARGB8888);
 	wl_resource_post_event(resource, WL_DRM_FORMAT,
 			       WL_DRM_FORMAT_XRGB8888);
@@ -244,22 +237,9 @@ bind_drm(struct wl_client *client, void *data, uint32_t version, uint32_t id)
            wl_resource_post_event(resource, WL_DRM_CAPABILITIES, capabilities);
 }
 
-struct wl_drm_buffer *
-wayland_drm_buffer_get(struct wl_drm *drm, struct wl_resource *resource)
-{
-	if (resource == NULL)
-		return NULL;
-
-        if (wl_resource_instance_of(resource, &wl_buffer_interface,
-                                    &drm->buffer_interface))
-		return wl_resource_get_user_data(resource);
-        else
-		return NULL;
-}
-
 struct wl_drm *
 wayland_drm_init(struct wl_display *display, char *device_name,
-                 struct wayland_drm_callbacks *callbacks, void *user_data,
+                 const struct wayland_drm_callbacks *callbacks, void *user_data,
                  uint32_t flags)
 {
 	struct wl_drm *drm;
@@ -270,7 +250,7 @@ wayland_drm_init(struct wl_display *display, char *device_name,
 
 	drm->display = display;
 	drm->device_name = strdup(device_name);
-	drm->callbacks = callbacks;
+	drm->callbacks = *callbacks;
 	drm->user_data = user_data;
         drm->flags = flags;
 
@@ -291,16 +271,4 @@ wayland_drm_uninit(struct wl_drm *drm)
 	wl_global_destroy(drm->wl_drm_global);
 
 	free(drm);
-}
-
-uint32_t
-wayland_drm_buffer_get_format(struct wl_drm_buffer *buffer)
-{
-	return buffer->format;
-}
-
-void *
-wayland_drm_buffer_get_buffer(struct wl_drm_buffer *buffer)
-{
-	return buffer->driver_buffer;
 }

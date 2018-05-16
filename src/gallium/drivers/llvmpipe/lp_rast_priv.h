@@ -28,8 +28,8 @@
 #ifndef LP_RAST_PRIV_H
 #define LP_RAST_PRIV_H
 
-#include "os/os_thread.h"
 #include "util/u_format.h"
+#include "util/u_thread.h"
 #include "gallivm/lp_bld_debug.h"
 #include "lp_memory.h"
 #include "lp_rast.h"
@@ -127,10 +127,10 @@ struct lp_rasterizer
    struct lp_rasterizer_task tasks[LP_MAX_THREADS];
 
    unsigned num_threads;
-   pipe_thread threads[LP_MAX_THREADS];
+   thrd_t threads[LP_MAX_THREADS];
 
    /** For synchronizing the rasterization threads */
-   pipe_barrier barrier;
+   util_barrier barrier;
 };
 
 

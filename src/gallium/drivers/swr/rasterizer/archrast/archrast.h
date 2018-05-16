@@ -28,7 +28,8 @@
 #pragma once
 
 #include "common/os.h"
-#include "gen_ar_event.h"
+#include "gen_ar_event.hpp"
+#include "eventmanager.h"
 
 namespace ArchRast
 {
@@ -42,6 +43,7 @@ namespace ArchRast
     void DestroyThreadContext(HANDLE hThreadContext);
 
     // Dispatch event for this thread.
-    void Dispatch(HANDLE hThreadContext, Event& event);
+    void Dispatch(HANDLE hThreadContext, const Event& event);
+    void FlushDraw(HANDLE hThreadContext, uint32_t drawId);
 };
 

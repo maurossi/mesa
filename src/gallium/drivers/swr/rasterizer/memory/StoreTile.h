@@ -40,6 +40,8 @@
 #include <array>
 #include <sstream>
 
+#define ARRAY_SIZE(x) (sizeof(x) / sizeof((x)[0]))
+
 // Function pointer to different storing functions for color, depth, and stencil based on incoming formats.
 typedef void(*PFN_STORE_TILES)(uint8_t*, SWR_SURFACE_STATE*, uint32_t, uint32_t, uint32_t);
 
@@ -199,15 +201,15 @@ struct StorePixels<32, 2>
     static void Store(const uint8_t* pSrc, uint8_t* (&ppDsts)[2])
     {
         // Each 4-pixel row is 16-bytes
-        __m128i *pZRow01 = (__m128i*)pSrc;
-        __m128i vQuad00 = _mm_load_si128(pZRow01);
-        __m128i vQuad01 = _mm_load_si128(pZRow01 + 1);
+        simd4scalari *pZRow01 = (simd4scalari*)pSrc;
+        simd4scalari vQuad00 = SIMD128::load_si(pZRow01);
+        simd4scalari vQuad01 = SIMD128::load_si(pZRow01 + 1);
 
-        __m128i vRow00 = _mm_unpacklo_epi64(vQuad00, vQuad01);
-        __m128i vRow10 = _mm_unpackhi_epi64(vQuad00, vQuad01);
+        simd4scalari vRow00 = SIMD128::unpacklo_epi64(vQuad00, vQuad01);
+        simd4scalari vRow10 = SIMD128::unpackhi_epi64(vQuad00, vQuad01);
 
-        _mm_storeu_si128((__m128i*)ppDsts[0], vRow00);
-        _mm_storeu_si128((__m128i*)ppDsts[1], vRow10);
+        SIMD128::storeu_si((simd4scalari*)ppDsts[0], vRow00);
+        SIMD128::storeu_si((simd4scalari*)ppDsts[1], vRow10);
     }
 };
 
@@ -218,20 +220,20 @@ struct StorePixels<32, 4>
     static void Store(const uint8_t* pSrc, uint8_t* (&ppDsts)[4])
     {
         // 4 x 16 bytes = 64 bytes, 16 pixels
-        const __m128i *pSrc128 = reinterpret_cast<const __m128i *>(pSrc);
+        const simd4scalari *pSrc128 = reinterpret_cast<const simd4scalari *>(pSrc);
 
-        __m128i **ppDsts128 = reinterpret_cast<__m128i **>(ppDsts);
+        simd4scalari **ppDsts128 = reinterpret_cast<simd4scalari **>(ppDsts);
 
         // Unswizzle from SWR-Z order
-        __m128i quad0 = _mm_load_si128(&pSrc128[0]);                        // 0 1 2 3
-        __m128i quad1 = _mm_load_si128(&pSrc128[1]);                        // 4 5 6 7
-        __m128i quad2 = _mm_load_si128(&pSrc128[2]);                        // 8 9 A B
-        __m128i quad3 = _mm_load_si128(&pSrc128[3]);                        // C D E F
+        simd4scalari quad0 = SIMD128::load_si(&pSrc128[0]);                        // 0 1 2 3
+        simd4scalari quad1 = SIMD128::load_si(&pSrc128[1]);                        // 4 5 6 7
+        simd4scalari quad2 = SIMD128::load_si(&pSrc128[2]);                        // 8 9 A B
+        simd4scalari quad3 = SIMD128::load_si(&pSrc128[3]);                        // C D E F
 
-        _mm_storeu_si128(ppDsts128[0], _mm_unpacklo_epi64(quad0, quad1));   // 0 1 4 5
-        _mm_storeu_si128(ppDsts128[1], _mm_unpackhi_epi64(quad0, quad1));   // 2 3 6 7
-        _mm_storeu_si128(ppDsts128[2], _mm_unpacklo_epi64(quad2, quad3));   // 8 9 C D
-        _mm_storeu_si128(ppDsts128[3], _mm_unpackhi_epi64(quad2, quad3));   // A B E F
+        SIMD128::storeu_si(ppDsts128[0], SIMD128::unpacklo_epi64(quad0, quad1));   // 0 1 4 5
+        SIMD128::storeu_si(ppDsts128[1], SIMD128::unpackhi_epi64(quad0, quad1));   // 2 3 6 7
+        SIMD128::storeu_si(ppDsts128[2], SIMD128::unpacklo_epi64(quad2, quad3));   // 8 9 C D
+        SIMD128::storeu_si(ppDsts128[3], SIMD128::unpackhi_epi64(quad2, quad3));   // A B E F
     }
 };
 
@@ -251,10 +253,10 @@ struct StorePixels<64, 4>
     static void Store(const uint8_t* pSrc, uint8_t* (&ppDsts)[4])
     {
         // Each 4-pixel row is 32 bytes.
-        const __m128i* pPixSrc = (const __m128i*)pSrc;
+        const simd4scalari* pPixSrc = (const simd4scalari*)pSrc;
 
         // order of pointers match SWR-Z layout
-        __m128i** pvDsts = (__m128i**)&ppDsts[0];
+        simd4scalari** pvDsts = (simd4scalari**)&ppDsts[0];
         *pvDsts[0] = pPixSrc[0];
         *pvDsts[1] = pPixSrc[1];
         *pvDsts[2] = pPixSrc[2];
@@ -269,9 +271,9 @@ struct StorePixels<64, 8>
     static void Store(const uint8_t* pSrc, uint8_t* (&ppDsts)[8])
     {
         // 8 x 16 bytes = 128 bytes, 16 pixels
-        const __m128i *pSrc128 = reinterpret_cast<const __m128i *>(pSrc);
+        const simd4scalari *pSrc128 = reinterpret_cast<const simd4scalari *>(pSrc);
 
-        __m128i **ppDsts128 = reinterpret_cast<__m128i **>(ppDsts);
+        simd4scalari **ppDsts128 = reinterpret_cast<simd4scalari **>(ppDsts);
 
         // order of pointers match SWR-Z layout
         *ppDsts128[0] = pSrc128[0];     // 0 1
@@ -301,10 +303,10 @@ struct StorePixels<128, 8>
     static void Store(const uint8_t* pSrc, uint8_t* (&ppDsts)[8])
     {
         // Each 4-pixel row is 64 bytes.
-        const __m128i* pPixSrc = (const __m128i*)pSrc;
+        const simd4scalari* pPixSrc = (const simd4scalari*)pSrc;
 
         // Unswizzle from SWR-Z order
-        __m128i** pvDsts = (__m128i**)&ppDsts[0];
+        simd4scalari** pvDsts = (simd4scalari**)&ppDsts[0];
         *pvDsts[0] = pPixSrc[0];
         *pvDsts[1] = pPixSrc[2];
         *pvDsts[2] = pPixSrc[1];
@@ -323,9 +325,9 @@ struct StorePixels<128, 16>
     static void Store(const uint8_t* pSrc, uint8_t* (&ppDsts)[16])
     {
         // 16 x 16 bytes = 256 bytes, 16 pixels
-        const __m128i *pSrc128 = reinterpret_cast<const __m128i *>(pSrc);
+        const simd4scalari *pSrc128 = reinterpret_cast<const simd4scalari *>(pSrc);
 
-        __m128i **ppDsts128 = reinterpret_cast<__m128i **>(ppDsts);
+        simd4scalari **ppDsts128 = reinterpret_cast<simd4scalari **>(ppDsts);
 
         for (uint32_t i = 0; i < 16; i += 4)
         {
@@ -509,9 +511,9 @@ struct ConvertPixelsSOAtoAOS < R32G32B32A32_FLOAT, B5G6R5_UNORM >
 
         // pack
         simdscalari packed = _simd_castps_si(dst.x);
-        packed = _simd_or_si(packed, _simd_slli_epi32(_simd_castps_si(dst.y), FormatTraits<DstFormat>::GetBPC(0)));
-        packed = _simd_or_si(packed, _simd_slli_epi32(_simd_castps_si(dst.z), FormatTraits<DstFormat>::GetBPC(0) +
-                                                                              FormatTraits<DstFormat>::GetBPC(1)));
+        packed = _simd_or_si(packed, _simd_slli_epi32(_simd_castps_si(dst.y), FormatTraits<DstFormat>::GetConstBPC(0)));
+        packed = _simd_or_si(packed, _simd_slli_epi32(_simd_castps_si(dst.z), FormatTraits<DstFormat>::GetConstBPC(0) +
+                                                                              FormatTraits<DstFormat>::GetConstBPC(1)));
 
         // pack low 16 bits of each 32 bit lane to low 128 bits of dst
         uint32_t *pPacked = (uint32_t*)&packed;
@@ -563,8 +565,8 @@ struct ConvertPixelsSOAtoAOS<R32_FLOAT, R24_UNORM_X8_TYPELESS>
         temp = _simd16_permute_epi32(temp, _simd16_set_epi32(15, 14, 11, 10, 13, 12, 9, 8, 7, 6, 3, 2, 5, 4, 1, 0));
 
         // merge/store data into destination but don't overwrite the X8 bits
-        simdscalari destlo = _simd_loadu2_si(reinterpret_cast<__m128i *>(ppDsts[1]), reinterpret_cast<__m128i *>(ppDsts[0]));
-        simdscalari desthi = _simd_loadu2_si(reinterpret_cast<__m128i *>(ppDsts[3]), reinterpret_cast<__m128i *>(ppDsts[2]));
+        simdscalari destlo = _simd_loadu2_si(reinterpret_cast<simd4scalari *>(ppDsts[1]), reinterpret_cast<simd4scalari *>(ppDsts[0]));
+        simdscalari desthi = _simd_loadu2_si(reinterpret_cast<simd4scalari *>(ppDsts[3]), reinterpret_cast<simd4scalari *>(ppDsts[2]));
 
         simd16scalari dest = _simd16_setzero_si();
 
@@ -575,8 +577,8 @@ struct ConvertPixelsSOAtoAOS<R32_FLOAT, R24_UNORM_X8_TYPELESS>
 
         dest = _simd16_or_si(_simd16_andnot_si(mask, dest), _simd16_and_si(mask, temp));
 
-        _simd_storeu2_si(reinterpret_cast<__m128i *>(ppDsts[1]), reinterpret_cast<__m128i *>(ppDsts[0]), _simd16_extract_si(dest, 0));
-        _simd_storeu2_si(reinterpret_cast<__m128i *>(ppDsts[3]), reinterpret_cast<__m128i *>(ppDsts[2]), _simd16_extract_si(dest, 1));
+        _simd_storeu2_si(reinterpret_cast<simd4scalari *>(ppDsts[1]), reinterpret_cast<simd4scalari *>(ppDsts[0]), _simd16_extract_si(dest, 0));
+        _simd_storeu2_si(reinterpret_cast<simd4scalari *>(ppDsts[3]), reinterpret_cast<simd4scalari *>(ppDsts[2]), _simd16_extract_si(dest, 1));
 #else
         static const uint32_t MAX_RASTER_TILE_BYTES = 128; // 8 pixels * 16 bytes per pixel
 
@@ -593,25 +595,25 @@ struct ConvertPixelsSOAtoAOS<R32_FLOAT, R24_UNORM_X8_TYPELESS>
 
         // Store data into destination but don't overwrite the X8 bits
         // Each 4-pixel row is 16-bytes
-        __m128i *pZRow01 = (__m128i*)aosTile;
-        __m128i vQuad00 = _mm_load_si128(pZRow01);
-        __m128i vQuad01 = _mm_load_si128(pZRow01 + 1);
+        simd4scalari *pZRow01 = (simd4scalari*)aosTile;
+        simd4scalari vQuad00 = SIMD128::load_si(pZRow01);
+        simd4scalari vQuad01 = SIMD128::load_si(pZRow01 + 1);
 
-        __m128i vRow00 = _mm_unpacklo_epi64(vQuad00, vQuad01);
-        __m128i vRow10 = _mm_unpackhi_epi64(vQuad00, vQuad01);
+        simd4scalari vRow00 = SIMD128::unpacklo_epi64(vQuad00, vQuad01);
+        simd4scalari vRow10 = SIMD128::unpackhi_epi64(vQuad00, vQuad01);
 
-        __m128i vDst0 = _mm_loadu_si128((const __m128i*)ppDsts[0]);
-        __m128i vDst1 = _mm_loadu_si128((const __m128i*)ppDsts[1]);
+        simd4scalari vDst0 = SIMD128::loadu_si((const simd4scalari*)ppDsts[0]);
+        simd4scalari vDst1 = SIMD128::loadu_si((const simd4scalari*)ppDsts[1]);
 
-        __m128i vMask = _mm_set1_epi32(0xFFFFFF);
+        simd4scalari vMask = _mm_set1_epi32(0xFFFFFF);
 
-        vDst0 = _mm_andnot_si128(vMask, vDst0);
-        vDst0 = _mm_or_si128(vDst0, _mm_and_si128(vRow00, vMask));
-        vDst1 = _mm_andnot_si128(vMask, vDst1);
-        vDst1 = _mm_or_si128(vDst1, _mm_and_si128(vRow10, vMask));
+        vDst0 = SIMD128::andnot_si(vMask, vDst0);
+        vDst0 = SIMD128::or_si(vDst0, SIMD128::and_si(vRow00, vMask));
+        vDst1 = SIMD128::andnot_si(vMask, vDst1);
+        vDst1 = SIMD128::or_si(vDst1, SIMD128::and_si(vRow10, vMask));
 
-        _mm_storeu_si128((__m128i*)ppDsts[0], vDst0);
-        _mm_storeu_si128((__m128i*)ppDsts[1], vDst1);
+        SIMD128::storeu_si((simd4scalari*)ppDsts[0], vDst0);
+        SIMD128::storeu_si((simd4scalari*)ppDsts[1], vDst1);
 #endif
     }
 };
@@ -683,8 +685,8 @@ INLINE static void FlatConvert(const uint8_t* pSrc, uint8_t* pDst0, uint8_t* pDs
     // store 8x2 memory order:
     //  row0: [ pDst0, pDst2 ] = { 0 1 4 5 }, { 8 9 C D }
     //  row1: [ pDst1, pDst3 ] = { 2 3 6 7 }, { A B E F }
-    _simd_storeu2_si(reinterpret_cast<__m128i *>(pDst1), reinterpret_cast<__m128i *>(pDst0), _simd16_extract_si(final, 0));
-    _simd_storeu2_si(reinterpret_cast<__m128i *>(pDst3), reinterpret_cast<__m128i *>(pDst2), _simd16_extract_si(final, 1));
+    _simd_storeu2_si(reinterpret_cast<simd4scalari *>(pDst1), reinterpret_cast<simd4scalari *>(pDst0), _simd16_extract_si(final, 0));
+    _simd_storeu2_si(reinterpret_cast<simd4scalari *>(pDst3), reinterpret_cast<simd4scalari *>(pDst2), _simd16_extract_si(final, 1));
 }
 
 #endif
@@ -727,24 +729,24 @@ INLINE static void FlatConvert(const uint8_t* pSrc, uint8_t* pDst, uint8_t* pDst
     vComp3 = _simd_mul_ps(vComp3, _simd_set1_ps(FormatTraits<DstFormat>::fromFloat(3)));
 
     // moving to 8 wide integer vector types
-    __m256i src0 = _simd_cvtps_epi32(vComp0); // padded byte rrrrrrrr
-    __m256i src1 = _simd_cvtps_epi32(vComp1); // padded byte gggggggg 
-    __m256i src2 = _simd_cvtps_epi32(vComp2); // padded byte bbbbbbbb 
-    __m256i src3 = _simd_cvtps_epi32(vComp3); // padded byte aaaaaaaa
+    simdscalari src0 = _simd_cvtps_epi32(vComp0); // padded byte rrrrrrrr
+    simdscalari src1 = _simd_cvtps_epi32(vComp1); // padded byte gggggggg 
+    simdscalari src2 = _simd_cvtps_epi32(vComp2); // padded byte bbbbbbbb 
+    simdscalari src3 = _simd_cvtps_epi32(vComp3); // padded byte aaaaaaaa
 
-#if KNOB_ARCH == KNOB_ARCH_AVX
+#if KNOB_ARCH <= KNOB_ARCH_AVX
 
     // splitting into two sets of 4 wide integer vector types
     // because AVX doesn't have instructions to support this operation at 8 wide
-    __m128i srcLo0 = _mm256_castsi256_si128(src0); // 000r000r000r000r
-    __m128i srcLo1 = _mm256_castsi256_si128(src1); // 000g000g000g000g
-    __m128i srcLo2 = _mm256_castsi256_si128(src2); // 000b000b000b000b
-    __m128i srcLo3 = _mm256_castsi256_si128(src3); // 000a000a000a000a
+    simd4scalari srcLo0 = _mm256_castsi256_si128(src0); // 000r000r000r000r
+    simd4scalari srcLo1 = _mm256_castsi256_si128(src1); // 000g000g000g000g
+    simd4scalari srcLo2 = _mm256_castsi256_si128(src2); // 000b000b000b000b
+    simd4scalari srcLo3 = _mm256_castsi256_si128(src3); // 000a000a000a000a
 
-    __m128i srcHi0 = _mm256_extractf128_si256(src0, 1); // 000r000r000r000r
-    __m128i srcHi1 = _mm256_extractf128_si256(src1, 1); // 000g000g000g000g
-    __m128i srcHi2 = _mm256_extractf128_si256(src2, 1); // 000b000b000b000b
-    __m128i srcHi3 = _mm256_extractf128_si256(src3, 1); // 000a000a000a000a
+    simd4scalari srcHi0 = _mm256_extractf128_si256(src0, 1); // 000r000r000r000r
+    simd4scalari srcHi1 = _mm256_extractf128_si256(src1, 1); // 000g000g000g000g
+    simd4scalari srcHi2 = _mm256_extractf128_si256(src2, 1); // 000b000b000b000b
+    simd4scalari srcHi3 = _mm256_extractf128_si256(src3, 1); // 000a000a000a000a
 
     srcLo1 = _mm_slli_si128(srcLo1, 1); // 00g000g000g000g0
     srcHi1 = _mm_slli_si128(srcHi1, 1); // 00g000g000g000g0
@@ -753,23 +755,23 @@ INLINE static void FlatConvert(const uint8_t* pSrc, uint8_t* pDst, uint8_t* pDst
     srcLo3 = _mm_slli_si128(srcLo3, 3); // a000a000a000a000
     srcHi3 = _mm_slli_si128(srcHi3, 3); // a000a000a000a000
 
-    srcLo0 = _mm_or_si128(srcLo0, srcLo1); // 00gr00gr00gr00gr
-    srcLo2 = _mm_or_si128(srcLo2, srcLo3); // ab00ab00ab00ab00
+    srcLo0 = SIMD128::or_si(srcLo0, srcLo1); // 00gr00gr00gr00gr
+    srcLo2 = SIMD128::or_si(srcLo2, srcLo3); // ab00ab00ab00ab00
 
-    srcHi0 = _mm_or_si128(srcHi0, srcHi1); // 00gr00gr00gr00gr
-    srcHi2 = _mm_or_si128(srcHi2, srcHi3); // ab00ab00ab00ab00
+    srcHi0 = SIMD128::or_si(srcHi0, srcHi1); // 00gr00gr00gr00gr
+    srcHi2 = SIMD128::or_si(srcHi2, srcHi3); // ab00ab00ab00ab00
 
-    srcLo0 = _mm_or_si128(srcLo0, srcLo2); // abgrabgrabgrabgr
-    srcHi0 = _mm_or_si128(srcHi0, srcHi2); // abgrabgrabgrabgr
+    srcLo0 = SIMD128::or_si(srcLo0, srcLo2); // abgrabgrabgrabgr
+    srcHi0 = SIMD128::or_si(srcHi0, srcHi2); // abgrabgrabgrabgr
 
     // unpack into rows that get the tiling order correct
-    __m128i vRow00 = _mm_unpacklo_epi64(srcLo0, srcHi0);  // abgrabgrabgrabgrabgrabgrabgrabgr
-    __m128i vRow10 = _mm_unpackhi_epi64(srcLo0, srcHi0);
+    simd4scalari vRow00 = SIMD128::unpacklo_epi64(srcLo0, srcHi0);  // abgrabgrabgrabgrabgrabgrabgrabgr
+    simd4scalari vRow10 = SIMD128::unpackhi_epi64(srcLo0, srcHi0);
 
-    __m256i final = _mm256_castsi128_si256(vRow00);
+    simdscalari final = _mm256_castsi128_si256(vRow00);
     final = _mm256_insertf128_si256(final, vRow10, 1);
 
-#elif KNOB_ARCH >= KNOB_ARCH_AVX2
+#else
 
     // logic is as above, only wider
     src1 = _mm256_slli_si256(src1, 1);
@@ -779,20 +781,13 @@ INLINE static void FlatConvert(const uint8_t* pSrc, uint8_t* pDst, uint8_t* pDst
     src0 = _mm256_or_si256(src0, src1);
     src2 = _mm256_or_si256(src2, src3);
 
-    __m256i final = _mm256_or_si256(src0, src2);
-#if 0
-
-    __m256i perm = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
-
-    final = _mm256_permutevar8x32_epi32(final, perm);
-#else
+    simdscalari final = _mm256_or_si256(src0, src2);
 
     // adjust the data to get the tiling order correct 0 1 2 3 -> 0 2 1 3
     final = _mm256_permute4x64_epi64(final, 0xD8);
 #endif
-#endif
 
-    _simd_storeu2_si((__m128i*)pDst1, (__m128i*)pDst, final);
+    _simd_storeu2_si((simd4scalari*)pDst1, (simd4scalari*)pDst, final);
 }
 
 #if USE_8x2_TILE_BACKEND
@@ -855,8 +850,8 @@ INLINE static void FlatConvertNoAlpha(const uint8_t* pSrc, uint8_t* pDst0, uint8
     // store 8x2 memory order:
     //  row0: [ pDst0, pDst2 ] = { 0 1 4 5 }, { 8 9 C D }
     //  row1: [ pDst1, pDst3 ] = { 2 3 6 7 }, { A B E F }
-    _simd_storeu2_si(reinterpret_cast<__m128i *>(pDst1), reinterpret_cast<__m128i *>(pDst0), _simd16_extract_si(final, 0));
-    _simd_storeu2_si(reinterpret_cast<__m128i *>(pDst3), reinterpret_cast<__m128i *>(pDst2), _simd16_extract_si(final, 1));
+    _simd_storeu2_si(reinterpret_cast<simd4scalari *>(pDst1), reinterpret_cast<simd4scalari *>(pDst0), _simd16_extract_si(final, 0));
+    _simd_storeu2_si(reinterpret_cast<simd4scalari *>(pDst3), reinterpret_cast<simd4scalari *>(pDst2), _simd16_extract_si(final, 1));
 }
 
 #endif
@@ -893,42 +888,42 @@ INLINE static void FlatConvertNoAlpha(const uint8_t* pSrc, uint8_t* pDst, uint8_
     vComp2 = _simd_mul_ps(vComp2, _simd_set1_ps(FormatTraits<DstFormat>::fromFloat(2)));
 
     // moving to 8 wide integer vector types
-    __m256i src0 = _simd_cvtps_epi32(vComp0); // padded byte rrrrrrrr
-    __m256i src1 = _simd_cvtps_epi32(vComp1); // padded byte gggggggg 
-    __m256i src2 = _simd_cvtps_epi32(vComp2); // padded byte bbbbbbbb 
+    simdscalari src0 = _simd_cvtps_epi32(vComp0); // padded byte rrrrrrrr
+    simdscalari src1 = _simd_cvtps_epi32(vComp1); // padded byte gggggggg 
+    simdscalari src2 = _simd_cvtps_epi32(vComp2); // padded byte bbbbbbbb 
 
-#if KNOB_ARCH == KNOB_ARCH_AVX
+#if KNOB_ARCH <= KNOB_ARCH_AVX
 
     // splitting into two sets of 4 wide integer vector types
     // because AVX doesn't have instructions to support this operation at 8 wide
-    __m128i srcLo0 = _mm256_castsi256_si128(src0); // 000r000r000r000r
-    __m128i srcLo1 = _mm256_castsi256_si128(src1); // 000g000g000g000g
-    __m128i srcLo2 = _mm256_castsi256_si128(src2); // 000b000b000b000b
+    simd4scalari srcLo0 = _mm256_castsi256_si128(src0); // 000r000r000r000r
+    simd4scalari srcLo1 = _mm256_castsi256_si128(src1); // 000g000g000g000g
+    simd4scalari srcLo2 = _mm256_castsi256_si128(src2); // 000b000b000b000b
 
-    __m128i srcHi0 = _mm256_extractf128_si256(src0, 1); // 000r000r000r000r
-    __m128i srcHi1 = _mm256_extractf128_si256(src1, 1); // 000g000g000g000g
-    __m128i srcHi2 = _mm256_extractf128_si256(src2, 1); // 000b000b000b000b
+    simd4scalari srcHi0 = _mm256_extractf128_si256(src0, 1); // 000r000r000r000r
+    simd4scalari srcHi1 = _mm256_extractf128_si256(src1, 1); // 000g000g000g000g
+    simd4scalari srcHi2 = _mm256_extractf128_si256(src2, 1); // 000b000b000b000b
 
     srcLo1 = _mm_slli_si128(srcLo1, 1); // 00g000g000g000g0
     srcHi1 = _mm_slli_si128(srcHi1, 1); // 00g000g000g000g0
     srcLo2 = _mm_slli_si128(srcLo2, 2); // 0b000b000b000b00
     srcHi2 = _mm_slli_si128(srcHi2, 2); // 0b000b000b000b00
 
-    srcLo0 = _mm_or_si128(srcLo0, srcLo1); // 00gr00gr00gr00gr
+    srcLo0 = SIMD128::or_si(srcLo0, srcLo1); // 00gr00gr00gr00gr
 
-    srcHi0 = _mm_or_si128(srcHi0, srcHi1); // 00gr00gr00gr00gr
+    srcHi0 = SIMD128::or_si(srcHi0, srcHi1); // 00gr00gr00gr00gr
 
-    srcLo0 = _mm_or_si128(srcLo0, srcLo2); // 0bgr0bgr0bgr0bgr
-    srcHi0 = _mm_or_si128(srcHi0, srcHi2); // 0bgr0bgr0bgr0bgr
+    srcLo0 = SIMD128::or_si(srcLo0, srcLo2); // 0bgr0bgr0bgr0bgr
+    srcHi0 = SIMD128::or_si(srcHi0, srcHi2); // 0bgr0bgr0bgr0bgr
 
     // unpack into rows that get the tiling order correct
-    __m128i vRow00 = _mm_unpacklo_epi64(srcLo0, srcHi0);  // 0bgr0bgr0bgr0bgr0bgr0bgr0bgr0bgr
-    __m128i vRow10 = _mm_unpackhi_epi64(srcLo0, srcHi0);
+    simd4scalari vRow00 = SIMD128::unpacklo_epi64(srcLo0, srcHi0);  // 0bgr0bgr0bgr0bgr0bgr0bgr0bgr0bgr
+    simd4scalari vRow10 = SIMD128::unpackhi_epi64(srcLo0, srcHi0);
 
-    __m256i final = _mm256_castsi128_si256(vRow00);
+    simdscalari final = _mm256_castsi128_si256(vRow00);
     final = _mm256_insertf128_si256(final, vRow10, 1);
 
-#elif KNOB_ARCH >= KNOB_ARCH_AVX2
+#else
 
                                               // logic is as above, only wider
     src1 = _mm256_slli_si256(src1, 1);
@@ -936,14 +931,14 @@ INLINE static void FlatConvertNoAlpha(const uint8_t* pSrc, uint8_t* pDst, uint8_
 
     src0 = _mm256_or_si256(src0, src1);
 
-    __m256i final = _mm256_or_si256(src0, src2);
+    simdscalari final = _mm256_or_si256(src0, src2);
 
     // adjust the data to get the tiling order correct 0 1 2 3 -> 0 2 1 3
     final = _mm256_permute4x64_epi64(final, 0xD8);
 
 #endif
 
-    _simd_storeu2_si((__m128i*)pDst1, (__m128i*)pDst, final);
+    _simd_storeu2_si((simd4scalari*)pDst1, (simd4scalari*)pDst, final);
 }
 
 template<>
@@ -1140,6 +1135,64 @@ struct StoreRasterTile
             }
         }
     }
+
+    //////////////////////////////////////////////////////////////////////////
+    /// @brief Resolves an 8x8 raster tile to the resolve destination surface.
+    /// @param pSrc - Pointer to raster tile.
+    /// @param pDstSurface - Destination surface state
+    /// @param x, y - Coordinates to raster tile.
+    /// @param sampleOffset - Offset between adjacent multisamples
+    INLINE static void Resolve(
+        uint8_t *pSrc,
+        SWR_SURFACE_STATE* pDstSurface,
+        uint32_t x, uint32_t y, uint32_t sampleOffset, uint32_t renderTargetArrayIndex) // (x, y) pixel coordinate to start of raster tile.
+    {
+        uint32_t lodWidth = std::max(pDstSurface->width >> pDstSurface->lod, 1U);
+        uint32_t lodHeight = std::max(pDstSurface->height >> pDstSurface->lod, 1U);
+
+        float oneOverNumSamples = 1.0f / pDstSurface->numSamples;
+
+        // For each raster tile pixel (rx, ry)
+        for (uint32_t ry = 0; ry < KNOB_TILE_Y_DIM; ++ry)
+        {
+            for (uint32_t rx = 0; rx < KNOB_TILE_X_DIM; ++rx)
+            {
+                // Perform bounds checking.
+                if (((x + rx) < lodWidth) &&
+                        ((y + ry) < lodHeight))
+                {
+                    // Sum across samples
+                    float resolveColor[4] = {0};
+                    for (uint32_t sampleNum = 0; sampleNum < pDstSurface->numSamples; sampleNum++)
+                    {
+                        float sampleColor[4] = {0};
+                        uint8_t *pSampleSrc = pSrc + sampleOffset * sampleNum;
+                        GetSwizzledSrcColor(pSampleSrc, rx, ry, sampleColor);
+                        resolveColor[0] += sampleColor[0];
+                        resolveColor[1] += sampleColor[1];
+                        resolveColor[2] += sampleColor[2];
+                        resolveColor[3] += sampleColor[3];
+                    }
+
+                    // Divide by numSamples to average
+                    resolveColor[0] *= oneOverNumSamples;
+                    resolveColor[1] *= oneOverNumSamples;
+                    resolveColor[2] *= oneOverNumSamples;
+                    resolveColor[3] *= oneOverNumSamples;
+
+                    // Use the resolve surface state
+                    SWR_SURFACE_STATE* pResolveSurface = (SWR_SURFACE_STATE*)pDstSurface->xpAuxBaseAddress;
+                    uint8_t *pDst = (uint8_t*)ComputeSurfaceAddress<false, false>((x + rx), (y + ry),
+                        pResolveSurface->arrayIndex + renderTargetArrayIndex, pResolveSurface->arrayIndex + renderTargetArrayIndex,
+                        0, pResolveSurface->lod, pResolveSurface);
+                    {
+                        ConvertPixelFromFloat<DstFormat>(pDst, resolveColor);
+                    }
+                }
+            }
+        }
+    }
+
 };
 
 template<typename TTraits, SWR_FORMAT SrcFormat, SWR_FORMAT DstFormat>
@@ -1472,7 +1525,7 @@ struct OptStoreRasterTile< TilingTraits<SWR_TILE_NONE, 64>, SrcFormat, DstFormat
 
             pSrc += KNOB_SIMD16_WIDTH * SRC_BYTES_PER_PIXEL;
 
-            for (uint32_t i = 0; i < sizeof(ppDsts) / sizeof(ppDsts[0]); i += 1)
+            for (uint32_t i = 0; i < ARRAY_SIZE(ppDsts); i += 1)
             {
                 ppDsts[i] += dy;
             }
@@ -1590,7 +1643,7 @@ struct OptStoreRasterTile< TilingTraits<SWR_TILE_NONE, 128>, SrcFormat, DstForma
 
             pSrc += KNOB_SIMD16_WIDTH * SRC_BYTES_PER_PIXEL;
 
-            for (uint32_t i = 0; i < sizeof(ppDsts) / sizeof(ppDsts[0]); i += 1)
+            for (uint32_t i = 0; i < ARRAY_SIZE(ppDsts); i += 1)
             {
                 ppDsts[i] += dy;
             }
@@ -2073,7 +2126,7 @@ struct OptStoreRasterTile< TilingTraits<SWR_TILE_MODE_YMAJOR, 64>, SrcFormat, Ds
 
             pSrc += KNOB_SIMD16_WIDTH * SRC_BYTES_PER_PIXEL;
 
-            for (uint32_t i = 0; i < sizeof(ppDsts) / sizeof(ppDsts[0]); i += 1)
+            for (uint32_t i = 0; i < ARRAY_SIZE(ppDsts); i += 1)
             {
                 ppDsts[i] += dy;
             }
@@ -2202,7 +2255,7 @@ struct OptStoreRasterTile< TilingTraits<SWR_TILE_MODE_YMAJOR, 128>, SrcFormat, D
 
             pSrc += KNOB_SIMD16_WIDTH * SRC_BYTES_PER_PIXEL;
 
-            for (uint32_t i = 0; i < sizeof(ppDsts) / sizeof(ppDsts[0]); i += 1)
+            for (uint32_t i = 0; i < ARRAY_SIZE(ppDsts); i += 1)
             {
                 ppDsts[i] += dy;
             }
@@ -2323,6 +2376,9 @@ struct StoreMacroTile
             pfnStore[sampleNum] = (bForceGeneric || KNOB_USE_GENERIC_STORETILE) ? StoreRasterTile<TTraits, SrcFormat, DstFormat>::Store : OptStoreRasterTile<TTraits, SrcFormat, DstFormat>::Store;
         }
 
+        // Save original for pSrcHotTile resolve.
+        uint8_t *pResolveSrcHotTile = pSrcHotTile;
+
         // Store each raster tile from the hot tile to the destination surface.
         for(uint32_t row = 0; row < KNOB_MACROTILE_Y_DIM; row += KNOB_TILE_Y_DIM)
         {
@@ -2332,6 +2388,20 @@ struct StoreMacroTile
                 {
                     pfnStore[sampleNum](pSrcHotTile, pDstSurface, (x + col), (y + row), sampleNum, renderTargetArrayIndex);
                     pSrcHotTile += KNOB_TILE_X_DIM * KNOB_TILE_Y_DIM * (FormatTraits<SrcFormat>::bpp / 8);
+                }
+            }
+        }
+
+        if (pDstSurface->xpAuxBaseAddress)
+        {
+            uint32_t sampleOffset = KNOB_TILE_X_DIM * KNOB_TILE_Y_DIM * (FormatTraits<SrcFormat>::bpp / 8);
+            // Store each raster tile from the hot tile to the destination surface.
+            for(uint32_t row = 0; row < KNOB_MACROTILE_Y_DIM; row += KNOB_TILE_Y_DIM)
+            {
+                for(uint32_t col = 0; col < KNOB_MACROTILE_X_DIM; col += KNOB_TILE_X_DIM)
+                {
+                    StoreRasterTile<TTraits, SrcFormat, DstFormat>::Resolve(pResolveSrcHotTile, pDstSurface, (x + col), (y + row), sampleOffset, renderTargetArrayIndex);
+                    pResolveSrcHotTile += sampleOffset * pDstSurface->numSamples;
                 }
             }
         }

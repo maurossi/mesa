@@ -33,7 +33,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 **************************************************************************/
 
 #include "radeon_common.h"
-#include "xmlpool.h"		/* for symbolic values of enum-type options */
+#include "util/xmlpool.h"		/* for symbolic values of enum-type options */
 #include "utils.h"
 #include "drivers/common/meta.h"
 #include "main/context.h"
@@ -70,7 +70,7 @@ static const char* get_chip_family_name(int chip_family)
 	}
 }
 
-const char const *radeonVendorString = "Mesa Project";
+const char *const radeonVendorString = "Mesa Project";
 
 /* Return complete renderer string.
  */
@@ -182,7 +182,7 @@ GLboolean radeonInitContext(radeonContextPtr radeon,
         radeon->texture_depth = driQueryOptioni (&radeon->optionCache,
 					        "texture_depth");
         if (radeon->texture_depth == DRI_CONF_TEXTURE_DEPTH_FB)
-                radeon->texture_depth = ( glVisual->rgbBits > 16 ) ?
+                radeon->texture_depth = (glVisual == NULL || glVisual->rgbBits > 16) ?
 	        DRI_CONF_TEXTURE_DEPTH_32 : DRI_CONF_TEXTURE_DEPTH_16;
 
 	radeon->texture_row_align = 32;

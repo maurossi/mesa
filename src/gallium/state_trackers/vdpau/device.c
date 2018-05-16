@@ -63,9 +63,7 @@ vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device,
 
    pipe_reference_init(&dev->reference, 1);
 
-#if defined(HAVE_DRI3)
    dev->vscreen = vl_dri3_screen_create(display, screen);
-#endif
    if (!dev->vscreen)
       dev->vscreen = vl_dri2_screen_create(display, screen);
    if (!dev->vscreen) {
@@ -74,7 +72,7 @@ vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device,
    }
 
    pscreen = dev->vscreen->pscreen;
-   dev->context = pscreen->context_create(pscreen, dev->vscreen, 0);
+   dev->context = pscreen->context_create(pscreen, NULL, 0);
    if (!dev->context) {
       ret = VDP_STATUS_RESOURCES;
       goto no_context;
@@ -133,7 +131,7 @@ vdp_imp_device_create_x11(Display *display, int screen, VdpDevice *device,
        goto no_compositor;
    }
 
-   pipe_mutex_init(dev->mutex);
+   (void) mtx_init(&dev->mutex, mtx_plain);
 
    *get_proc_address = &vlVdpGetProcAddress;
 
@@ -233,7 +231,7 @@ vlVdpDeviceDestroy(VdpDevice device)
 void
 vlVdpDeviceFree(vlVdpDevice *dev)
 {
-   pipe_mutex_destroy(dev->mutex);
+   mtx_destroy(&dev->mutex);
    vl_compositor_cleanup(&dev->compositor);
    pipe_sampler_view_reference(&dev->dummy_sv, NULL);
    dev->context->destroy(dev->context);

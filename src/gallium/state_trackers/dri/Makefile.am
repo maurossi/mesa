@@ -28,7 +28,7 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/src/mapi \
 	-I$(top_srcdir)/src/mesa \
-	-I$(top_builddir)/src/mesa/drivers/dri/common \
+	-I$(top_builddir)/src/util \
 	-I$(top_srcdir)/src/mesa/drivers/dri/common \
 	$(GALLIUM_CFLAGS) \
 	$(LIBDRM_CFLAGS) \
@@ -51,4 +51,4 @@ if HAVE_DRI2
 libdri_la_SOURCES += $(dri2_SOURCES)
 endif
 
-EXTRA_DIST = SConscript
+EXTRA_DIST = SConscript meson.build

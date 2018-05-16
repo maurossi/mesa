@@ -311,8 +311,8 @@ create_xmesa_buffer(XMesaDrawable d, BufferType type,
    b->frontxrb->Parent = b;
    b->frontxrb->drawable = d;
    b->frontxrb->pixmap = (XMesaPixmap) d;
-   _mesa_add_renderbuffer(&b->mesa_buffer, BUFFER_FRONT_LEFT,
-                          &b->frontxrb->Base.Base);
+   _mesa_attach_and_own_rb(&b->mesa_buffer, BUFFER_FRONT_LEFT,
+                           &b->frontxrb->Base.Base);
 
    /*
     * Back renderbuffer
@@ -328,8 +328,8 @@ create_xmesa_buffer(XMesaDrawable d, BufferType type,
       /* determine back buffer implementation */
       b->db_mode = vis->ximage_flag ? BACK_XIMAGE : BACK_PIXMAP;
       
-      _mesa_add_renderbuffer(&b->mesa_buffer, BUFFER_BACK_LEFT,
-                             &b->backxrb->Base.Base);
+      _mesa_attach_and_own_rb(&b->mesa_buffer, BUFFER_BACK_LEFT,
+                              &b->backxrb->Base.Base);
    }
 
    /*
@@ -957,6 +957,7 @@ XMesaContext XMesaCreateContext( XMesaVisual v, XMesaContext share_list )
 
    _mesa_meta_init(mesaCtx);
 
+   _mesa_override_extensions(mesaCtx);
    _mesa_compute_version(mesaCtx);
 
     /* Exec table initialization requires the version to be computed */
@@ -1304,11 +1305,11 @@ XMesaBuffer XMesaGetCurrentReadBuffer( void )
 }
 
 
-
-GLboolean XMesaSetFXmode( GLint mode )
+Display *XMesaGetCurrentDisplay(void)
 {
-   (void) mode;
-   return GL_FALSE;
+   GET_CURRENT_CONTEXT(ctx);
+   XMesaContext xmctx = XMESA_CONTEXT(ctx);
+   return xmctx ? xmctx->display : NULL;
 }
 
 

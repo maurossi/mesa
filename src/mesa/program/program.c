@@ -39,7 +39,9 @@
 #include "prog_cache.h"
 #include "prog_parameter.h"
 #include "prog_instruction.h"
+#include "util/bitscan.h"
 #include "util/ralloc.h"
+#include "util/u_atomic.h"
 
 
 /**
@@ -185,7 +187,6 @@ _mesa_init_gl_program(struct gl_program *prog, GLenum target, GLuint id,
       return NULL;
 
    memset(prog, 0, sizeof(*prog));
-   mtx_init(&prog->Mutex, mtx_plain);
    prog->Id = id;
    prog->Target = target;
    prog->RefCount = 1;
@@ -271,7 +272,18 @@ _mesa_delete_program(struct gl_context *ctx, struct gl_program *prog)
       ralloc_free(prog->nir);
    }
 
-   mtx_destroy(&prog->Mutex);
+   if (prog->sh.BindlessSamplers) {
+      ralloc_free(prog->sh.BindlessSamplers);
+   }
+
+   if (prog->sh.BindlessImages) {
+      ralloc_free(prog->sh.BindlessImages);
+   }
+
+   if (prog->driver_cache_blob) {
+      ralloc_free(prog->driver_cache_blob);
+   }
+
    ralloc_free(prog);
 }
 
@@ -316,17 +328,11 @@ _mesa_reference_program_(struct gl_context *ctx,
 #endif
 
    if (*ptr) {
-      GLboolean deleteFlag;
       struct gl_program *oldProg = *ptr;
 
-      mtx_lock(&oldProg->Mutex);
       assert(oldProg->RefCount > 0);
-      oldProg->RefCount--;
 
-      deleteFlag = (oldProg->RefCount == 0);
-      mtx_unlock(&oldProg->Mutex);
-
-      if (deleteFlag) {
+      if (p_atomic_dec_zero(&oldProg->RefCount)) {
          assert(ctx);
          _mesa_reference_shader_program_data(ctx, &oldProg->sh.data, NULL);
          ctx->Driver.DeleteProgram(ctx, oldProg);
@@ -337,9 +343,7 @@ _mesa_reference_program_(struct gl_context *ctx,
 
    assert(!*ptr);
    if (prog) {
-      mtx_lock(&prog->Mutex);
-      prog->RefCount++;
-      mtx_unlock(&prog->Mutex);
+      p_atomic_inc(&prog->RefCount);
    }
 
    *ptr = prog;
@@ -543,4 +547,20 @@ _mesa_get_min_invocations_per_fragment(struct gl_context *ctx,
          return 1;
    }
    return 1;
+}
+
+
+GLbitfield
+gl_external_samplers(const struct gl_program *prog)
+{
+   GLbitfield external_samplers = 0;
+   GLbitfield mask = prog->SamplersUsed;
+
+   while (mask) {
+      int idx = u_bit_scan(&mask);
+      if (prog->sh.SamplerTargets[idx] == TEXTURE_EXTERNAL_INDEX)
+         external_samplers |= (1 << idx);
+   }
+
+   return external_samplers;
 }

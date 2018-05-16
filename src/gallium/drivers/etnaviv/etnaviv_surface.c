@@ -64,12 +64,9 @@ etna_create_surface(struct pipe_context *pctx, struct pipe_resource *prsc,
     * indicate the tile status module bypasses the memory
     * offset and MMU. */
 
-   /* XXX for now, don't do TS for render textures as this path
-    * is not stable. */
    if (VIV_FEATURE(ctx->screen, chipFeatures, FAST_CLEAR) &&
        VIV_FEATURE(ctx->screen, chipMinorFeatures0, MC20) &&
-       !DBG_ENABLED(ETNA_DBG_NO_TS) && !rsc->ts_bo &&
-       !(rsc->base.bind & (PIPE_BIND_SAMPLER_VIEW)) &&
+       !rsc->ts_bo &&
        (rsc->levels[level].padded_width & ETNA_RS_WIDTH_MASK) == 0 &&
        (rsc->levels[level].padded_height & ETNA_RS_HEIGHT_MASK) == 0) {
       etna_screen_resource_alloc_ts(pctx->screen, rsc);
@@ -94,12 +91,18 @@ etna_create_surface(struct pipe_context *pctx, struct pipe_resource *prsc,
    struct etna_resource_level *lev = &rsc->levels[level];
 
    /* Setup template relocations for this surface */
-   surf->reloc[0].bo = rsc->bo;
-   surf->reloc[0].offset = surf->surf.offset;
-   surf->reloc[0].flags = 0;
-   surf->reloc[1].bo = rsc->bo;
-   surf->reloc[1].offset = surf->surf.offset + lev->stride * lev->padded_height / 2;
-   surf->reloc[1].flags = 0;
+   for (unsigned pipe = 0; pipe < ctx->specs.pixel_pipes; ++pipe) {
+      surf->reloc[pipe].bo = rsc->bo;
+      surf->reloc[pipe].offset = surf->surf.offset;
+      surf->reloc[pipe].flags = 0;
+   }
+
+   /* In single buffer mode, both pixel pipes must point to the same address,
+    * for multi-tiled surfaces on the other hand the second pipe is expected to
+    * point halfway the image vertically.
+    */
+   if (rsc->layout & ETNA_LAYOUT_BIT_MULTI)
+      surf->reloc[1].offset = surf->surf.offset + lev->stride * lev->padded_height / 2;
 
    if (surf->surf.ts_size) {
       unsigned int layer_offset = layer * surf->surf.ts_layer_stride;
@@ -107,31 +110,35 @@ etna_create_surface(struct pipe_context *pctx, struct pipe_resource *prsc,
 
       surf->surf.ts_offset += layer_offset;
       surf->surf.ts_size -= layer_offset;
+      surf->surf.ts_valid = false;
 
       surf->ts_reloc.bo = rsc->ts_bo;
       surf->ts_reloc.offset = surf->surf.ts_offset;
       surf->ts_reloc.flags = 0;
 
-      /* This (ab)uses the RS as a plain buffer memset().
-       * Currently uses a fixed row size of 64 bytes. Some benchmarking with
-       * different sizes may be in order. */
-      struct etna_bo *ts_bo = etna_resource(surf->base.texture)->ts_bo;
-      etna_compile_rs_state(ctx, &surf->clear_command, &(struct rs_state) {
-         .source_format = RS_FORMAT_A8R8G8B8,
-         .dest_format = RS_FORMAT_A8R8G8B8,
-         .dest = ts_bo,
-         .dest_offset = surf->surf.ts_offset,
-         .dest_stride = 0x40,
-         .dest_tiling = ETNA_LAYOUT_TILED,
-         .dither = {0xffffffff, 0xffffffff},
-         .width = 16,
-         .height = etna_align_up(surf->surf.ts_size / 0x40, 4),
-         .clear_value = {ctx->specs.ts_clear_value},
-         .clear_mode = VIVS_RS_CLEAR_CONTROL_MODE_ENABLED1,
-         .clear_bits = 0xffff
-      });
+      if (!ctx->specs.use_blt) {
+         /* This (ab)uses the RS as a plain buffer memset().
+          * Currently uses a fixed row size of 64 bytes. Some benchmarking with
+          * different sizes may be in order. */
+         struct etna_bo *ts_bo = etna_resource(surf->base.texture)->ts_bo;
+         etna_compile_rs_state(ctx, &surf->clear_command, &(struct rs_state) {
+            .source_format = RS_FORMAT_A8R8G8B8,
+            .dest_format = RS_FORMAT_A8R8G8B8,
+            .dest = ts_bo,
+            .dest_offset = surf->surf.ts_offset,
+            .dest_stride = 0x40,
+            .dest_tiling = ETNA_LAYOUT_TILED,
+            .dither = {0xffffffff, 0xffffffff},
+            .width = 16,
+            .height = etna_align_up(surf->surf.ts_size / 0x40, 4),
+            .clear_value = {ctx->specs.ts_clear_value},
+            .clear_mode = VIVS_RS_CLEAR_CONTROL_MODE_ENABLED1,
+            .clear_bits = 0xffff
+         });
+      }
    } else {
-      etna_rs_gen_clear_surface(ctx, surf, surf->level->clear_value);
+      if (!ctx->specs.use_blt)
+         etna_rs_gen_clear_surface(ctx, surf, surf->level->clear_value);
    }
 
    return &surf->base;

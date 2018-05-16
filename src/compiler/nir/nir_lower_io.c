@@ -49,7 +49,7 @@ nir_assign_var_locations(struct exec_list *var_list, unsigned *size,
 
    nir_foreach_variable(var, var_list) {
       /*
-       * UBO's have their own address spaces, so don't count them towards the
+       * UBOs have their own address spaces, so don't count them towards the
        * number of global uniforms
        */
       if ((var->data.mode == nir_var_uniform || var->data.mode == nir_var_shader_storage) &&
@@ -68,7 +68,7 @@ nir_assign_var_locations(struct exec_list *var_list, unsigned *size,
  * (such as geometry shader inputs).
  */
 bool
-nir_is_per_vertex_io(nir_variable *var, gl_shader_stage stage)
+nir_is_per_vertex_io(const nir_variable *var, gl_shader_stage stage)
 {
    if (var->data.patch || !glsl_type_is_array(var->type))
       return false;
@@ -167,7 +167,7 @@ lower_load(nir_intrinsic_instr *intrin, struct lower_io_state *state,
    nir_intrinsic_op op;
    switch (mode) {
    case nir_var_shader_in:
-      if (nir->stage == MESA_SHADER_FRAGMENT &&
+      if (nir->info.stage == MESA_SHADER_FRAGMENT &&
           nir->options->use_interpolated_input_intrinsics &&
           var->data.interpolation != INTERP_MODE_FLAT) {
          assert(vertex_index == NULL);
@@ -364,6 +364,7 @@ nir_lower_io_block(nir_block *block,
 {
    nir_builder *b = &state->builder;
    const nir_shader_compiler_options *options = b->shader->options;
+   bool progress = false;
 
    nir_foreach_instr_safe(instr, block) {
       if (instr->type != nir_instr_type_intrinsic)
@@ -411,7 +412,7 @@ nir_lower_io_block(nir_block *block,
 
       b->cursor = nir_before_instr(instr);
 
-      const bool per_vertex = nir_is_per_vertex_io(var, b->shader->stage);
+      const bool per_vertex = nir_is_per_vertex_io(var, b->shader->info.stage);
 
       nir_ssa_def *offset;
       nir_ssa_def *vertex_index = NULL;
@@ -474,18 +475,20 @@ nir_lower_io_block(nir_block *block,
 
       nir_instr_insert_before(&intrin->instr, &replacement->instr);
       nir_instr_remove(&intrin->instr);
+      progress = true;
    }
 
-   return true;
+   return progress;
 }
 
-static void
+static bool
 nir_lower_io_impl(nir_function_impl *impl,
                   nir_variable_mode modes,
                   int (*type_size)(const struct glsl_type *),
                   nir_lower_io_options options)
 {
    struct lower_io_state state;
+   bool progress = false;
 
    nir_builder_init(&state.builder, impl);
    state.modes = modes;
@@ -493,27 +496,33 @@ nir_lower_io_impl(nir_function_impl *impl,
    state.options = options;
 
    nir_foreach_block(block, impl) {
-      nir_lower_io_block(block, &state);
+      progress |= nir_lower_io_block(block, &state);
    }
 
    nir_metadata_preserve(impl, nir_metadata_block_index |
                                nir_metadata_dominance);
+   return progress;
 }
 
-void
+bool
 nir_lower_io(nir_shader *shader, nir_variable_mode modes,
              int (*type_size)(const struct glsl_type *),
              nir_lower_io_options options)
 {
+   bool progress = false;
+
    nir_foreach_function(function, shader) {
       if (function->impl) {
-         nir_lower_io_impl(function->impl, modes, type_size, options);
+         progress |= nir_lower_io_impl(function->impl, modes,
+                                       type_size, options);
       }
    }
+
+   return progress;
 }
 
 /**
- * Return the offset soruce for a load/store intrinsic.
+ * Return the offset source for a load/store intrinsic.
  */
 nir_src *
 nir_get_io_offset_src(nir_intrinsic_instr *instr)

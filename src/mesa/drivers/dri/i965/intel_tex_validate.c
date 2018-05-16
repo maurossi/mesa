@@ -111,7 +111,7 @@ intel_finalize_mipmap_tree(struct brw_context *brw, GLuint unit)
     *
     * FINISHME: Avoid doing this.
     */
-   assert(!tObj->Immutable || brw->gen < 6);
+   assert(!tObj->Immutable || brw->screen->devinfo.gen < 6);
 
    firstImage = intel_texture_image(tObj->Image[0][tObj->BaseLevel]);
 
@@ -136,8 +136,6 @@ intel_finalize_mipmap_tree(struct brw_context *brw, GLuint unit)
                  _mesa_get_format_name(firstImage->base.Base.TexFormat),
                  width, height, depth, validate_last_level + 1);
 
-      const uint32_t layout_flags = MIPTREE_LAYOUT_ACCELERATED_UPLOAD |
-                                    MIPTREE_LAYOUT_TILING_ANY;
       intelObj->mt = intel_miptree_create(brw,
                                           intelObj->base.Target,
 					  firstImage->base.Base.TexFormat,
@@ -146,8 +144,8 @@ intel_finalize_mipmap_tree(struct brw_context *brw, GLuint unit)
                                           width,
                                           height,
                                           depth,
-                                          0 /* num_samples */,
-                                          layout_flags);
+                                          1 /* num_samples */,
+                                          MIPTREE_CREATE_BUSY);
       if (!intelObj->mt)
          return;
    }
@@ -163,10 +161,8 @@ intel_finalize_mipmap_tree(struct brw_context *brw, GLuint unit)
  	 if (intelImage == NULL)
 		 break;
 
-         if (intelObj->mt != intelImage->mt) {
-            intel_miptree_copy_teximage(brw, intelImage, intelObj->mt,
-                                        false /* invalidate */);
-         }
+         if (intelObj->mt != intelImage->mt)
+            intel_miptree_copy_teximage(brw, intelImage, intelObj->mt);
 
          /* After we're done, we'd better agree that our layout is
           * appropriate, or we'll end up hitting this function again on the

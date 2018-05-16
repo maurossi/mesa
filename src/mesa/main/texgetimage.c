@@ -761,16 +761,15 @@ _mesa_GetTexSubImage_sw(struct gl_context *ctx,
 
 
 /**
- * This is the software fallback for Driver.GetCompressedTexSubImage().
- * All error checking will have been done before this routine is called.
+ * This function assumes that all error checking has been done.
  */
-void
-_mesa_GetCompressedTexSubImage_sw(struct gl_context *ctx,
-                                  struct gl_texture_image *texImage,
-                                  GLint xoffset, GLint yoffset,
-                                  GLint zoffset, GLsizei width,
-                                  GLint height, GLint depth,
-                                  GLvoid *img)
+static void
+get_compressed_texsubimage_sw(struct gl_context *ctx,
+                              struct gl_texture_image *texImage,
+                              GLint xoffset, GLint yoffset,
+                              GLint zoffset, GLsizei width,
+                              GLint height, GLint depth,
+                              GLvoid *img)
 {
    const GLuint dimensions =
       _mesa_get_texture_dimensions(texImage->TexObject->Target);
@@ -1430,7 +1429,7 @@ _mesa_GetTextureImage(GLuint texture, GLint level, GLenum format, GLenum type,
    }
 
    if (!legal_getteximage_target(ctx, texObj->Target, true)) {
-      _mesa_error(ctx, GL_INVALID_ENUM, "%s", caller);
+      _mesa_error(ctx, GL_INVALID_OPERATION, "%s", caller);
       return;
    }
 
@@ -1462,6 +1461,12 @@ _mesa_GetTextureSubImage(GLuint texture, GLint level,
       _mesa_lookup_texture_err(ctx, texture, caller);
 
    if (!texObj) {
+      return;
+   }
+
+   if (!legal_getteximage_target(ctx, texObj->Target, true)) {
+      _mesa_error(ctx, GL_INVALID_OPERATION,
+                  "%s(buffer/multisample texture)", caller);
       return;
    }
 
@@ -1655,9 +1660,9 @@ get_compressed_texture_image(struct gl_context *ctx,
       texImage = texObj->Image[firstFace + i][level];
       assert(texImage);
 
-      ctx->Driver.GetCompressedTexSubImage(ctx, texImage,
-                                           xoffset, yoffset, zoffset,
-                                           width, height, depth, pixels);
+      get_compressed_texsubimage_sw(ctx, texImage,
+                                    xoffset, yoffset, zoffset,
+                                    width, height, depth, pixels);
 
       /* next cube face */
       pixels = (GLubyte *) pixels + imageStride;
@@ -1767,7 +1772,7 @@ _mesa_GetCompressedTextureSubImage(GLuint texture, GLint level,
 {
    GET_CURRENT_CONTEXT(ctx);
    static const char *caller = "glGetCompressedTextureImage";
-   struct gl_texture_object *texObj;
+   struct gl_texture_object *texObj = NULL;
 
    texObj = _mesa_lookup_texture_err(ctx, texture, caller);
    if (!texObj) {

@@ -171,8 +171,7 @@ static void nine_ff_prune_ps(struct NineDevice9 *);
 static void nine_ureg_tgsi_dump(struct ureg_program *ureg, boolean override)
 {
     if (debug_get_bool_option("NINE_FF_DUMP", FALSE) || override) {
-        unsigned count;
-        const struct tgsi_token *toks = ureg_get_tokens(ureg, &count);
+        const struct tgsi_token *toks = ureg_get_tokens(ureg, NULL);
         tgsi_dump(toks, 0);
         ureg_free_tokens(toks);
     }
@@ -484,7 +483,7 @@ nine_ff_build_vs(struct NineDevice9 *device, struct vs_build_ctx *vs)
 
         for (i = 0; i < key->vertexblend; ++i) {
             for (c = 0; c < 4; ++c) {
-                cWM[c] = ureg_src_register(TGSI_FILE_CONSTANT, (160 + i * 4) * !key->vertexblend_indexed + c);
+                cWM[c] = ureg_src_dimension(ureg_src_register(TGSI_FILE_CONSTANT, (160 + i * 4) * !key->vertexblend_indexed + c), 0);
                 if (key->vertexblend_indexed)
                     cWM[c] = ureg_src_indirect(cWM[c], ureg_scalar(ureg_src(AR), i));
             }
@@ -810,6 +809,10 @@ nine_ff_build_vs(struct NineDevice9 *device, struct vs_build_ctx *vs)
         struct ureg_src cLLast = _WWWW(LIGHT_CONST(7));
 
         const unsigned loop_label = l++;
+
+        /* Declare all light constants to allow indirect adressing */
+        for (i = 32; i < 96; i++)
+            ureg_DECL_constant(ureg, i);
 
         ureg_MOV(ureg, rCtr, ureg_imm1f(ureg, 32.0f)); /* &lightconst(0) */
         ureg_MOV(ureg, rD, ureg_imm1f(ureg, 0.0f));
@@ -1936,7 +1939,7 @@ nine_ff_load_lights(struct NineDevice9 *device)
         dst[38 + l * 8].x = cosf(light->Theta * 0.5f);
         dst[38 + l * 8].y = cosf(light->Phi * 0.5f);
         dst[38 + l * 8].z = 1.0f / (dst[38 + l * 8].x - dst[38 + l * 8].y);
-        dst[39 + l * 8].w = (l + 1) == context->ff.num_lights_active;
+        dst[39 + l * 8].w = (float)((l + 1) == context->ff.num_lights_active);
     }
 }
 
@@ -2061,19 +2064,7 @@ nine_ff_update(struct NineDevice9 *device)
         cb.user_buffer = device->ff.vs_const;
         cb.buffer_size = NINE_FF_NUM_VS_CONST * 4 * sizeof(float);
 
-        if (!device->driver_caps.user_cbufs) {
-            context->pipe_data.cb_vs_ff.buffer_size = cb.buffer_size;
-            u_upload_data(device->constbuf_uploader,
-                          0,
-                          cb.buffer_size,
-                          device->constbuf_alignment,
-                          cb.user_buffer,
-                          &context->pipe_data.cb_vs_ff.buffer_offset,
-                          &context->pipe_data.cb_vs_ff.buffer);
-            u_upload_unmap(device->constbuf_uploader);
-            context->pipe_data.cb_vs_ff.user_buffer = NULL;
-        } else
-            context->pipe_data.cb_vs_ff = cb;
+        context->pipe_data.cb_vs_ff = cb;
         context->commit |= NINE_STATE_COMMIT_CONST_VS;
     }
 
@@ -2085,19 +2076,7 @@ nine_ff_update(struct NineDevice9 *device)
         cb.user_buffer = device->ff.ps_const;
         cb.buffer_size = NINE_FF_NUM_PS_CONST * 4 * sizeof(float);
 
-        if (!device->driver_caps.user_cbufs) {
-            context->pipe_data.cb_ps_ff.buffer_size = cb.buffer_size;
-            u_upload_data(device->constbuf_uploader,
-                          0,
-                          cb.buffer_size,
-                          device->constbuf_alignment,
-                          cb.user_buffer,
-                          &context->pipe_data.cb_ps_ff.buffer_offset,
-                          &context->pipe_data.cb_ps_ff.buffer);
-            u_upload_unmap(device->constbuf_uploader);
-            context->pipe_data.cb_ps_ff.user_buffer = NULL;
-        } else
-            context->pipe_data.cb_ps_ff = cb;
+        context->pipe_data.cb_ps_ff = cb;
         context->commit |= NINE_STATE_COMMIT_CONST_PS;
     }
 
@@ -2499,7 +2478,7 @@ nine_d3d_matrix_inverse(D3DMATRIX *D, const D3DMATRIX *M)
         M->m[2][0] * D->m[0][2] +
         M->m[3][0] * D->m[0][3];
 
-    if (det < 1e-30) {/* non inversible */
+    if (fabsf(det) < 1e-30) {/* non inversible */
         *D = *M; /* wine tests */
         return;
     }

@@ -689,6 +689,7 @@ void ra_split::split_packed_ins(alu_packed_node *n) {
 void ra_split::split_alu_packed(alu_packed_node* n) {
 	switch (n->op()) {
 		case ALU_OP2_DOT4:
+		case ALU_OP2_DOT4_IEEE:
 		case ALU_OP2_CUBE:
 			split_packed_ins(n);
 			break;
@@ -743,6 +744,8 @@ void ra_split::split_vector_inst(node* n) {
 
 	no_src_swizzle |= n->is_fetch_op(FETCH_OP_VFETCH) ||
 			n->is_fetch_op(FETCH_OP_SEMFETCH);
+
+	no_src_swizzle |= n->is_fetch_inst() && (n->fetch_op_flags() & FF_GDS);
 
 	if (!n->src.empty() && !call_fs) {
 

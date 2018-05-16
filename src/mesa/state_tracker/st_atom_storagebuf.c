@@ -47,14 +47,16 @@ st_bind_ssbos(struct st_context *st, struct gl_program *prog,
    unsigned i;
    struct pipe_shader_buffer buffers[MAX_SHADER_STORAGE_BUFFERS];
    struct gl_program_constants *c;
-
+   int buffer_base;
    if (!prog || !st->pipe->set_shader_buffers)
       return;
 
    c = &st->ctx->Const.Program[prog->info.stage];
 
+   buffer_base = st->has_hw_atomics ? 0 : c->MaxAtomicBuffers;
+
    for (i = 0; i < prog->info.num_ssbos; i++) {
-      struct gl_shader_storage_buffer_binding *binding;
+      struct gl_buffer_binding *binding;
       struct st_buffer_object *st_obj;
       struct pipe_shader_buffer *sb = &buffers[i];
 
@@ -79,109 +81,61 @@ st_bind_ssbos(struct st_context *st, struct gl_program *prog,
          sb->buffer_size = 0;
       }
    }
-   st->pipe->set_shader_buffers(st->pipe, shader_type, c->MaxAtomicBuffers,
+   st->pipe->set_shader_buffers(st->pipe, shader_type, buffer_base,
                                 prog->info.num_ssbos, buffers);
    /* clear out any stale shader buffers */
    if (prog->info.num_ssbos < c->MaxShaderStorageBlocks)
       st->pipe->set_shader_buffers(
             st->pipe, shader_type,
-            c->MaxAtomicBuffers + prog->info.num_ssbos,
+            buffer_base + prog->info.num_ssbos,
             c->MaxShaderStorageBlocks - prog->info.num_ssbos,
             NULL);
 }
 
-static void bind_vs_ssbos(struct st_context *st)
+void st_bind_vs_ssbos(struct st_context *st)
 {
-   struct gl_shader_program *prog =
+   struct gl_program *prog =
       st->ctx->_Shader->CurrentProgram[MESA_SHADER_VERTEX];
 
-   if (!prog || !prog->_LinkedShaders[MESA_SHADER_VERTEX])
-      return;
-
-   st_bind_ssbos(st, prog->_LinkedShaders[MESA_SHADER_VERTEX]->Program,
-                 PIPE_SHADER_VERTEX);
+   st_bind_ssbos(st, prog, PIPE_SHADER_VERTEX);
 }
 
-const struct st_tracked_state st_bind_vs_ssbos = {
-   bind_vs_ssbos
-};
-
-static void bind_fs_ssbos(struct st_context *st)
+void st_bind_fs_ssbos(struct st_context *st)
 {
-   struct gl_shader_program *prog =
+   struct gl_program *prog =
       st->ctx->_Shader->CurrentProgram[MESA_SHADER_FRAGMENT];
 
-   if (!prog || !prog->_LinkedShaders[MESA_SHADER_FRAGMENT])
-      return;
-
-   st_bind_ssbos(st, prog->_LinkedShaders[MESA_SHADER_FRAGMENT]->Program,
-                 PIPE_SHADER_FRAGMENT);
+   st_bind_ssbos(st, prog, PIPE_SHADER_FRAGMENT);
 }
 
-const struct st_tracked_state st_bind_fs_ssbos = {
-   bind_fs_ssbos
-};
-
-static void bind_gs_ssbos(struct st_context *st)
+void st_bind_gs_ssbos(struct st_context *st)
 {
-   struct gl_shader_program *prog =
+   struct gl_program *prog =
       st->ctx->_Shader->CurrentProgram[MESA_SHADER_GEOMETRY];
 
-   if (!prog || !prog->_LinkedShaders[MESA_SHADER_GEOMETRY])
-      return;
-
-   st_bind_ssbos(st, prog->_LinkedShaders[MESA_SHADER_GEOMETRY]->Program,
-                 PIPE_SHADER_GEOMETRY);
+   st_bind_ssbos(st, prog, PIPE_SHADER_GEOMETRY);
 }
 
-const struct st_tracked_state st_bind_gs_ssbos = {
-   bind_gs_ssbos
-};
-
-static void bind_tcs_ssbos(struct st_context *st)
+void st_bind_tcs_ssbos(struct st_context *st)
 {
-   struct gl_shader_program *prog =
+   struct gl_program *prog =
       st->ctx->_Shader->CurrentProgram[MESA_SHADER_TESS_CTRL];
 
-   if (!prog || !prog->_LinkedShaders[MESA_SHADER_TESS_CTRL])
-      return;
-
-   st_bind_ssbos(st, prog->_LinkedShaders[MESA_SHADER_TESS_CTRL]->Program,
-                 PIPE_SHADER_TESS_CTRL);
+   st_bind_ssbos(st, prog, PIPE_SHADER_TESS_CTRL);
 }
 
-const struct st_tracked_state st_bind_tcs_ssbos = {
-   bind_tcs_ssbos
-};
-
-static void bind_tes_ssbos(struct st_context *st)
+void st_bind_tes_ssbos(struct st_context *st)
 {
-   struct gl_shader_program *prog =
+   struct gl_program *prog =
       st->ctx->_Shader->CurrentProgram[MESA_SHADER_TESS_EVAL];
 
-   if (!prog || !prog->_LinkedShaders[MESA_SHADER_TESS_EVAL])
-      return;
-
-   st_bind_ssbos(st, prog->_LinkedShaders[MESA_SHADER_TESS_EVAL]->Program,
-                 PIPE_SHADER_TESS_EVAL);
+   st_bind_ssbos(st, prog, PIPE_SHADER_TESS_EVAL);
 }
 
-const struct st_tracked_state st_bind_tes_ssbos = {
-   bind_tes_ssbos
-};
-
-static void bind_cs_ssbos(struct st_context *st)
+void st_bind_cs_ssbos(struct st_context *st)
 {
-   struct gl_shader_program *prog =
+   struct gl_program *prog =
       st->ctx->_Shader->CurrentProgram[MESA_SHADER_COMPUTE];
 
-   if (!prog || !prog->_LinkedShaders[MESA_SHADER_COMPUTE])
-      return;
-
-   st_bind_ssbos(st, prog->_LinkedShaders[MESA_SHADER_COMPUTE]->Program,
-                 PIPE_SHADER_COMPUTE);
+   st_bind_ssbos(st, prog, PIPE_SHADER_COMPUTE);
 }
-
-const struct st_tracked_state st_bind_cs_ssbos = {
-   bind_cs_ssbos
-};

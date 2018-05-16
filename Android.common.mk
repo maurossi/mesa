@@ -31,17 +31,23 @@ LOCAL_C_INCLUDES += \
 
 MESA_VERSION := $(shell cat $(MESA_TOP)/VERSION)
 LOCAL_CFLAGS += \
+	-Wno-error \
 	-Wno-unused-parameter \
-	-Wno-date-time \
 	-Wno-pointer-arith \
 	-Wno-missing-field-initializers \
 	-Wno-initializer-overrides \
 	-Wno-mismatched-tags \
+	-DVERSION=\"$(MESA_VERSION)\" \
 	-DPACKAGE_VERSION=\"$(MESA_VERSION)\" \
 	-DPACKAGE_BUGREPORT=\"https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa\"
 
+# XXX: The following __STDC_*_MACROS defines should not be needed.
+# It's likely due to a bug elsewhere, but let's temporarily add them
+# here to fix the radeonsi build.
 LOCAL_CFLAGS += \
+	-DANDROID_API_LEVEL=$(PLATFORM_SDK_VERSION) \
 	-DENABLE_SHADER_CACHE \
+	-D__STDC_CONSTANT_MACROS \
 	-D__STDC_LIMIT_MACROS \
 	-DHAVE___BUILTIN_EXPECT \
 	-DHAVE___BUILTIN_FFS \
@@ -51,6 +57,9 @@ LOCAL_CFLAGS += \
 	-DHAVE_FUNC_ATTRIBUTE_FORMAT \
 	-DHAVE_FUNC_ATTRIBUTE_PACKED \
 	-DHAVE_FUNC_ATTRIBUTE_ALIAS \
+	-DHAVE_FUNC_ATTRIBUTE_NORETURN \
+	-DHAVE_FUNC_ATTRIBUTE_RETURNS_NONNULL \
+	-DHAVE_FUNC_ATTRIBUTE_WARN_UNUSED_RESULT \
 	-DHAVE___BUILTIN_CTZ \
 	-DHAVE___BUILTIN_POPCOUNT \
 	-DHAVE___BUILTIN_POPCOUNTLL \
@@ -58,7 +67,12 @@ LOCAL_CFLAGS += \
 	-DHAVE___BUILTIN_CLZLL \
 	-DHAVE___BUILTIN_UNREACHABLE \
 	-DHAVE_PTHREAD=1 \
-	-DHAVE_DLOPEN \
+	-DHAVE_DLADDR \
+	-DHAVE_DL_ITERATE_PHDR \
+	-DHAVE_LINUX_FUTEX_H \
+	-DHAVE_ENDIAN_H \
+	-DHAVE_ZLIB \
+	-DMAJOR_IN_SYSMACROS \
 	-fvisibility=hidden \
 	-Wno-sign-compare
 
@@ -76,41 +90,23 @@ LOCAL_CONLYFLAGS += \
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
 ifeq ($(TARGET_ARCH),x86)
 LOCAL_CFLAGS += \
-	-DUSE_X86_ASM \
+	-DUSE_X86_ASM
 
 endif
 endif
-
-ifeq ($(MESA_ENABLE_LLVM),true)
-LOCAL_CFLAGS += \
-	-D__STDC_CONSTANT_MACROS \
-	-D__STDC_FORMAT_MACROS \
-	-D__STDC_LIMIT_MACROS
-
-  ifeq ($(MESA_ANDROID_MAJOR_VERSION),5)
-    LOCAL_CFLAGS += -DHAVE_LLVM=0x0305 -DMESA_LLVM_VERSION_PATCH=2
-    ELF_INCLUDES := external/elfutils/0.153/libelf
-  endif
-  ifeq ($(MESA_ANDROID_MAJOR_VERSION),6)
-    LOCAL_CFLAGS += -DHAVE_LLVM=0x0307 -DMESA_LLVM_VERSION_PATCH=0
-    ELF_INCLUDES := external/elfutils/src/libelf
-  endif
-  ifeq ($(MESA_ANDROID_MAJOR_VERSION),7)
-    LOCAL_CFLAGS += -DHAVE_LLVM=0x0308 -DMESA_LLVM_VERSION_PATCH=0
-    ELF_INCLUDES := external/elfutils/libelf
-  endif
+ifeq ($(ARCH_ARM_HAVE_NEON),true)
+LOCAL_CFLAGS_arm += -DUSE_ARM_ASM
 endif
+LOCAL_CFLAGS_arm64 += -DUSE_AARCH64_ASM
 
 ifneq ($(LOCAL_IS_HOST_MODULE),true)
-# add libdrm if there are hardware drivers
-ifneq ($(filter-out swrast,$(MESA_GPU_DRIVERS)),)
 LOCAL_CFLAGS += -DHAVE_LIBDRM
 LOCAL_SHARED_LIBRARIES += libdrm
 endif
-endif
 
-LOCAL_CFLAGS_32 += -DDEFAULT_DRIVER_DIR=\"/system/lib/$(MESA_DRI_MODULE_REL_PATH)\"
-LOCAL_CFLAGS_64 += -DDEFAULT_DRIVER_DIR=\"/system/lib64/$(MESA_DRI_MODULE_REL_PATH)\"
+LOCAL_CFLAGS_32 += -DDEFAULT_DRIVER_DIR=\"/vendor/lib/$(MESA_DRI_MODULE_REL_PATH)\"
+LOCAL_CFLAGS_64 += -DDEFAULT_DRIVER_DIR=\"/vendor/lib64/$(MESA_DRI_MODULE_REL_PATH)\"
+LOCAL_PROPRIETARY_MODULE := true
 
 # uncomment to keep the debug symbols
 #LOCAL_STRIP_MODULE := false
