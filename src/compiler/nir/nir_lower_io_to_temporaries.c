@@ -76,7 +76,7 @@ emit_copies(nir_cursor cursor, nir_shader *shader, struct exec_list *new_vars,
 static void
 emit_output_copies_impl(struct lower_io_state *state, nir_function_impl *impl)
 {
-   if (state->shader->stage == MESA_SHADER_GEOMETRY) {
+   if (state->shader->info.stage == MESA_SHADER_GEOMETRY) {
       /* For geometry shaders, we have to emit the output copies right
        * before each EmitVertex call.
        */
@@ -141,6 +141,7 @@ create_shadow_temp(struct lower_io_state *state, nir_variable *var)
    temp->data.mode = nir_var_global;
    temp->data.read_only = false;
    temp->data.fb_fetch_output = false;
+   temp->data.compact = false;
 
    return nvar;
 }
@@ -151,7 +152,7 @@ nir_lower_io_to_temporaries(nir_shader *shader, nir_function_impl *entrypoint,
 {
    struct lower_io_state state;
 
-   if (shader->stage == MESA_SHADER_TESS_CTRL)
+   if (shader->info.stage == MESA_SHADER_TESS_CTRL)
       return;
 
    state.shader = shader;

@@ -36,7 +36,12 @@ EXTRA_DIST = \
 	mapi_abi.py \
 	glapi/SConscript \
 	glapi/registry/gl.xml \
-	shared-glapi/SConscript
+	shared-glapi/SConscript \
+	es1api/meson.build \
+	es2api/meson.build \
+	glapi/meson.build \
+	shared-glapi/meson.build \
+	meson.build
 
 AM_CFLAGS = \
 	$(PTHREAD_CFLAGS) \
@@ -47,7 +52,9 @@ AM_CPPFLAGS =							\
 	-I$(top_srcdir)/include					\
 	-I$(top_srcdir)/src					\
 	-I$(top_builddir)/src/mapi				\
-	-I$(top_srcdir)/src/mapi
+	-I$(top_srcdir)/src/mapi				\
+	-I$(top_builddir)/src/mapi/glapi			\
+	-I$(top_srcdir)/src/mapi/glapi
 
 include Makefile.sources
 
@@ -93,7 +100,7 @@ endif
 
 shared-glapi/glapi_mapi_tmp.h : glapi/gen/gl_and_es_API.xml $(glapi_gen_mapi_deps)
 	$(MKDIR_GEN)
-	$(PYTHON_GEN) $(srcdir)/mapi_abi.py --mode lib --printer shared-glapi \
+	$(PYTHON_GEN) $(srcdir)/mapi_abi.py --printer shared-glapi \
 		$(srcdir)/glapi/gen/gl_and_es_API.xml > $@
 
 if HAVE_OPENGL
@@ -113,7 +120,6 @@ endif
 glapi_libglapi_la_SOURCES =
 glapi_libglapi_la_CPPFLAGS = \
 	$(AM_CPPFLAGS) \
-	-I$(top_srcdir)/src/mapi/glapi \
 	-I$(top_srcdir)/src/mesa
 
 if HAVE_APPLEDRI
@@ -187,14 +193,12 @@ es1api_libGLESv1_CM_la_LDFLAGS = \
 	$(GC_SECTIONS) \
 	$(LD_NO_UNDEFINED)
 
-if HAVE_SHARED_GLAPI
 es1api_libGLESv1_CM_la_LIBADD += shared-glapi/libglapi.la
-endif
 endif
 
 es1api/glapi_mapi_tmp.h: glapi/gen/gl_and_es_API.xml $(glapi_gen_mapi_deps)
 	$(MKDIR_GEN)
-	$(PYTHON_GEN) $(srcdir)/mapi_abi.py --mode lib --printer es1api \
+	$(PYTHON_GEN) $(srcdir)/mapi_abi.py --printer es1api \
 		$(srcdir)/glapi/gen/gl_and_es_API.xml > $@
 
 if HAVE_OPENGL_ES2
@@ -234,14 +238,17 @@ es2api_libGLESv2_la_LDFLAGS = \
 	$(GC_SECTIONS) \
 	$(LD_NO_UNDEFINED)
 
-if HAVE_SHARED_GLAPI
 es2api_libGLESv2_la_LIBADD += shared-glapi/libglapi.la
-endif
 endif
 
 es2api/glapi_mapi_tmp.h: glapi/gen/gl_and_es_API.xml $(glapi_gen_mapi_deps)
 	$(MKDIR_GEN)
-	$(PYTHON_GEN) $(srcdir)/mapi_abi.py --mode lib --printer es2api \
+	$(PYTHON_GEN) $(srcdir)/mapi_abi.py --printer es2api \
 		$(srcdir)/glapi/gen/gl_and_es_API.xml > $@
 
 include $(top_srcdir)/install-lib-links.mk
+
+if NEED_KHRPLATFORM
+khrdir = $(includedir)/KHR
+khr_HEADERS = $(top_srcdir)/include/KHR/khrplatform.h
+endif

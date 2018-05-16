@@ -25,7 +25,8 @@
 #include "nir.h"
 
 static void
-set_io_mask(nir_shader *shader, nir_variable *var, int offset, int len)
+set_io_mask(nir_shader *shader, nir_variable *var, int offset, int len,
+            bool is_output_read)
 {
    for (int i = 0; i < len; i++) {
       assert(var->data.location != -1);
@@ -49,23 +50,32 @@ set_io_mask(nir_shader *shader, nir_variable *var, int offset, int len)
 
       if (var->data.mode == nir_var_shader_in) {
          if (is_patch_generic)
-            shader->info->patch_inputs_read |= bitfield;
+            shader->info.patch_inputs_read |= bitfield;
          else
-            shader->info->inputs_read |= bitfield;
+            shader->info.inputs_read |= bitfield;
 
-         if (shader->stage == MESA_SHADER_FRAGMENT) {
-            shader->info->fs.uses_sample_qualifier |= var->data.sample;
+         if (shader->info.stage == MESA_SHADER_FRAGMENT) {
+            shader->info.fs.uses_sample_qualifier |= var->data.sample;
          }
       } else {
          assert(var->data.mode == nir_var_shader_out);
-         if (is_patch_generic) {
-            shader->info->patch_outputs_written |= bitfield;
-         } else if (!var->data.read_only) {
-            shader->info->outputs_written |= bitfield;
-         }
+         if (is_output_read) {
+            if (is_patch_generic) {
+               shader->info.patch_outputs_read |= bitfield;
+            } else {
+               shader->info.outputs_read |= bitfield;
+            }
+         } else {
+	    if (is_patch_generic) {
+	       shader->info.patch_outputs_written |= bitfield;
+	    } else if (!var->data.read_only) {
+	       shader->info.outputs_written |= bitfield;
+	    }
+	 }
+
 
          if (var->data.fb_fetch_output)
-            shader->info->outputs_read |= bitfield;
+            shader->info.outputs_read |= bitfield;
       }
    }
 }
@@ -75,11 +85,11 @@ set_io_mask(nir_shader *shader, nir_variable *var, int offset, int len)
  * represents a shader input or output.
  */
 static void
-mark_whole_variable(nir_shader *shader, nir_variable *var)
+mark_whole_variable(nir_shader *shader, nir_variable *var, bool is_output_read)
 {
    const struct glsl_type *type = var->type;
 
-   if (nir_is_per_vertex_io(var, shader->stage)) {
+   if (nir_is_per_vertex_io(var, shader->info.stage)) {
       assert(glsl_type_is_array(type));
       type = glsl_get_array_element(type);
    }
@@ -88,7 +98,7 @@ mark_whole_variable(nir_shader *shader, nir_variable *var)
       var->data.compact ? DIV_ROUND_UP(glsl_get_length(type), 4)
                         : glsl_count_attribute_slots(type, false);
 
-   set_io_mask(shader, var, 0, slots);
+   set_io_mask(shader, var, 0, slots, is_output_read);
 }
 
 static unsigned
@@ -124,12 +134,12 @@ get_io_offset(nir_deref_var *deref)
  * occurs, then nothing will be marked and false will be returned.
  */
 static bool
-try_mask_partial_io(nir_shader *shader, nir_deref_var *deref)
+try_mask_partial_io(nir_shader *shader, nir_deref_var *deref, bool is_output_read)
 {
    nir_variable *var = deref->var;
    const struct glsl_type *type = var->type;
 
-   if (nir_is_per_vertex_io(var, shader->stage)) {
+   if (nir_is_per_vertex_io(var, shader->info.stage)) {
       assert(glsl_type_is_array(type));
       type = glsl_get_array_element(type);
    }
@@ -186,7 +196,7 @@ try_mask_partial_io(nir_shader *shader, nir_deref_var *deref)
       return false;
    }
 
-   set_io_mask(shader, var, offset, elem_width);
+   set_io_mask(shader, var, offset, elem_width, is_output_read);
    return true;
 }
 
@@ -196,8 +206,8 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader)
    switch (instr->intrinsic) {
    case nir_intrinsic_discard:
    case nir_intrinsic_discard_if:
-      assert(shader->stage == MESA_SHADER_FRAGMENT);
-      shader->info->fs.uses_discard = true;
+      assert(shader->info.stage == MESA_SHADER_FRAGMENT);
+      shader->info.fs.uses_discard = true;
       break;
 
    case nir_intrinsic_interp_var_at_centroid:
@@ -209,17 +219,22 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader)
 
       if (var->data.mode == nir_var_shader_in ||
           var->data.mode == nir_var_shader_out) {
-         if (!try_mask_partial_io(shader, instr->variables[0]))
-            mark_whole_variable(shader, var);
+         bool is_output_read = false;
+         if (var->data.mode == nir_var_shader_out &&
+             instr->intrinsic == nir_intrinsic_load_var)
+            is_output_read = true;
+
+         if (!try_mask_partial_io(shader, instr->variables[0], is_output_read))
+            mark_whole_variable(shader, var, is_output_read);
 
          /* We need to track which input_reads bits correspond to a
           * dvec3/dvec4 input attribute */
-         if (shader->stage == MESA_SHADER_VERTEX &&
+         if (shader->info.stage == MESA_SHADER_VERTEX &&
              var->data.mode == nir_var_shader_in &&
              glsl_type_is_dual_slot(glsl_without_array(var->type))) {
             for (uint i = 0; i < glsl_count_attribute_slots(var->type, false); i++) {
                int idx = var->data.location + i;
-               shader->info->double_inputs_read |= BITFIELD64_BIT(idx);
+               shader->info.double_inputs_read |= BITFIELD64_BIT(idx);
             }
          }
       }
@@ -227,6 +242,7 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader)
    }
 
    case nir_intrinsic_load_draw_id:
+   case nir_intrinsic_load_frag_coord:
    case nir_intrinsic_load_front_face:
    case nir_intrinsic_load_vertex_id:
    case nir_intrinsic_load_vertex_id_zero_base:
@@ -245,14 +261,15 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader)
    case nir_intrinsic_load_tess_coord:
    case nir_intrinsic_load_tess_level_outer:
    case nir_intrinsic_load_tess_level_inner:
-      shader->info->system_values_read |=
-         (1 << nir_system_value_from_intrinsic(instr->intrinsic));
+   case nir_intrinsic_load_patch_vertices_in:
+      shader->info.system_values_read |=
+         (1ull << nir_system_value_from_intrinsic(instr->intrinsic));
       break;
 
    case nir_intrinsic_end_primitive:
    case nir_intrinsic_end_primitive_with_counter:
-      assert(shader->stage == MESA_SHADER_GEOMETRY);
-      shader->info->gs.uses_end_primitive = 1;
+      assert(shader->info.stage == MESA_SHADER_GEOMETRY);
+      shader->info.gs.uses_end_primitive = 1;
       break;
 
    default:
@@ -263,8 +280,33 @@ gather_intrinsic_info(nir_intrinsic_instr *instr, nir_shader *shader)
 static void
 gather_tex_info(nir_tex_instr *instr, nir_shader *shader)
 {
-   if (instr->op == nir_texop_tg4)
-      shader->info->uses_texture_gather = true;
+   switch (instr->op) {
+   case nir_texop_tg4:
+      shader->info.uses_texture_gather = true;
+      break;
+   case nir_texop_txf:
+   case nir_texop_txf_ms:
+   case nir_texop_txf_ms_mcs:
+      shader->info.textures_used_by_txf |=
+         ((1 << MAX2(instr->texture_array_size, 1)) - 1) <<
+         instr->texture_index;
+      break;
+   default:
+      break;
+   }
+}
+
+static void
+gather_alu_info(nir_alu_instr *instr, nir_shader *shader)
+{
+   switch (instr->op) {
+   case nir_op_fddx:
+   case nir_op_fddy:
+      shader->info.uses_fddx_fddy = true;
+      break;
+   default:
+      break;
+   }
 }
 
 static void
@@ -272,6 +314,9 @@ gather_info_block(nir_block *block, nir_shader *shader)
 {
    nir_foreach_instr(instr, block) {
       switch (instr->type) {
+      case nir_instr_type_alu:
+         gather_alu_info(nir_instr_as_alu(instr), shader);
+         break;
       case nir_instr_type_intrinsic:
          gather_intrinsic_info(nir_instr_as_intrinsic(instr), shader);
          break;
@@ -290,8 +335,8 @@ gather_info_block(nir_block *block, nir_shader *shader)
 void
 nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
 {
-   shader->info->num_textures = 0;
-   shader->info->num_images = 0;
+   shader->info.num_textures = 0;
+   shader->info.num_images = 0;
    nir_foreach_variable(var, &shader->uniforms) {
       const struct glsl_type *type = var->type;
       unsigned count = 1;
@@ -301,21 +346,22 @@ nir_shader_gather_info(nir_shader *shader, nir_function_impl *entrypoint)
       }
 
       if (glsl_type_is_image(type)) {
-         shader->info->num_images += count;
+         shader->info.num_images += count;
       } else if (glsl_type_is_sampler(type)) {
-         shader->info->num_textures += count;
+         shader->info.num_textures += count;
       }
    }
 
-   shader->info->inputs_read = 0;
-   shader->info->outputs_written = 0;
-   shader->info->outputs_read = 0;
-   shader->info->double_inputs_read = 0;
-   shader->info->patch_inputs_read = 0;
-   shader->info->patch_outputs_written = 0;
-   shader->info->system_values_read = 0;
-   if (shader->stage == MESA_SHADER_FRAGMENT) {
-      shader->info->fs.uses_sample_qualifier = false;
+   shader->info.inputs_read = 0;
+   shader->info.outputs_written = 0;
+   shader->info.outputs_read = 0;
+   shader->info.patch_outputs_read = 0;
+   shader->info.double_inputs_read = 0;
+   shader->info.patch_inputs_read = 0;
+   shader->info.patch_outputs_written = 0;
+   shader->info.system_values_read = 0;
+   if (shader->info.stage == MESA_SHADER_FRAGMENT) {
+      shader->info.fs.uses_sample_qualifier = false;
    }
    nir_foreach_block(block, entrypoint) {
       gather_info_block(block, shader);

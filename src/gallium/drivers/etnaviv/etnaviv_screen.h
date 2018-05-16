@@ -44,6 +44,8 @@ enum viv_features_word {
    viv_chipMinorFeatures1 = 2,
    viv_chipMinorFeatures2 = 3,
    viv_chipMinorFeatures3 = 4,
+   viv_chipMinorFeatures4 = 5,
+   viv_chipMinorFeatures5 = 6,
    VIV_FEATURES_WORD_COUNT /* Must be last */
 };
 
@@ -69,9 +71,11 @@ struct etna_screen {
 
    uint32_t model;
    uint32_t revision;
-   uint32_t features[5];
+   uint32_t features[VIV_FEATURES_WORD_COUNT];
 
    struct etna_specs specs;
+
+   uint32_t drm_version;
 };
 
 static inline struct etna_screen *
@@ -79,10 +83,6 @@ etna_screen(struct pipe_screen *pscreen)
 {
    return (struct etna_screen *)pscreen;
 }
-
-boolean
-etna_screen_bo_get_handle(struct pipe_screen *pscreen, struct etna_bo *bo,
-                          unsigned stride, struct winsys_handle *whandle);
 
 struct etna_bo *
 etna_screen_bo_from_handle(struct pipe_screen *pscreen,

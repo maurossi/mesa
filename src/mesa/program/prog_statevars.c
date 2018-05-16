@@ -422,7 +422,7 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index state[],
       return;
 
    case STATE_NORMAL_SCALE:
-      ASSIGN_4V(value, ctx->_ModelViewInvScale, 0, 0, 1);
+      ASSIGN_4V(value, ctx->_ModelViewInvScaleEyespace, 0, 0, 1);
       return;
 
    case STATE_INTERNAL:
@@ -456,24 +456,6 @@ _mesa_fetch_state(struct gl_context *ctx, const gl_state_index state[],
                    ctx->_ModelViewInvScale, 
                    ctx->_ModelViewInvScale, 
                    1);
-         return;
-
-      case STATE_TEXRECT_SCALE:
-         /* Value = { 1/texWidth, 1/texHeight, 0, 1 }.
-          * Used to convert unnormalized texcoords to normalized texcoords.
-          */
-         {
-            const int unit = (int) state[2];
-            const struct gl_texture_object *texObj
-               = ctx->Texture.Unit[unit]._Current;
-            if (texObj) {
-               struct gl_texture_image *texImage = texObj->Image[0][0];
-               ASSIGN_4V(value,
-                         (GLfloat) (1.0 / texImage->Width),
-                         (GLfloat) (1.0 / texImage->Height),
-                         0.0f, 1.0f);
-            }
-         }
          return;
 
       case STATE_FOG_PARAMS_OPTIMIZED:
@@ -659,9 +641,9 @@ _mesa_program_state_flags(const gl_state_index state[STATE_LENGTH])
       return _NEW_LIGHT;
 
    case STATE_TEXGEN:
-      return _NEW_TEXTURE;
+      return _NEW_TEXTURE_STATE;
    case STATE_TEXENV_COLOR:
-      return _NEW_TEXTURE | _NEW_BUFFERS | _NEW_FRAG_CLAMP;
+      return _NEW_TEXTURE_STATE | _NEW_BUFFERS | _NEW_FRAG_CLAMP;
 
    case STATE_FOG_COLOR:
       return _NEW_FOG | _NEW_BUFFERS | _NEW_FRAG_CLAMP;
@@ -709,8 +691,6 @@ _mesa_program_state_flags(const gl_state_index state[STATE_LENGTH])
       case STATE_NORMAL_SCALE:
          return _NEW_MODELVIEW;
 
-      case STATE_TEXRECT_SCALE:
-	 return _NEW_TEXTURE;
       case STATE_FOG_PARAMS_OPTIMIZED:
 	 return _NEW_FOG;
       case STATE_POINT_SIZE_CLAMPED:
@@ -904,9 +884,6 @@ append_token(char *dst, gl_state_index k)
       break;
    case STATE_NORMAL_SCALE:
       append(dst, "normalScale");
-      break;
-   case STATE_TEXRECT_SCALE:
-      append(dst, "texrectScale");
       break;
    case STATE_FOG_PARAMS_OPTIMIZED:
       append(dst, "fogParamsOptimized");

@@ -66,7 +66,8 @@ lib@OSMESA_LIB@_la_LIBADD = \
 	$(top_builddir)/src/mapi/glapi/libglapi.la \
 	$(SHARED_GLAPI_LIB) \
 	$(OSMESA_LIB_DEPS) \
-	$(CLOCK_LIB)
+	$(CLOCK_LIB) \
+	$(LIBUNWIND_LIBS)
 
 if HAVE_GALLIUM_LLVM
 AM_CPPFLAGS += -DGALLIUM_LLVMPIPE
@@ -85,7 +86,8 @@ EXTRA_DIST = \
 	osmesa.sym \
 	osmesa.def \
 	osmesa.mingw.def \
-	SConscript
+	SConscript \
+	meson.build
 
 include $(top_srcdir)/install-gallium-links.mk
 

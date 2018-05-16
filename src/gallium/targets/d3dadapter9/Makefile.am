@@ -27,7 +27,7 @@ AM_CFLAGS = \
 	-I$(top_srcdir)/src/loader \
 	-I$(top_srcdir)/src/mapi/ \
 	-I$(top_srcdir)/src/mesa/ \
-	-I$(top_builddir)/src/mesa/drivers/dri/common/ \
+	-I$(top_builddir)/src/util \
 	-I$(top_srcdir)/src/mesa/drivers/dri/common/ \
 	-I$(top_srcdir)/src/gallium/winsys \
 	-I$(top_srcdir)/src/gallium/state_trackers/nine \
@@ -56,7 +56,7 @@ d3dadapter9_la_LDFLAGS = \
 	-shrext .so \
 	-module \
 	-no-undefined \
-	-version-number $(NINE_MAJOR):$(NINE_MINOR):$(NINE_TINY) \
+	-version-number $(NINE_MAJOR):$(NINE_MINOR):$(NINE_PATCH) \
 	$(GC_SECTIONS) \
 	$(LD_NO_UNDEFINED)
 
@@ -77,15 +77,13 @@ d3dadapter9_la_LIBADD = \
 	$(GALLIUM_COMMON_LIB_DEPS)
 
 EXTRA_d3dadapter9_la_DEPENDENCIES = d3dadapter9.sym
-EXTRA_DIST = d3dadapter9.sym
+EXTRA_DIST = d3dadapter9.sym meson.build
 
 TARGET_DRIVERS =
 TARGET_CPPFLAGS =
 TARGET_LIB_DEPS =
 
 include $(top_srcdir)/src/gallium/drivers/i915/Automake.inc
-
-include $(top_srcdir)/src/gallium/drivers/ilo/Automake.inc
 
 include $(top_srcdir)/src/gallium/drivers/nouveau/Automake.inc
 
@@ -105,6 +103,7 @@ d3dadapter9_la_LIBADD += \
 	$(top_builddir)/src/gallium/auxiliary/pipe-loader/libpipe_loader_static.la \
 	$(GALLIUM_PIPE_LOADER_WINSYS_LIBS) \
 	$(TARGET_LIB_DEPS) \
+	$(TARGET_COMPILER_LIB_DEPS) \
 	$(TARGET_RADEON_WINSYS) $(TARGET_RADEON_COMMON)
 
 else # HAVE_GALLIUM_STATIC_TARGETS

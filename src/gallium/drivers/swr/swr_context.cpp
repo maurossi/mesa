@@ -33,14 +33,13 @@
 #include "util/u_inlines.h"
 #include "util/u_format.h"
 #include "util/u_atomic.h"
-
-extern "C" {
+#include "util/u_upload_mgr.h"
 #include "util/u_transfer.h"
 #include "util/u_surface.h"
-}
 
 #include "api.h"
 #include "backend.h"
+#include "knobs.h"
 
 static struct pipe_surface *
 swr_create_surface(struct pipe_context *pipe,
@@ -154,12 +153,12 @@ swr_transfer_map(struct pipe_context *pipe,
          for (int y = box->y; y < box->y + box->height; y++) {
             if (spr->base.format == PIPE_FORMAT_Z24_UNORM_S8_UINT) {
                for (int x = box->x; x < box->x + box->width; x++)
-                  spr->swr.pBaseAddress[zbase + 4 * x + 3] =
-                     spr->secondary.pBaseAddress[sbase + x];
+                  ((uint8_t*)(spr->swr.xpBaseAddress))[zbase + 4 * x + 3] =
+                     ((uint8_t*)(spr->secondary.xpBaseAddress))[sbase + x];
             } else if (spr->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) {
                for (int x = box->x; x < box->x + box->width; x++)
-                  spr->swr.pBaseAddress[zbase + 8 * x + 4] =
-                     spr->secondary.pBaseAddress[sbase + x];
+                  ((uint8_t*)(spr->swr.xpBaseAddress))[zbase + 8 * x + 4] =
+                     ((uint8_t*)(spr->secondary.xpBaseAddress))[sbase + x];
             }
             zbase += spr->swr.pitch;
             sbase += spr->secondary.pitch;
@@ -173,7 +172,7 @@ swr_transfer_map(struct pipe_context *pipe,
 
    *transfer = pt;
 
-   return spr->swr.pBaseAddress + offset + spr->mip_offsets[level];
+   return (void*)(spr->swr.xpBaseAddress + offset + spr->mip_offsets[level]);
 }
 
 static void
@@ -201,12 +200,12 @@ swr_transfer_flush_region(struct pipe_context *pipe,
       for (int y = box.y; y < box.y + box.height; y++) {
          if (spr->base.format == PIPE_FORMAT_Z24_UNORM_S8_UINT) {
             for (int x = box.x; x < box.x + box.width; x++)
-               spr->secondary.pBaseAddress[sbase + x] =
-                  spr->swr.pBaseAddress[zbase + 4 * x + 3];
+               ((uint8_t*)(spr->secondary.xpBaseAddress))[sbase + x] =
+                  ((uint8_t*)(spr->swr.xpBaseAddress))[zbase + 4 * x + 3];
          } else if (spr->base.format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT) {
             for (int x = box.x; x < box.x + box.width; x++)
-               spr->secondary.pBaseAddress[sbase + x] =
-                  spr->swr.pBaseAddress[zbase + 8 * x + 4];
+               ((uint8_t*)(spr->secondary.xpBaseAddress))[sbase + x] =
+                  ((uint8_t*)(spr->swr.xpBaseAddress))[zbase + 8 * x + 4];
          }
          zbase += spr->swr.pitch;
          sbase += spr->secondary.pitch;
@@ -273,16 +272,27 @@ static void
 swr_blit(struct pipe_context *pipe, const struct pipe_blit_info *blit_info)
 {
    struct swr_context *ctx = swr_context(pipe);
+   /* Make a copy of the const blit_info, so we can modify it */
    struct pipe_blit_info info = *blit_info;
 
-   if (blit_info->render_condition_enable && !swr_check_render_cond(pipe))
+   if (info.render_condition_enable && !swr_check_render_cond(pipe))
       return;
 
    if (info.src.resource->nr_samples > 1 && info.dst.resource->nr_samples <= 1
        && !util_format_is_depth_or_stencil(info.src.resource->format)
        && !util_format_is_pure_integer(info.src.resource->format)) {
-      debug_printf("swr: color resolve unimplemented\n");
-      return;
+      debug_printf("swr_blit: color resolve : %d -> %d\n",
+            info.src.resource->nr_samples, info.dst.resource->nr_samples);
+
+      /* Resolve is done as part of the surface store. */
+      swr_store_dirty_resource(pipe, info.src.resource, SWR_TILE_RESOLVED);
+
+      struct pipe_resource *src_resource = info.src.resource;
+      struct pipe_resource *resolve_target =
+         swr_resource(src_resource)->resolve_target;
+
+      /* The resolve target becomes the new source for the blit. */
+      info.src.resource = resolve_target;
    }
 
    if (util_try_blit_via_copy_region(pipe, &info)) {
@@ -302,14 +312,14 @@ swr_blit(struct pipe_context *pipe, const struct pipe_blit_info *blit_info)
    }
 
    if (ctx->active_queries) {
-      SwrEnableStatsFE(ctx->swrContext, FALSE);
-      SwrEnableStatsBE(ctx->swrContext, FALSE);
+      ctx->api.pfnSwrEnableStatsFE(ctx->swrContext, FALSE);
+      ctx->api.pfnSwrEnableStatsBE(ctx->swrContext, FALSE);
    }
 
    util_blitter_save_vertex_buffer_slot(ctx->blitter, ctx->vertex_buffer);
    util_blitter_save_vertex_elements(ctx->blitter, (void *)ctx->velems);
    util_blitter_save_vertex_shader(ctx->blitter, (void *)ctx->vs);
-   /*util_blitter_save_geometry_shader(ctx->blitter, (void*)ctx->gs);*/
+   util_blitter_save_geometry_shader(ctx->blitter, (void*)ctx->gs);
    util_blitter_save_so_targets(
       ctx->blitter,
       ctx->num_so_targets,
@@ -340,8 +350,8 @@ swr_blit(struct pipe_context *pipe, const struct pipe_blit_info *blit_info)
    util_blitter_blit(ctx->blitter, &info);
 
    if (ctx->active_queries) {
-      SwrEnableStatsFE(ctx->swrContext, TRUE);
-      SwrEnableStatsBE(ctx->swrContext, TRUE);
+      ctx->api.pfnSwrEnableStatsFE(ctx->swrContext, TRUE);
+      ctx->api.pfnSwrEnableStatsBE(ctx->swrContext, TRUE);
    }
 }
 
@@ -356,10 +366,20 @@ swr_destroy(struct pipe_context *pipe)
       util_blitter_destroy(ctx->blitter);
 
    for (unsigned i = 0; i < PIPE_MAX_COLOR_BUFS; i++) {
-      pipe_surface_reference(&ctx->framebuffer.cbufs[i], NULL);
+      if (ctx->framebuffer.cbufs[i]) {
+         struct swr_resource *res = swr_resource(ctx->framebuffer.cbufs[i]->texture);
+         /* NULL curr_pipe, so we don't have a reference to a deleted pipe */
+         res->curr_pipe = NULL;
+         pipe_surface_reference(&ctx->framebuffer.cbufs[i], NULL);
+      }
    }
 
-   pipe_surface_reference(&ctx->framebuffer.zsbuf, NULL);
+   if (ctx->framebuffer.zsbuf) {
+      struct swr_resource *res = swr_resource(ctx->framebuffer.zsbuf->texture);
+      /* NULL curr_pipe, so we don't have a reference to a deleted pipe */
+      res->curr_pipe = NULL;
+      pipe_surface_reference(&ctx->framebuffer.zsbuf, NULL);
+   }
 
    for (unsigned i = 0; i < ARRAY_SIZE(ctx->sampler_views[0]); i++) {
       pipe_sampler_view_reference(&ctx->sampler_views[PIPE_SHADER_FRAGMENT][i], NULL);
@@ -369,12 +389,15 @@ swr_destroy(struct pipe_context *pipe)
       pipe_sampler_view_reference(&ctx->sampler_views[PIPE_SHADER_VERTEX][i], NULL);
    }
 
+   if (ctx->pipe.stream_uploader)
+      u_upload_destroy(ctx->pipe.stream_uploader);
+
    /* Idle core after destroying buffer resources, but before deleting
     * context.  Destroying resources has potentially called StoreTiles.*/
-   SwrWaitForIdle(ctx->swrContext);
+   ctx->api.pfnSwrWaitForIdle(ctx->swrContext);
 
    if (ctx->swrContext)
-      SwrDestroyContext(ctx->swrContext);
+      ctx->api.pfnSwrDestroyContext(ctx->swrContext);
 
    delete ctx->blendJIT;
 
@@ -385,7 +408,7 @@ swr_destroy(struct pipe_context *pipe)
    if (screen->pipe == pipe)
       screen->pipe = NULL;
 
-   FREE(ctx);
+   AlignedFree(ctx);
 }
 
 
@@ -393,7 +416,7 @@ static void
 swr_render_condition(struct pipe_context *pipe,
                      struct pipe_query *query,
                      boolean condition,
-                     uint mode)
+                     enum pipe_render_cond_flag mode)
 {
    struct swr_context *ctx = swr_context(pipe);
 
@@ -410,7 +433,7 @@ swr_UpdateStats(HANDLE hPrivateContext, const SWR_STATS *pStats)
    if (!pDC)
       return;
 
-   struct swr_query_result *pqr = (struct swr_query_result *)pDC->pStats;
+   struct swr_query_result *pqr = pDC->pStats;
 
    SWR_STATS *pSwrStats = &pqr->core;
 
@@ -427,7 +450,7 @@ swr_UpdateStatsFE(HANDLE hPrivateContext, const SWR_STATS_FE *pStats)
    if (!pDC)
       return;
 
-   struct swr_query_result *pqr = (struct swr_query_result *)pDC->pStats;
+   struct swr_query_result *pqr = pDC->pStats;
 
    SWR_STATS_FE *pSwrStats = &pqr->coreFE;
    p_atomic_add(&pSwrStats->IaVertices, pStats->IaVertices);
@@ -451,9 +474,17 @@ swr_UpdateStatsFE(HANDLE hPrivateContext, const SWR_STATS_FE *pStats)
 struct pipe_context *
 swr_create_context(struct pipe_screen *p_screen, void *priv, unsigned flags)
 {
-   struct swr_context *ctx = CALLOC_STRUCT(swr_context);
+   struct swr_context *ctx = (struct swr_context *)
+      AlignedMalloc(sizeof(struct swr_context), KNOB_SIMD_BYTES);
+   memset(ctx, 0, sizeof(struct swr_context));
+
+   swr_screen(p_screen)->pfnSwrGetInterface(ctx->api);
+   ctx->swrDC.pAPI = &ctx->api;
+
    ctx->blendJIT =
       new std::unordered_map<BLEND_COMPILE_STATE, PFN_BLEND_JIT_FUNC>;
+
+   ctx->max_draws_in_flight = KNOB_MAX_DRAWS_IN_FLIGHT;
 
    SWR_CREATECONTEXT_INFO createInfo;
    memset(&createInfo, 0, sizeof(createInfo));
@@ -463,12 +494,33 @@ swr_create_context(struct pipe_screen *p_screen, void *priv, unsigned flags)
    createInfo.pfnClearTile = swr_StoreHotTileClear;
    createInfo.pfnUpdateStats = swr_UpdateStats;
    createInfo.pfnUpdateStatsFE = swr_UpdateStatsFE;
-   ctx->swrContext = SwrCreateContext(&createInfo);
 
-   /* Init Load/Store/ClearTiles Tables */
-   swr_InitMemoryModule();
+   SWR_THREADING_INFO threadingInfo {0};
 
-   InitBackendFuncTables();
+   threadingInfo.MAX_WORKER_THREADS        = KNOB_MAX_WORKER_THREADS;
+   threadingInfo.MAX_NUMA_NODES            = KNOB_MAX_NUMA_NODES;
+   threadingInfo.MAX_CORES_PER_NUMA_NODE   = KNOB_MAX_CORES_PER_NUMA_NODE;
+   threadingInfo.MAX_THREADS_PER_CORE      = KNOB_MAX_THREADS_PER_CORE;
+   threadingInfo.SINGLE_THREADED           = KNOB_SINGLE_THREADED;
+
+   // Use non-standard settings for KNL
+   if (swr_screen(p_screen)->is_knl)
+   {
+      if (nullptr == getenv("KNOB_MAX_THREADS_PER_CORE"))
+         threadingInfo.MAX_THREADS_PER_CORE  = 2;
+
+      if (nullptr == getenv("KNOB_MAX_DRAWS_IN_FLIGHT"))
+      {
+         ctx->max_draws_in_flight = 2048;
+         createInfo.MAX_DRAWS_IN_FLIGHT = ctx->max_draws_in_flight;
+      }
+   }
+
+   createInfo.pThreadInfo = &threadingInfo;
+
+   ctx->swrContext = ctx->api.pfnSwrCreateContext(&createInfo);
+
+   ctx->api.pfnSwrInit();
 
    if (ctx->swrContext == NULL)
       goto fail;
@@ -485,6 +537,7 @@ swr_create_context(struct pipe_screen *p_screen, void *priv, unsigned flags)
    ctx->pipe.buffer_subdata = u_default_buffer_subdata;
    ctx->pipe.texture_subdata = u_default_texture_subdata;
 
+   ctx->pipe.clear_texture = util_clear_texture;
    ctx->pipe.resource_copy_region = swr_resource_copy;
    ctx->pipe.render_condition = swr_render_condition;
 
@@ -492,6 +545,11 @@ swr_create_context(struct pipe_screen *p_screen, void *priv, unsigned flags)
    swr_clear_init(&ctx->pipe);
    swr_draw_init(&ctx->pipe);
    swr_query_init(&ctx->pipe);
+
+   ctx->pipe.stream_uploader = u_upload_create_default(&ctx->pipe);
+   if (!ctx->pipe.stream_uploader)
+      goto fail;
+   ctx->pipe.const_uploader = ctx->pipe.stream_uploader;
 
    ctx->pipe.blit = swr_blit;
    ctx->blitter = util_blitter_create(&ctx->pipe);

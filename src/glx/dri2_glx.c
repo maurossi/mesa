@@ -74,7 +74,7 @@ struct dri2_display
 
    __glxHashTable *dri2Hash;
 
-   const __DRIextension *loader_extensions[4];
+   const __DRIextension *loader_extensions[5];
 };
 
 struct dri2_drawable
@@ -247,7 +247,8 @@ dri2_create_context_attribs(struct glx_screen *base,
    uint32_t flags;
    unsigned api;
    int reset;
-   uint32_t ctx_attribs[2 * 5];
+   int release;
+   uint32_t ctx_attribs[2 * 6];
    unsigned num_ctx_attribs = 0;
 
    if (psc->dri2->base.version < 3) {
@@ -259,7 +260,7 @@ dri2_create_context_attribs(struct glx_screen *base,
     */
    if (!dri2_convert_glx_attribs(num_attribs, attribs,
                                  &major_ver, &minor_ver, &renderType, &flags,
-                                 &api, &reset, error))
+                                 &api, &reset, &release, error))
       goto error_exit;
 
    /* Check the renderType value */
@@ -277,7 +278,7 @@ dri2_create_context_attribs(struct glx_screen *base,
       goto error_exit;
    }
 
-   if (!glx_context_init(&pcp->base, &psc->base, &config->base))
+   if (!glx_context_init(&pcp->base, &psc->base, config_base))
       goto error_exit;
 
    ctx_attribs[num_ctx_attribs++] = __DRI_CTX_ATTRIB_MAJOR_VERSION;
@@ -292,6 +293,11 @@ dri2_create_context_attribs(struct glx_screen *base,
    if (reset != __DRI_CTX_RESET_NO_NOTIFICATION) {
       ctx_attribs[num_ctx_attribs++] = __DRI_CTX_ATTRIB_RESET_STRATEGY;
       ctx_attribs[num_ctx_attribs++] = reset;
+   }
+
+   if (release != __DRI_CTX_RELEASE_BEHAVIOR_FLUSH) {
+      ctx_attribs[num_ctx_attribs++] = __DRI_CTX_ATTRIB_RELEASE_BEHAVIOR;
+      ctx_attribs[num_ctx_attribs++] = release;
    }
 
    if (flags != 0) {
@@ -311,7 +317,7 @@ dri2_create_context_attribs(struct glx_screen *base,
    pcp->driContext =
       (*psc->dri2->createContextAttribs) (psc->driScreen,
 					  api,
-					  config->driConfig,
+					  config ? config->driConfig : NULL,
 					  shared,
 					  num_ctx_attribs / 2,
 					  ctx_attribs,
@@ -946,6 +952,25 @@ dri2GetSwapInterval(__GLXDRIdrawable *pdraw)
   return priv->swap_interval;
 }
 
+static void
+driSetBackgroundContext(void *loaderPrivate)
+{
+   struct dri2_context *pcp = (struct dri2_context *) loaderPrivate;
+   __glXSetCurrentContext(&pcp->base);
+}
+
+static GLboolean
+driIsThreadSafe(void *loaderPrivate)
+{
+   struct dri2_context *pcp = (struct dri2_context *) loaderPrivate;
+   /* Check Xlib is running in thread safe mode
+    *
+    * 'lock_fns' is the XLockDisplay function pointer of the X11 display 'dpy'.
+    * It wll be NULL if XInitThreads wasn't called.
+    */
+   return pcp->base.psc->dpy->lock_fns != NULL;
+}
+
 static const __DRIdri2LoaderExtension dri2LoaderExtension = {
    .base = { __DRI_DRI2_LOADER, 3 },
 
@@ -964,6 +989,13 @@ static const __DRIdri2LoaderExtension dri2LoaderExtension_old = {
 
 static const __DRIuseInvalidateExtension dri2UseInvalidate = {
    .base = { __DRI_USE_INVALIDATE, 1 }
+};
+
+static const __DRIbackgroundCallableExtension driBackgroundCallable = {
+   .base = { __DRI_BACKGROUND_CALLABLE, 2 },
+
+   .setBackgroundContext    = driSetBackgroundContext,
+   .isThreadSafe            = driIsThreadSafe,
 };
 
 _X_HIDDEN void
@@ -1144,6 +1176,14 @@ dri2BindExtensions(struct dri2_screen *psc, struct glx_display * priv,
 
       if (strcmp(extensions[i]->name, __DRI2_INTEROP) == 0)
 	 psc->interop = (__DRI2interopExtension*)extensions[i];
+
+      /* DRI2 version 3 is also required because
+       * GLX_ARB_control_flush_control requires GLX_ARB_create_context.
+       */
+      if (psc->dri2->base.version >= 3
+          && strcmp(extensions[i]->name, __DRI2_FLUSH_CONTROL) == 0)
+         __glXEnableDirectExtension(&psc->base,
+                                    "GLX_ARB_context_flush_control");
    }
 }
 
@@ -1285,12 +1325,17 @@ dri2CreateScreen(int screen, struct glx_display * priv)
    psp->getBufferAge = NULL;
 
    if (pdp->driMinor >= 2) {
+      unsigned char disable;
+
       psp->getDrawableMSC = dri2DrawableGetMSC;
       psp->waitForMSC = dri2WaitForMSC;
       psp->waitForSBC = dri2WaitForSBC;
       psp->setSwapInterval = dri2SetSwapInterval;
       psp->getSwapInterval = dri2GetSwapInterval;
-      __glXEnableDirectExtension(&psc->base, "GLX_OML_sync_control");
+      if (psc->config->configQueryb(psc->driScreen,
+                                    "glx_disable_oml_sync_control",
+                                    &disable) || !disable)
+         __glXEnableDirectExtension(&psc->base, "GLX_OML_sync_control");
    }
 
    /* DRI2 supports SubBuffer through DRI2CopyRegion, so it's always
@@ -1393,9 +1438,9 @@ dri2CreateDisplay(Display * dpy)
    else
       pdp->loader_extensions[i++] = &dri2LoaderExtension.base;
    
-   pdp->loader_extensions[i++] = &systemTimeExtension.base;
-
    pdp->loader_extensions[i++] = &dri2UseInvalidate.base;
+
+   pdp->loader_extensions[i++] = &driBackgroundCallable.base;
 
    pdp->loader_extensions[i++] = NULL;
 

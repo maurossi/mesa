@@ -19,16 +19,12 @@
  * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
- *
- * Authors:
- *  Nicolai Hähnle <nicolai.haehnle@amd.com>
- *
  */
 
 #include "util/u_memory.h"
 #include "r600_query.h"
-#include "r600_pipe_common.h"
-#include "amd/common/r600d_common.h"
+#include "radeonsi/si_pipe.h"
+#include "amd/common/sid.h"
 
 /* Max counters per HW block */
 #define R600_QUERY_MAX_COUNTERS 16
@@ -99,7 +95,7 @@ struct r600_query_pc {
 	struct r600_pc_group *groups;
 };
 
-static void r600_pc_query_destroy(struct r600_common_context *ctx,
+static void r600_pc_query_destroy(struct si_screen *sscreen,
 				  struct r600_query *rquery)
 {
 	struct r600_query_pc *query = (struct r600_query_pc *)rquery;
@@ -112,10 +108,10 @@ static void r600_pc_query_destroy(struct r600_common_context *ctx,
 
 	FREE(query->counters);
 
-	r600_query_hw_destroy(ctx, rquery);
+	si_query_hw_destroy(sscreen, rquery);
 }
 
-static bool r600_pc_query_prepare_buffer(struct r600_common_context *ctx,
+static bool r600_pc_query_prepare_buffer(struct si_screen *screen,
 					 struct r600_query_hw *hwquery,
 					 struct r600_resource *buffer)
 {
@@ -196,7 +192,7 @@ static void r600_pc_query_clear_result(struct r600_query_hw *hwquery,
 	memset(result, 0, sizeof(result->batch[0]) * query->num_counters);
 }
 
-static void r600_pc_query_add_result(struct r600_common_context *ctx,
+static void r600_pc_query_add_result(struct si_screen *sscreen,
 				     struct r600_query_hw *hwquery,
 				     void *buffer,
 				     union pipe_query_result *result)
@@ -217,9 +213,9 @@ static void r600_pc_query_add_result(struct r600_common_context *ctx,
 
 static struct r600_query_ops batch_query_ops = {
 	.destroy = r600_pc_query_destroy,
-	.begin = r600_query_hw_begin,
-	.end = r600_query_hw_end,
-	.get_result = r600_query_hw_get_result
+	.begin = si_query_hw_begin,
+	.end = si_query_hw_end,
+	.get_result = si_query_hw_get_result
 };
 
 static struct r600_query_hw_ops batch_query_hw_ops = {
@@ -230,7 +226,7 @@ static struct r600_query_hw_ops batch_query_hw_ops = {
 	.add_result = r600_pc_query_add_result,
 };
 
-static struct r600_pc_group *get_group_state(struct r600_common_screen *screen,
+static struct r600_pc_group *get_group_state(struct si_screen *screen,
 					     struct r600_query_pc *query,
 					     struct r600_perfcounter_block *block,
 					     unsigned sub_gid)
@@ -297,12 +293,12 @@ static struct r600_pc_group *get_group_state(struct r600_common_screen *screen,
 	return group;
 }
 
-struct pipe_query *r600_create_batch_query(struct pipe_context *ctx,
-					   unsigned num_queries,
-					   unsigned *query_types)
+struct pipe_query *si_create_batch_query(struct pipe_context *ctx,
+					 unsigned num_queries,
+					 unsigned *query_types)
 {
-	struct r600_common_context *rctx = (struct r600_common_context *)ctx;
-	struct r600_common_screen *screen = rctx->screen;
+	struct si_screen *screen =
+		(struct si_screen *)ctx->screen;
 	struct r600_perfcounters *pc = screen->perfcounters;
 	struct r600_perfcounter_block *block;
 	struct r600_pc_group *group;
@@ -365,7 +361,7 @@ struct pipe_query *r600_create_batch_query(struct pipe_context *ctx,
 		unsigned instances = 1;
 
 		if ((block->flags & R600_PC_BLOCK_SE) && group->se < 0)
-			instances = rctx->screen->info.max_se;
+			instances = screen->info.max_se;
 		if (group->instance < 0)
 			instances *= block->num_instances;
 
@@ -417,17 +413,17 @@ struct pipe_query *r600_create_batch_query(struct pipe_context *ctx,
 			counter->qwords *= block->num_instances;
 	}
 
-	if (!r600_query_hw_init(rctx, &query->b))
+	if (!si_query_hw_init(screen, &query->b))
 		goto error;
 
 	return (struct pipe_query *)query;
 
 error:
-	r600_pc_query_destroy(rctx, &query->b.b);
+	r600_pc_query_destroy(screen, &query->b.b);
 	return NULL;
 }
 
-static bool r600_init_block_names(struct r600_common_screen *screen,
+static bool r600_init_block_names(struct si_screen *screen,
 				  struct r600_perfcounter_block *block)
 {
 	unsigned i, j, k;
@@ -511,9 +507,9 @@ static bool r600_init_block_names(struct r600_common_screen *screen,
 	return true;
 }
 
-int r600_get_perfcounter_info(struct r600_common_screen *screen,
-			      unsigned index,
-			      struct pipe_driver_query_info *info)
+int si_get_perfcounter_info(struct si_screen *screen,
+			    unsigned index,
+			    struct pipe_driver_query_info *info)
 {
 	struct r600_perfcounters *pc = screen->perfcounters;
 	struct r600_perfcounter_block *block;
@@ -553,9 +549,9 @@ int r600_get_perfcounter_info(struct r600_common_screen *screen,
 	return 1;
 }
 
-int r600_get_perfcounter_group_info(struct r600_common_screen *screen,
-				    unsigned index,
-				    struct pipe_driver_query_group_info *info)
+int si_get_perfcounter_group_info(struct si_screen *screen,
+				  unsigned index,
+				  struct pipe_driver_query_group_info *info)
 {
 	struct r600_perfcounters *pc = screen->perfcounters;
 	struct r600_perfcounter_block *block;
@@ -580,13 +576,13 @@ int r600_get_perfcounter_group_info(struct r600_common_screen *screen,
 	return 1;
 }
 
-void r600_perfcounters_destroy(struct r600_common_screen *rscreen)
+void si_perfcounters_destroy(struct si_screen *sscreen)
 {
-	if (rscreen->perfcounters)
-		rscreen->perfcounters->cleanup(rscreen);
+	if (sscreen->perfcounters)
+		sscreen->perfcounters->cleanup(sscreen);
 }
 
-bool r600_perfcounters_init(struct r600_perfcounters *pc,
+bool si_perfcounters_init(struct r600_perfcounters *pc,
 			    unsigned num_blocks)
 {
 	pc->blocks = CALLOC(num_blocks, sizeof(struct r600_perfcounter_block));
@@ -599,11 +595,11 @@ bool r600_perfcounters_init(struct r600_perfcounters *pc,
 	return true;
 }
 
-void r600_perfcounters_add_block(struct r600_common_screen *rscreen,
-				 struct r600_perfcounters *pc,
-				 const char *name, unsigned flags,
-				 unsigned counters, unsigned selectors,
-				 unsigned instances, void *data)
+void si_perfcounters_add_block(struct si_screen *sscreen,
+			       struct r600_perfcounters *pc,
+			       const char *name, unsigned flags,
+			       unsigned counters, unsigned selectors,
+			       unsigned instances, void *data)
 {
 	struct r600_perfcounter_block *block = &pc->blocks[pc->num_blocks];
 
@@ -628,7 +624,7 @@ void r600_perfcounters_add_block(struct r600_common_screen *rscreen,
 	}
 
 	if (block->flags & R600_PC_BLOCK_SE_GROUPS)
-		block->num_groups *= rscreen->info.max_se;
+		block->num_groups *= sscreen->info.max_se;
 	if (block->flags & R600_PC_BLOCK_SHADER)
 		block->num_groups *= pc->num_shader_types;
 
@@ -636,7 +632,7 @@ void r600_perfcounters_add_block(struct r600_common_screen *rscreen,
 	pc->num_groups += block->num_groups;
 }
 
-void r600_perfcounters_do_destroy(struct r600_perfcounters *pc)
+void si_perfcounters_do_destroy(struct r600_perfcounters *pc)
 {
 	unsigned i;
 

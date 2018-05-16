@@ -27,7 +27,6 @@
 #define SHADEROBJ_H
 
 
-#include "main/compiler.h"
 #include "main/glheader.h"
 #include "main/mtypes.h"
 #include "program/ir_to_mesa.h"
@@ -99,6 +98,9 @@ _mesa_lookup_shader_program_err(struct gl_context *ctx, GLuint name,
 
 extern struct gl_shader_program *
 _mesa_new_shader_program(GLuint name);
+
+extern struct gl_shader_program_data *
+_mesa_create_shader_program_data(void);
 
 extern void
 _mesa_clear_shader_program_data(struct gl_context *ctx,
@@ -216,6 +218,8 @@ _mesa_shader_stage_to_subroutine(gl_shader_stage stage)
       return GL_TESS_CONTROL_SUBROUTINE;
    case MESA_SHADER_TESS_EVAL:
       return GL_TESS_EVALUATION_SUBROUTINE;
+   case MESA_SHADER_NONE:
+      break;
    }
    unreachable("not reached");
 }
@@ -236,6 +240,8 @@ _mesa_shader_stage_to_subroutine_uniform(gl_shader_stage stage)
       return GL_TESS_CONTROL_SUBROUTINE_UNIFORM;
    case MESA_SHADER_TESS_EVAL:
       return GL_TESS_EVALUATION_SUBROUTINE_UNIFORM;
+   case MESA_SHADER_NONE:
+      break;
    }
    unreachable("not reached");
 }

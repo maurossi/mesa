@@ -24,9 +24,12 @@
  *    Rob Clark <robclark@freedesktop.org>
  */
 
+#include "freedreno_query_acc.h"
 
 #include "fd5_context.h"
 #include "fd5_blend.h"
+#include "fd5_blitter.h"
+#include "fd5_compute.h"
 #include "fd5_draw.h"
 #include "fd5_emit.h"
 #include "fd5_gmem.h"
@@ -85,12 +88,16 @@ fd5_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 	pctx->create_depth_stencil_alpha_state = fd5_zsa_state_create;
 
 	fd5_draw_init(pctx);
+	fd5_compute_init(pctx);
 	fd5_gmem_init(pctx);
 	fd5_texture_init(pctx);
 	fd5_prog_init(pctx);
 	fd5_emit_init(pctx);
 
-	pctx = fd_context_init(&fd5_ctx->base, pscreen, primtypes, priv);
+	if (!(fd_mesa_debug & FD_DBG_NOBLIT))
+		fd5_ctx->base.blit = fd5_blitter_blit;
+
+	pctx = fd_context_init(&fd5_ctx->base, pscreen, primtypes, priv, flags);
 	if (!pctx)
 		return NULL;
 
@@ -111,7 +118,7 @@ fd5_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 	fd5_query_context_init(pctx);
 
 	fd5_ctx->border_color_uploader = u_upload_create(pctx, 4096, 0,
-                                                         PIPE_USAGE_STREAM);
+                                                         PIPE_USAGE_STREAM, 0);
 
 	return pctx;
 }

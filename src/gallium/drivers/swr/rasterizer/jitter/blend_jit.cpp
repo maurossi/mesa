@@ -27,12 +27,11 @@
 * Notes:
 *
 ******************************************************************************/
+#include "jit_pch.hpp"
+#include "builder.h"
 #include "jit_api.h"
 #include "blend_jit.h"
-#include "builder.h"
-#include "state_llvm.h"
-
-#include <sstream>
+#include "gen_state_llvm.h"
 
 // components with bit-widths <= the QUANTIZE_THRESHOLD will be quantized
 #define QUANTIZE_THRESHOLD 2
@@ -137,7 +136,7 @@ struct BlendJit : public Builder
             out[0] = out[1] = out[2] = out[3] = FSUB(VIMMED1(1.0f), src1[3]);
             break;
         default:
-            SWR_ASSERT(false, "Unsupported blend factor: %d", factor);
+            SWR_INVALID("Unsupported blend factor: %d", factor);
             out[0] = out[1] = out[2] = out[3] = VIMMED1(0.0f);
             break;
         }
@@ -162,7 +161,7 @@ struct BlendJit : public Builder
 
         switch (type)
         {
-        case SWR_TYPE_FLOAT:
+        default:
             break;
 
         case SWR_TYPE_UNORM:
@@ -179,7 +178,7 @@ struct BlendJit : public Builder
             src[3] = VMINPS(VMAXPS(src[3], VIMMED1(-1.0f)), VIMMED1(1.0f));
             break;
 
-        default: SWR_ASSERT(false, "Unsupport format type: %d", type);
+        case SWR_TYPE_UNKNOWN: SWR_INVALID("Unsupport format type: %d", type);
         }
     }
 
@@ -231,7 +230,7 @@ struct BlendJit : public Builder
                     src[swizComp] = VROUND(src[swizComp], C(_MM_FROUND_TO_ZERO));
                     src[swizComp] = FMUL(src[swizComp], VIMMED1(1.0f /factor));
                     break;
-                default: SWR_ASSERT(false, "Unsupported format type: %d", info.type[c]);
+                default: SWR_INVALID("Unsupported format type: %d", info.type[c]);
                 }
             }
         }
@@ -287,7 +286,7 @@ struct BlendJit : public Builder
             break;
 
         default:
-            SWR_ASSERT(false, "Unsupported blend operation: %d", blendOp);
+            SWR_INVALID("Unsupported blend operation: %d", blendOp);
             out[0] = out[1] = out[2] = out[3] = VIMMED1(0.0f);
             break;
         }
@@ -437,7 +436,7 @@ struct BlendJit : public Builder
             break;
 
         default:
-            SWR_ASSERT(false, "Unsupported logic operation: %d", logicOp);
+            SWR_INVALID("Unsupported logic operation: %d", logicOp);
             result[0] = result[1] = result[2] = result[3] = VIMMED1(0.0f);
             break;
         }
@@ -470,7 +469,7 @@ struct BlendJit : public Builder
             case ZFUNC_NE:      pTest = ICMP_NE(pAlphaU8, pRef); break;
             case ZFUNC_GE:      pTest = ICMP_UGE(pAlphaU8, pRef); break;
             default:
-                SWR_ASSERT(false, "Invalid alpha test function");
+                SWR_INVALID("Invalid alpha test function");
                 break;
             }
         }
@@ -491,7 +490,7 @@ struct BlendJit : public Builder
             case ZFUNC_NE:      pTest = FCMP_ONE(pAlpha, pRef); break;
             case ZFUNC_GE:      pTest = FCMP_OGE(pAlpha, pRef); break;
             default:
-                SWR_ASSERT(false, "Invalid alpha test function");
+                SWR_INVALID("Invalid alpha test function");
                 break;
             }
         }
@@ -514,13 +513,11 @@ struct BlendJit : public Builder
 
     Function* Create(const BLEND_COMPILE_STATE& state)
     {
-        static std::size_t jitNum = 0;
-
-        std::stringstream fnName("BlendShader", std::ios_base::in | std::ios_base::out | std::ios_base::ate);
-        fnName << jitNum++;
+        std::stringstream fnName("BLND_", std::ios_base::in | std::ios_base::out | std::ios_base::ate);
+        fnName << ComputeCRC(0, &state, sizeof(state));
 
         // blend function signature
-        //typedef void(*PFN_BLEND_JIT_FUNC)(const SWR_BLEND_STATE*, simdvector&, simdvector&, uint32_t, BYTE*, simdvector&, simdscalari*, simdscalari*);
+        //typedef void(*PFN_BLEND_JIT_FUNC)(const SWR_BLEND_STATE*, simdvector&, simdvector&, uint32_t, uint8_t*, simdvector&, simdscalari*, simdscalari*);
 
         std::vector<Type*> args{
             PointerType::get(Gen_SWR_BLEND_STATE(JM()), 0), // SWR_BLEND_STATE*
@@ -536,6 +533,7 @@ struct BlendJit : public Builder
 
         FunctionType* fTy = FunctionType::get(IRB()->getVoidTy(), args, false);
         Function* blendFunc = Function::Create(fTy, GlobalValue::ExternalLinkage, fnName.str(), JM()->mpCurrentModule);
+        blendFunc->getParent()->setModuleIdentifier(blendFunc->getName());
 
         BasicBlock* entry = BasicBlock::Create(JM()->mContext, "entry", blendFunc);
 
@@ -582,13 +580,13 @@ struct BlendJit : public Builder
             // load src1
             src1[i] = LOAD(pSrc1, { i });
         }
-        Value* currentMask = VIMMED1(-1);
+        Value* currentSampleMask = VIMMED1(-1);
         if (state.desc.alphaToCoverageEnable)
         {
             Value* pClampedSrc = FCLAMP(src[3], 0.0f, 1.0f);
             uint32_t bits = (1 << state.desc.numSamples) - 1;
-            currentMask = FMUL(pClampedSrc, VBROADCAST(C((float)bits)));
-            currentMask = FP_TO_SI(FADD(currentMask, VIMMED1(0.5f)), mSimdInt32Ty);
+            currentSampleMask = FMUL(pClampedSrc, VBROADCAST(C((float)bits)));
+            currentSampleMask = FP_TO_SI(FADD(currentSampleMask, VIMMED1(0.5f)), mSimdInt32Ty);
         }
 
         // alpha test
@@ -671,10 +669,13 @@ struct BlendJit : public Builder
                     continue;
                 }
 
-                if (info.bpc[i] >= 32) {
+                if (info.bpc[i] >= 32)
+                {
                     vMask[i] = VIMMED1(0xFFFFFFFF);
                     scale[i] = 0xFFFFFFFF;
-                } else {
+                }
+                else
+                {
                     vMask[i] = VIMMED1((1 << info.bpc[i]) - 1);
                     if (info.type[i] == SWR_TYPE_SNORM)
                         scale[i] = (1 << (info.bpc[i] - 1)) - 1;
@@ -682,10 +683,16 @@ struct BlendJit : public Builder
                         scale[i] = (1 << info.bpc[i]) - 1;
                 }
 
-                switch (info.type[i]) {
+                switch (info.type[i])
+                {
                 default:
-                    SWR_ASSERT(0, "Unsupported type for logic op\n");
-                    /* fallthrough */
+                    SWR_INVALID("Unsupported type for logic op: %d", info.type[i]);
+                    break;
+
+                case SWR_TYPE_UNKNOWN:
+                case SWR_TYPE_UNUSED:
+                    // fallthrough
+
                 case SWR_TYPE_UINT:
                 case SWR_TYPE_SINT:
                     src[i] = BITCAST(src[i], mSimdInt32Ty);
@@ -723,10 +730,16 @@ struct BlendJit : public Builder
                 // clear upper bits from PS output not in RT format after doing logic op
                 result[i] = AND(result[i], vMask[i]);
 
-                switch (info.type[i]) {
+                switch (info.type[i])
+                {
                 default:
-                    SWR_ASSERT(0, "Unsupported type for logic op\n");
-                    /* fallthrough */
+                    SWR_INVALID("Unsupported type for logic op: %d", info.type[i]);
+                    break;
+
+                case SWR_TYPE_UNKNOWN:
+                case SWR_TYPE_UNUSED:
+                    // fallthrough
+
                 case SWR_TYPE_UINT:
                 case SWR_TYPE_SINT:
                     result[i] = BITCAST(result[i], mSimdFP32Ty);
@@ -752,34 +765,24 @@ struct BlendJit : public Builder
             assert(!(state.desc.alphaToCoverageEnable));
             // load current mask
             Value* oMask = LOAD(ppoMask);
-            Value* sampleMasked = VBROADCAST(SHL(C(1), sampleNum));
-            oMask = AND(oMask, sampleMasked);
-            currentMask = AND(oMask, currentMask);
+            currentSampleMask = AND(oMask, currentSampleMask);
         }
 
         if(state.desc.sampleMaskEnable)
         {
             Value* sampleMask = LOAD(pBlendState, { 0, SWR_BLEND_STATE_sampleMask});
-            Value* sampleMasked = SHL(C(1), sampleNum);
-            sampleMask = AND(sampleMask, sampleMasked);
-            sampleMask = VBROADCAST(ICMP_SGT(sampleMask, C(0)));
-            sampleMask = S_EXT(sampleMask, mSimdInt32Ty);
-            currentMask = AND(sampleMask, currentMask);
-        }
-
-        if (state.desc.alphaToCoverageEnable)
-        {
-            Value* sampleMasked = SHL(C(1), sampleNum);
-            currentMask = AND(currentMask, VBROADCAST(sampleMasked));
+            currentSampleMask = AND(VBROADCAST(sampleMask), currentSampleMask);
         }
 
         if(state.desc.sampleMaskEnable || state.desc.alphaToCoverageEnable ||
            state.desc.oMaskEnable)
         {
-            // load current mask
+            // load coverage mask and mask off any lanes with no samples
             Value* pMask = LOAD(ppMask);
-            currentMask = S_EXT(ICMP_SGT(currentMask, VBROADCAST(C(0))), mSimdInt32Ty);
-            Value* outputMask = AND(pMask, currentMask);
+            Value* sampleMasked = SHL(C(1), sampleNum);
+            currentSampleMask = AND(currentSampleMask, VBROADCAST(sampleMasked));
+            currentSampleMask = S_EXT(ICMP_UGT(currentSampleMask, VBROADCAST(C(0))), mSimdInt32Ty);
+            Value* outputMask = AND(pMask, currentSampleMask);
             // store new mask
             STORE(outputMask, GEP(ppMask, C(0)));
         }

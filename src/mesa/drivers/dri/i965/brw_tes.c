@@ -28,9 +28,8 @@
  */
 
 #include "brw_context.h"
-#include "brw_nir.h"
+#include "compiler/brw_nir.h"
 #include "brw_program.h"
-#include "brw_shader.h"
 #include "brw_state.h"
 #include "program/prog_parameter.h"
 
@@ -78,38 +77,23 @@ brw_codegen_tes_prog(struct brw_context *brw,
 
    memset(&prog_data, 0, sizeof(prog_data));
 
+   void *mem_ctx = ralloc_context(NULL);
+
    brw_assign_common_binding_table_offsets(devinfo, &tep->program,
                                            &prog_data.base.base, 0);
 
-   /* Allocate the references to the uniforms that will end up in the
-    * prog_data associated with the compiled program, and which will be freed
-    * by the state cache.
-    *
-    * Note: param_count needs to be num_uniform_components * 4, since we add
-    * padding around uniform values below vec4 size, so the worst case is that
-    * every uniform is a float which gets padded to the size of a vec4.
-    */
-   int param_count = nir->num_uniforms / 4;
-
-   prog_data.base.base.param =
-      rzalloc_array(NULL, const gl_constant_value *, param_count);
-   prog_data.base.base.pull_param =
-      rzalloc_array(NULL, const gl_constant_value *, param_count);
-   prog_data.base.base.image_param =
-      rzalloc_array(NULL, struct brw_image_param,
-                    tep->program.info.num_images);
-   prog_data.base.base.nr_params = param_count;
-   prog_data.base.base.nr_image_params = tep->program.info.num_images;
-
-   brw_nir_setup_glsl_uniforms(nir, &tep->program, &prog_data.base.base,
+   brw_nir_setup_glsl_uniforms(mem_ctx, nir, &tep->program,
+                               &prog_data.base.base,
                                compiler->scalar_stage[MESA_SHADER_TESS_EVAL]);
+   brw_nir_analyze_ubo_ranges(compiler, tep->program.nir,
+                              prog_data.base.base.ubo_ranges);
 
    int st_index = -1;
    if (unlikely(INTEL_DEBUG & DEBUG_SHADER_TIME))
       st_index = brw_get_shader_time_index(brw, &tep->program, ST_TES, true);
 
    if (unlikely(brw->perf_debug)) {
-      start_busy = brw->batch.last_bo && drm_intel_bo_busy(brw->batch.last_bo);
+      start_busy = brw->batch.last_bo && brw_bo_busy(brw->batch.last_bo);
       start_time = get_time();
    }
 
@@ -117,14 +101,12 @@ brw_codegen_tes_prog(struct brw_context *brw,
    brw_compute_tess_vue_map(&input_vue_map, key->inputs_read,
                             key->patch_inputs_read);
 
-   void *mem_ctx = ralloc_context(NULL);
-   unsigned program_size;
    char *error_str;
    const unsigned *program =
       brw_compile_tes(compiler, brw, mem_ctx, key, &input_vue_map, &prog_data,
-                      nir, &tep->program, st_index, &program_size, &error_str);
+                      nir, &tep->program, st_index, &error_str);
    if (program == NULL) {
-      tep->program.sh.data->LinkStatus = false;
+      tep->program.sh.data->LinkStatus = linking_failure;
       ralloc_strcat(&tep->program.sh.data->InfoLog, error_str);
 
       _mesa_problem(NULL, "Failed to compile tessellation evaluation shader: "
@@ -138,7 +120,7 @@ brw_codegen_tes_prog(struct brw_context *brw,
       if (tep->compiled_once) {
          brw_tes_debug_recompile(brw, &tep->program, key);
       }
-      if (start_busy && !drm_intel_bo_busy(brw->batch.last_bo)) {
+      if (start_busy && !brw_bo_busy(brw->batch.last_bo)) {
          perf_debug("TES compile took %.03f ms and stalled the GPU\n",
                     (get_time() - start_time) * 1000);
       }
@@ -147,12 +129,14 @@ brw_codegen_tes_prog(struct brw_context *brw,
 
    /* Scratch space is used for register spilling */
    brw_alloc_stage_scratch(brw, stage_state,
-                           prog_data.base.base.total_scratch,
-                           devinfo->max_tes_threads);
+                           prog_data.base.base.total_scratch);
 
+   /* The param and pull_param arrays will be freed by the shader cache. */
+   ralloc_steal(NULL, prog_data.base.base.param);
+   ralloc_steal(NULL, prog_data.base.base.pull_param);
    brw_upload_cache(&brw->cache, BRW_CACHE_TES_PROG,
                     key, sizeof(*key),
-                    program, program_size,
+                    program, prog_data.base.base.program_size,
                     &prog_data, sizeof(prog_data),
                     &stage_state->prog_offset, &brw->tes.base.prog_data);
    ralloc_free(mem_ctx);
@@ -164,8 +148,10 @@ void
 brw_tes_populate_key(struct brw_context *brw,
                      struct brw_tes_prog_key *key)
 {
-   struct brw_program *tcp = (struct brw_program *) brw->tess_ctrl_program;
-   struct brw_program *tep = (struct brw_program *) brw->tess_eval_program;
+   struct brw_program *tcp =
+      (struct brw_program *) brw->programs[MESA_SHADER_TESS_CTRL];
+   struct brw_program *tep =
+      (struct brw_program *) brw->programs[MESA_SHADER_TESS_EVAL];
    struct gl_program *prog = &tep->program;
 
    uint64_t per_vertex_slots = prog->info.inputs_read;
@@ -199,7 +185,8 @@ brw_upload_tes_prog(struct brw_context *brw)
    struct brw_stage_state *stage_state = &brw->tes.base;
    struct brw_tes_prog_key key;
    /* BRW_NEW_TESS_PROGRAMS */
-   struct brw_program *tep = (struct brw_program *) brw->tess_eval_program;
+   struct brw_program *tep =
+      (struct brw_program *) brw->programs[MESA_SHADER_TESS_EVAL];
 
    if (!brw_state_dirty(brw,
                         _NEW_TEXTURE,
@@ -208,14 +195,20 @@ brw_upload_tes_prog(struct brw_context *brw)
 
    brw_tes_populate_key(brw, &key);
 
-   if (!brw_search_cache(&brw->cache, BRW_CACHE_TES_PROG,
-                         &key, sizeof(key),
-                         &stage_state->prog_offset,
-                         &brw->tes.base.prog_data)) {
-      bool success = brw_codegen_tes_prog(brw, tep, &key);
-      assert(success);
-      (void)success;
-   }
+   if (brw_search_cache(&brw->cache, BRW_CACHE_TES_PROG,
+                        &key, sizeof(key),
+                        &stage_state->prog_offset,
+                        &brw->tes.base.prog_data))
+      return;
+
+   if (brw_disk_cache_upload_program(brw, MESA_SHADER_TESS_EVAL))
+      return;
+
+   tep = (struct brw_program *) brw->programs[MESA_SHADER_TESS_EVAL];
+   tep->id = key.program_string_id;
+
+   MAYBE_UNUSED bool success = brw_codegen_tes_prog(brw, tep, &key);
+   assert(success);
 }
 
 
@@ -235,15 +228,15 @@ brw_tes_precompile(struct gl_context *ctx,
    memset(&key, 0, sizeof(key));
 
    key.program_string_id = btep->id;
-   key.inputs_read = prog->nir->info->inputs_read;
-   key.patch_inputs_read = prog->nir->info->patch_inputs_read;
+   key.inputs_read = prog->nir->info.inputs_read;
+   key.patch_inputs_read = prog->nir->info.patch_inputs_read;
 
    if (shader_prog->_LinkedShaders[MESA_SHADER_TESS_CTRL]) {
       struct gl_program *tcp =
          shader_prog->_LinkedShaders[MESA_SHADER_TESS_CTRL]->Program;
-      key.inputs_read |= tcp->nir->info->outputs_written &
+      key.inputs_read |= tcp->nir->info.outputs_written &
          ~(VARYING_BIT_TESS_LEVEL_INNER | VARYING_BIT_TESS_LEVEL_OUTER);
-      key.patch_inputs_read |= tcp->nir->info->patch_outputs_written;
+      key.patch_inputs_read |= tcp->nir->info.patch_outputs_written;
    }
 
    brw_setup_tex_for_precompile(brw, &key.tex, prog);

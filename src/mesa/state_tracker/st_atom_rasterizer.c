@@ -1,8 +1,8 @@
 /**************************************************************************
- * 
+ *
  * Copyright 2007 VMware, Inc.
  * All Rights Reserved.
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
  * "Software"), to deal in the Software without restriction, including
@@ -10,11 +10,11 @@
  * distribute, sub license, and/or sell copies of the Software, and to
  * permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice (including the
  * next paragraph) shall be included in all copies or substantial portions
  * of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
  * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
  * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NON-INFRINGEMENT.
@@ -22,16 +22,17 @@
  * ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
  * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- * 
+ *
  **************************************************************************/
 
  /*
   * Authors:
   *   Keith Whitwell <keithw@vmware.com>
   */
- 
+
 #include "main/macros.h"
 #include "main/framebuffer.h"
+#include "main/state.h"
 #include "st_context.h"
 #include "st_atom.h"
 #include "st_debug.h"
@@ -41,7 +42,8 @@
 #include "cso_cache/cso_context.h"
 
 
-static GLuint translate_fill( GLenum mode )
+static GLuint
+translate_fill(GLenum mode)
 {
    switch (mode) {
    case GL_POINT:
@@ -50,6 +52,8 @@ static GLuint translate_fill( GLenum mode )
       return PIPE_POLYGON_MODE_LINE;
    case GL_FILL:
       return PIPE_POLYGON_MODE_FILL;
+   case GL_FILL_RECTANGLE_NV:
+      return PIPE_POLYGON_MODE_FILL_RECTANGLE;
    default:
       assert(0);
       return 0;
@@ -57,8 +61,8 @@ static GLuint translate_fill( GLenum mode )
 }
 
 
-
-static void update_raster_state( struct st_context *st )
+void
+st_update_rasterizer(struct st_context *st)
 {
    struct gl_context *ctx = st->ctx;
    struct pipe_rasterizer_state *raster = &st->state.rasterizer;
@@ -83,7 +87,7 @@ static void update_raster_state( struct st_context *st )
        * must match OpenGL conventions so FBOs use Y=0=BOTTOM.  In that
        * case, we must invert Y and flip the notion of front vs. back.
        */
-      if (st_fb_orientation(ctx->DrawBuffer) == Y_0_BOTTOM) {
+      if (st->state.fb_orientation == Y_0_BOTTOM) {
          /* Drawing to an FBO.  The viewport will be inverted. */
          raster->front_ccw ^= 1;
       }
@@ -92,12 +96,12 @@ static void update_raster_state( struct st_context *st )
    /* _NEW_LIGHT
     */
    raster->flatshade = ctx->Light.ShadeModel == GL_FLAT;
-      
+
    raster->flatshade_first = ctx->Light.ProvokingVertex ==
                              GL_FIRST_VERTEX_CONVENTION_EXT;
 
    /* _NEW_LIGHT | _NEW_PROGRAM */
-   raster->light_twoside = ctx->VertexProgram._TwoSideEnabled;
+   raster->light_twoside = _mesa_vertex_program_two_side_enabled(ctx);
 
    /*_NEW_LIGHT | _NEW_BUFFERS */
    raster->clamp_vertex_color = !st->clamp_vert_color_in_shader &&
@@ -108,13 +112,13 @@ static void update_raster_state( struct st_context *st )
    if (ctx->Polygon.CullFlag) {
       switch (ctx->Polygon.CullFaceMode) {
       case GL_FRONT:
-	 raster->cull_face = PIPE_FACE_FRONT;
+         raster->cull_face = PIPE_FACE_FRONT;
          break;
       case GL_BACK:
-	 raster->cull_face = PIPE_FACE_BACK;
+         raster->cull_face = PIPE_FACE_BACK;
          break;
       case GL_FRONT_AND_BACK:
-	 raster->cull_face = PIPE_FACE_FRONT_AND_BACK;
+         raster->cull_face = PIPE_FACE_FRONT_AND_BACK;
          break;
       }
    }
@@ -130,22 +134,22 @@ static void update_raster_state( struct st_context *st )
          raster->fill_back = PIPE_POLYGON_MODE_LINE;
       }
       else {
-         raster->fill_front = translate_fill( ctx->Polygon.FrontMode );
-         raster->fill_back = translate_fill( ctx->Polygon.BackMode );
+         raster->fill_front = translate_fill(ctx->Polygon.FrontMode);
+         raster->fill_back = translate_fill(ctx->Polygon.BackMode);
       }
 
       /* Simplify when culling is active:
        */
       if (raster->cull_face & PIPE_FACE_FRONT) {
-	 raster->fill_front = raster->fill_back;
+         raster->fill_front = raster->fill_back;
       }
-      
+
       if (raster->cull_face & PIPE_FACE_BACK) {
-	 raster->fill_back = raster->fill_front;
+         raster->fill_back = raster->fill_front;
       }
    }
 
-   /* _NEW_POLYGON 
+   /* _NEW_POLYGON
     */
    if (ctx->Polygon.OffsetPoint ||
        ctx->Polygon.OffsetLine ||
@@ -171,9 +175,9 @@ static void update_raster_state( struct st_context *st )
    if (ctx->Point.PointSprite) {
       /* origin */
       if ((ctx->Point.SpriteOrigin == GL_UPPER_LEFT) ^
-          (st_fb_orientation(ctx->DrawBuffer) == Y_0_BOTTOM))
+          (st->state.fb_orientation == Y_0_BOTTOM))
          raster->sprite_coord_mode = PIPE_SPRITE_COORD_UPPER_LEFT;
-      else 
+      else
          raster->sprite_coord_mode = PIPE_SPRITE_COORD_LOWER_LEFT;
 
       /* Coord replacement flags.  If bit 'k' is set that means
@@ -259,21 +263,27 @@ static void update_raster_state( struct st_context *st )
          _mesa_geometric_samples(ctx->DrawBuffer) > 1;
 
    /* _NEW_SCISSOR */
-   raster->scissor = ctx->Scissor.EnableFlags;
+   raster->scissor = !!ctx->Scissor.EnableFlags;
 
    /* _NEW_FRAG_CLAMP */
    raster->clamp_fragment_color = !st->clamp_frag_color_in_shader &&
                                   ctx->Color._ClampFragmentColor;
 
    raster->half_pixel_center = 1;
-   if (st_fb_orientation(ctx->DrawBuffer) == Y_0_TOP)
+   if (st->state.fb_orientation == Y_0_TOP)
       raster->bottom_edge_rule = 1;
+
    /* _NEW_TRANSFORM */
    if (ctx->Transform.ClipOrigin == GL_UPPER_LEFT)
       raster->bottom_edge_rule ^= 1;
 
    /* ST_NEW_RASTERIZER */
    raster->rasterizer_discard = ctx->RasterDiscard;
+   if (ctx->TileRasterOrderFixed) {
+      raster->tile_raster_order_fixed = true;
+      raster->tile_raster_order_increasing_x = ctx->TileRasterOrderIncreasingX;
+      raster->tile_raster_order_increasing_y = ctx->TileRasterOrderIncreasingY;
+   }
 
    if (st->edgeflag_culls_prims) {
       /* All edge flags are FALSE. Cull the affected faces. */
@@ -290,7 +300,3 @@ static void update_raster_state( struct st_context *st )
 
    cso_set_rasterizer(st->cso_context, raster);
 }
-
-const struct st_tracked_state st_update_rasterizer = {
-   update_raster_state     /* update function */
-};

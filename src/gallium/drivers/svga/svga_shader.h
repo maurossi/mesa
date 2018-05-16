@@ -77,6 +77,7 @@ struct svga_compile_key
       unsigned light_twoside:1;
       unsigned front_ccw:1;
       unsigned white_fragments:1;
+      unsigned alpha_to_one:1;
       unsigned flatshade:1;
       unsigned pstipple:1;
       unsigned alpha_func:4;  /**< SVGA3D_CMP_x */
@@ -97,6 +98,7 @@ struct svga_compile_key
       unsigned compare_mode:1;
       unsigned compare_func:3;
       unsigned unnormalized:1;
+      unsigned texel_bias:1;
       unsigned width_height_idx:5; /**< texture unit */
       unsigned is_array:1;
       unsigned sprite_texgen:1;
@@ -155,6 +157,11 @@ struct svga_shader_variant
 
    /** Is the color output just a constant value? (fragment shader only) */
    boolean constant_color_output;
+
+   /** Bitmask indicating which texture units are doing the shadow
+    * comparison test in the shader rather than the sampler state.
+    */
+   unsigned fs_shadow_compare_units;
 
    /** For FS-based polygon stipple */
    unsigned pstipple_sampler_unit;

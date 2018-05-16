@@ -44,7 +44,7 @@
 
 #include "../r200/r200_reg.h"
 
-#include "xmlpool.h"
+#include "util/xmlpool.h"
 
 /* New (1.3) state mechanism.  3 commands (packet, scalar, vector) in
  * 1.3 cmdbuffers allow all previous state to be updated as well as
@@ -440,7 +440,7 @@ static void cube_emit_cs(struct gl_context *ctx, struct radeon_state_atom *atom)
 	case 2: base_reg = RADEON_PP_CUBIC_OFFSET_T2_0; break;
 	default:
 	case 0: base_reg = RADEON_PP_CUBIC_OFFSET_T0_0; break;
-   };
+   }
    BEGIN_BATCH(dwords);
    OUT_BATCH_TABLE(atom->cmd, 2);
    lvl = &t->mt->levels[0];

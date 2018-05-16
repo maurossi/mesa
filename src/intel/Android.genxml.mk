@@ -31,6 +31,7 @@ LOCAL_MODULE := libmesa_genxml
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
+prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
 # dummy.c source file is generated to meet the build system's rules.
 LOCAL_GENERATED_SOURCES += $(intermediates)/dummy.c
@@ -46,8 +47,12 @@ LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, $(GENXML_GENERATED_FIL
 define header-gen
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(PRIVATE_SCRIPT) $(PRIVATE_XML) > $@
+	$(hide) $(PRIVATE_SCRIPT) $(PRIVATE_SCRIPT_FLAGS) $(PRIVATE_XML) > $@
 endef
+
+$(intermediates)/genxml/genX_bits.h: $(prebuilt_intermediates)/genxml/genX_bits.h
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
 
 $(intermediates)/genxml/gen4_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/genxml/gen_pack_header.py
 $(intermediates)/genxml/gen4_pack.h: PRIVATE_XML := $(LOCAL_PATH)/genxml/gen4.xml
@@ -88,6 +93,16 @@ $(intermediates)/genxml/gen9_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_P
 $(intermediates)/genxml/gen9_pack.h: PRIVATE_XML := $(LOCAL_PATH)/genxml/gen9.xml
 $(intermediates)/genxml/gen9_pack.h: $(LOCAL_PATH)/genxml/gen9.xml $(LOCAL_PATH)/genxml/gen_pack_header.py
 	$(call header-gen)
+
+$(intermediates)/genxml/gen10_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/genxml/gen_pack_header.py
+$(intermediates)/genxml/gen10_pack.h: PRIVATE_XML := $(LOCAL_PATH)/genxml/gen10.xml
+$(intermediates)/genxml/gen10_pack.h: $(LOCAL_PATH)/genxml/gen10.xml $(LOCAL_PATH)/genxml/gen_pack_header.py
+	$(call header-gen)
+
+$(intermediates)/genxml/genX_xml.h: $(addprefix $(MESA_TOP)/src/intel/,$(GENXML_XML_FILES)) $(MESA_TOP)/src/intel/genxml/gen_zipped_file.py
+	@mkdir -p $(dir $@)
+	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
+	$(hide) $(MESA_PYTHON2) $(MESA_TOP)/src/intel/genxml/gen_zipped_file.py $(addprefix $(MESA_TOP)/src/intel/,$(GENXML_XML_FILES)) > $@ || (rm -f $@; false)
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
 	$(MESA_TOP)/src/intel \

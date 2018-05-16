@@ -325,7 +325,8 @@ typedef enum
    OPCODE_STENCIL_FUNC_SEPARATE,
    OPCODE_STENCIL_OP_SEPARATE,
    OPCODE_STENCIL_MASK_SEPARATE,
-
+   /* GL_NV_primitive_restart */
+   OPCODE_PRIMITIVE_RESTART_NV,
    /* GL_ARB_shader_objects */
    OPCODE_USE_PROGRAM,
    OPCODE_UNIFORM_1F,
@@ -1911,7 +1912,7 @@ save_CallLists(GLsizei num, GLenum type, const GLvoid * lists)
       n[1].i = num;
       n[2].e = type;
       save_pointer(&n[3], lists_copy);
-   };
+   }
 
    /* After this, we don't know what state we're in.  Invalidate all
     * cached information previously gathered:
@@ -5766,25 +5767,9 @@ save_Begin(GLenum mode)
       _mesa_compile_error(ctx, GL_INVALID_OPERATION, "recursive glBegin");
    }
    else {
-      Node *n;
-
       ctx->Driver.CurrentSavePrimitive = mode;
 
-      /* Give the driver an opportunity to hook in an optimized
-       * display list compiler.
-       */
-      if (vbo_save_NotifyBegin(ctx, mode))
-         return;
-
-      SAVE_FLUSH_VERTICES(ctx);
-      n = alloc_instruction(ctx, OPCODE_BEGIN, 1);
-      if (n) {
-         n[1].e = mode;
-      }
-
-      if (ctx->ExecuteFlag) {
-         CALL_Begin(ctx->Exec, (mode));
-      }
+      vbo_save_NotifyBegin(ctx, mode);
    }
 }
 
@@ -6109,6 +6094,19 @@ save_VertexAttrib4fvARB(GLuint index, const GLfloat * v)
    else
       index_error();
 }
+
+static void GLAPIENTRY
+save_PrimitiveRestartNV(void)
+{
+   /* Note: this is used when outside a glBegin/End pair in a display list */
+   GET_CURRENT_CONTEXT(ctx);
+   ASSERT_OUTSIDE_SAVE_BEGIN_END_AND_FLUSH(ctx);
+   (void) alloc_instruction(ctx, OPCODE_PRIMITIVE_RESTART_NV, 0);
+   if (ctx->ExecuteFlag) {
+      CALL_PrimitiveRestartNV(ctx->Exec, ());
+   }
+}
+
 
 static void GLAPIENTRY
 save_BlitFramebufferEXT(GLint srcX0, GLint srcY0, GLint srcX1, GLint srcY1,
@@ -8686,6 +8684,10 @@ execute_list(struct gl_context *ctx, GLuint list)
                                                 n[5].i, n[6].i, n[7].i, n[8].i,
                                                 n[9].i, n[10].e));
             break;
+         case OPCODE_PRIMITIVE_RESTART_NV:
+            CALL_PrimitiveRestartNV(ctx->Exec, ());
+            break;
+
          case OPCODE_USE_PROGRAM:
             CALL_UseProgram(ctx->Exec, (n[1].ui));
             break;
@@ -9340,8 +9342,11 @@ _mesa_NewList(GLuint name, GLenum mode)
 
    vbo_save_NewList(ctx, name, mode);
 
-   ctx->CurrentDispatch = ctx->Save;
-   _glapi_set_dispatch(ctx->CurrentDispatch);
+   ctx->CurrentServerDispatch = ctx->Save;
+   _glapi_set_dispatch(ctx->CurrentServerDispatch);
+   if (ctx->MarshalExec == NULL) {
+      ctx->CurrentClientDispatch = ctx->CurrentServerDispatch;
+   }
 }
 
 
@@ -9396,8 +9401,11 @@ _mesa_EndList(void)
    ctx->ExecuteFlag = GL_TRUE;
    ctx->CompileFlag = GL_FALSE;
 
-   ctx->CurrentDispatch = ctx->Exec;
-   _glapi_set_dispatch(ctx->CurrentDispatch);
+   ctx->CurrentServerDispatch = ctx->Exec;
+   _glapi_set_dispatch(ctx->CurrentServerDispatch);
+   if (ctx->MarshalExec == NULL) {
+      ctx->CurrentClientDispatch = ctx->CurrentServerDispatch;
+   }
 }
 
 
@@ -9432,8 +9440,11 @@ _mesa_CallList(GLuint list)
 
    /* also restore API function pointers to point to "save" versions */
    if (save_compile_flag) {
-      ctx->CurrentDispatch = ctx->Save;
-      _glapi_set_dispatch(ctx->CurrentDispatch);
+      ctx->CurrentServerDispatch = ctx->Save;
+       _glapi_set_dispatch(ctx->CurrentServerDispatch);
+      if (ctx->MarshalExec == NULL) {
+         ctx->CurrentClientDispatch = ctx->CurrentServerDispatch;
+      }
    }
 }
 
@@ -9555,8 +9566,11 @@ _mesa_CallLists(GLsizei n, GLenum type, const GLvoid * lists)
 
    /* also restore API function pointers to point to "save" versions */
    if (save_compile_flag) {
-      ctx->CurrentDispatch = ctx->Save;
-      _glapi_set_dispatch(ctx->CurrentDispatch);
+      ctx->CurrentServerDispatch = ctx->Save;
+      _glapi_set_dispatch(ctx->CurrentServerDispatch);
+      if (ctx->MarshalExec == NULL) {
+         ctx->CurrentClientDispatch = ctx->CurrentServerDispatch;
+      }
    }
 }
 
@@ -10048,7 +10062,7 @@ _mesa_initialize_save_table(const struct gl_context *ctx)
    SET_ProgramUniformMatrix3x4fv(table, save_ProgramUniformMatrix3x4fv);
    SET_ProgramUniformMatrix4x3fv(table, save_ProgramUniformMatrix4x3fv);
 
-   /* GL_EXT_polygon_offset_clamp */
+   /* GL_{ARB,EXT}_polygon_offset_clamp */
    SET_PolygonOffsetClampEXT(table, save_PolygonOffsetClampEXT);
 
    /* GL_EXT_window_rectangles */
@@ -10464,6 +10478,8 @@ save_vtxfmt_init(GLvertexformat * vfmt)
    vfmt->VertexAttrib3fvARB = save_VertexAttrib3fvARB;
    vfmt->VertexAttrib4fARB = save_VertexAttrib4fARB;
    vfmt->VertexAttrib4fvARB = save_VertexAttrib4fvARB;
+
+   vfmt->PrimitiveRestartNV = save_PrimitiveRestartNV;
 }
 
 

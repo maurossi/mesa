@@ -4,6 +4,7 @@
 #include "pipe/p_state.h"
 #include "util/u_dynarray.h"
 #include "util/u_debug.h"
+#include "util/u_memory.h"
 
 #include "pipe/p_shader_tokens.h"
 #include "tgsi/tgsi_parse.h"
@@ -587,9 +588,6 @@ nvfx_vertprog_parse_instruction(struct nvfx_vpc *vpc,
    case TGSI_OPCODE_DP4:
       nvfx_vp_emit(vpc, arith(sat, VEC, DP4, dst, mask, src[0], src[1], none));
       break;
-   case TGSI_OPCODE_DPH:
-      nvfx_vp_emit(vpc, arith(sat, VEC, DPH, dst, mask, src[0], src[1], none));
-      break;
    case TGSI_OPCODE_DST:
       nvfx_vp_emit(vpc, arith(sat, VEC, DST, dst, mask, src[0], src[1], none));
       break;
@@ -684,11 +682,6 @@ nvfx_vertprog_parse_instruction(struct nvfx_vpc *vpc,
       insn = arith(sat, VEC, MOV, dst, mask, neg(tmp), none, none);
       insn.cc_test = NVFX_COND_LT;
       nvfx_vp_emit(vpc, insn);
-      break;
-   case TGSI_OPCODE_XPD:
-      tmp = nvfx_src(temp(vpc));
-      nvfx_vp_emit(vpc, arith(0, VEC, MUL, tmp.reg, mask, swz(src[0], Z, X, Y, Y), swz(src[1], Y, Z, X, X), none));
-      nvfx_vp_emit(vpc, arith(sat, VEC, MAD, dst, (mask & ~NVFX_VP_MASK_W), swz(src[0], Y, Z, X, X), swz(src[1], Z, X, Y, Y), neg(tmp)));
       break;
    case TGSI_OPCODE_IF:
       insn = arith(0, VEC, MOV, none.reg, NVFX_VP_MASK_X, src[0], none, none);
@@ -997,7 +990,7 @@ _nvfx_vertprog_translate(uint16_t oclass, struct nv30_vertprog *vp)
       vpc->cvtx_idx = vpc->hpos_idx;
    }
 
-   util_dynarray_init(&insns);
+   util_dynarray_init(&insns, NULL);
 
    tgsi_parse_init(&parse, vp->pipe.tokens);
    while (!tgsi_parse_end_of_tokens(&parse)) {

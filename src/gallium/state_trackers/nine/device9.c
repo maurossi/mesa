@@ -199,13 +199,13 @@ NineDevice9_ctor( struct NineDevice9 *This,
     This->pipe_sw = This->screen_sw->context_create(This->screen_sw, NULL, 0);
     if (!This->pipe_sw) { return E_OUTOFMEMORY; }
 
-    This->context.cso = cso_create_context(This->context.pipe);
+    This->context.cso = cso_create_context(This->context.pipe, 0);
     if (!This->context.cso) { return E_OUTOFMEMORY; } /* also a guess */
-    This->cso_sw = cso_create_context(This->pipe_sw);
+    This->cso_sw = cso_create_context(This->pipe_sw, 0);
     if (!This->cso_sw) { return E_OUTOFMEMORY; }
 
     /* Create first, it messes up our state. */
-    This->hud = hud_create(This->context.pipe, This->context.cso); /* NULL result is fine */
+    This->hud = hud_create(This->context.cso, NULL); /* NULL result is fine */
 
     /* Available memory counter. Updated only for allocations with this device
      * instance. This is the Win 7 behavior.
@@ -473,35 +473,8 @@ NineDevice9_ctor( struct NineDevice9 *This,
     /* Allocate upload helper for drivers that suck (from st pov ;). */
 
     This->driver_caps.user_vbufs = GET_PCAP(USER_VERTEX_BUFFERS) && !This->csmt_active;
-    This->driver_caps.user_ibufs = GET_PCAP(USER_INDEX_BUFFERS) && !This->csmt_active;
-    This->driver_caps.user_cbufs = GET_PCAP(USER_CONSTANT_BUFFERS);
     This->driver_caps.user_sw_vbufs = This->screen_sw->get_param(This->screen_sw, PIPE_CAP_USER_VERTEX_BUFFERS);
-    This->driver_caps.user_sw_cbufs = This->screen_sw->get_param(This->screen_sw, PIPE_CAP_USER_CONSTANT_BUFFERS);
-
-    /* Implicit use of context pipe for vertex and index uploaded when
-     * csmt is not active. Does not need to sync since csmt is unactive,
-     * thus no need to call NineDevice9_GetPipe at each upload. */
-    if (!This->driver_caps.user_vbufs)
-        This->vertex_uploader = u_upload_create(This->csmt_active ?
-                                                    This->pipe_secondary : This->context.pipe,
-                                                65536,
-                                                PIPE_BIND_VERTEX_BUFFER, PIPE_USAGE_STREAM);
-    This->vertex_sw_uploader = u_upload_create(This->pipe_sw, 65536,
-                                            PIPE_BIND_VERTEX_BUFFER, PIPE_USAGE_STREAM);
-    if (!This->driver_caps.user_ibufs)
-        This->index_uploader = u_upload_create(This->csmt_active ?
-                                                    This->pipe_secondary : This->context.pipe,
-                                               128 * 1024,
-                                               PIPE_BIND_INDEX_BUFFER, PIPE_USAGE_STREAM);
-    if (!This->driver_caps.user_cbufs) {
-        This->constbuf_alignment = GET_PCAP(CONSTANT_BUFFER_OFFSET_ALIGNMENT);
-        This->constbuf_uploader = u_upload_create(This->context.pipe, This->vs_const_size,
-                                                  PIPE_BIND_CONSTANT_BUFFER, PIPE_USAGE_STREAM);
-    }
-
-    This->constbuf_sw_uploader = u_upload_create(This->pipe_sw, 128 * 1024,
-                                                 PIPE_BIND_CONSTANT_BUFFER, PIPE_USAGE_STREAM);
-
+    This->vertex_uploader = This->csmt_active ? This->pipe_secondary->stream_uploader : This->context.pipe->stream_uploader;
     This->driver_caps.window_space_position_support = GET_PCAP(TGSI_VS_WINDOW_SPACE_POSITION);
     This->driver_caps.vs_integer = pScreen->get_shader_param(pScreen, PIPE_SHADER_VERTEX, PIPE_SHADER_CAP_INTEGERS);
     This->driver_caps.ps_integer = pScreen->get_shader_param(pScreen, PIPE_SHADER_FRAGMENT, PIPE_SHADER_CAP_INTEGERS);
@@ -551,17 +524,6 @@ NineDevice9_dtor( struct NineDevice9 *This )
     nine_state_destroy_sw(This);
     nine_state_clear(&This->state, TRUE);
     nine_context_clear(This);
-
-    if (This->vertex_uploader)
-        u_upload_destroy(This->vertex_uploader);
-    if (This->index_uploader)
-        u_upload_destroy(This->index_uploader);
-    if (This->constbuf_uploader)
-        u_upload_destroy(This->constbuf_uploader);
-    if (This->vertex_sw_uploader)
-        u_upload_destroy(This->vertex_sw_uploader);
-    if (This->constbuf_sw_uploader)
-        u_upload_destroy(This->constbuf_sw_uploader);
 
     nine_bind(&This->record, NULL);
 
@@ -2849,26 +2811,27 @@ NineDevice9_DrawPrimitiveUP( struct NineDevice9 *This,
 
     vtxbuf.stride = VertexStreamZeroStride;
     vtxbuf.buffer_offset = 0;
-    vtxbuf.buffer = NULL;
-    vtxbuf.user_buffer = pVertexStreamZeroData;
+    vtxbuf.is_user_buffer = true;
+    vtxbuf.buffer.user = pVertexStreamZeroData;
 
     if (!This->driver_caps.user_vbufs) {
+        vtxbuf.is_user_buffer = false;
+        vtxbuf.buffer.resource = NULL;
         u_upload_data(This->vertex_uploader,
                       0,
                       (prim_count_to_vertex_count(PrimitiveType, PrimitiveCount)) * VertexStreamZeroStride, /* XXX */
                       4,
-                      vtxbuf.user_buffer,
+                      pVertexStreamZeroData,
                       &vtxbuf.buffer_offset,
-                      &vtxbuf.buffer);
+                      &vtxbuf.buffer.resource);
         u_upload_unmap(This->vertex_uploader);
-        vtxbuf.user_buffer = NULL;
     }
 
     NineBeforeDraw(This);
     nine_context_draw_primitive_from_vtxbuf(This, PrimitiveType, PrimitiveCount, &vtxbuf);
     NineAfterDraw(This);
 
-    pipe_resource_reference(&vtxbuf.buffer, NULL);
+    pipe_vertex_buffer_unreference(&vtxbuf);
 
     NineDevice9_PauseRecording(This);
     NineDevice9_SetStreamSource(This, 0, NULL, 0, 0);
@@ -2889,7 +2852,6 @@ NineDevice9_DrawIndexedPrimitiveUP( struct NineDevice9 *This,
                                     UINT VertexStreamZeroStride )
 {
     struct pipe_vertex_buffer vbuf;
-    struct pipe_index_buffer ibuf;
 
     DBG("iface %p, PrimitiveType %u, MinVertexIndex %u, NumVertices %u "
         "PrimitiveCount %u, pIndexData %p, IndexDataFormat %u "
@@ -2906,38 +2868,38 @@ NineDevice9_DrawIndexedPrimitiveUP( struct NineDevice9 *This,
 
     vbuf.stride = VertexStreamZeroStride;
     vbuf.buffer_offset = 0;
-    vbuf.buffer = NULL;
-    vbuf.user_buffer = pVertexStreamZeroData;
+    vbuf.is_user_buffer = true;
+    vbuf.buffer.user = pVertexStreamZeroData;
 
-    ibuf.index_size = (IndexDataFormat == D3DFMT_INDEX16) ? 2 : 4;
-    ibuf.offset = 0;
-    ibuf.buffer = NULL;
-    ibuf.user_buffer = pIndexData;
+    unsigned index_size = (IndexDataFormat == D3DFMT_INDEX16) ? 2 : 4;
+    struct pipe_resource *ibuf = NULL;
 
     if (!This->driver_caps.user_vbufs) {
         const unsigned base = MinVertexIndex * VertexStreamZeroStride;
+        vbuf.is_user_buffer = false;
+        vbuf.buffer.resource = NULL;
         u_upload_data(This->vertex_uploader,
                       base,
                       NumVertices * VertexStreamZeroStride, /* XXX */
                       4,
-                      (const uint8_t *)vbuf.user_buffer + base,
+                      (const uint8_t *)pVertexStreamZeroData + base,
                       &vbuf.buffer_offset,
-                      &vbuf.buffer);
+                      &vbuf.buffer.resource);
         u_upload_unmap(This->vertex_uploader);
         /* Won't be used: */
         vbuf.buffer_offset -= base;
-        vbuf.user_buffer = NULL;
     }
-    if (!This->driver_caps.user_ibufs) {
-        u_upload_data(This->index_uploader,
+
+    unsigned index_offset = 0;
+    if (This->csmt_active) {
+        u_upload_data(This->pipe_secondary->stream_uploader,
                       0,
-                      (prim_count_to_vertex_count(PrimitiveType, PrimitiveCount)) * ibuf.index_size,
+                      (prim_count_to_vertex_count(PrimitiveType, PrimitiveCount)) * index_size,
                       4,
-                      ibuf.user_buffer,
-                      &ibuf.offset,
-                      &ibuf.buffer);
-        u_upload_unmap(This->index_uploader);
-        ibuf.user_buffer = NULL;
+                      pIndexData,
+                      &index_offset,
+                      &ibuf);
+        u_upload_unmap(This->pipe_secondary->stream_uploader);
     }
 
     NineBeforeDraw(This);
@@ -2946,11 +2908,14 @@ NineDevice9_DrawIndexedPrimitiveUP( struct NineDevice9 *This,
                                                            NumVertices,
                                                            PrimitiveCount,
                                                            &vbuf,
-                                                           &ibuf);
+                                                           ibuf,
+                                                           ibuf ? NULL : (void*)pIndexData,
+                                                           index_offset,
+                                                           index_size);
     NineAfterDraw(This);
 
-    pipe_resource_reference(&vbuf.buffer, NULL);
-    pipe_resource_reference(&ibuf.buffer, NULL);
+    pipe_vertex_buffer_unreference(&vbuf);
+    pipe_resource_reference(&ibuf, NULL);
 
     NineDevice9_PauseRecording(This);
     NineDevice9_SetIndices(This, NULL);
@@ -3063,9 +3028,8 @@ NineDevice9_ProcessVertices( struct NineDevice9 *This,
     draw.restart_index = 0;
     draw.count_from_stream_output = NULL;
     draw.indirect = NULL;
-    draw.indirect_params = NULL;
     draw.instance_count = 1;
-    draw.indexed = FALSE;
+    draw.index_size = 0;
     draw.start = 0;
     draw.index_bias = 0;
     draw.min_index = 0;

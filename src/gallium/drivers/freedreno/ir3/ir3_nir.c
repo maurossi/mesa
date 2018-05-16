@@ -59,7 +59,7 @@ ir3_tgsi_to_nir(const struct tgsi_token *tokens)
 }
 
 const nir_shader_compiler_options *
-ir3_get_compiler_options(void)
+ir3_get_compiler_options(struct ir3_compiler *compiler)
 {
 	return &options;
 }
@@ -90,6 +90,7 @@ ir3_optimize_loop(nir_shader *s)
 		progress = false;
 
 		OPT_V(s, nir_lower_vars_to_ssa);
+		progress |= OPT(s, nir_opt_copy_prop_vars);
 		progress |= OPT(s, nir_lower_alu_to_scalar);
 		progress |= OPT(s, nir_lower_phis_to_scalar);
 
@@ -114,7 +115,6 @@ ir3_optimize_nir(struct ir3_shader *shader, nir_shader *s,
 	if (key) {
 		switch (shader->type) {
 		case SHADER_FRAGMENT:
-		case SHADER_COMPUTE:
 			tex_options.saturate_s = key->fsaturate_s;
 			tex_options.saturate_t = key->fsaturate_t;
 			tex_options.saturate_r = key->fsaturate_r;
@@ -123,6 +123,9 @@ ir3_optimize_nir(struct ir3_shader *shader, nir_shader *s,
 			tex_options.saturate_s = key->vsaturate_s;
 			tex_options.saturate_t = key->vsaturate_t;
 			tex_options.saturate_r = key->vsaturate_r;
+			break;
+		default:
+			/* TODO */
 			break;
 		}
 	}
@@ -145,11 +148,11 @@ ir3_optimize_nir(struct ir3_shader *shader, nir_shader *s,
 	OPT_V(s, nir_lower_regs_to_ssa);
 
 	if (key) {
-		if (s->stage == MESA_SHADER_VERTEX) {
+		if (s->info.stage == MESA_SHADER_VERTEX) {
 			OPT_V(s, nir_lower_clip_vs, key->ucp_enables);
 			if (key->vclamp_color)
 				OPT_V(s, nir_lower_clamp_color_outputs);
-		} else if (s->stage == MESA_SHADER_FRAGMENT) {
+		} else if (s->info.stage == MESA_SHADER_FRAGMENT) {
 			OPT_V(s, nir_lower_clip_fs, key->ucp_enables);
 			if (key->fclamp_color)
 				OPT_V(s, nir_lower_clamp_color_outputs);
@@ -166,6 +169,8 @@ ir3_optimize_nir(struct ir3_shader *shader, nir_shader *s,
 
 	OPT_V(s, nir_lower_tex, &tex_options);
 	OPT_V(s, nir_lower_load_const_to_scalar);
+	if (shader->compiler->gpu_id < 500)
+		OPT_V(s, ir3_nir_lower_tg4_to_tex);
 
 	ir3_optimize_loop(s);
 
@@ -186,4 +191,48 @@ ir3_optimize_nir(struct ir3_shader *shader, nir_shader *s,
 	nir_sweep(s);
 
 	return s;
+}
+
+void
+ir3_nir_scan_driver_consts(nir_shader *shader,
+		struct ir3_driver_const_layout *layout)
+{
+	nir_foreach_function(function, shader) {
+		if (!function->impl)
+			continue;
+
+		nir_foreach_block(block, function->impl) {
+			nir_foreach_instr(instr, block) {
+				if (instr->type != nir_instr_type_intrinsic)
+					continue;
+
+				nir_intrinsic_instr *intr =
+					nir_instr_as_intrinsic(instr);
+				unsigned idx;
+
+				switch (intr->intrinsic) {
+				case nir_intrinsic_get_buffer_size:
+					idx = nir_src_as_const_value(intr->src[0])->u32[0];
+					if (layout->ssbo_size.mask & (1 << idx))
+						break;
+					layout->ssbo_size.mask |= (1 << idx);
+					layout->ssbo_size.off[idx] =
+						layout->ssbo_size.count;
+					layout->ssbo_size.count += 1; /* one const per */
+					break;
+				case nir_intrinsic_image_store:
+					idx = intr->variables[0]->var->data.driver_location;
+					if (layout->image_dims.mask & (1 << idx))
+						break;
+					layout->image_dims.mask |= (1 << idx);
+					layout->ssbo_size.off[idx] =
+						layout->image_dims.count;
+					layout->image_dims.count += 3; /* three const per */
+					break;
+				default:
+					break;
+				}
+			}
+		}
+	}
 }

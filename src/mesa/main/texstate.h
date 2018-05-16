@@ -32,7 +32,6 @@
 #define TEXSTATE_H
 
 
-#include "compiler.h"
 #include "enums.h"
 #include "macros.h"
 #include "mtypes.h"
@@ -78,6 +77,9 @@ _mesa_print_texunit_state( struct gl_context *ctx, GLuint unit );
 /*@{*/
 
 extern void GLAPIENTRY
+_mesa_ActiveTexture_no_error( GLenum target );
+
+extern void GLAPIENTRY
 _mesa_ActiveTexture( GLenum target );
 
 extern void GLAPIENTRY
@@ -91,8 +93,11 @@ _mesa_ClientActiveTexture( GLenum target );
  */
 /*@{*/
 
-extern void 
-_mesa_update_texture( struct gl_context *ctx, GLuint new_state );
+extern void
+_mesa_update_texture_matrices(struct gl_context *ctx);
+
+extern void
+_mesa_update_texture_state(struct gl_context *ctx);
 
 extern GLboolean
 _mesa_init_texture( struct gl_context *ctx );

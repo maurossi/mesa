@@ -22,12 +22,12 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#pragma once
 #ifndef AST_H
 #define AST_H
 
 #include "list.h"
 #include "glsl_parser_extras.h"
+#include "compiler/glsl_types.h"
 
 struct _mesa_glsl_parse_state;
 
@@ -195,6 +195,8 @@ enum ast_operators {
    ast_float_constant,
    ast_bool_constant,
    ast_double_constant,
+   ast_int64_constant,
+   ast_uint64_constant,
 
    ast_sequence,
    ast_aggregate
@@ -255,6 +257,8 @@ public:
       unsigned uint_constant;
       int bool_constant;
       double double_constant;
+      uint64_t uint64_constant;
+      int64_t int64_constant;
    } primary_expression;
 
 
@@ -459,6 +463,14 @@ enum {
    ast_precision_low
 };
 
+enum {
+   ast_depth_none = 0, /**< Absence of depth qualifier. */
+   ast_depth_any,
+   ast_depth_greater,
+   ast_depth_less,
+   ast_depth_unchanged
+};
+
 struct ast_type_qualifier {
    DECLARE_RALLOC_CXX_OPERATORS(ast_type_qualifier);
 
@@ -524,10 +536,7 @@ struct ast_type_qualifier {
 
          /** \name Layout qualifiers for GL_AMD_conservative_depth */
          /** \{ */
-         unsigned depth_any:1;
-         unsigned depth_greater:1;
-         unsigned depth_less:1;
-         unsigned depth_unchanged:1;
+         unsigned depth_type:1;
          /** \} */
 
 	 /** \name Layout qualifiers for GL_ARB_uniform_buffer_object */
@@ -598,7 +607,6 @@ struct ast_type_qualifier {
          /** \name Qualifiers for GL_ARB_shader_subroutine */
 	 /** \{ */
          unsigned subroutine:1;  /**< Is this marked 'subroutine' */
-         unsigned subroutine_def:1; /**< Is this marked 'subroutine' with a list of types */
 	 /** \} */
 
          /** \name Qualifiers for GL_KHR_blend_equation_advanced */
@@ -615,6 +623,14 @@ struct ast_type_qualifier {
           * is used.
           */
          unsigned inner_coverage:1;
+
+         /** \name Layout qualifiers for GL_ARB_bindless_texture */
+         /** \{ */
+         unsigned bindless_sampler:1;
+         unsigned bindless_image:1;
+         unsigned bound_sampler:1;
+         unsigned bound_image:1;
+         /** \} */
       }
       /** \brief Set of flags, accessed by name. */
       q;
@@ -625,6 +641,9 @@ struct ast_type_qualifier {
 
    /** Precision of the type (highp/medium/lowp). */
    unsigned precision:2;
+
+   /** Type of layout qualifiers for GL_AMD_conservative_depth. */
+   unsigned depth_type:3;
 
    /**
     * Alignment specified via GL_ARB_enhanced_layouts "align" layout qualifier
@@ -759,6 +778,11 @@ struct ast_type_qualifier {
     */
    bool has_memory() const;
 
+   /**
+    * Return true if the qualifier is a subroutine declaration.
+    */
+   bool is_subroutine_decl() const;
+
    bool merge_qualifier(YYLTYPE *loc,
 			_mesa_glsl_parse_state *state,
                         const ast_type_qualifier &q,
@@ -809,8 +833,8 @@ class ast_declarator_list;
 
 class ast_struct_specifier : public ast_node {
 public:
-   ast_struct_specifier(void *lin_ctx, const char *identifier,
-			ast_declarator_list *declarator_list);
+   ast_struct_specifier(const char *identifier,
+                        ast_declarator_list *declarator_list);
    virtual void print(void) const;
 
    virtual ir_rvalue *hir(exec_list *instructions,
@@ -821,6 +845,7 @@ public:
    /* List of ast_declarator_list * */
    exec_list declarations;
    bool is_declaration;
+   const glsl_type *type;
 };
 
 
@@ -829,7 +854,7 @@ class ast_type_specifier : public ast_node {
 public:
    /** Construct a type specifier from a type name */
    ast_type_specifier(const char *name) 
-      : type_name(name), structure(NULL), array_specifier(NULL),
+      : type(NULL), type_name(name), structure(NULL), array_specifier(NULL),
 	default_precision(ast_precision_none)
    {
       /* empty */
@@ -837,8 +862,15 @@ public:
 
    /** Construct a type specifier from a structure definition */
    ast_type_specifier(ast_struct_specifier *s)
-      : type_name(s->name), structure(s), array_specifier(NULL),
+      : type(NULL), type_name(s->name), structure(s), array_specifier(NULL),
 	default_precision(ast_precision_none)
+   {
+      /* empty */
+   }
+
+   ast_type_specifier(const glsl_type *t)
+      : type(t), type_name(t->name), structure(NULL), array_specifier(NULL),
+        default_precision(ast_precision_none)
    {
       /* empty */
    }
@@ -851,6 +883,7 @@ public:
 
    ir_rvalue *hir(exec_list *, struct _mesa_glsl_parse_state *);
 
+   const struct glsl_type *type;
    const char *type_name;
    ast_struct_specifier *structure;
 

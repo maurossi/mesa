@@ -25,10 +25,10 @@
 
 
 #include "util/u_format.h"
+#include "util/u_helpers.h"
 #include "util/u_inlines.h"
 #include "util/u_prim.h"
 #include "util/u_prim_restart.h"
-#include "util/u_time.h"
 #include "util/u_upload_mgr.h"
 #include "indices/u_indices.h"
 
@@ -43,6 +43,16 @@
 #include "svga_swtnl.h"
 #include "svga_debug.h"
 #include "svga_resource_buffer.h"
+
+/* Returns TRUE if we are currently using flat shading.
+ */
+static boolean
+is_using_flat_shading(const struct svga_context *svga)
+{
+   return
+      svga->state.hw_draw.fs ? svga->state.hw_draw.fs->uses_flat_interp : FALSE;
+}
+
 
 static enum pipe_error
 retry_draw_range_elements( struct svga_context *svga,
@@ -73,7 +83,7 @@ retry_draw_range_elements( struct svga_context *svga,
     */
    svga_hwtnl_set_flatshade(svga->hwtnl,
                             svga->curr.rast->templ.flatshade ||
-                            svga->state.hw_draw.fs->uses_flat_interp,
+                            is_using_flat_shading(svga),
                             svga->curr.rast->templ.flatshade_first);
 
    ret = svga_hwtnl_draw_range_elements( svga->hwtnl,
@@ -125,7 +135,7 @@ retry_draw_arrays( struct svga_context *svga,
     */
    svga_hwtnl_set_flatshade(svga->hwtnl,
                             svga->curr.rast->templ.flatshade ||
-                            svga->state.hw_draw.fs->uses_flat_interp,
+                            is_using_flat_shading(svga),
                             svga->curr.rast->templ.flatshade_first);
 
    ret = svga_hwtnl_draw_arrays(svga->hwtnl, prim, start, count,
@@ -160,13 +170,13 @@ static boolean
 need_fallback_prim_restart(const struct svga_context *svga,
                            const struct pipe_draw_info *info)
 {
-   if (info->primitive_restart && info->indexed) {
+   if (info->primitive_restart && info->index_size) {
       if (!svga_have_vgpu10(svga))
          return TRUE;
       else if (!svga->state.sw.need_swtnl) {
-         if (svga->curr.ib.index_size == 1)
+         if (info->index_size == 1)
             return TRUE; /* no device support for 1-byte indexes */
-         else if (svga->curr.ib.index_size == 2)
+         else if (info->index_size == 2)
             return info->restart_index != 0xffff;
          else
             return info->restart_index != 0xffffffff;
@@ -181,10 +191,12 @@ static void
 svga_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 {
    struct svga_context *svga = svga_context( pipe );
-   unsigned reduced_prim = u_reduced_prim( info->mode );
+   enum pipe_prim_type reduced_prim = u_reduced_prim( info->mode );
    unsigned count = info->count;
    enum pipe_error ret = 0;
    boolean needed_swtnl;
+   struct pipe_resource *indexbuf =
+      info->has_user_indices ? NULL : info->index.resource;
 
    SVGA_STATS_TIME_PUSH(svga_sws(svga), SVGA_STATS_TIME_DRAWVBO);
 
@@ -193,6 +205,13 @@ svga_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    if (u_reduced_prim(info->mode) == PIPE_PRIM_TRIANGLES &&
        svga->curr.rast->templ.cull_face == PIPE_FACE_FRONT_AND_BACK)
       goto done;
+
+   /* Upload a user index buffer. */
+   unsigned index_offset = 0;
+   if (info->index_size && info->has_user_indices &&
+       !util_upload_index_buffer(pipe, info, &indexbuf, &index_offset)) {
+      goto done;
+   }
 
    /*
     * Mark currently bound target surfaces as dirty
@@ -210,7 +229,7 @@ svga_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 
    if (need_fallback_prim_restart(svga, info)) {
       enum pipe_error r;
-      r = util_draw_vbo_without_prim_restart(pipe, &svga->curr.ib, info);
+      r = util_draw_vbo_without_prim_restart(pipe, info);
       assert(r == PIPE_OK);
       (void) r;
       goto done;
@@ -239,18 +258,18 @@ svga_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 
       /* Avoid leaking the previous hwtnl bias to swtnl */
       svga_hwtnl_set_index_bias( svga->hwtnl, 0 );
-      ret = svga_swtnl_draw_vbo( svga, info );
+      ret = svga_swtnl_draw_vbo(svga, info, indexbuf, index_offset);
    }
    else {
-      if (info->indexed && svga->curr.ib.buffer) {
+      if (info->index_size && indexbuf) {
          unsigned offset;
 
-         assert(svga->curr.ib.offset % svga->curr.ib.index_size == 0);
-         offset = svga->curr.ib.offset / svga->curr.ib.index_size;
+         assert(index_offset % info->index_size == 0);
+         offset = index_offset / info->index_size;
 
          ret = retry_draw_range_elements( svga,
-                                          svga->curr.ib.buffer,
-                                          svga->curr.ib.index_size,
+                                          indexbuf,
+                                          info->index_size,
                                           info->index_bias,
                                           info->min_index,
                                           info->max_index,
@@ -277,8 +296,9 @@ svga_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    }
 
 done:
+   if (info->index_size && info->index.resource != indexbuf)
+      pipe_resource_reference(&indexbuf, NULL);
    SVGA_STATS_TIME_POP(svga_sws(svga));
-;
 }
 
 

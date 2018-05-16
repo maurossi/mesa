@@ -45,17 +45,12 @@ struct st_sync_object {
 };
 
 
-static struct gl_sync_object * st_new_sync_object(struct gl_context *ctx,
-                                                  GLenum type)
+static struct gl_sync_object *st_new_sync_object(struct gl_context *ctx)
 {
-   if (type == GL_SYNC_FENCE) {
-      struct st_sync_object *so = CALLOC_STRUCT(st_sync_object);
+   struct st_sync_object *so = CALLOC_STRUCT(st_sync_object);
 
-      mtx_init(&so->mutex, mtx_plain);
-      return &so->b;
-   } else {
-      return NULL;
-   }
+   mtx_init(&so->mutex, mtx_plain);
+   return &so->b;
 }
 
 static void st_delete_sync_object(struct gl_context *ctx,
@@ -135,8 +130,30 @@ static void st_server_wait_sync(struct gl_context *ctx,
                                 struct gl_sync_object *obj,
                                 GLbitfield flags, GLuint64 timeout)
 {
-   /* NO-OP.
-    * Neither Gallium nor DRM interfaces support blocking on the GPU. */
+   struct pipe_context *pipe = st_context(ctx)->pipe;
+   struct pipe_screen *screen = pipe->screen;
+   struct st_sync_object *so = (struct st_sync_object*)obj;
+   struct pipe_fence_handle *fence = NULL;
+
+   /* Nothing needs to be done here if the driver does not support async
+    * flushes. */
+   if (!pipe->fence_server_sync)
+      return;
+
+   /* If the fence doesn't exist, assume it's signalled. */
+   mtx_lock(&so->mutex);
+   if (!so->fence) {
+      mtx_unlock(&so->mutex);
+      so->b.StatusFlag = GL_TRUE;
+      return;
+   }
+
+   /* We need a local copy of the fence pointer. */
+   screen->fence_reference(screen, &fence, so->fence);
+   mtx_unlock(&so->mutex);
+
+   pipe->fence_server_sync(pipe, fence);
+   screen->fence_reference(screen, &fence, NULL);
 }
 
 void st_init_syncobj_functions(struct dd_function_table *functions)

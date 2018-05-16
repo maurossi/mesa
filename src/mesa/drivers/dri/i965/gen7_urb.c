@@ -62,15 +62,17 @@
 static void
 gen7_allocate_push_constants(struct brw_context *brw)
 {
+   const struct gen_device_info *devinfo = &brw->screen->devinfo;
+
    /* BRW_NEW_GEOMETRY_PROGRAM */
-   bool gs_present = brw->geometry_program;
+   bool gs_present = brw->programs[MESA_SHADER_GEOMETRY];
 
    /* BRW_NEW_TESS_PROGRAMS */
-   bool tess_present = brw->tess_eval_program;
+   bool tess_present = brw->programs[MESA_SHADER_TESS_EVAL];
 
    unsigned avail_size = 16;
    unsigned multiplier =
-      (brw->gen >= 8 || (brw->is_haswell && brw->gt == 3)) ? 2 : 1;
+      (devinfo->gen >= 8 || (devinfo->is_haswell && devinfo->gt == 3)) ? 2 : 1;
 
    int stages = 2 + gs_present + 2 * tess_present;
 
@@ -101,7 +103,11 @@ gen7_allocate_push_constants(struct brw_context *brw)
     * Similar text exists for the other 3DSTATE_PUSH_CONSTANT_ALLOC_*
     * commands.
     */
-   brw->ctx.NewDriverState |= BRW_NEW_PUSH_CONSTANT_ALLOCATION;
+   brw->vs.base.push_constants_dirty = true;
+   brw->tcs.base.push_constants_dirty = true;
+   brw->tes.base.push_constants_dirty = true;
+   brw->gs.base.push_constants_dirty = true;
+   brw->wm.base.push_constants_dirty = true;
 }
 
 void
@@ -109,6 +115,7 @@ gen7_emit_push_constant_state(struct brw_context *brw, unsigned vs_size,
                               unsigned hs_size, unsigned ds_size,
                               unsigned gs_size, unsigned fs_size)
 {
+   const struct gen_device_info *devinfo = &brw->screen->devinfo;
    unsigned offset = 0;
 
    BEGIN_BATCH(10);
@@ -139,7 +146,7 @@ gen7_emit_push_constant_state(struct brw_context *brw, unsigned vs_size,
     *
     * No such restriction exists for Haswell or Baytrail.
     */
-   if (brw->gen < 8 && !brw->is_haswell && !brw->is_baytrail)
+   if (devinfo->gen < 8 && !devinfo->is_haswell && !devinfo->is_baytrail)
       gen7_emit_cs_stall_flush(brw);
 }
 
@@ -174,7 +181,7 @@ gen7_upload_urb(struct brw_context *brw, unsigned vs_size,
 {
    const struct gen_device_info *devinfo = &brw->screen->devinfo;
    const int push_size_kB =
-      (brw->gen >= 8 || (brw->is_haswell && brw->gt == 3)) ? 32 : 16;
+      (devinfo->gen >= 8 || (devinfo->is_haswell && devinfo->gt == 3)) ? 32 : 16;
 
    /* BRW_NEW_{VS,TCS,TES,GS}_PROG_DATA */
    struct brw_vue_prog_data *prog_data[4] = {
@@ -197,9 +204,7 @@ gen7_upload_urb(struct brw_context *brw, unsigned vs_size,
    /* If we're just switching between programs with the same URB requirements,
     * skip the rest of the logic.
     */
-   if (!(brw->ctx.NewDriverState & BRW_NEW_CONTEXT) &&
-       !(brw->ctx.NewDriverState & BRW_NEW_URB_SIZE) &&
-       brw->urb.vsize == entry_size[MESA_SHADER_VERTEX] &&
+   if (brw->urb.vsize == entry_size[MESA_SHADER_VERTEX] &&
        brw->urb.gs_present == gs_present &&
        brw->urb.gsize == entry_size[MESA_SHADER_GEOMETRY] &&
        brw->urb.tess_present == tess_present &&
@@ -219,11 +224,12 @@ gen7_upload_urb(struct brw_context *brw, unsigned vs_size,
    gen_get_urb_config(devinfo, 1024 * push_size_kB, 1024 * brw->urb.size,
                       tess_present, gs_present, entry_size, entries, start);
 
-   if (brw->gen == 7 && !brw->is_haswell && !brw->is_baytrail)
+   if (devinfo->gen == 7 && !devinfo->is_haswell && !devinfo->is_baytrail)
       gen7_emit_vs_workaround_flush(brw);
 
    BEGIN_BATCH(8);
    for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
+      assert(devinfo->gen != 10 || entry_size[i] % 3);
       OUT_BATCH((_3DSTATE_URB_VS + i) << 16 | (2 - 2));
       OUT_BATCH(entries[i] |
                 ((entry_size[i] - 1) << GEN7_URB_ENTRY_SIZE_SHIFT) |
@@ -235,7 +241,8 @@ gen7_upload_urb(struct brw_context *brw, unsigned vs_size,
 const struct brw_tracked_state gen7_urb = {
    .dirty = {
       .mesa = 0,
-      .brw = BRW_NEW_CONTEXT |
+      .brw = BRW_NEW_BLORP |
+             BRW_NEW_CONTEXT |
              BRW_NEW_URB_SIZE |
              BRW_NEW_GS_PROG_DATA |
              BRW_NEW_TCS_PROG_DATA |

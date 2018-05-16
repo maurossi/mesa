@@ -24,11 +24,7 @@
  * next paragraph) shall be included in all copies or substantial portions
  * of the Software.
  */
-/*
- * Authors:
- *      Jérôme Glisse <glisse@freedesktop.org>
- *      Marek Olšák <maraeo@gmail.com>
- */
+
 #ifndef RADEON_DRM_BO_H
 #define RADEON_DRM_BO_H
 
@@ -43,7 +39,7 @@ struct radeon_bo {
             struct pb_cache_entry cache_entry;
 
             void *ptr;
-            pipe_mutex map_mutex;
+            mtx_t map_mutex;
             unsigned map_count;
             bool use_reusable_pool;
         } real;

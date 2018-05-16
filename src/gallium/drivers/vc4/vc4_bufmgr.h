@@ -39,6 +39,14 @@ struct vc4_bo {
         uint32_t handle;
         uint32_t size;
 
+        /* This will be read/written by multiple threads without a lock -- you
+         * should take a snapshot and use it to see if you happen to be in the
+         * CL's handles at this position, to make most lookups O(1).  It's
+         * volatile to make sure that the compiler doesn't emit multiple loads
+         * from the address, which would make the lookup racy.
+         */
+        volatile uint32_t last_hindex;
+
         /** Entry in the linked list of buffers freed, by age. */
         struct list_head time_list;
         /** Entry in the per-page-count linked list of buffers freed (by age). */
@@ -93,7 +101,7 @@ vc4_bo_unreference(struct vc4_bo **bo)
                         vc4_bo_last_unreference(*bo);
         } else {
                 screen = (*bo)->screen;
-                pipe_mutex_lock(screen->bo_handles_mutex);
+                mtx_lock(&screen->bo_handles_mutex);
 
                 if (pipe_reference(&(*bo)->reference, NULL)) {
                         util_hash_table_remove(screen->bo_handles,
@@ -101,7 +109,7 @@ vc4_bo_unreference(struct vc4_bo **bo)
                         vc4_bo_last_unreference(*bo);
                 }
 
-                pipe_mutex_unlock(screen->bo_handles_mutex);
+                mtx_unlock(&screen->bo_handles_mutex);
         }
 
         *bo = NULL;
@@ -130,6 +138,9 @@ vc4_bo_wait(struct vc4_bo *bo, uint64_t timeout_ns, const char *reason);
 bool
 vc4_wait_seqno(struct vc4_screen *screen, uint64_t seqno, uint64_t timeout_ns,
                const char *reason);
+
+void
+vc4_bo_label(struct vc4_screen *screen, struct vc4_bo *bo, const char *fmt, ...);
 
 void
 vc4_bufmgr_destroy(struct pipe_screen *pscreen);
