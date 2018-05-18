@@ -30,6 +30,7 @@
 # module will also be built.  DRI modules will be loaded by libGLES_mesa.
 
 ifneq ($(BOARD_USE_CUSTOMIZED_MESA), true)
+ifneq ($(BOARD_GPU_DRIVERS),)
 
 MESA_TOP := $(call my-dir)
 
@@ -128,4 +129,5 @@ INC_DIRS := $(call all-named-subdir-makefiles,$(SUBDIRS))
 INC_DIRS += $(call all-named-subdir-makefiles,src/gallium)
 include $(INC_DIRS)
 
-endif
+endif # BOARD_GPU_DRIVERS != ""
+endif # BOARD_USE_CUSTOMIZED_MESA != true
