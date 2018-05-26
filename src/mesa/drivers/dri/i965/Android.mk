@@ -262,6 +262,28 @@ include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
 # ---------------------------------------
+# Build libmesa_intel_tiled_memcpy
+# ---------------------------------------
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := libmesa_intel_tiled_memcpy
+
+ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
+LOCAL_CFLAGS += \
+	-DUSE_SSE41
+endif
+
+LOCAL_C_INCLUDES := \
+	$(MESA_DRI_C_INCLUDES) \
+	$(MESA_TOP)/src/intel
+
+LOCAL_SRC_FILES := $(intel_tiled_memcpy_FILES)
+
+include $(MESA_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+# ---------------------------------------
 # Build i965_dri
 # ---------------------------------------
 
@@ -293,7 +315,8 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_intel_common \
 	libmesa_isl \
 	libmesa_blorp \
-	libmesa_intel_compiler
+	libmesa_intel_compiler \
+	libmesa_intel_tiled_memcpy
 
 LOCAL_SHARED_LIBRARIES := \
 	$(MESA_DRI_SHARED_LIBRARIES)
