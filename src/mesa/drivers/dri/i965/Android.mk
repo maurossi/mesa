@@ -283,15 +283,15 @@ LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
 
-LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
-	$(i965_oa_GENERATED_FILES))
+gen := $(addprefix $(intermediates)/, $(i965_oa_GENERATED_FILES))
+LOCAL_GENERATED_SOURCES += $(gen)
 
-$(intermediates)/brw_oa_%.h: $(LOCAL_PATH)/brw_oa_%.xml $(LOCAL_PATH)/brw_oa.py
+$(filter %.h,$(gen)): $(intermediates)/brw_oa_%.h: $(LOCAL_PATH)/brw_oa_%.xml $(LOCAL_PATH)/brw_oa.py
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
 	$(hide) $(MESA_PYTHON2) $(word 2, $^) --header=$@ --chipset=$(basename $*) $<
 
-$(intermediates)/brw_oa_%.c: $(LOCAL_PATH)/brw_oa_%.xml $(LOCAL_PATH)/brw_oa.py
+$(filter %.c,$(gen)): $(intermediates)/brw_oa_%.c: $(LOCAL_PATH)/brw_oa_%.xml $(LOCAL_PATH)/brw_oa.py
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
 	$(hide) $(MESA_PYTHON2) $(word 2, $^) --code=$@ --chipset=$(basename $*) $<
