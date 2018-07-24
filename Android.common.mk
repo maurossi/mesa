@@ -87,6 +87,10 @@ LOCAL_CPPFLAGS += \
 LOCAL_CONLYFLAGS += \
 	-std=c99
 
+# c11 timespec_get is part of bionic as well
+# https://android-review.googlesource.com/c/718518
+LOCAL_CFLAGS += -DHAVE_TIMESPEC_GET
+
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
 ifeq ($(TARGET_ARCH),x86)
 LOCAL_CFLAGS += \
