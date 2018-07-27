@@ -1245,6 +1245,8 @@ radv_CreateImage(VkDevice device,
 		 const VkAllocationCallbacks *pAllocator,
 		 VkImage *pImage)
 {
+	RADV_FROM_HANDLE(radv_device, device_, device);
+	pAllocator = &device_->alloc;
 #ifdef ANDROID
 	const VkNativeBufferANDROID *gralloc_info =
 		vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
