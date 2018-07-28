@@ -25,6 +25,9 @@
  * IN THE SOFTWARE.
  */
 
+#define LOG_TAG "maurossi"
+
+#include <cutils/log.h>
 #include "radv_debug.h"
 #include "radv_private.h"
 #include "vk_format.h"
@@ -1250,7 +1253,9 @@ radv_CreateImage(VkDevice device,
 #ifdef ANDROID
 	const VkNativeBufferANDROID *gralloc_info =
 		vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
-
+	ALOGD("radv_image_from_gralloc() gralloc_info=0x%x", gralloc_info);
+	ALOGD("radv_image_from_gralloc() *pAllocator=0x%x", *pAllocator);
+	ALOGD("radv_image_from_gralloc() *pImage=0x%x", *pImage);
 	if (gralloc_info)
 		return radv_image_from_gralloc(device, pCreateInfo, gralloc_info,
 		                              pAllocator, pImage);
@@ -1259,7 +1264,9 @@ radv_CreateImage(VkDevice device,
 	const struct wsi_image_create_info *wsi_info =
 		vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA);
 	bool scanout = wsi_info && wsi_info->scanout;
-
+	ALOGD("radv_image_create() scanout=0x%x", scanout);
+	ALOGD("radv_image_create() *pAllocator=0x%x", *pAllocator);
+	ALOGD("radv_image_create() *pImage=0x%x", *pImage);
 	return radv_image_create(device,
 				 &(struct radv_image_create_info) {
 					 .vk_info = pCreateInfo,
