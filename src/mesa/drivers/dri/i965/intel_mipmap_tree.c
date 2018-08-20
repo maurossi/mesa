@@ -3524,7 +3524,11 @@ intel_miptree_map(struct brw_context *brw,
    const struct gen_device_info *devinfo = &brw->screen->devinfo;
    struct intel_miptree_map *map;
 
-   if (!mt) return;
+   if (!mt) {
+      *out_ptr = NULL;
+      *out_stride = 0;
+      return;
+   }
    assert(mt->surf.samples == 1);
 
    map = intel_miptree_attach_map(mt, level, slice, x, y, w, h, mode);
