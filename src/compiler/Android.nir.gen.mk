@@ -61,8 +61,6 @@ $(intermediates)/nir/nir_opcodes.h: $(prebuilt_intermediates)/nir/nir_opcodes.h
 	@mkdir -p $(dir $@)
 	@cp -f $< $@
 
-$(LOCAL_PATH)/nir/nir.h: $(intermediates)/nir/nir_opcodes.h
-
 $(intermediates)/nir/nir_opcodes.c: $(prebuilt_intermediates)/nir/nir_opcodes.c
 	@mkdir -p $(dir $@)
 	@cp -f $< $@
