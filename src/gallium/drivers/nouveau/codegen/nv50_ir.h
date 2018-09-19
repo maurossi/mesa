@@ -876,6 +876,7 @@ public:
    bool canCommuteDefSrc(const Instruction *) const;
 
    void print() const;
+   void print(std::ostringstream &) const;
 
    inline CmpInstruction *asCmp();
    inline TexInstruction *asTex();
