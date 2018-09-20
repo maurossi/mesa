@@ -48,11 +48,10 @@ LOCAL_SRC_FILES := $(filter-out $(sources), $(LOCAL_SRC_FILES))
 LOCAL_C_INCLUDES += $(intermediates)/main
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
-LOCAL_GENERATED_SOURCES_x86 += $(addprefix $(intermediates)/, x86/matypes.h)
-LOCAL_GENERATED_SOURCES_x86_64 += $(addprefix $(intermediates)/, x86_64/matypes.h)
-
-LOCAL_C_INCLUDES_x86 += $(intermediates)/x86
-LOCAL_C_INCLUDES_x86_64 += $(intermediates)/x86_64
+ifeq ($(TARGET_ARCH),x86)
+sources += x86/matypes.h
+LOCAL_C_INCLUDES += $(intermediates)/x86
+endif
 endif
 
 sources := $(addprefix $(intermediates)/, $(sources))
@@ -71,22 +70,12 @@ define es-gen
 	$(hide) $(PRIVATE_SCRIPT) $(1) $(PRIVATE_XML) > $@
 endef
 
-matypes_deps32 := \
-	$(BUILD_OUT_EXECUTABLES)/mesa_gen_matypes32$(BUILD_EXECUTABLE_SUFFIX) \
+matypes_deps := \
+	$(BUILD_OUT_EXECUTABLES)/mesa_gen_matypes$(BUILD_EXECUTABLE_SUFFIX) \
 	$(LOCAL_PATH)/main/mtypes.h \
 	$(LOCAL_PATH)/tnl/t_context.h
 
-matypes_deps64 := \
-	$(BUILD_OUT_EXECUTABLES)/mesa_gen_matypes64$(BUILD_EXECUTABLE_SUFFIX) \
-	$(LOCAL_PATH)/main/mtypes.h \
-	$(LOCAL_PATH)/tnl/t_context.h
-
-$(intermediates)/x86/matypes.h: $(matypes_deps32)
-	@mkdir -p $(dir $@)
-	@echo "MATYPES: $(PRIVATE_MODULE) <= $(notdir $@)"
-	$(hide) $< > $@
-
-$(intermediates)/x86_64/matypes.h: $(matypes_deps64)
+$(intermediates)/x86/matypes.h: $(matypes_deps)
 	@mkdir -p $(dir $@)
 	@echo "MATYPES: $(PRIVATE_MODULE) <= $(notdir $@)"
 	$(hide) $< > $@
