@@ -24,8 +24,6 @@ struct nouveau_screen {
    struct nouveau_client *client;
    struct nouveau_pushbuf *pushbuf;
 
-   int refcount;
-
    unsigned vidmem_bindings; /* PIPE_BIND_* where VRAM placement is desired */
    unsigned sysmem_bindings; /* PIPE_BIND_* where GART placement is desired */
    unsigned lowmem_bindings; /* PIPE_BIND_* that require an address < 4 GiB */
@@ -121,8 +119,6 @@ nouveau_screen(struct pipe_screen *pscreen)
 {
    return (struct nouveau_screen *)pscreen;
 }
-
-bool nouveau_drm_screen_unref(struct nouveau_screen *screen);
 
 bool
 nouveau_screen_bo_get_handle(struct pipe_screen *pscreen,
