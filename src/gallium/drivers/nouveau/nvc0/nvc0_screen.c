@@ -590,9 +590,6 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
 {
    struct nvc0_screen *screen = nvc0_screen(pscreen);
 
-   if (!nouveau_drm_screen_unref(&screen->base))
-      return;
-
    if (screen->base.fence.current) {
       struct nouveau_fence *current = NULL;
 
