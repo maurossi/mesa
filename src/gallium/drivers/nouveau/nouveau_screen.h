@@ -26,8 +26,6 @@ struct nouveau_screen {
    struct nouveau_pushbuf *pushbuf;
    mtx_t push_mutex;
 
-   int refcount;
-
    unsigned transfer_pushbuf_threshold;
 
    unsigned vidmem_bindings; /* PIPE_BIND_* where VRAM placement is desired */
@@ -126,8 +124,6 @@ nouveau_screen(struct pipe_screen *pscreen)
 {
    return (struct nouveau_screen *)pscreen;
 }
-
-bool nouveau_drm_screen_unref(struct nouveau_screen *screen);
 
 bool
 nouveau_screen_bo_get_handle(struct pipe_screen *pscreen,
