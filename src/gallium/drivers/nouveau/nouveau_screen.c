@@ -80,14 +80,10 @@ nouveau_screen_fence_finish(struct pipe_screen *screen,
                             struct pipe_fence_handle *pfence,
                             uint64_t timeout)
 {
-   bool ret;
    if (!timeout)
       return nouveau_fence_signalled(nouveau_fence(pfence));
 
-   mtx_lock(&nouveau_screen(screen)->push_mutex);
-   ret = nouveau_fence_wait(nouveau_fence(pfence), NULL);
-   mtx_unlock(&nouveau_screen(screen)->push_mutex);
-   return ret;
+   return nouveau_fence_wait(nouveau_fence(pfence), NULL);
 }
 
 
@@ -182,9 +178,6 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    char *nv_dbg = getenv("NOUVEAU_MESA_DEBUG");
    if (nv_dbg)
       nouveau_mesa_debug = atoi(nv_dbg);
-
-   (void) mtx_init(&screen->push_mutex, mtx_plain);
-   (void) mtx_init(&screen->fence.list_mutex, mtx_plain);
 
    /* These must be set before any failure is possible, as the cleanup
     * paths assume they're responsible for deleting them.
@@ -289,9 +282,6 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    close(fd);
 
    disk_cache_destroy(screen->disk_shader_cache);
-
-   mtx_destroy(&screen->push_mutex);
-   mtx_destroy(&screen->fence.list_mutex);
 }
 
 static void

@@ -204,13 +204,10 @@ nv50_resource_copy_region(struct pipe_context *pipe,
    bool m2mf;
    unsigned dst_layer = dstz, src_layer = src_box->z;
 
-   mtx_lock(&nv50->screen->base.push_mutex);
-
    if (dst->target == PIPE_BUFFER && src->target == PIPE_BUFFER) {
       nouveau_copy_buffer(&nv50->base,
                           nv04_resource(dst), dstx,
                           nv04_resource(src), src_box->x, src_box->width);
-      mtx_unlock(&nv50->screen->base.push_mutex);
       return;
    }
 
@@ -250,7 +247,6 @@ nv50_resource_copy_region(struct pipe_context *pipe,
          else
             srect.base += src_mt->layer_stride;
       }
-      mtx_unlock(&nv50->screen->base.push_mutex);
       return;
    }
 
@@ -274,7 +270,6 @@ nv50_resource_copy_region(struct pipe_context *pipe,
          break;
    }
    nouveau_bufctx_reset(nv50->bufctx, NV50_BIND_2D);
-   mtx_unlock(&nv50->screen->base.push_mutex);
 }
 
 static void
@@ -294,18 +289,14 @@ nv50_clear_render_target(struct pipe_context *pipe,
 
    assert(dst->texture->target != PIPE_BUFFER);
 
-   mtx_lock(&nv50->screen->base.push_mutex);
-
    BEGIN_NV04(push, NV50_3D(CLEAR_COLOR(0)), 4);
    PUSH_DATAf(push, color->f[0]);
    PUSH_DATAf(push, color->f[1]);
    PUSH_DATAf(push, color->f[2]);
    PUSH_DATAf(push, color->f[3]);
 
-   if (nouveau_pushbuf_space(push, 64 + sf->depth, 1, 0)) {
-      mtx_unlock(&nv50->screen->base.push_mutex);
+   if (nouveau_pushbuf_space(push, 64 + sf->depth, 1, 0))
       return;
-   }
 
    PUSH_REFN(push, bo, mt->base.domain | NOUVEAU_BO_WR);
 
@@ -367,8 +358,6 @@ nv50_clear_render_target(struct pipe_context *pipe,
       PUSH_DATA (push, nv50->cond_condmode);
    }
 
-   mtx_unlock(&nv50->screen->base.push_mutex);
-
    nv50->dirty_3d |= NV50_NEW_3D_FRAMEBUFFER | NV50_NEW_3D_SCISSOR;
 }
 
@@ -393,8 +382,6 @@ nv50_clear_depth_stencil(struct pipe_context *pipe,
    assert(dst->texture->target != PIPE_BUFFER);
    assert(nouveau_bo_memtype(bo)); /* ZETA cannot be linear */
 
-   mtx_lock(&nv50->screen->base.push_mutex);
-
    if (clear_flags & PIPE_CLEAR_DEPTH) {
       BEGIN_NV04(push, NV50_3D(CLEAR_DEPTH), 1);
       PUSH_DATAf(push, depth);
@@ -407,10 +394,8 @@ nv50_clear_depth_stencil(struct pipe_context *pipe,
       mode |= NV50_3D_CLEAR_BUFFERS_S;
    }
 
-   if (nouveau_pushbuf_space(push, 64 + sf->depth, 1, 0)) {
-      mtx_unlock(&nv50->screen->base.push_mutex);
+   if (nouveau_pushbuf_space(push, 64 + sf->depth, 1, 0))
       return;
-   }
 
    PUSH_REFN(push, bo, mt->base.domain | NOUVEAU_BO_WR);
 
@@ -460,8 +445,6 @@ nv50_clear_depth_stencil(struct pipe_context *pipe,
       BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
       PUSH_DATA (push, nv50->cond_condmode);
    }
-
-   mtx_unlock(&nv50->screen->base.push_mutex);
 
    nv50->dirty_3d |= NV50_NEW_3D_FRAMEBUFFER | NV50_NEW_3D_SCISSOR;
 }
@@ -551,12 +534,9 @@ nv50_clear(struct pipe_context *pipe, unsigned buffers,
    unsigned i, j, k;
    uint32_t mode = 0;
 
-   mtx_lock(&nv50->screen->base.push_mutex);
    /* don't need NEW_BLEND, COLOR_MASK doesn't affect CLEAR_BUFFERS */
-   if (!nv50_state_validate_3d(nv50, NV50_NEW_3D_FRAMEBUFFER)) {
-      mtx_unlock(&nv50->screen->base.push_mutex);
+   if (!nv50_state_validate_3d(nv50, NV50_NEW_3D_FRAMEBUFFER))
       return;
-   }
 
    /* We have to clear ALL of the layers, not up to the min number of layers
     * of any attachment. */
@@ -622,7 +602,6 @@ nv50_clear(struct pipe_context *pipe, unsigned buffers,
    /* restore the array mode */
    BEGIN_NV04(push, NV50_3D(RT_ARRAY_MODE), 1);
    PUSH_DATA (push, nv50->rt_array_mode);
-   mtx_unlock(&nv50->screen->base.push_mutex);
 }
 
 static void
@@ -749,18 +728,14 @@ nv50_clear_buffer(struct pipe_context *pipe,
 
    assert(size % data_size == 0);
 
-   mtx_lock(&nv50->screen->base.push_mutex);
-
    if (offset & 0xff) {
       unsigned fixup_size = MIN2(size, align(offset, 0x100) - offset);
       assert(fixup_size % data_size == 0);
       nv50_clear_buffer_push(pipe, res, offset, fixup_size, data, data_size);
       offset += fixup_size;
       size -= fixup_size;
-      if (!size) {
-         mtx_unlock(&nv50->screen->base.push_mutex);
+      if (!size)
          return;
-      }
    }
 
    elements = size / data_size;
@@ -776,10 +751,8 @@ nv50_clear_buffer(struct pipe_context *pipe,
    PUSH_DATA (push, color.ui[2]);
    PUSH_DATA (push, color.ui[3]);
 
-   if (nouveau_pushbuf_space(push, 64, 1, 0)) {
-      mtx_unlock(&nv50->screen->base.push_mutex);
+   if (nouveau_pushbuf_space(push, 64, 1, 0))
       return;
-   }
 
    PUSH_REFN(push, buf->bo, buf->domain | NOUVEAU_BO_WR);
 
@@ -830,8 +803,6 @@ nv50_clear_buffer(struct pipe_context *pipe,
       nv50_clear_buffer_push(pipe, res, offset, width * data_size,
                              data, data_size);
    }
-
-   mtx_unlock(&nv50->screen->base.push_mutex);
 
    nv50->dirty_3d |= NV50_NEW_3D_FRAMEBUFFER | NV50_NEW_3D_SCISSOR;
 }
@@ -1760,8 +1731,6 @@ nv50_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
         info->src.box.height != -info->dst.box.height))
       eng3d = true;
 
-   mtx_lock(&nv50->screen->base.push_mutex);
-
    if (nv50->screen->num_occlusion_queries_active) {
       BEGIN_NV04(push, NV50_3D(SAMPLECNT_ENABLE), 1);
       PUSH_DATA (push, 0);
@@ -1776,8 +1745,6 @@ nv50_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
       BEGIN_NV04(push, NV50_3D(SAMPLECNT_ENABLE), 1);
       PUSH_DATA (push, 1);
    }
-
-   mtx_unlock(&nv50->screen->base.push_mutex);
 }
 
 static void

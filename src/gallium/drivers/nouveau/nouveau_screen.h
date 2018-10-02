@@ -4,7 +4,6 @@
 #include "pipe/p_screen.h"
 #include "util/disk_cache.h"
 #include "util/u_memory.h"
-#include "os/os_thread.h"
 
 #ifdef DEBUG
 # define NOUVEAU_ENABLE_DRIVER_STATISTICS
@@ -24,7 +23,6 @@ struct nouveau_screen {
    struct nouveau_object *channel;
    struct nouveau_client *client;
    struct nouveau_pushbuf *pushbuf;
-   mtx_t push_mutex;
 
    int refcount;
 
@@ -42,7 +40,6 @@ struct nouveau_screen {
       struct nouveau_fence *head;
       struct nouveau_fence *tail;
       struct nouveau_fence *current;
-      mtx_t list_mutex;
       u32 sequence;
       u32 sequence_ack;
       void (*emit)(struct pipe_screen *, u32 *sequence);

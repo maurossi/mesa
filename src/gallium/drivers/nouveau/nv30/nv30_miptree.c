@@ -130,12 +130,10 @@ nv30_resource_copy_region(struct pipe_context *pipe,
    struct nv30_context *nv30 = nv30_context(pipe);
    struct nv30_rect src, dst;
 
-   mtx_lock(&nv30->screen->base.push_mutex);
    if (dstres->target == PIPE_BUFFER && srcres->target == PIPE_BUFFER) {
       nouveau_copy_buffer(&nv30->base,
                           nv04_resource(dstres), dstx,
                           nv04_resource(srcres), src_box->x, src_box->width);
-      mtx_unlock(&nv30->screen->base.push_mutex);
       return;
    }
 
@@ -145,7 +143,6 @@ nv30_resource_copy_region(struct pipe_context *pipe,
                        src_box->width, src_box->height, &dst);
 
    nv30_transfer_rect(nv30, NEAREST, &src, &dst);
-   mtx_unlock(&nv30->screen->base.push_mutex);
 }
 
 static void
@@ -166,7 +163,6 @@ nv30_resource_resolve(struct nv30_context *nv30,
    y1 = src.y1;
 
    /* On nv3x we must use sifm which is restricted to 1024x1024 tiles */
-   mtx_lock(&nv30->screen->base.push_mutex);
    for (y = src.y0; y < y1; y += h) {
       h = y1 - y;
       if (h > 1024)
@@ -197,7 +193,6 @@ nv30_resource_resolve(struct nv30_context *nv30,
          nv30_transfer_rect(nv30, BILINEAR, &src, &dst);
       }
    }
-   mtx_unlock(&nv30->screen->base.push_mutex);
 }
 
 void
@@ -313,12 +308,8 @@ nv30_miptree_transfer_map(struct pipe_context *pipe, struct pipe_resource *pt,
    tx->tmp.y1     = tx->tmp.h;
    tx->tmp.z      = 0;
 
-   if (usage & PIPE_TRANSFER_READ) {
-      mtx_lock(&nv30->screen->base.push_mutex);
+   if (usage & PIPE_TRANSFER_READ)
       nv30_transfer_rect(nv30, NEAREST, &tx->img, &tx->tmp);
-      PUSH_KICK(nv30->base.pushbuf);
-      mtx_unlock(&nv30->screen->base.push_mutex);
-   }
 
    if (tx->tmp.bo->map) {
       *ptransfer = &tx->base;
@@ -349,13 +340,11 @@ nv30_miptree_transfer_unmap(struct pipe_context *pipe,
    struct nv30_transfer *tx = nv30_transfer(ptx);
 
    if (ptx->usage & PIPE_TRANSFER_WRITE) {
-      mtx_lock(&nv30->screen->base.push_mutex);
       nv30_transfer_rect(nv30, NEAREST, &tx->tmp, &tx->img);
 
       /* Allow the copies above to finish executing before freeing the source */
       nouveau_fence_work(nv30->screen->base.fence.current,
                          nouveau_fence_unref_bo, tx->tmp.bo);
-      mtx_unlock(&nv30->screen->base.push_mutex);
    } else {
       nouveau_bo_ref(NULL, &tx->tmp.bo);
    }

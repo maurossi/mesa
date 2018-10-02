@@ -2325,7 +2325,6 @@ nve4_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
       return false;
    }
 
-   mtx_lock(&screen->base.push_mutex);
    assert(cfg->num_counters <= 4);
    PUSH_SPACE(push, 4 * 8 * + 6);
 
@@ -2386,7 +2385,6 @@ nve4_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
       PUSH_DATA (push, 0xff);
    }
 
-   mtx_unlock(&screen->base.push_mutex);
    return true;
 }
 
@@ -2410,7 +2408,6 @@ nvc0_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
       return false;
    }
 
-   mtx_lock(&screen->base.push_mutex);
    assert(cfg->num_counters <= 8);
    PUSH_SPACE(push, 8 * 8 + 2);
 
@@ -2457,7 +2454,6 @@ nvc0_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
       BEGIN_NVC0(push, NVC0_CP(MP_PM_SET(c)), 1);
       PUSH_DATA (push, 0);
    }
-   mtx_unlock(&screen->base.push_mutex);
    return true;
 }
 
@@ -2550,7 +2546,6 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
    if (unlikely(!screen->pm.prog))
       screen->pm.prog = nvc0_hw_sm_get_program(screen);
 
-   mtx_lock(&screen->base.push_mutex);
    /* disable all counting */
    PUSH_SPACE(push, 8);
    for (c = 0; c < 8; ++c)
@@ -2581,7 +2576,6 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 
    /* upload input data for the compute shader which reads MP counters */
    nvc0_hw_sm_upload_input(nvc0, hq);
-   mtx_unlock(&screen->base.push_mutex);
 
    pipe->bind_compute_state(pipe, screen->pm.prog);
    for (i = 0; i < 3; i++) {
@@ -2595,7 +2589,6 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_QUERY);
 
-   mtx_lock(&screen->base.push_mutex);
    /* re-activate other counters */
    PUSH_SPACE(push, 16);
    mask = 0;
@@ -2620,7 +2613,6 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
          PUSH_DATA (push, (cfg->ctr[i].func << 4) | cfg->ctr[i].mode);
       }
    }
-   mtx_unlock(&screen->base.push_mutex);
 }
 
 static inline bool
