@@ -515,7 +515,7 @@ nv50_screen_destroy(struct pipe_screen *pscreen)
        * _current_ one, and remove both.
        */
       nouveau_fence_ref(screen->base.fence.current, &current);
-      nouveau_fence_wait(current, NULL);
+      nouveau_fence_wait(current, screen->base.pushbuf, NULL);
       nouveau_fence_ref(NULL, &current);
       nouveau_fence_ref(NULL, &screen->base.fence.current);
    }
@@ -555,18 +555,17 @@ nv50_screen_destroy(struct pipe_screen *pscreen)
 }
 
 static void
-nv50_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
+nv50_screen_fence_emit(struct nouveau_fence_list *fence, struct nouveau_pushbuf *push, u32 *sequence)
 {
-   struct nv50_screen *screen = nv50_screen(pscreen);
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_bo *bo = fence->data;
 
    /* we need to do it after possible flush in MARK_RING */
-   *sequence = ++screen->base.fence.sequence;
+   *sequence = ++fence->sequence;
 
    assert(PUSH_AVAIL(push) + push->rsvd_kick >= 5);
    PUSH_DATA (push, NV50_FIFO_PKHDR(NV50_3D(QUERY_ADDRESS_HIGH), 4));
-   PUSH_DATAh(push, screen->fence.bo->offset);
-   PUSH_DATA (push, screen->fence.bo->offset);
+   PUSH_DATAh(push, bo->offset);
+   PUSH_DATA (push, bo->offset);
    PUSH_DATA (push, *sequence);
    PUSH_DATA (push, NV50_3D_QUERY_GET_MODE_WRITE_UNK0 |
                     NV50_3D_QUERY_GET_UNK4 |
@@ -577,9 +576,10 @@ nv50_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
 }
 
 static u32
-nv50_screen_fence_update(struct pipe_screen *pscreen)
+nv50_screen_fence_update(struct nouveau_fence_list *fence)
 {
-   uint32_t *map = nv50_screen(pscreen)->fence.bo->map;
+   struct nouveau_bo *bo = fence->data;
+   uint32_t *map = bo->map;
    return map[0];
 }
 
@@ -986,8 +986,8 @@ nv50_screen_create(struct nouveau_device *dev)
       NOUVEAU_ERR("Failed to allocate fence bo: %d\n", ret);
       goto fail;
    }
-
    nouveau_bo_map(screen->fence.bo, 0, NULL);
+   screen->base.fence.data = screen->fence.bo;
    screen->base.fence.emit = nv50_screen_fence_emit;
    screen->base.fence.update = nv50_screen_fence_update;
 
@@ -1129,7 +1129,7 @@ nv50_screen_create(struct nouveau_device *dev)
       goto fail;
    }
 
-   nouveau_fence_new(&screen->base, &screen->base.fence.current);
+   nouveau_fence_new(&screen->base.fence, &screen->base.fence.current);
 
    return &screen->base;
 
