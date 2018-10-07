@@ -632,7 +632,7 @@ nv50_draw_elements(struct nv50_context *nv50, bool shorten,
        * pushbuf submit, but it's probably not a big performance difference.
        */
       if (buf->fence_wr && !nouveau_fence_signalled(buf->fence_wr))
-         nouveau_fence_wait(buf->fence_wr, &nv50->base.debug);
+         nouveau_fence_wait(buf->fence_wr, push, &nv50->base.debug);
 
       while (instance_count--) {
          BEGIN_NV04(push, NV50_3D(VERTEX_BEGIN_GL), 1);
@@ -757,7 +757,7 @@ nv50_draw_vbo_kick_notify(struct nouveau_pushbuf *chan)
 {
    struct nv50_screen *screen = chan->user_priv;
 
-   nouveau_fence_update(&screen->base, true);
+   nouveau_fence_update(&screen->base.fence, true);
 
    nv50_bufctx_fence(screen->cur_ctx->bufctx_3d, true);
 }
