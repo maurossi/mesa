@@ -616,7 +616,7 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
        * _current_ one, and remove both.
        */
       nouveau_fence_ref(screen->base.fence.current, &current);
-      nouveau_fence_wait(current, NULL);
+      nouveau_fence_wait(current, screen->base.pushbuf, NULL);
       nouveau_fence_ref(NULL, &current);
       nouveau_fence_ref(NULL, &screen->base.fence.current);
    }
@@ -740,28 +740,27 @@ nvc0_magic_3d_init(struct nouveau_pushbuf *push, uint16_t obj_class)
 }
 
 static void
-nvc0_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
+nvc0_screen_fence_emit(struct nouveau_fence_list *list, struct nouveau_pushbuf *push, u32 *sequence)
 {
-   struct nvc0_screen *screen = nvc0_screen(pscreen);
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_bo *bo = list->data;
 
    /* we need to do it after possible flush in MARK_RING */
-   *sequence = ++screen->base.fence.sequence;
+   *sequence = ++list->sequence;
 
    assert(PUSH_AVAIL(push) + push->rsvd_kick >= 5);
    PUSH_DATA (push, NVC0_FIFO_PKHDR_SQ(NVC0_3D(QUERY_ADDRESS_HIGH), 4));
-   PUSH_DATAh(push, screen->fence.bo->offset);
-   PUSH_DATA (push, screen->fence.bo->offset);
+   PUSH_DATAh(push, bo->offset);
+   PUSH_DATA (push, bo->offset);
    PUSH_DATA (push, *sequence);
    PUSH_DATA (push, NVC0_3D_QUERY_GET_FENCE | NVC0_3D_QUERY_GET_SHORT |
               (0xf << NVC0_3D_QUERY_GET_UNIT__SHIFT));
 }
 
-static u32
-nvc0_screen_fence_update(struct pipe_screen *pscreen)
+static uint32_t
+nvc0_screen_fence_update(struct nouveau_fence_list *list)
 {
-   struct nvc0_screen *screen = nvc0_screen(pscreen);
-   uint32_t *map = screen->fence.bo->map;
+   struct nouveau_bo *bo = list->data;
+   uint32_t *map = bo->map;
    return map[0];
 }
 
@@ -1058,9 +1057,9 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating fence BO: %d\n", ret);
    nouveau_bo_map(screen->fence.bo, 0, NULL);
+   screen->base.fence.data = screen->fence.bo;
    screen->base.fence.emit = nvc0_screen_fence_emit;
    screen->base.fence.update = nvc0_screen_fence_update;
-
 
    ret = nouveau_object_new(chan, (dev->chipset < 0xe0) ? 0x1f906e : 0x906e,
                             NVIF_CLASS_SW_GF100, NULL, 0, &screen->nvsw);
@@ -1474,7 +1473,7 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (!nvc0_blitter_create(screen))
       goto fail;
 
-   nouveau_fence_new(&screen->base, &screen->base.fence.current);
+   nouveau_fence_new(&screen->base.fence, &screen->base.fence.current);
 
    return &screen->base;
 
