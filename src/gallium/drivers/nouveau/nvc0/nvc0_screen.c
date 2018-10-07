@@ -761,7 +761,8 @@ static u32
 nvc0_screen_fence_update(struct pipe_screen *pscreen)
 {
    struct nvc0_screen *screen = nvc0_screen(pscreen);
-   return screen->fence.map[0];
+   uint32_t *map = screen->fence.bo->map;
+   return map[0];
 }
 
 static int
@@ -1059,7 +1060,6 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating fence BO: %d\n", ret);
    nouveau_bo_map(screen->fence.bo, 0, NULL);
-   screen->fence.map = screen->fence.bo->map;
    screen->base.fence.emit = nvc0_screen_fence_emit;
    screen->base.fence.update = nvc0_screen_fence_update;
 
