@@ -452,12 +452,9 @@ nv30_screen_is_format_supported(struct pipe_screen *pscreen,
 }
 
 static void
-nv30_screen_fence_emit(struct pipe_screen *pscreen, uint32_t *sequence)
+nv30_screen_fence_emit(struct nouveau_fence_list *fence, struct nouveau_pushbuf *push, uint32_t *sequence)
 {
-   struct nv30_screen *screen = nv30_screen(pscreen);
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
-
-   *sequence = ++screen->base.fence.sequence;
+   *sequence = ++fence->sequence;
 
    assert(PUSH_AVAIL(push) + push->rsvd_kick >= 3);
    PUSH_DATA (push, NV30_3D_FENCE_OFFSET |
@@ -467,9 +464,9 @@ nv30_screen_fence_emit(struct pipe_screen *pscreen, uint32_t *sequence)
 }
 
 static uint32_t
-nv30_screen_fence_update(struct pipe_screen *pscreen)
+nv30_screen_fence_update(struct nouveau_fence_list *list)
 {
-   struct nv30_screen *screen = nv30_screen(pscreen);
+   struct nv30_screen *screen = list->data;
    struct nv04_notify *fence = screen->fence->data;
    return *(uint32_t *)((char *)screen->notify->map + fence->offset);
 }
@@ -489,7 +486,7 @@ nv30_screen_destroy(struct pipe_screen *pscreen)
        * _current_ one, and remove both.
        */
       nouveau_fence_ref(screen->base.fence.current, &current);
-      nouveau_fence_wait(current, NULL);
+      nouveau_fence_wait(current, screen->base.pushbuf, NULL);
       nouveau_fence_ref(NULL, &current);
       nouveau_fence_ref(NULL, &screen->base.fence.current);
    }
@@ -601,6 +598,8 @@ nv30_screen_create(struct nouveau_device *dev)
    ret = nouveau_screen_init(&screen->base, dev);
    if (ret)
       FAIL_SCREEN_INIT("nv30_screen_init failed: %d\n", ret);
+
+   screen->base.fence.data = screen;
 
    screen->base.vidmem_bindings |= PIPE_BIND_VERTEX_BUFFER;
    screen->base.sysmem_bindings |= PIPE_BIND_VERTEX_BUFFER;
@@ -798,6 +797,6 @@ nv30_screen_create(struct nouveau_device *dev)
 
    nouveau_pushbuf_kick(push, push->channel);
 
-   nouveau_fence_new(&screen->base, &screen->base.fence.current);
+   nouveau_fence_new(&screen->base.fence, &screen->base.fence.current);
    return &screen->base;
 }
