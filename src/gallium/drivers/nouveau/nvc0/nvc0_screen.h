@@ -109,7 +109,6 @@ struct nvc0_screen {
 
    struct {
       struct nouveau_bo *bo;
-      uint32_t *map;
    } fence;
 
    struct {
