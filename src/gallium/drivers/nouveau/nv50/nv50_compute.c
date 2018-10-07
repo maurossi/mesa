@@ -219,7 +219,7 @@ nv50_compute_upload_input(struct nv50_context *nv50, const uint32_t *input)
       BEGIN_NV04(push, NV50_CP(USER_PARAM(0)), size / 4);
       nouveau_pushbuf_data(push, bo, offset, size);
 
-      nouveau_fence_work(screen->base.fence.current, nouveau_mm_free_work, mm);
+      nouveau_fence_work(screen->base.fence.current, push, nouveau_mm_free_work, mm);
       nouveau_bo_ref(NULL, &bo);
       nouveau_bufctx_reset(nv50->bufctx, 0);
    }
