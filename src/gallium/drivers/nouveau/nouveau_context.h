@@ -3,7 +3,12 @@
 
 #include "pipe/p_context.h"
 #include "pipe/p_state.h"
+
+#include "util/u_memory.h"
+
 #include <nouveau.h>
+
+#include "nouveau_screen.h"
 
 #define NOUVEAU_MAX_SCRATCH_BUFS 4
 
