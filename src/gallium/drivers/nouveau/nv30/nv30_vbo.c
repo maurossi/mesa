@@ -173,7 +173,7 @@ nv30_release_user_vbufs(struct nv30_context *nv30)
       int i = ffs(vbo_user) - 1;
       vbo_user &= ~(1 << i);
 
-      nouveau_buffer_release_gpu_storage(nv04_resource(nv30->vtxbuf[i].buffer.resource));
+      nouveau_buffer_release_gpu_storage(nv30->base.pushbuf, nv04_resource(nv30->vtxbuf[i].buffer.resource));
    }
 
    nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VTXTMP);
