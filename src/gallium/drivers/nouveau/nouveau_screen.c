@@ -80,10 +80,12 @@ nouveau_screen_fence_finish(struct pipe_screen *screen,
                             struct pipe_fence_handle *pfence,
                             uint64_t timeout)
 {
+   struct nouveau_pushbuf *push = ctx ? nouveau_context(ctx)->pushbuf : nouveau_screen(screen)->pushbuf;
+
    if (!timeout)
       return nouveau_fence_signalled(nouveau_fence(pfence));
 
-   return nouveau_fence_wait(nouveau_fence(pfence), NULL);
+   return nouveau_fence_wait(nouveau_fence(pfence), push, NULL);
 }
 
 
@@ -231,6 +233,8 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
                              &screen->pushbuf);
    if (ret)
       return ret;
+
+   nouveau_fence_list_init(&screen->fence, screen);
 
    /* getting CPU time first appears to be more accurate */
    screen->cpu_gpu_time_delta = os_time_get();

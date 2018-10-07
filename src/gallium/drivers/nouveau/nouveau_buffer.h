@@ -53,7 +53,7 @@ struct nv04_resource {
 };
 
 void
-nouveau_buffer_release_gpu_storage(struct nv04_resource *);
+nouveau_buffer_release_gpu_storage(struct nouveau_pushbuf *push, struct nv04_resource *);
 
 void
 nouveau_copy_buffer(struct nouveau_context *,
