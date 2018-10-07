@@ -120,8 +120,8 @@ nv50_default_kick_notify(struct nouveau_pushbuf *push)
    struct nv50_screen *screen = push->user_priv;
 
    if (screen) {
-      nouveau_fence_next(&screen->base);
-      nouveau_fence_update(&screen->base, true);
+      nouveau_fence_next(&screen->base.fence, push);
+      nouveau_fence_update(&screen->base.fence, true);
       if (screen->cur_ctx)
          screen->cur_ctx->state.flushed = true;
    }
