@@ -362,8 +362,8 @@ nvc0_mt_sync(struct nvc0_context *nvc0, struct nv50_miptree *mt, unsigned usage)
       return !nouveau_bo_wait(mt->base.bo, access, nvc0->base.client);
    }
    if (usage & PIPE_TRANSFER_WRITE)
-      return !mt->base.fence || nouveau_fence_wait(mt->base.fence, &nvc0->base.debug);
-   return !mt->base.fence_wr || nouveau_fence_wait(mt->base.fence_wr, &nvc0->base.debug);
+      return !mt->base.fence || nouveau_fence_wait(mt->base.fence, nvc0->base.pushbuf, &nvc0->base.debug);
+   return !mt->base.fence_wr || nouveau_fence_wait(mt->base.fence_wr, nvc0->base.pushbuf, &nvc0->base.debug);
 }
 
 void *
@@ -518,7 +518,7 @@ nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
       NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_transfers_wr, 1);
 
       /* Allow the copies above to finish executing before freeing the source */
-      nouveau_fence_work(nvc0->base.fence.current,
+      nouveau_fence_work(nvc0->screen->base.fence.current, nvc0->base.pushbuf,
                          nouveau_fence_unref_bo, tx->rect[1].bo);
    } else {
       nouveau_bo_ref(NULL, &tx->rect[1].bo);
