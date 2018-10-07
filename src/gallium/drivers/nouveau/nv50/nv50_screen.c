@@ -594,7 +594,8 @@ nv50_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
 static u32
 nv50_screen_fence_update(struct pipe_screen *pscreen)
 {
-   return nv50_screen(pscreen)->fence.map[0];
+   uint32_t *map = nv50_screen(pscreen)->fence.bo->map;
+   return map[0];
 }
 
 static void
@@ -1001,7 +1002,6 @@ nv50_screen_create(struct nouveau_device *dev)
    }
 
    nouveau_bo_map(screen->fence.bo, 0, NULL);
-   screen->fence.map = screen->fence.bo->map;
    screen->base.fence.emit = nv50_screen_fence_emit;
    screen->base.fence.update = nv50_screen_fence_update;
 
