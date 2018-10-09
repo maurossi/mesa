@@ -934,6 +934,14 @@ void anv_GetPhysicalDeviceFeatures2(
          break;
       }
 
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VERTEX_ATTRIBUTE_DIVISOR_FEATURES_EXT: {
+         VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT *features =
+            (VkPhysicalDeviceVertexAttributeDivisorFeaturesEXT *)ext;
+         features->vertexAttributeInstanceRateDivisor = VK_TRUE;
+         features->vertexAttributeInstanceRateZeroDivisor = VK_TRUE;
+         break;
+      }
+
       default:
          anv_debug_ignored_stype(ext->sType);
          break;
@@ -1172,6 +1180,13 @@ void anv_GetPhysicalDeviceProperties2(
             (VkPhysicalDeviceVertexAttributeDivisorPropertiesEXT *)ext;
          /* We have to restrict this a bit for multiview */
          props->maxVertexAttribDivisor = UINT32_MAX / 16;
+         break;
+      }
+
+      case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROTECTED_MEMORY_PROPERTIES: {
+         VkPhysicalDeviceProtectedMemoryProperties *props =
+            (VkPhysicalDeviceProtectedMemoryProperties *)ext;
+         props->protectedNoFault = false;
          break;
       }
 
