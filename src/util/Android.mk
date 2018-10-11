@@ -65,5 +65,12 @@ $(intermediates)/xmlpool/options.h: $(prebuilt_intermediates)/xmlpool/options.h
 MESA_DRI_OPTIONS_H := $(intermediates)/xmlpool/options.h
 LOCAL_GENERATED_SOURCES += $(MESA_DRI_OPTIONS_H)
 
+$(intermediates)/format_srgb.c: $(prebuilt_intermediates)/util/format_srgb.c
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+MESA_FORMAT_SRGB_C := $(intermediates)/format_srgb.c
+LOCAL_GENERATED_SOURCES := $(MESA_FORMAT_SRGB_C)
+
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
