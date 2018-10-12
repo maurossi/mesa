@@ -22,6 +22,8 @@ struct nouveau_context {
    struct nouveau_pushbuf *pushbuf;
    struct pipe_debug_callback debug;
 
+   struct nouveau_fence_list fence;
+
    bool vbo_dirty;
 
    void (*copy_data)(struct nouveau_context *,
@@ -70,7 +72,7 @@ nouveau_context(struct pipe_context *pipe)
 void
 nouveau_context_init_vdec(struct nouveau_context *);
 
-void
+int
 nouveau_context_init(struct nouveau_context *);
 
 void
@@ -95,17 +97,8 @@ void *
 nouveau_scratch_get(struct nouveau_context *, unsigned size, uint64_t *gpu_addr,
                     struct nouveau_bo **);
 
-static inline void
-nouveau_context_destroy(struct nouveau_context *ctx)
-{
-   int i;
-
-   for (i = 0; i < NOUVEAU_MAX_SCRATCH_BUFS; ++i)
-      if (ctx->scratch.bo[i])
-         nouveau_bo_ref(NULL, &ctx->scratch.bo[i]);
-
-   FREE(ctx);
-}
+void
+nouveau_context_destroy(struct nouveau_context *);
 
 static inline  void
 nouveau_context_update_frame_stats(struct nouveau_context *nv)
