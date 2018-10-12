@@ -44,7 +44,7 @@ nvc0_hw_query_allocate(struct nvc0_context *nvc0, struct nvc0_query *q,
          if (hq->state == NVC0_HW_QUERY_STATE_READY)
             nouveau_mm_free(hq->mm);
          else
-            nouveau_fence_work(screen->base.fence.current, nvc0->base.pushbuf,
+            nouveau_fence_work(nvc0->base.fence.current, nvc0->base.pushbuf,
                                nouveau_mm_free_work, hq->mm);
       }
    }
@@ -301,7 +301,7 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
       break;
    }
    if (hq->is64bit)
-      nouveau_fence_ref(nvc0->screen->base.fence.current, &hq->fence);
+      nouveau_fence_ref(nvc0->base.fence.current, &hq->fence);
 }
 
 static boolean

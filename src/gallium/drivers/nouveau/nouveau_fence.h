@@ -39,6 +39,7 @@ struct nouveau_fence_list {
    struct nouveau_fence *current;
 
    struct nouveau_screen *screen;
+   struct nouveau_pushbuf *push;
    void *data;
 
    uint32_t sequence;
@@ -61,9 +62,11 @@ void nouveau_fence_unref_bo(void *data); /* generic unref bo callback */
 
 static inline void
 nouveau_fence_list_init(struct nouveau_fence_list *list,
-                        struct nouveau_screen *screen)
+                        struct nouveau_screen *screen,
+                        struct nouveau_pushbuf *push)
 {
    list->screen = screen;
+   list->push = push;
 }
 
 static inline void
