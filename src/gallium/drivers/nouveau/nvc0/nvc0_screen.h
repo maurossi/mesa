@@ -151,10 +151,11 @@ int nvc0_screen_tsc_alloc(struct nvc0_screen *, void *);
 int nve4_screen_compute_setup(struct nvc0_screen *, struct nouveau_pushbuf *);
 int nvc0_screen_compute_setup(struct nvc0_screen *, struct nouveau_pushbuf *);
 
-int nvc0_screen_resize_text_area(struct nvc0_screen *, uint64_t);
+int nvc0_screen_resize_text_area(struct nvc0_screen *, struct nouveau_pushbuf *, uint64_t);
 
 // 3D Only
-void nvc0_screen_bind_cb_3d(struct nvc0_screen *, bool *, int, int, int, uint64_t);
+void nvc0_screen_bind_cb_3d(struct nvc0_screen *, struct nouveau_pushbuf *push,
+                            bool *, int, int, int, uint64_t);
 
 static inline void
 nvc0_resource_fence(struct nv04_resource *res, uint32_t flags)
@@ -239,5 +240,11 @@ nvc0_screen_tsc_free(struct nvc0_screen *screen, struct nv50_tsc_entry *tsc)
       screen->tsc.lock[tsc->id / 32] &= ~(1 << (tsc->id % 32));
    }
 }
+
+void
+nvc0_screen_fence_emit(struct nouveau_fence_list *, struct nouveau_pushbuf *, u32 *sequence);
+
+uint32_t
+nvc0_screen_fence_update(struct nouveau_fence_list *);
 
 #endif
