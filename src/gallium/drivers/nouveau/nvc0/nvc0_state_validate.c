@@ -584,7 +584,7 @@ nvc0_constbufs_validate(struct nvc0_context *nvc0)
             if (!nvc0->state.uniform_buffer_bound[s]) {
                nvc0->state.uniform_buffer_bound[s] = true;
 
-               nvc0_screen_bind_cb_3d(nvc0->screen, &can_serialize, s, i,
+               nvc0_screen_bind_cb_3d(nvc0->screen, nvc0->base.pushbuf, &can_serialize, s, i,
                                       NVC0_MAX_CONSTBUF_SIZE, bo->offset + base);
             }
             nvc0_cb_bo_push(&nvc0->base, bo, NV_VRAM_DOMAIN(&nvc0->screen->base),
@@ -595,7 +595,7 @@ nvc0_constbufs_validate(struct nvc0_context *nvc0)
             struct nv04_resource *res =
                nv04_resource(nvc0->constbuf[s][i].u.buf);
             if (res) {
-               nvc0_screen_bind_cb_3d(nvc0->screen, &can_serialize, s, i,
+               nvc0_screen_bind_cb_3d(nvc0->screen, nvc0->base.pushbuf, &can_serialize, s, i,
                                       nvc0->constbuf[s][i].size,
                                       res->address + nvc0->constbuf[s][i].offset);
 
@@ -607,7 +607,7 @@ nvc0_constbufs_validate(struct nvc0_context *nvc0)
                if (i == 0)
                   nvc0->state.uniform_buffer_bound[s] = false;
             } else if (i != 0) {
-               nvc0_screen_bind_cb_3d(nvc0->screen, &can_serialize, s, i, -1, 0);
+               nvc0_screen_bind_cb_3d(nvc0->screen, nvc0->base.pushbuf, &can_serialize, s, i, -1, 0);
             }
          }
       }
@@ -708,7 +708,7 @@ nvc0_validate_driverconst(struct nvc0_context *nvc0)
    int i;
 
    for (i = 0; i < 5; ++i)
-      nvc0_screen_bind_cb_3d(screen, NULL, i, 15, NVC0_CB_AUX_SIZE,
+      nvc0_screen_bind_cb_3d(screen, nvc0->base.pushbuf, NULL, i, 15, NVC0_CB_AUX_SIZE,
                              screen->uniform_bo->offset + NVC0_CB_AUX_INFO(i));
 
    nvc0->dirty_cp |= NVC0_NEW_CP_DRIVERCONST;
