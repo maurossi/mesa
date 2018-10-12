@@ -180,6 +180,10 @@ struct nvc0_context {
 
    struct nvc0_screen *screen;
 
+   struct {
+      struct nouveau_bo *bo;
+   } fence;
+
    void (*m2mf_copy_rect)(struct nvc0_context *,
                           const struct nv50_m2mf_rect *dst,
                           const struct nv50_m2mf_rect *src,

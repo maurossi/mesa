@@ -34,11 +34,12 @@ nvc0_flush(struct pipe_context *pipe,
            unsigned flags)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_screen *screen = &nvc0->screen->base;
 
    if (fence)
-      nouveau_fence_ref(screen->fence.current, (struct nouveau_fence **)fence);
+      nouveau_fence_ref(nvc0->base.fence.current, (struct nouveau_fence **)fence);
 
+//   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
+//   nouveau_pushbuf_validate(nvc0->base.pushbuf);
    PUSH_KICK(nvc0->base.pushbuf); /* fencing handled in kick_notify */
 
    nouveau_context_update_frame_stats(&nvc0->base);
@@ -216,20 +217,35 @@ nvc0_destroy(struct pipe_context *pipe)
       free(pos);
    }
 
+   if (nvc0->base.fence.current) {
+      struct nouveau_fence *current = NULL;
+
+      /* nouveau_fence_wait will create a new current fence, so wait on the
+       * _current_ one, and remove both.
+       */
+      nouveau_fence_ref(nvc0->base.fence.current, &current);
+      nouveau_fence_wait(current, nvc0->base.pushbuf, NULL);
+      nouveau_fence_ref(NULL, &current);
+      nouveau_fence_ref(NULL, &nvc0->base.fence.current);
+   }
+   if (nvc0->base.pushbuf)
+      nvc0->base.pushbuf->user_priv = NULL;
+
+   nouveau_bo_ref(NULL, &nvc0->fence.bo);
+
    nouveau_context_destroy(&nvc0->base);
 }
 
 void
 nvc0_default_kick_notify(struct nouveau_pushbuf *push)
 {
-   struct nvc0_screen *screen = push->user_priv;
+   struct nvc0_context *nvc0 = push->user_priv;
 
-   if (screen) {
-      nouveau_fence_next(&screen->base.fence, push);
-      nouveau_fence_update(&screen->base.fence, true);
-      if (screen->cur_ctx)
-         screen->cur_ctx->state.flushed = true;
-      NOUVEAU_DRV_STAT(&screen->base, pushbuf_count, 1);
+   if (nvc0) {
+      nouveau_fence_next(&nvc0->base.fence, push);
+      nouveau_fence_update(&nvc0->base.fence, true);
+      nvc0->state.flushed = true;
+      NOUVEAU_DRV_STAT(&nvc0->screen->base, pushbuf_count, 1);
    }
 }
 
@@ -369,8 +385,9 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    if (!nvc0_blitctx_create(nvc0))
       goto out_err;
 
-   nvc0->base.pushbuf = screen->base.pushbuf;
-   nvc0->base.client = screen->base.client;
+   nvc0->screen = screen;
+   nvc0->base.screen = &screen->base;
+   nouveau_context_init(&nvc0->base);
 
    ret = nouveau_bufctx_new(nvc0->base.client, 2, &nvc0->bufctx);
    if (!ret)
@@ -381,9 +398,6 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
                                &nvc0->bufctx_cp);
    if (ret)
       goto out_err;
-
-   nvc0->screen = screen;
-   nvc0->base.screen = &screen->base;
 
    pipe->screen = pscreen;
    pipe->priv = priv;
@@ -405,7 +419,24 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    pipe->get_sample_position = nvc0_context_get_sample_position;
    pipe->emit_string_marker = nvc0_emit_string_marker;
 
-   nouveau_context_init(&nvc0->base);
+   flags = NOUVEAU_BO_GART | NOUVEAU_BO_MAP;
+   if (screen->base.drm->version >= 0x01000202)
+      flags |= NOUVEAU_BO_COHERENT;
+
+   ret = nouveau_bo_new(screen->base.device, flags, 0, 4096, NULL, &nvc0->fence.bo);
+   if (ret)
+      goto out_err;
+   nouveau_bo_map(nvc0->fence.bo, 0, NULL);
+   nvc0->base.fence.data = nvc0->fence.bo;
+   nvc0->base.fence.emit = nvc0_screen_fence_emit;
+   nvc0->base.fence.update = nvc0_screen_fence_update;
+
+   nouveau_fence_new(&nvc0->base.fence, &nvc0->base.fence.current);
+
+   /* initialize the pushbuffer */
+   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
+   nouveau_pushbuf_validate(nvc0->base.pushbuf);
+
    nvc0_init_query_functions(nvc0);
    nvc0_init_surface_functions(nvc0);
    nvc0_init_state_functions(nvc0);
@@ -441,9 +472,10 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    if (!screen->cur_ctx) {
       nvc0->state = screen->save_state;
       screen->cur_ctx = nvc0;
-      nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
    }
    nvc0->base.pushbuf->kick_notify = nvc0_default_kick_notify;
+   nvc0->base.pushbuf->user_priv = nvc0;
+   nvc0->base.pushbuf->rsvd_kick = 5;
 
    /* add permanently resident buffers to bufctxts */
 
@@ -465,10 +497,10 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
 
    flags = NOUVEAU_BO_GART | NOUVEAU_BO_WR;
 
-   BCTX_REFN_bo(nvc0->bufctx_3d, 3D_SCREEN, flags, screen->fence.bo);
-   BCTX_REFN_bo(nvc0->bufctx, FENCE, flags, screen->fence.bo);
+   BCTX_REFN_bo(nvc0->bufctx_3d, 3D_SCREEN, flags, nvc0->fence.bo);
+   BCTX_REFN_bo(nvc0->bufctx, FENCE, flags, nvc0->fence.bo);
    if (screen->compute)
-      BCTX_REFN_bo(nvc0->bufctx_cp, CP_SCREEN, flags, screen->fence.bo);
+      BCTX_REFN_bo(nvc0->bufctx_cp, CP_SCREEN, flags, nvc0->fence.bo);
 
    nvc0->base.scratch.bo_size = 2 << 20;
 
