@@ -125,7 +125,7 @@ brw_depthbuffer_format(struct brw_context *brw)
 static struct intel_mipmap_tree *
 get_stencil_miptree(struct intel_renderbuffer *irb)
 {
-   if (!irb)
+   if (!irb || !irb->mt)
       return NULL;
    if (irb->mt->stencil_mt)
       return irb->mt->stencil_mt;
