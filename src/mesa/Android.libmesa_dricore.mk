@@ -50,7 +50,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_sse41
 LOCAL_CFLAGS := \
 	-msse4.1 -mstackrealign \
-       -DUSE_SSE41
+	-DUSE_SSE41
 endif
 
 LOCAL_C_INCLUDES := \
