@@ -952,7 +952,10 @@ intel_blit_framebuffer(struct gl_context *ctx,
 bool
 intel_renderbuffer_has_hiz(struct intel_renderbuffer *irb)
 {
-   return intel_miptree_level_has_hiz(irb->mt, irb->mt_level);
+   if (!irb->mt)
+      return false;
+   else
+      return intel_miptree_level_has_hiz(irb->mt, irb->mt_level);
 }
 
 void
