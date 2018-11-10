@@ -696,7 +696,7 @@ brw_postdraw_set_buffers_need_resolve(struct brw_context *brw)
       front_irb->need_downsample = true;
    if (back_irb)
       back_irb->need_downsample = true;
-   if (depth_irb) {
+   if (depth_irb  && depth_irb->mt) {
       bool depth_written = brw_depth_writes_enabled(brw);
       if (depth_att->Layered) {
          intel_miptree_finish_depth(brw, depth_irb->mt,
