@@ -363,10 +363,12 @@ intel_disable_rb_aux_buffer(struct brw_context *brw,
       const struct intel_renderbuffer *irb =
          intel_renderbuffer(fb->_ColorDrawBuffers[i]);
 
-      if (irb && irb->mt->bo == tex_mt->bo &&
-          irb->mt_level >= min_level &&
-          irb->mt_level < min_level + num_levels) {
-         found = draw_aux_buffer_disabled[i] = true;
+      if (irb && irb->mt) {
+         if (irb->mt->bo == tex_mt->bo &&
+             irb->mt_level >= min_level &&
+             irb->mt_level < min_level + num_levels) {
+            found = draw_aux_buffer_disabled[i] = true;
+         }
       }
    }
 
