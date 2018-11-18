@@ -360,7 +360,7 @@ intel_disable_rb_aux_buffer(struct brw_context *brw,
       return false;
 
    for (unsigned i = 0; i < fb->_NumColorDrawBuffers; i++) {
-      const struct intel_renderbuffer *irb =
+      struct intel_renderbuffer *irb =
          intel_renderbuffer(fb->_ColorDrawBuffers[i]);
 
       if (irb && irb->mt->bo == tex_mt->bo &&
@@ -568,7 +568,7 @@ brw_predraw_resolve_inputs(struct brw_context *brw, bool rendering,
 
    /* Resolve color for each active shader image. */
    for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
-      const struct gl_program *prog = ctx->_Shader->CurrentProgram[i];
+      struct gl_program *prog = ctx->_Shader->CurrentProgram[i];
 
       if (unlikely(prog && prog->info.num_images)) {
          for (unsigned j = 0; j < prog->info.num_images; j++) {
@@ -620,7 +620,7 @@ brw_predraw_resolve_framebuffer(struct brw_context *brw,
       assert(brw->screen->devinfo.gen < 9);
 
       for (unsigned i = 0; i < fb->_NumColorDrawBuffers; i++) {
-         const struct intel_renderbuffer *irb =
+         struct intel_renderbuffer *irb =
             intel_renderbuffer(fb->_ColorDrawBuffers[i]);
 
          if (irb) {
