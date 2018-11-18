@@ -714,14 +714,16 @@ brw_postdraw_set_buffers_need_resolve(struct brw_context *brw)
          brw_depth_cache_add_bo(brw, depth_irb->mt->bo);
    }
 
-   if (stencil_irb && brw->stencil_write_enabled) {
-      struct intel_mipmap_tree *stencil_mt =
-         stencil_irb->mt->stencil_mt != NULL ?
-         stencil_irb->mt->stencil_mt : stencil_irb->mt;
-      brw_depth_cache_add_bo(brw, stencil_mt->bo);
-      intel_miptree_finish_write(brw, stencil_mt, stencil_irb->mt_level,
-                                 stencil_irb->mt_layer,
-                                 stencil_irb->layer_count, ISL_AUX_USAGE_NONE);
+   if (stencil_irb && stencil_irb->mt) {
+      if (brw->stencil_write_enabled) {
+         struct intel_mipmap_tree *stencil_mt =
+            stencil_irb->mt->stencil_mt != NULL ?
+            stencil_irb->mt->stencil_mt : stencil_irb->mt;
+         brw_depth_cache_add_bo(brw, stencil_mt->bo);
+         intel_miptree_finish_write(brw, stencil_mt, stencil_irb->mt_level,
+                                    stencil_irb->mt_layer,
+                                    stencil_irb->layer_count, ISL_AUX_USAGE_NONE);
+      }
    }
 
    for (unsigned i = 0; i < fb->_NumColorDrawBuffers; i++) {
