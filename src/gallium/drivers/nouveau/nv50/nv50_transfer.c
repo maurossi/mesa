@@ -328,7 +328,7 @@ nv50_miptree_transfer_map(struct pipe_context *pctx,
    if (usage & PIPE_TRANSFER_WRITE)
       flags |= NOUVEAU_BO_WR;
 
-   ret = nouveau_bo_map(tx->rect[1].bo, flags, screen->base.client);
+   ret = nouveau_bo_map(tx->rect[1].bo, flags, nv50->base.client);
    if (ret) {
       nouveau_bo_ref(NULL, &tx->rect[1].bo);
       FREE(tx);
