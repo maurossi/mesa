@@ -375,12 +375,12 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    nvc0->base.pushbuf = screen->base.pushbuf;
    nvc0->base.client = screen->base.client;
 
-   ret = nouveau_bufctx_new(screen->base.client, 2, &nvc0->bufctx);
+   ret = nouveau_bufctx_new(nvc0->base.client, 2, &nvc0->bufctx);
    if (!ret)
-      ret = nouveau_bufctx_new(screen->base.client, NVC0_BIND_3D_COUNT,
+      ret = nouveau_bufctx_new(nvc0->base.client, NVC0_BIND_3D_COUNT,
                                &nvc0->bufctx_3d);
    if (!ret)
-      ret = nouveau_bufctx_new(screen->base.client, NVC0_BIND_CP_COUNT,
+      ret = nouveau_bufctx_new(nvc0->base.client, NVC0_BIND_CP_COUNT,
                                &nvc0->bufctx_cp);
    if (ret)
       goto out_err;
@@ -444,9 +444,9 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    if (!screen->cur_ctx) {
       nvc0->state = screen->save_state;
       screen->cur_ctx = nvc0;
-      nouveau_pushbuf_bufctx(screen->base.pushbuf, nvc0->bufctx);
+      nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
    }
-   screen->base.pushbuf->kick_notify = nvc0_default_kick_notify;
+   nvc0->base.pushbuf->kick_notify = nvc0_default_kick_notify;
 
    /* add permanently resident buffers to bufctxts */
 
