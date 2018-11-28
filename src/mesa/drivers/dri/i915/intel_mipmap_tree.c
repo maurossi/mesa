@@ -863,6 +863,12 @@ intel_miptree_map(struct intel_context *intel,
 {
    struct intel_miptree_map *map;
 
+   if (!mt) {
+      *out_ptr = NULL;
+      *out_stride = 0;
+      return;
+   }
+
    map = intel_miptree_attach_map(mt, level, slice, x, y, w, h, mode);
    if (!map) {
       *out_ptr = NULL;
@@ -892,6 +898,7 @@ intel_miptree_unmap(struct intel_context *intel,
                     unsigned int level,
                     unsigned int slice)
 {
+   if (!mt) return;
    struct intel_miptree_map *map = mt->level[level].slice[slice].map;
 
    if (!map)
