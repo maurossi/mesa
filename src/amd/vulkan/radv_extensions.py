@@ -291,7 +291,7 @@ VkResult radv_EnumerateInstanceVersion(
 uint32_t
 radv_physical_device_api_version(struct radv_physical_device *dev)
 {
-    if (!ANDROID && dev->rad_info.has_syncobj_wait_for_submit)
+    if (dev->rad_info.has_syncobj_wait_for_submit)
         return VK_MAKE_VERSION(1, 1, 70);
     return VK_MAKE_VERSION(1, 0, 68);
 }
