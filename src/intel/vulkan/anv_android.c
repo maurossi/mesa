@@ -234,7 +234,7 @@ anv_ahw_usage_from_vk_usage(const VkImageCreateFlags vk_create,
       ahw_usage |= AHARDWAREBUFFER_USAGE_GPU_COLOR_OUTPUT;
 
    if (vk_create & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
-      ahw_usage |= AHARDWAREBUFFER_USAGE_GPU_CUBE_MAP;
+      ahw_usage |= 1UL << 25;
 
    if (vk_create & VK_IMAGE_CREATE_PROTECTED_BIT)
       ahw_usage |= AHARDWAREBUFFER_USAGE_PROTECTED_CONTENT;
