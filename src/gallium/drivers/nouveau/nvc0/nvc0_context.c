@@ -513,7 +513,6 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    return pipe;
 
 out_err:
-   mtx_unlock(&screen->base.push_mutex);
    if (nvc0) {
       if (pipe->stream_uploader)
          u_upload_destroy(pipe->stream_uploader);
@@ -526,6 +525,7 @@ out_err:
       FREE(nvc0->blit);
       FREE(nvc0);
    }
+   mtx_unlock(&screen->base.push_mutex);
    return NULL;
 }
 
