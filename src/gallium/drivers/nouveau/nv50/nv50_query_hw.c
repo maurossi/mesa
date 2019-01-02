@@ -129,6 +129,7 @@ nv50_hw_begin_query(struct nv50_context *nv50, struct nv50_query *q)
 {
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
    struct nv50_hw_query *hq = nv50_hw_query(q);
+   bool ret = true;
 
    if (hq->funcs && hq->funcs->begin_query)
       return hq->funcs->begin_query(nv50, hq);
@@ -154,6 +155,7 @@ nv50_hw_begin_query(struct nv50_context *nv50, struct nv50_query *q)
    if (!hq->is64bit)
       hq->data[0] = hq->sequence++; /* the previously used one */
 
+   mtx_lock(&nv50->screen->base.push_mutex);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -194,10 +196,13 @@ nv50_hw_begin_query(struct nv50_context *nv50, struct nv50_query *q)
       break;
    default:
       assert(0);
-      return false;
+      ret = false;
+      break;
    }
-   hq->state = NV50_HW_QUERY_STATE_ACTIVE;
-   return true;
+   mtx_unlock(&nv50->screen->base.push_mutex);
+   if (ret)
+      hq->state = NV50_HW_QUERY_STATE_ACTIVE;
+   return ret;
 }
 
 static void
@@ -213,6 +218,7 @@ nv50_hw_end_query(struct nv50_context *nv50, struct nv50_query *q)
 
    hq->state = NV50_HW_QUERY_STATE_ENDED;
 
+   mtx_lock(&nv50->screen->base.push_mutex);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -266,6 +272,7 @@ nv50_hw_end_query(struct nv50_context *nv50, struct nv50_query *q)
       assert(0);
       break;
    }
+   mtx_unlock(&nv50->screen->base.push_mutex);
    if (hq->is64bit)
       nouveau_fence_ref(nv50->screen->base.fence.current, &hq->fence);
 }
@@ -288,16 +295,21 @@ nv50_hw_get_query_result(struct nv50_context *nv50, struct nv50_query *q,
       nv50_hw_query_update(q);
 
    if (hq->state != NV50_HW_QUERY_STATE_READY) {
+      mtx_lock(&nv50->screen->base.push_mutex);
       if (!wait) {
          /* for broken apps that spin on GL_QUERY_RESULT_AVAILABLE */
          if (hq->state != NV50_HW_QUERY_STATE_FLUSHED) {
             hq->state = NV50_HW_QUERY_STATE_FLUSHED;
             PUSH_KICK(nv50->base.pushbuf);
          }
+         mtx_unlock(&nv50->screen->base.push_mutex);
          return false;
       }
-      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nv50->screen->base.client))
+      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nv50->screen->base.client)) {
+         mtx_unlock(&nv50->screen->base.push_mutex);
          return false;
+      }
+      mtx_unlock(&nv50->screen->base.push_mutex);
    }
    hq->state = NV50_HW_QUERY_STATE_READY;
 
