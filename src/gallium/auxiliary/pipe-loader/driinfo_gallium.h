@@ -1,6 +1,6 @@
 // DriConf options supported by all Gallium DRI drivers.
 DRI_CONF_SECTION_PERFORMANCE
-   DRI_CONF_MESA_GLTHREAD("false")
+   DRI_CONF_MESA_GLTHREAD("true")
    DRI_CONF_MESA_NO_ERROR("false")
    DRI_CONF_DISABLE_EXT_BUFFER_AGE("false")
    DRI_CONF_DISABLE_OML_SYNC_CONTROL("false")
