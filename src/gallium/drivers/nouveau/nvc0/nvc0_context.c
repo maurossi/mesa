@@ -243,9 +243,11 @@ nvc0_default_kick_notify(struct nouveau_pushbuf *push)
    struct nvc0_context *nvc0 = push->user_priv;
 
    if (nvc0) {
+      mtx_lock(&nvc0->screen->cur_ctx_lock);
       nouveau_fence_next(&nvc0->base.fence, push);
       nouveau_fence_update(&nvc0->base.fence, true);
       nvc0->state.flushed = true;
+      mtx_unlock(&nvc0->screen->cur_ctx_lock);
       NOUVEAU_DRV_STAT(&nvc0->screen->base, pushbuf_count, 1);
    }
 }

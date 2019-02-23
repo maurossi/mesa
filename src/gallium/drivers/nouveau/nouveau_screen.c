@@ -81,11 +81,16 @@ nouveau_screen_fence_finish(struct pipe_screen *screen,
                             uint64_t timeout)
 {
    struct nouveau_fence *fence = nouveau_fence(pfence);
+   struct nouveau_screen *nv = nouveau_screen(screen);
+   boolean res;
 
+   mtx_lock(&nv->lock);
    if (!timeout)
-      return nouveau_fence_signalled(fence);
-
-   return nouveau_fence_wait(fence, fence->list->push, NULL);
+      res = nouveau_fence_signalled(fence);
+   else
+      res = nouveau_fence_wait(fence, fence->list->push, NULL);
+   mtx_unlock(&nv->lock);
+   return res;
 }
 
 
@@ -183,6 +188,8 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    int size, ret;
    void *data;
    union nouveau_bo_config mm_config;
+
+   mtx_init(&screen->lock, mtx_plain);
 
    char *nv_dbg = getenv("NOUVEAU_MESA_DEBUG");
    if (nv_dbg)
@@ -296,4 +303,6 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    close(fd);
 
    disk_cache_destroy(screen->disk_shader_cache);
+
+   mtx_destroy(&screen->lock);
 }

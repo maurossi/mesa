@@ -70,6 +70,8 @@ struct nvc0_screen {
    struct nouveau_screen base;
 
    struct nvc0_context *cur_ctx;
+   /* we can have concurrent access on the context state */
+   mtx_t cur_ctx_lock;
    struct nvc0_graph_state save_state;
 
    int num_occlusion_queries_active;

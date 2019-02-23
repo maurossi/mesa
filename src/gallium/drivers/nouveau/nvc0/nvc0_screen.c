@@ -625,6 +625,7 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
    if (!nouveau_drm_screen_unref(&screen->base))
       return;
 
+   mtx_destroy(&screen->cur_ctx_lock);
    if (screen->base.fence.current) {
       struct nouveau_fence *current = NULL;
 
@@ -1487,6 +1488,7 @@ nvc0_screen_create(struct nouveau_device *dev)
       goto fail;
 
    nouveau_fence_new(&screen->base.fence, &screen->base.fence.current);
+   mtx_init(&screen->cur_ctx_lock, mtx_plain);
 
    return &screen->base;
 

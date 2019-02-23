@@ -986,6 +986,7 @@ nvc0_state_validate_3d(struct nvc0_context *nvc0, uint32_t mask)
 {
    bool ret;
 
+   mtx_lock(&nvc0->screen->cur_ctx_lock);
    ret = nvc0_state_validate(nvc0, mask, validate_list_3d,
                              ARRAY_SIZE(validate_list_3d), &nvc0->dirty_3d,
                              nvc0->bufctx_3d);
@@ -994,5 +995,6 @@ nvc0_state_validate_3d(struct nvc0_context *nvc0, uint32_t mask)
       nvc0->state.flushed = false;
       nvc0_bufctx_fence(nvc0, nvc0->bufctx_3d, true);
    }
+   mtx_unlock(&nvc0->screen->cur_ctx_lock);
    return ret;
 }
