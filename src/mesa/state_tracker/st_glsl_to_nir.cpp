@@ -48,7 +48,7 @@
 #include "compiler/glsl/ir.h"
 #include "compiler/glsl/ir_optimization.h"
 #include "compiler/glsl/string_to_uint_map.h"
-#include "compiler/glsl/float64_glsl.h"
+#include "glsl/float64_glsl.h"
 
 static int
 type_size(const struct glsl_type *type)
