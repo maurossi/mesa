@@ -1437,6 +1437,7 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    int fd = -1, err = -EINVAL;
+   char buf[PROPERTY_VALUE_MAX];
 
    if (swrast)
       return EGL_FALSE;
@@ -1450,7 +1451,14 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
       return EGL_FALSE;
    }
 
-   dri2_dpy->fd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+   if (!strcmp(dri2_dpy->gralloc->common.name, "DRM Memory Allocator") ||
+       property_get("ro.hardware.hwcomposer", buf, NULL) > 0) {
+      dri2_dpy->fd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+   } else {
+      const char *device_name = drmGetRenderDeviceNameFromFd(fd);
+      dri2_dpy->fd = loader_open_device(device_name);
+      free(device_name);
+   }
    if (dri2_dpy->fd < 0)
       return EGL_FALSE;
 
