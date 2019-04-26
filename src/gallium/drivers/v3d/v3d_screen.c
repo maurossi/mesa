@@ -70,6 +70,7 @@ v3d_screen_destroy(struct pipe_screen *pscreen)
         util_hash_table_destroy(screen->bo_handles);
         v3d_bufmgr_destroy(pscreen);
         slab_destroy_parent(&screen->transfer_pool);
+        free(screen->ro);
 
         if (using_v3d_simulator)
                 v3d_simulator_destroy(screen);
@@ -184,7 +185,10 @@ v3d_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_MAX_TEXTURE_2D_LEVELS:
         case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
         case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
-                return V3D_MAX_MIP_LEVELS;
+                if (screen->devinfo.ver < 40)
+                        return 12;
+                else
+                        return V3D_MAX_MIP_LEVELS;
         case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
                 return 2048;
 

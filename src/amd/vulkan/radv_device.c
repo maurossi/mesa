@@ -337,7 +337,7 @@ radv_physical_device_init(struct radv_physical_device *device,
 	    device->rad_info.chip_class > GFX9)
 		fprintf(stderr, "WARNING: radv is not a conformant vulkan implementation, testing use only.\n");
 
-	radv_get_driver_uuid(&device->device_uuid);
+	radv_get_driver_uuid(&device->driver_uuid);
 	radv_get_device_uuid(&device->rad_info, &device->device_uuid);
 
 	if (device->rad_info.family == CHIP_STONEY ||
@@ -2794,7 +2794,7 @@ VkResult radv_QueueSubmit(
 	struct radeon_winsys_fence *base_fence = fence ? fence->fence : NULL;
 	struct radeon_winsys_ctx *ctx = queue->hw_ctx;
 	int ret;
-	uint32_t max_cs_submission = queue->device->trace_bo ? 1 : UINT32_MAX;
+	uint32_t max_cs_submission = queue->device->trace_bo ? 1 : RADV_MAX_IBS_PER_SUBMIT;
 	uint32_t scratch_size = 0;
 	uint32_t compute_scratch_size = 0;
 	uint32_t esgs_ring_size = 0, gsvs_ring_size = 0;
