@@ -111,6 +111,7 @@ endef
 
 # add subdirectories
 SUBDIRS := \
+	src/freedreno \
 	src/gbm \
 	src/loader \
 	src/mapi \

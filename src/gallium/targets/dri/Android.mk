@@ -45,6 +45,10 @@ LOCAL_SHARED_LIBRARIES := \
 	libexpat \
 	libz
 
+LOCAL_STATIC_LIBRARIES += \
+	libfreedreno_drm \
+	libfreedreno_ir3
+
 ifeq ($(USE_LIBBACKTRACE),true)
 	LOCAL_SHARED_LIBRARIES += libbacktrace
 endif
