@@ -1090,6 +1090,8 @@ fd_resource_from_handle(struct pipe_screen *pscreen,
 		/* failure is expected in some cases.. */
 	}
 
+	rsc->valid = true;
+
 	return prsc;
 
 fail:
