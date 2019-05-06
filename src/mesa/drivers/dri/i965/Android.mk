@@ -48,7 +48,8 @@ I965_PERGEN_LIBS := \
 	libmesa_i965_gen75 \
 	libmesa_i965_gen8 \
 	libmesa_i965_gen9 \
-	libmesa_i965_gen10
+	libmesa_i965_gen10 \
+	libmesa_i965_gen11
 
 # ---------------------------------------
 # Build libmesa_i965_gen4
@@ -240,6 +241,27 @@ include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
 
 # ---------------------------------------
+# Build libmesa_i965_gen11
+# ---------------------------------------
+
+include $(CLEAR_VARS)
+
+LOCAL_MODULE := libmesa_i965_gen11
+
+LOCAL_C_INCLUDES := $(I965_PERGEN_COMMON_INCLUDES)
+
+LOCAL_SRC_FILES := $(i965_gen11_FILES)
+
+LOCAL_SHARED_LIBRARIES := $(I965_PERGEN_SHARED_LIBRARIES)
+
+LOCAL_STATIC_LIBRARIES := $(I965_PERGEN_STATIC_LIBRARIES)
+
+LOCAL_CFLAGS := -DGEN_VERSIONx10=110
+
+include $(MESA_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+# ---------------------------------------
 # Build i965_dri
 # ---------------------------------------
 
@@ -252,13 +274,9 @@ LOCAL_LDFLAGS += $(MESA_DRI_LDFLAGS)
 LOCAL_CFLAGS := \
 	$(MESA_DRI_CFLAGS)
 
-ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
-LOCAL_CFLAGS += \
-	-DUSE_SSE41
-endif
-
 LOCAL_C_INCLUDES := \
 	$(MESA_DRI_C_INCLUDES) \
+	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_glsl,,) \
 	$(MESA_TOP)/include/drm-uapi
 
 LOCAL_SRC_FILES := \
@@ -267,10 +285,16 @@ LOCAL_SRC_FILES := \
 LOCAL_WHOLE_STATIC_LIBRARIES := \
 	$(MESA_DRI_WHOLE_STATIC_LIBRARIES) \
 	$(I965_PERGEN_LIBS) \
+	libmesa_intel_dev \
 	libmesa_intel_common \
 	libmesa_isl \
 	libmesa_blorp \
 	libmesa_intel_compiler
+
+ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
+LOCAL_CFLAGS += \
+	-DUSE_SSE41
+endif
 
 LOCAL_SHARED_LIBRARIES := \
 	$(MESA_DRI_SHARED_LIBRARIES)
@@ -283,18 +307,21 @@ LOCAL_MODULE_CLASS := SHARED_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
 
-gen := $(addprefix $(intermediates)/, $(i965_oa_GENERATED_FILES))
-LOCAL_GENERATED_SOURCES += $(gen)
+LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
+	$(i965_oa_GENERATED_FILES))
 
-$(filter %.h,$(gen)): $(intermediates)/brw_oa_%.h: $(LOCAL_PATH)/brw_oa_%.xml $(LOCAL_PATH)/brw_oa.py
+i965_oa_xml_FILES := $(addprefix $(MESA_TOP)/src/mesa/drivers/dri/i965/, \
+	$(i965_oa_xml_FILES))
+
+$(intermediates)/brw_oa_metrics.c: $(LOCAL_PATH)/brw_oa.py $(i965_oa_xml_FILES)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $(word 2, $^) --header=$@ --chipset=$(basename $*) $<
+	$(hide) $(MESA_PYTHON2) $< \
+	--code=$@ \
+	--header=$(call generated-sources-dir-for,SHARED_LIBRARIES,i965_dri,,)/brw_oa_metrics.h \
+	$(i965_oa_xml_FILES)
 
-$(filter %.c,$(gen)): $(intermediates)/brw_oa_%.c: $(LOCAL_PATH)/brw_oa_%.xml $(LOCAL_PATH)/brw_oa.py
-	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $(word 2, $^) --code=$@ --chipset=$(basename $*) $<
+$(intermediates)/brw_oa_metrics.h: $(intermediates)/brw_oa_metrics.c
 
 include $(MESA_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)

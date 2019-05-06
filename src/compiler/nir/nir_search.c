@@ -27,6 +27,8 @@
 
 #include <inttypes.h>
 #include "nir_search.h"
+#include "nir_builder.h"
+#include "util/half_float.h"
 
 struct match_state {
    bool inexact_match;
@@ -40,7 +42,7 @@ match_expression(const nir_search_expression *expr, nir_alu_instr *instr,
                  unsigned num_components, const uint8_t *swizzle,
                  struct match_state *state);
 
-static const uint8_t identity_swizzle[] = { 0, 1, 2, 3 };
+static const uint8_t identity_swizzle[NIR_MAX_VEC_COMPONENTS] = { 0, 1, 2, 3 };
 
 /**
  * Check if a source produces a value of the given type.
@@ -54,10 +56,6 @@ src_is_type(nir_src src, nir_alu_type type)
 
    if (!src.is_ssa)
       return false;
-
-   /* Turn nir_type_bool32 into nir_type_bool...they're the same thing. */
-   if (nir_alu_type_get_base_type(type) == nir_type_bool)
-      type = nir_type_bool;
 
    if (src.ssa->parent_instr->type == nir_instr_type_alu) {
       nir_alu_instr *src_alu = nir_instr_as_alu(src.ssa->parent_instr);
@@ -92,11 +90,108 @@ src_is_type(nir_src src, nir_alu_type type)
 }
 
 static bool
+nir_op_matches_search_op(nir_op nop, uint16_t sop)
+{
+   if (sop <= nir_last_opcode)
+      return nop == sop;
+
+#define MATCH_FCONV_CASE(op) \
+   case nir_search_op_##op: \
+      return nop == nir_op_##op##16 || \
+             nop == nir_op_##op##32 || \
+             nop == nir_op_##op##64;
+
+#define MATCH_ICONV_CASE(op) \
+   case nir_search_op_##op: \
+      return nop == nir_op_##op##8 || \
+             nop == nir_op_##op##16 || \
+             nop == nir_op_##op##32 || \
+             nop == nir_op_##op##64;
+
+#define MATCH_BCONV_CASE(op) \
+   case nir_search_op_##op: \
+      return nop == nir_op_##op##1 || \
+             nop == nir_op_##op##32;
+
+   switch (sop) {
+   MATCH_FCONV_CASE(i2f)
+   MATCH_FCONV_CASE(u2f)
+   MATCH_FCONV_CASE(f2f)
+   MATCH_ICONV_CASE(f2u)
+   MATCH_ICONV_CASE(f2i)
+   MATCH_ICONV_CASE(u2u)
+   MATCH_ICONV_CASE(i2i)
+   MATCH_FCONV_CASE(b2f)
+   MATCH_ICONV_CASE(b2i)
+   MATCH_BCONV_CASE(i2b)
+   MATCH_BCONV_CASE(f2b)
+   default:
+      unreachable("Invalid nir_search_op");
+   }
+
+#undef MATCH_FCONV_CASE
+#undef MATCH_ICONV_CASE
+}
+
+static nir_op
+nir_op_for_search_op(uint16_t sop, unsigned bit_size)
+{
+   if (sop <= nir_last_opcode)
+      return sop;
+
+#define RET_FCONV_CASE(op) \
+   case nir_search_op_##op: \
+      switch (bit_size) { \
+      case 16: return nir_op_##op##16; \
+      case 32: return nir_op_##op##32; \
+      case 64: return nir_op_##op##64; \
+      default: unreachable("Invalid bit size"); \
+      }
+
+#define RET_ICONV_CASE(op) \
+   case nir_search_op_##op: \
+      switch (bit_size) { \
+      case 8:  return nir_op_##op##8; \
+      case 16: return nir_op_##op##16; \
+      case 32: return nir_op_##op##32; \
+      case 64: return nir_op_##op##64; \
+      default: unreachable("Invalid bit size"); \
+      }
+
+#define RET_BCONV_CASE(op) \
+   case nir_search_op_##op: \
+      switch (bit_size) { \
+      case 1: return nir_op_##op##1; \
+      case 32: return nir_op_##op##32; \
+      default: unreachable("Invalid bit size"); \
+      }
+
+   switch (sop) {
+   RET_FCONV_CASE(i2f)
+   RET_FCONV_CASE(u2f)
+   RET_FCONV_CASE(f2f)
+   RET_ICONV_CASE(f2u)
+   RET_ICONV_CASE(f2i)
+   RET_ICONV_CASE(u2u)
+   RET_ICONV_CASE(i2i)
+   RET_FCONV_CASE(b2f)
+   RET_ICONV_CASE(b2i)
+   RET_BCONV_CASE(i2b)
+   RET_BCONV_CASE(f2b)
+   default:
+      unreachable("Invalid nir_search_op");
+   }
+
+#undef RET_FCONV_CASE
+#undef RET_ICONV_CASE
+}
+
+static bool
 match_value(const nir_search_value *value, nir_alu_instr *instr, unsigned src,
             unsigned num_components, const uint8_t *swizzle,
             struct match_state *state)
 {
-   uint8_t new_swizzle[4];
+   uint8_t new_swizzle[NIR_MAX_VEC_COMPONENTS];
 
    /* Searching only works on SSA values because, if it's not SSA, we can't
     * know if the value changed between one instance of that value in the
@@ -120,7 +215,7 @@ match_value(const nir_search_value *value, nir_alu_instr *instr, unsigned src,
       new_swizzle[i] = instr->src[src].swizzle[swizzle[i]];
 
    /* If the value has a specific bit size and it doesn't match, bail */
-   if (value->bit_size &&
+   if (value->bit_size > 0 &&
        nir_src_bit_size(instr->src[src].src) != value->bit_size)
       return false;
 
@@ -166,7 +261,7 @@ match_value(const nir_search_value *value, nir_alu_instr *instr, unsigned src,
          state->variables[var->variable].abs = false;
          state->variables[var->variable].negate = false;
 
-         for (unsigned i = 0; i < 4; ++i) {
+         for (unsigned i = 0; i < NIR_MAX_VEC_COMPONENTS; ++i) {
             if (i < num_components)
                state->variables[var->variable].swizzle[i] = new_swizzle[i];
             else
@@ -180,30 +275,14 @@ match_value(const nir_search_value *value, nir_alu_instr *instr, unsigned src,
    case nir_search_value_constant: {
       nir_search_constant *const_val = nir_search_value_as_constant(value);
 
-      if (!instr->src[src].src.is_ssa)
+      if (!nir_src_is_const(instr->src[src].src))
          return false;
-
-      if (instr->src[src].src.ssa->parent_instr->type != nir_instr_type_load_const)
-         return false;
-
-      nir_load_const_instr *load =
-         nir_instr_as_load_const(instr->src[src].src.ssa->parent_instr);
 
       switch (const_val->type) {
       case nir_type_float:
          for (unsigned i = 0; i < num_components; ++i) {
-            double val;
-            switch (load->def.bit_size) {
-            case 32:
-               val = load->value.f32[new_swizzle[i]];
-               break;
-            case 64:
-               val = load->value.f64[new_swizzle[i]];
-               break;
-            default:
-               unreachable("unknown bit size");
-            }
-
+            double val = nir_src_comp_as_float(instr->src[src].src,
+                                               new_swizzle[i]);
             if (val != const_val->data.d)
                return false;
          }
@@ -211,26 +290,17 @@ match_value(const nir_search_value *value, nir_alu_instr *instr, unsigned src,
 
       case nir_type_int:
       case nir_type_uint:
-      case nir_type_bool32:
-         switch (load->def.bit_size) {
-         case 32:
-            for (unsigned i = 0; i < num_components; ++i) {
-               if (load->value.u32[new_swizzle[i]] !=
-                   (uint32_t)const_val->data.u)
-                  return false;
-            }
-            return true;
-
-         case 64:
-            for (unsigned i = 0; i < num_components; ++i) {
-               if (load->value.u64[new_swizzle[i]] != const_val->data.u)
-                  return false;
-            }
-            return true;
-
-         default:
-            unreachable("unknown bit size");
+      case nir_type_bool: {
+         unsigned bit_size = nir_src_bit_size(instr->src[src].src);
+         uint64_t mask = bit_size == 64 ? UINT64_MAX : (1ull << bit_size) - 1;
+         for (unsigned i = 0; i < num_components; ++i) {
+            uint64_t val = nir_src_comp_as_uint(instr->src[src].src,
+                                                new_swizzle[i]);
+            if ((val & mask) != (const_val->data.u & mask))
+               return false;
          }
+         return true;
+      }
 
       default:
          unreachable("Invalid alu source type");
@@ -250,12 +320,12 @@ match_expression(const nir_search_expression *expr, nir_alu_instr *instr,
    if (expr->cond && !expr->cond(instr))
       return false;
 
-   if (instr->op != expr->opcode)
+   if (!nir_op_matches_search_op(instr->op, expr->opcode))
       return false;
 
    assert(instr->dest.dest.is_ssa);
 
-   if (expr->value.bit_size &&
+   if (expr->value.bit_size > 0 &&
        instr->dest.dest.ssa.bit_size != expr->value.bit_size)
       return false;
 
@@ -317,140 +387,36 @@ match_expression(const nir_search_expression *expr, nir_alu_instr *instr,
    }
 }
 
-typedef struct bitsize_tree {
-   unsigned num_srcs;
-   struct bitsize_tree *srcs[4];
-
-   unsigned common_size;
-   bool is_src_sized[4];
-   bool is_dest_sized;
-
-   unsigned dest_size;
-   unsigned src_size[4];
-} bitsize_tree;
-
-static bitsize_tree *
-build_bitsize_tree(void *mem_ctx, struct match_state *state,
-                   const nir_search_value *value)
-{
-   bitsize_tree *tree = rzalloc(mem_ctx, bitsize_tree);
-
-   switch (value->type) {
-   case nir_search_value_expression: {
-      nir_search_expression *expr = nir_search_value_as_expression(value);
-      nir_op_info info = nir_op_infos[expr->opcode];
-      tree->num_srcs = info.num_inputs;
-      tree->common_size = 0;
-      for (unsigned i = 0; i < info.num_inputs; i++) {
-         tree->is_src_sized[i] = !!nir_alu_type_get_type_size(info.input_types[i]);
-         if (tree->is_src_sized[i])
-            tree->src_size[i] = nir_alu_type_get_type_size(info.input_types[i]);
-         tree->srcs[i] = build_bitsize_tree(mem_ctx, state, expr->srcs[i]);
-      }
-      tree->is_dest_sized = !!nir_alu_type_get_type_size(info.output_type);
-      if (tree->is_dest_sized)
-         tree->dest_size = nir_alu_type_get_type_size(info.output_type);
-      break;
-   }
-
-   case nir_search_value_variable: {
-      nir_search_variable *var = nir_search_value_as_variable(value);
-      tree->num_srcs = 0;
-      tree->is_dest_sized = true;
-      tree->dest_size = nir_src_bit_size(state->variables[var->variable].src);
-      break;
-   }
-
-   case nir_search_value_constant: {
-      tree->num_srcs = 0;
-      tree->is_dest_sized = false;
-      tree->common_size = 0;
-      break;
-   }
-   }
-
-   if (value->bit_size) {
-      assert(!tree->is_dest_sized || tree->dest_size == value->bit_size);
-      tree->common_size = value->bit_size;
-   }
-
-   return tree;
-}
-
 static unsigned
-bitsize_tree_filter_up(bitsize_tree *tree)
+replace_bitsize(const nir_search_value *value, unsigned search_bitsize,
+                struct match_state *state)
 {
-   for (unsigned i = 0; i < tree->num_srcs; i++) {
-      unsigned src_size = bitsize_tree_filter_up(tree->srcs[i]);
-      if (src_size == 0)
-         continue;
-
-      if (tree->is_src_sized[i]) {
-         assert(src_size == tree->src_size[i]);
-      } else if (tree->common_size != 0) {
-         assert(src_size == tree->common_size);
-         tree->src_size[i] = src_size;
-      } else {
-         tree->common_size = src_size;
-         tree->src_size[i] = src_size;
-      }
-   }
-
-   if (tree->num_srcs && tree->common_size) {
-      if (tree->dest_size == 0)
-         tree->dest_size = tree->common_size;
-      else if (!tree->is_dest_sized)
-         assert(tree->dest_size == tree->common_size);
-
-      for (unsigned i = 0; i < tree->num_srcs; i++) {
-         if (!tree->src_size[i])
-            tree->src_size[i] = tree->common_size;
-      }
-   }
-
-   return tree->dest_size;
-}
-
-static void
-bitsize_tree_filter_down(bitsize_tree *tree, unsigned size)
-{
-   if (tree->dest_size)
-      assert(tree->dest_size == size);
-   else
-      tree->dest_size = size;
-
-   if (!tree->is_dest_sized) {
-      if (tree->common_size)
-         assert(tree->common_size == size);
-      else
-         tree->common_size = size;
-   }
-
-   for (unsigned i = 0; i < tree->num_srcs; i++) {
-      if (!tree->src_size[i]) {
-         assert(tree->common_size);
-         tree->src_size[i] = tree->common_size;
-      }
-      bitsize_tree_filter_down(tree->srcs[i], tree->src_size[i]);
-   }
+   if (value->bit_size > 0)
+      return value->bit_size;
+   if (value->bit_size < 0)
+      return nir_src_bit_size(state->variables[-value->bit_size - 1].src);
+   return search_bitsize;
 }
 
 static nir_alu_src
-construct_value(const nir_search_value *value,
-                unsigned num_components, bitsize_tree *bitsize,
+construct_value(nir_builder *build,
+                const nir_search_value *value,
+                unsigned num_components, unsigned search_bitsize,
                 struct match_state *state,
-                nir_instr *instr, void *mem_ctx)
+                nir_instr *instr)
 {
    switch (value->type) {
    case nir_search_value_expression: {
       const nir_search_expression *expr = nir_search_value_as_expression(value);
+      unsigned dst_bit_size = replace_bitsize(value, search_bitsize, state);
+      nir_op op = nir_op_for_search_op(expr->opcode, dst_bit_size);
 
-      if (nir_op_infos[expr->opcode].output_size != 0)
-         num_components = nir_op_infos[expr->opcode].output_size;
+      if (nir_op_infos[op].output_size != 0)
+         num_components = nir_op_infos[op].output_size;
 
-      nir_alu_instr *alu = nir_alu_instr_create(mem_ctx, expr->opcode);
+      nir_alu_instr *alu = nir_alu_instr_create(build->shader, op);
       nir_ssa_dest_init(&alu->instr, &alu->dest.dest, num_components,
-                        bitsize->dest_size, NULL);
+                        dst_bit_size, NULL);
       alu->dest.write_mask = (1 << num_components) - 1;
       alu->dest.saturate = false;
 
@@ -461,19 +427,19 @@ construct_value(const nir_search_value *value,
        */
       alu->exact = state->has_exact_alu;
 
-      for (unsigned i = 0; i < nir_op_infos[expr->opcode].num_inputs; i++) {
+      for (unsigned i = 0; i < nir_op_infos[op].num_inputs; i++) {
          /* If the source is an explicitly sized source, then we need to reset
           * the number of components to match.
           */
          if (nir_op_infos[alu->op].input_sizes[i] != 0)
             num_components = nir_op_infos[alu->op].input_sizes[i];
 
-         alu->src[i] = construct_value(expr->srcs[i],
-                                       num_components, bitsize->srcs[i],
-                                       state, instr, mem_ctx);
+         alu->src[i] = construct_value(build, expr->srcs[i],
+                                       num_components, search_bitsize,
+                                       state, instr);
       }
 
-      nir_instr_insert_before(instr, &alu->instr);
+      nir_builder_instr_insert(build, &alu->instr);
 
       nir_alu_src val;
       val.src = nir_src_for_ssa(&alu->dest.dest.ssa);
@@ -489,8 +455,8 @@ construct_value(const nir_search_value *value,
       assert(state->variables_seen & (1 << var->variable));
 
       nir_alu_src val = { NIR_SRC_INIT };
-      nir_alu_src_copy(&val, &state->variables[var->variable], mem_ctx);
-
+      nir_alu_src_copy(&val, &state->variables[var->variable],
+                       (void *)build->shader);
       assert(!var->is_constant);
 
       return val;
@@ -498,63 +464,29 @@ construct_value(const nir_search_value *value,
 
    case nir_search_value_constant: {
       const nir_search_constant *c = nir_search_value_as_constant(value);
-      nir_load_const_instr *load =
-         nir_load_const_instr_create(mem_ctx, 1, bitsize->dest_size);
+      unsigned bit_size = replace_bitsize(value, search_bitsize, state);
 
+      nir_ssa_def *cval;
       switch (c->type) {
       case nir_type_float:
-         load->def.name = ralloc_asprintf(load, "%f", c->data.d);
-         switch (bitsize->dest_size) {
-         case 32:
-            load->value.f32[0] = c->data.d;
-            break;
-         case 64:
-            load->value.f64[0] = c->data.d;
-            break;
-         default:
-            unreachable("unknown bit size");
-         }
+         cval = nir_imm_floatN_t(build, c->data.d, bit_size);
          break;
 
       case nir_type_int:
-         load->def.name = ralloc_asprintf(load, "%" PRIi64, c->data.i);
-         switch (bitsize->dest_size) {
-         case 32:
-            load->value.i32[0] = c->data.i;
-            break;
-         case 64:
-            load->value.i64[0] = c->data.i;
-            break;
-         default:
-            unreachable("unknown bit size");
-         }
-         break;
-
       case nir_type_uint:
-         load->def.name = ralloc_asprintf(load, "%" PRIu64, c->data.u);
-         switch (bitsize->dest_size) {
-         case 32:
-            load->value.u32[0] = c->data.u;
-            break;
-         case 64:
-            load->value.u64[0] = c->data.u;
-            break;
-         default:
-            unreachable("unknown bit size");
-         }
+         cval = nir_imm_intN_t(build, c->data.i, bit_size);
          break;
 
-      case nir_type_bool32:
-         load->value.u32[0] = c->data.u;
+      case nir_type_bool:
+         cval = nir_imm_boolN_t(build, c->data.u, bit_size);
          break;
+
       default:
          unreachable("Invalid alu source type");
       }
 
-      nir_instr_insert_before(instr, &load->instr);
-
       nir_alu_src val;
-      val.src = nir_src_for_ssa(&load->def);
+      val.src = nir_src_for_ssa(cval);
       val.negate = false;
       val.abs = false,
       memset(val.swizzle, 0, sizeof val.swizzle);
@@ -567,11 +499,12 @@ construct_value(const nir_search_value *value,
    }
 }
 
-nir_alu_instr *
-nir_replace_instr(nir_alu_instr *instr, const nir_search_expression *search,
-                  const nir_search_value *replace, void *mem_ctx)
+nir_ssa_def *
+nir_replace_instr(nir_builder *build, nir_alu_instr *instr,
+                  const nir_search_expression *search,
+                  const nir_search_value *replace)
 {
-   uint8_t swizzle[4] = { 0, 0, 0, 0 };
+   uint8_t swizzle[NIR_MAX_VEC_COMPONENTS] = { 0 };
 
    for (unsigned i = 0; i < instr->dest.dest.ssa.num_components; ++i)
       swizzle[i] = i;
@@ -587,28 +520,20 @@ nir_replace_instr(nir_alu_instr *instr, const nir_search_expression *search,
                          swizzle, &state))
       return NULL;
 
-   void *bitsize_ctx = ralloc_context(NULL);
-   bitsize_tree *tree = build_bitsize_tree(bitsize_ctx, &state, replace);
-   bitsize_tree_filter_up(tree);
-   bitsize_tree_filter_down(tree, instr->dest.dest.ssa.bit_size);
+   build->cursor = nir_before_instr(&instr->instr);
+
+   nir_alu_src val = construct_value(build, replace,
+                                     instr->dest.dest.ssa.num_components,
+                                     instr->dest.dest.ssa.bit_size,
+                                     &state, &instr->instr);
 
    /* Inserting a mov may be unnecessary.  However, it's much easier to
     * simply let copy propagation clean this up than to try to go through
     * and rewrite swizzles ourselves.
     */
-   nir_alu_instr *mov = nir_alu_instr_create(mem_ctx, nir_op_imov);
-   mov->dest.write_mask = instr->dest.write_mask;
-   nir_ssa_dest_init(&mov->instr, &mov->dest.dest,
-                     instr->dest.dest.ssa.num_components,
-                     instr->dest.dest.ssa.bit_size, NULL);
-
-   mov->src[0] = construct_value(replace,
-                                 instr->dest.dest.ssa.num_components, tree,
-                                 &state, &instr->instr, mem_ctx);
-   nir_instr_insert_before(&instr->instr, &mov->instr);
-
-   nir_ssa_def_rewrite_uses(&instr->dest.dest.ssa,
-                            nir_src_for_ssa(&mov->dest.dest.ssa));
+   nir_ssa_def *ssa_val =
+      nir_imov_alu(build, val, instr->dest.dest.ssa.num_components);
+   nir_ssa_def_rewrite_uses(&instr->dest.dest.ssa, nir_src_for_ssa(ssa_val));
 
    /* We know this one has no more uses because we just rewrote them all,
     * so we can remove it.  The rest of the matched expression, however, we
@@ -616,7 +541,5 @@ nir_replace_instr(nir_alu_instr *instr, const nir_search_expression *search,
     */
    nir_instr_remove(&instr->instr);
 
-   ralloc_free(bitsize_ctx);
-
-   return mov;
+   return ssa_val;
 }

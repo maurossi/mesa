@@ -23,7 +23,9 @@
 # Authors:
 #    Connor Abbott (cwabbott0@gmail.com)
 
-from nir_opcodes import opcodes
+from __future__ import print_function
+
+from nir_opcodes import opcodes, type_sizes
 from mako.template import Template
 
 template = Template("""
@@ -39,6 +41,8 @@ nir_type_conversion_op(nir_alu_type src, nir_alu_type dst, nir_rounding_mode rnd
 
    if (src == dst && src_base == nir_type_float) {
       return nir_op_fmov;
+   } else if (src == dst && src_base == nir_type_bool) {
+      return nir_op_imov;
    } else if ((src_base == nir_type_int || src_base == nir_type_uint) &&
               (dst_base == nir_type_int || dst_base == nir_type_uint) &&
               src_bit_size == dst_bit_size) {
@@ -49,10 +53,10 @@ nir_type_conversion_op(nir_alu_type src, nir_alu_type dst, nir_rounding_mode rnd
    }
 
    switch (src_base) {
-%     for src_t in ['int', 'uint', 'float']:
+%     for src_t in ['int', 'uint', 'float', 'bool']:
       case nir_type_${src_t}:
          switch (dst_base) {
-%           for dst_t in ['int', 'uint', 'float']:
+%           for dst_t in ['int', 'uint', 'float', 'bool']:
             case nir_type_${dst_t}:
 %              if src_t in ['int', 'uint'] and dst_t in ['int', 'uint']:
 %                 if dst_t == 'int':
@@ -60,16 +64,24 @@ nir_type_conversion_op(nir_alu_type src, nir_alu_type dst, nir_rounding_mode rnd
 %                 else:
 <%                   dst_t = src_t %>
 %                 endif
+%              elif src_t == 'bool' and dst_t in ['int', 'uint', 'bool']:
+%                 if dst_t == 'int':
+<%                   continue %>
+%                 else:
+<%                   dst_t = 'int' %>
+%                 endif
+%              elif src_t == 'uint' and dst_t == 'bool':
+<%                src_t = 'int' %>
 %              endif
                switch (dst_bit_size) {
-%                 for dst_bits in [16, 32, 64]:
+%                 for dst_bits in type_sizes(dst_t):
                   case ${dst_bits}:
 %                    if src_t == 'float' and dst_t == 'float' and dst_bits == 16:
                      switch(rnd) {
-%                       for rnd_t in ['rtne', 'rtz', 'undef']:
-                        case nir_rounding_mode_${rnd_t}:
-                           return ${'nir_op_{0}2{1}{2}_{3}'.format(src_t[0], dst_t[0],
-                                                                   dst_bits, rnd_t)};
+%                       for rnd_t in [('rtne', '_rtne'), ('rtz', '_rtz'), ('undef', '')]:
+                        case nir_rounding_mode_${rnd_t[0]}:
+                           return ${'nir_op_{0}2{1}{2}{3}'.format(src_t[0], dst_t[0],
+                                                                   dst_bits, rnd_t[1])};
 %                       endfor
                         default:
                            unreachable("Invalid 16-bit nir rounding mode");
@@ -83,33 +95,17 @@ nir_type_conversion_op(nir_alu_type src, nir_alu_type dst, nir_rounding_mode rnd
                      unreachable("Invalid nir alu bit size");
                }
 %           endfor
-            case nir_type_bool:
-%              if src_t == 'float':
-                  return nir_op_f2b;
-%              else:
-                  return nir_op_i2b;
-%              endif
             default:
                unreachable("Invalid nir alu base type");
          }
 %     endfor
-      case nir_type_bool:
-         switch (dst_base) {
-            case nir_type_int:
-            case nir_type_uint:
-               return nir_op_b2i;
-            case nir_type_float:
-               return nir_op_b2f;
-            default:
-               unreachable("Invalid nir alu base type");
-         }
       default:
          unreachable("Invalid nir alu base type");
    }
 }
 
 const nir_op_info nir_op_infos[nir_num_opcodes] = {
-% for name, opcode in sorted(opcodes.iteritems()):
+% for name, opcode in sorted(opcodes.items()):
 {
    .name = "${name}",
    .num_inputs = ${opcode.num_inputs},
@@ -130,4 +126,4 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
 };
 """)
 
-print template.render(opcodes=opcodes)
+print(template.render(opcodes=opcodes, type_sizes=type_sizes))

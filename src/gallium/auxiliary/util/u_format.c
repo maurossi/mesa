@@ -32,11 +32,11 @@
  * @author Jose Fonseca <jfonseca@vmware.com>
  */
 
-#include "u_math.h"
-#include "u_memory.h"
+#include "util/u_memory.h"
 #include "u_format.h"
 #include "u_format_s3tc.h"
 #include "u_surface.h"
+#include "util/u_math.h"
 
 #include "pipe/p_defines.h"
 
@@ -149,24 +149,25 @@ util_format_is_pure_uint(enum pipe_format format)
 }
 
 /**
- * Returns true if all non-void channels are normalized signed.
+ * Returns true if the format contains normalized signed channels.
  */
 boolean
 util_format_is_snorm(enum pipe_format format)
 {
    const struct util_format_description *desc = util_format_description(format);
-   int i;
 
-   if (desc->is_mixed)
-      return FALSE;
+   return desc->is_snorm;
+}
 
-   i = util_format_get_first_non_void_channel(format);
-   if (i == -1)
-      return FALSE;
+/**
+ * Returns true if the format contains normalized unsigned channels.
+ */
+boolean
+util_format_is_unorm(enum pipe_format format)
+{
+   const struct util_format_description *desc = util_format_description(format);
 
-   return desc->channel[i].type == UTIL_FORMAT_TYPE_SIGNED &&
-          !desc->channel[i].pure_integer &&
-          desc->channel[i].normalized;
+   return desc->is_unorm;
 }
 
 boolean
@@ -234,28 +235,6 @@ util_format_is_subsampled_422(enum pipe_format format)
       desc->block.height == 1 &&
       desc->block.bits == 32;
 }
-
-boolean
-util_format_is_supported(enum pipe_format format, unsigned bind)
-{
-   if (format >= PIPE_FORMAT_COUNT) {
-      return FALSE;
-   }
-
-#ifndef TEXTURE_FLOAT_ENABLED
-   if ((bind & PIPE_BIND_RENDER_TARGET) &&
-       format != PIPE_FORMAT_R9G9B9E5_FLOAT &&
-       format != PIPE_FORMAT_R11G11B10_FLOAT &&
-       util_format_is_float(format)) {
-      return FALSE;
-   }
-#else
-   (void)bind;
-#endif
-
-   return TRUE;
-}
-
 
 /**
  * Calculates the MRD for the depth format. MRD is used in depth bias
@@ -885,5 +864,45 @@ void util_format_unswizzle_4f(float *dst, const float *src,
          dst[3] = src[i];
          break;
       }
+   }
+}
+
+enum pipe_format
+util_format_snorm8_to_sint8(enum pipe_format format)
+{
+   switch (format) {
+   case PIPE_FORMAT_R8_SNORM:
+      return PIPE_FORMAT_R8_SINT;
+   case PIPE_FORMAT_R8G8_SNORM:
+      return PIPE_FORMAT_R8G8_SINT;
+   case PIPE_FORMAT_R8G8B8_SNORM:
+      return PIPE_FORMAT_R8G8B8_SINT;
+   case PIPE_FORMAT_R8G8B8A8_SNORM:
+      return PIPE_FORMAT_R8G8B8A8_SINT;
+
+   case PIPE_FORMAT_A8_SNORM:
+      return PIPE_FORMAT_A8_SINT;
+   case PIPE_FORMAT_L8_SNORM:
+      return PIPE_FORMAT_L8_SINT;
+   case PIPE_FORMAT_L8A8_SNORM:
+      return PIPE_FORMAT_L8A8_SINT;
+   case PIPE_FORMAT_I8_SNORM:
+      return PIPE_FORMAT_I8_SINT;
+
+   case PIPE_FORMAT_R8G8B8X8_SNORM:
+      return PIPE_FORMAT_R8G8B8X8_SINT;
+   case PIPE_FORMAT_R8A8_SNORM:
+      return PIPE_FORMAT_R8A8_SINT;
+   case PIPE_FORMAT_A8L8_SNORM:
+      return PIPE_FORMAT_A8L8_SINT;
+   case PIPE_FORMAT_G8R8_SNORM:
+      return PIPE_FORMAT_G8R8_SINT;
+   case PIPE_FORMAT_A8B8G8R8_SNORM:
+      return PIPE_FORMAT_A8B8G8R8_SINT;
+   case PIPE_FORMAT_X8B8G8R8_SNORM:
+      return PIPE_FORMAT_X8B8G8R8_SINT;
+
+   default:
+      return format;
    }
 }

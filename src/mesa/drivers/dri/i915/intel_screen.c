@@ -57,10 +57,6 @@ DRI_CONF_BEGIN
 	 DRI_CONF_DESC_END
       DRI_CONF_OPT_END
 
-      DRI_CONF_OPT_BEGIN_B(early_z, "false")
-	 DRI_CONF_DESC(en, "Enable early Z in classic mode (unstable, 945-only).")
-      DRI_CONF_OPT_END
-
       DRI_CONF_OPT_BEGIN_B(fragment_shader, "true")
 	 DRI_CONF_DESC(en, "Enable limited ARB_fragment_shader support on 915/945.")
       DRI_CONF_OPT_END
@@ -69,7 +65,6 @@ DRI_CONF_BEGIN
    DRI_CONF_SECTION_QUALITY
    DRI_CONF_SECTION_END
    DRI_CONF_SECTION_DEBUG
-      DRI_CONF_NO_RAST("false")
       DRI_CONF_ALWAYS_FLUSH_BATCH("false")
       DRI_CONF_ALWAYS_FLUSH_CACHE("false")
       DRI_CONF_DISABLE_THROTTLING("false")
@@ -415,7 +410,7 @@ intel_create_image_from_texture(__DRIcontext *context, int target,
    image->data = loaderPrivate;
    intel_setup_image_from_mipmap_tree(intel, image, iobj->mt, level, zoffset);
    image->dri_format = driGLFormatToImageFormat(image->format);
-   if (image->dri_format == MESA_FORMAT_NONE) {
+   if (image->dri_format == __DRI_IMAGE_FORMAT_NONE) {
       *error = __DRI_IMAGE_ERROR_BAD_PARAMETER;
       free(image);
       return NULL;
@@ -1025,30 +1020,6 @@ intel_init_bufmgr(struct intel_screen *intelScreen)
    return true;
 }
 
-static bool
-intel_detect_swizzling(struct intel_screen *screen)
-{
-   drm_intel_bo *buffer;
-   unsigned long flags = 0;
-   unsigned long aligned_pitch;
-   uint32_t tiling = I915_TILING_X;
-   uint32_t swizzle_mode = 0;
-
-   buffer = drm_intel_bo_alloc_tiled(screen->bufmgr, "swizzle test",
-				     64, 64, 4,
-				     &tiling, &aligned_pitch, flags);
-   if (buffer == NULL)
-      return false;
-
-   drm_intel_bo_get_tiling(buffer, &tiling, &swizzle_mode);
-   drm_intel_bo_unreference(buffer);
-
-   if (swizzle_mode == I915_BIT_6_SWIZZLE_NONE)
-      return false;
-   else
-      return true;
-}
-
 static __DRIconfig**
 intel_screen_make_configs(__DRIscreen *dri_screen)
 {
@@ -1058,7 +1029,7 @@ intel_screen_make_configs(__DRIscreen *dri_screen)
       MESA_FORMAT_B8G8R8X8_UNORM
    };
 
-   /* GLX_SWAP_COPY_OML is not supported due to page flipping. */
+   /* __DRI_ATTRIB_SWAP_COPY is not supported due to page flipping. */
    static const GLenum back_buffer_modes[] = {
       __DRI_ATTRIB_SWAP_UNDEFINED, __DRI_ATTRIB_SWAP_NONE
    };
@@ -1094,7 +1065,7 @@ intel_screen_make_configs(__DRIscreen *dri_screen)
                                      num_depth_stencil_bits,
                                      back_buffer_modes, 2,
                                      singlesample_samples, 1,
-                                     false, false);
+                                     false, false, false);
       configs = driConcatConfigs(configs, new_configs);
    }
 
@@ -1116,7 +1087,7 @@ intel_screen_make_configs(__DRIscreen *dri_screen)
                                      depth_bits, stencil_bits, 1,
                                      back_buffer_modes, 1,
                                      singlesample_samples, 1,
-                                     true, false);
+                                     true, false, false);
       configs = driConcatConfigs(configs, new_configs);
    }
 
@@ -1204,8 +1175,6 @@ __DRIconfig **intelInitScreen2(__DRIscreen *psp)
    } else {
       intelScreen->gen = 2;
    }
-
-   intelScreen->hw_has_swizzling = intel_detect_swizzling(intelScreen);
 
    set_max_gl_versions(intelScreen);
 

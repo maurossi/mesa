@@ -103,6 +103,18 @@ create_pipeline(struct radv_device *device,
 {
 	VkResult result;
 	VkDevice device_h = radv_device_to_handle(device);
+	struct radv_shader_module vs_module = {0};
+
+	mtx_lock(&device->meta_state.mtx);
+	if (*decompress_pipeline) {
+		mtx_unlock(&device->meta_state.mtx);
+		return VK_SUCCESS;
+	}
+
+	if (!vs_module_h) {
+		vs_module.nir = radv_meta_build_nir_vs_generate_vertices();
+		vs_module_h = radv_shader_module_to_handle(&vs_module);
+	}
 
 	struct radv_shader_module fs_module = {
 		.nir = radv_meta_build_nir_fs_noop(),
@@ -219,6 +231,9 @@ create_pipeline(struct radv_device *device,
 
 cleanup:
 	ralloc_free(fs_module.nir);
+	if (vs_module.nir)
+		ralloc_free(vs_module.nir);
+	mtx_unlock(&device->meta_state.mtx);
 	return result;
 }
 
@@ -244,7 +259,7 @@ radv_device_finish_meta_depth_decomp_state(struct radv_device *device)
 }
 
 VkResult
-radv_device_init_meta_depth_decomp_state(struct radv_device *device)
+radv_device_init_meta_depth_decomp_state(struct radv_device *device, bool on_demand)
 {
 	struct radv_meta_state *state = &device->meta_state;
 	VkResult res = VK_SUCCESS;
@@ -270,6 +285,9 @@ radv_device_init_meta_depth_decomp_state(struct radv_device *device)
 		if (res != VK_SUCCESS)
 			goto fail;
 
+		if (on_demand)
+			continue;
+
 		res = create_pipeline(device, vs_module_h, samples,
 				      state->depth_decomp[i].pass,
 				      state->depth_decomp[i].p_layout,
@@ -289,34 +307,6 @@ cleanup:
 
 	return res;
 }
-
-static void
-emit_depth_decomp(struct radv_cmd_buffer *cmd_buffer,
-		  const VkExtent2D *depth_decomp_extent,
-		  VkPipeline pipeline_h)
-{
-	VkCommandBuffer cmd_buffer_h = radv_cmd_buffer_to_handle(cmd_buffer);
-
-	radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			     pipeline_h);
-
-	radv_CmdSetViewport(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1, &(VkViewport) {
-		.x = 0,
-		.y = 0,
-		.width = depth_decomp_extent->width,
-		.height = depth_decomp_extent->height,
-		.minDepth = 0.0f,
-		.maxDepth = 1.0f
-	});
-
-	radv_CmdSetScissor(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1, &(VkRect2D) {
-		.offset = { 0, 0 },
-		.extent = *depth_decomp_extent,
-	});
-
-	radv_CmdDraw(cmd_buffer_h, 3, 1, 0, 0);
-}
-
 
 enum radv_depth_op {
 	DEPTH_DECOMPRESS,
@@ -340,8 +330,20 @@ static void radv_process_depth_image_inplace(struct radv_cmd_buffer *cmd_buffer,
 	struct radv_meta_state *meta_state = &cmd_buffer->device->meta_state;
 	VkPipeline pipeline_h;
 
-	if (!image->surface.htile_size)
+	if (!radv_image_has_htile(image))
 		return;
+
+	if (!meta_state->depth_decomp[samples_log2].decompress_pipeline) {
+		VkResult ret = create_pipeline(cmd_buffer->device, VK_NULL_HANDLE, samples,
+		                               meta_state->depth_decomp[samples_log2].pass,
+		                               meta_state->depth_decomp[samples_log2].p_layout,
+		                               &meta_state->depth_decomp[samples_log2].decompress_pipeline,
+		                               &meta_state->depth_decomp[samples_log2].resummarize_pipeline);
+		if (ret != VK_SUCCESS) {
+			cmd_buffer->record_result = ret;
+			return;
+		}
+	}
 
 	radv_meta_save(&saved_state, cmd_buffer,
 		       RADV_META_SAVE_GRAPHICS_PIPELINE |
@@ -357,6 +359,23 @@ static void radv_process_depth_image_inplace(struct radv_cmd_buffer *cmd_buffer,
 	default:
 		unreachable("unknown operation");
 	}
+
+	radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS,
+			     pipeline_h);
+
+	radv_CmdSetViewport(cmd_buffer_h, 0, 1, &(VkViewport) {
+		.x = 0,
+		.y = 0,
+		.width = width,
+		.height = height,
+		.minDepth = 0.0f,
+		.maxDepth = 1.0f
+	});
+
+	radv_CmdSetScissor(cmd_buffer_h, 0, 1, &(VkRect2D) {
+		.offset = { 0, 0 },
+		.extent = { width, height },
+	});
 
 	for (uint32_t layer = 0; layer < radv_get_layerCount(image, subresourceRange); layer++) {
 		struct radv_image_view iview;
@@ -412,7 +431,7 @@ static void radv_process_depth_image_inplace(struct radv_cmd_buffer *cmd_buffer,
 					   },
 					   VK_SUBPASS_CONTENTS_INLINE);
 
-		emit_depth_decomp(cmd_buffer, &(VkExtent2D){width, height}, pipeline_h);
+		radv_CmdDraw(cmd_buffer_h, 3, 1, 0, 0);
 		radv_CmdEndRenderPass(cmd_buffer_h);
 
 		radv_DestroyFramebuffer(device_h, fb_h,

@@ -34,7 +34,6 @@ LOCAL_MODULE := libmesa_vulkan_util
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
-prebuilt_intermediates := $(MESA_TOP)/prebuilt-intermediates
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/include/vulkan \
@@ -45,16 +44,18 @@ LOCAL_GENERATED_SOURCES := $(addprefix $(intermediates)/, \
 
 LOCAL_SRC_FILES := $(VULKAN_UTIL_FILES) $(VULKAN_WSI_FILES)
 
+vulkan_api_xml = $(MESA_TOP)/src/vulkan/registry/vk.xml
+
+$(LOCAL_GENERATED_SOURCES): $(MESA_TOP)/src/vulkan/util/gen_enum_to_str.py \
+		$(vulkan_api_xml)
+	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
+	@mkdir -p $(dir $@)
+	$(hide) $(MESA_PYTHON2) $(MESA_TOP)/src/vulkan/util/gen_enum_to_str.py \
+	    --xml $(vulkan_api_xml) \
+	    --outdir $(dir $@)
+
 LOCAL_EXPORT_C_INCLUDE_DIRS := \
         $(intermediates)
-
-$(intermediates)/util/vk_enum_to_str.c: $(prebuilt_intermediates)/util/vk_enum_to_str.c
-	@mkdir -p $(dir $@)
-	@cp -f $< $@
-
-$(intermediates)/util/vk_enum_to_str.h: $(prebuilt_intermediates)/util/vk_enum_to_str.h
-	@mkdir -p $(dir $@)
-	@cp -f $< $@
 
 ifeq ($(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7),)
 LOCAL_HEADER_LIBRARIES += libcutils_headers libnativebase_headers libsystem_headers

@@ -21,7 +21,6 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "main/core.h"
 #include "ir.h"
 #include "linker.h"
 #include "ir_uniform.h"
@@ -29,6 +28,7 @@
 #include "program.h"
 #include "string_to_uint_map.h"
 #include "ir_array_refcount.h"
+#include "main/mtypes.h"
 
 /**
  * \file link_uniforms.cpp
@@ -63,6 +63,15 @@ program_resource_visitor::process(const glsl_type *type, const char *name,
 void
 program_resource_visitor::process(ir_variable *var, bool use_std430_as_default)
 {
+   const glsl_type *t =
+      var->data.from_named_ifc_block ? var->get_interface_type() : var->type;
+   process(var, t, use_std430_as_default);
+}
+
+void
+program_resource_visitor::process(ir_variable *var, const glsl_type *var_type,
+                                  bool use_std430_as_default)
+{
    unsigned record_array_count = 1;
    const bool row_major =
       var->data.matrix_layout == GLSL_MATRIX_LAYOUT_ROW_MAJOR;
@@ -72,8 +81,7 @@ program_resource_visitor::process(ir_variable *var, bool use_std430_as_default)
          get_internal_ifc_packing(use_std430_as_default) :
       var->type->get_internal_ifc_packing(use_std430_as_default);
 
-   const glsl_type *t =
-      var->data.from_named_ifc_block ? var->get_interface_type() : var->type;
+   const glsl_type *t = var_type;
    const glsl_type *t_without_array = t->without_array();
 
    /* false is always passed for the row_major parameter to the other
@@ -690,9 +698,11 @@ private:
 
          /* Set image access qualifiers */
          const GLenum access =
-            (current_var->data.memory_read_only ? GL_READ_ONLY :
-             current_var->data.memory_write_only ? GL_WRITE_ONLY :
-                GL_READ_WRITE);
+            current_var->data.memory_read_only ?
+            (current_var->data.memory_write_only ? GL_NONE :
+                                                   GL_READ_ONLY) :
+            (current_var->data.memory_write_only ? GL_WRITE_ONLY :
+                                                   GL_READ_WRITE);
 
          if (current_var->data.bindless) {
             if (!set_opaque_indices(base_type, uniform, name,
@@ -1153,38 +1163,6 @@ assign_hidden_uniform_slot_id(const char *name, unsigned hidden_id,
    uniform_size->map->put(hidden_uniform_start + hidden_id, name);
 }
 
-/**
- * Search through the list of empty blocks to find one that fits the current
- * uniform.
- */
-static int
-find_empty_block(struct gl_shader_program *prog,
-                 struct gl_uniform_storage *uniform)
-{
-   const unsigned entries = MAX2(1, uniform->array_elements);
-
-   foreach_list_typed(struct empty_uniform_block, block, link,
-                      &prog->EmptyUniformLocations) {
-      /* Found a block with enough slots to fit the uniform */
-      if (block->slots == entries) {
-         unsigned start = block->start;
-         exec_node_remove(&block->link);
-         ralloc_free(block);
-
-         return start;
-      /* Found a block with more slots than needed. It can still be used. */
-      } else if (block->slots > entries) {
-         unsigned start = block->start;
-         block->start += entries;
-         block->slots -= entries;
-
-         return start;
-      }
-   }
-
-   return -1;
-}
-
 static void
 link_setup_uniform_remap_tables(struct gl_context *ctx,
                                 struct gl_shader_program *prog)
@@ -1239,10 +1217,14 @@ link_setup_uniform_remap_tables(struct gl_context *ctx,
       int chosen_location = -1;
 
       if (empty_locs)
-         chosen_location = find_empty_block(prog, &prog->data->UniformStorage[i]);
+         chosen_location = link_util_find_empty_block(prog, &prog->data->UniformStorage[i]);
 
-      /* Add new entries to the total amount of entries. */
-      total_entries += entries;
+      /* Add new entries to the total amount for checking against MAX_UNIFORM-
+       * _LOCATIONS. This only applies to the default uniform block (-1),
+       * because locations of uniform block entries are not assignable.
+       */
+      if (prog->data->UniformStorage[i].block_index == -1)
+         total_entries += entries;
 
       if (chosen_location != -1) {
          empty_locs -= entries;
@@ -1423,11 +1405,10 @@ link_assign_uniform_storage(struct gl_context *ctx,
          }
       }
 
-      STATIC_ASSERT(sizeof(shader->Program->sh.SamplerTargets) ==
-                    sizeof(parcel.targets));
-      memcpy(shader->Program->sh.SamplerTargets,
-             parcel.targets,
-             sizeof(shader->Program->sh.SamplerTargets));
+      STATIC_ASSERT(ARRAY_SIZE(shader->Program->sh.SamplerTargets) ==
+                    ARRAY_SIZE(parcel.targets));
+      for (unsigned j = 0; j < ARRAY_SIZE(parcel.targets); j++)
+         shader->Program->sh.SamplerTargets[j] = parcel.targets[j];
    }
 
 #ifndef NDEBUG

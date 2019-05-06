@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2014 Rob Clark <robclark@freedesktop.org>
  *
@@ -31,11 +29,9 @@
 
 #include "util/u_upload_mgr.h"
 
-#include "freedreno_drmif.h"
-
 #include "freedreno_context.h"
 
-#include "ir3_shader.h"
+#include "ir3/ir3_shader.h"
 
 struct fd4_context {
 	struct fd_context base;

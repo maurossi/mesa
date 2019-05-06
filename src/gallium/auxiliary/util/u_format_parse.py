@@ -29,6 +29,9 @@
 '''
 
 
+from __future__ import division
+
+
 VOID, UNSIGNED, SIGNED, FIXED, FLOAT = range(5)
 
 SWIZZLE_X, SWIZZLE_Y, SWIZZLE_Z, SWIZZLE_W, SWIZZLE_0, SWIZZLE_1, SWIZZLE_NONE, = range(7)
@@ -69,14 +72,20 @@ class Channel:
         return s
 
     def __eq__(self, other):
+        if other is None:
+            return False
+
         return self.type == other.type and self.norm == other.norm and self.pure == other.pure and self.size == other.size
+
+    def __ne__(self, other):
+        return not self == other
 
     def max(self):
         '''Maximum representable number.'''
         if self.type == FLOAT:
             return VERY_LARGE
         if self.type == FIXED:
-            return (1 << (self.size/2)) - 1
+            return (1 << (self.size // 2)) - 1
         if self.norm:
             return 1
         if self.type == UNSIGNED:
@@ -90,7 +99,7 @@ class Channel:
         if self.type == FLOAT:
             return -VERY_LARGE
         if self.type == FIXED:
-            return -(1 << (self.size/2))
+            return -(1 << (self.size // 2))
         if self.type == UNSIGNED:
             return 0
         if self.norm:
@@ -177,6 +186,26 @@ class Format:
                 if channel.pure != ref_channel.pure:
                     return True
         return False
+
+    def is_compressed(self):
+        for channel in self.le_channels:
+            if channel.type != VOID:
+                return False
+        return True
+
+    def is_unorm(self):
+        # Non-compressed formats all have unorm or srgb in their name.
+        for keyword in ['_UNORM', '_SRGB']:
+            if keyword in self.name:
+                return True
+
+        # All the compressed formats in GLES3.2 and GL4.6 ("Table 8.14: Generic
+        # and specific compressed internal formats.") that aren't snorm for
+        # border colors are unorm, other than BPTC_*_FLOAT.
+        return self.is_compressed() and not ('FLOAT' in self.name or self.is_snorm())
+
+    def is_snorm(self):
+        return '_SNORM' in self.name
 
     def is_pot(self):
         return is_pot(self.block_size())

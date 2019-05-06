@@ -31,17 +31,19 @@ LOCAL_SRC_FILES := \
 	$(a3xx_SOURCES)	\
 	$(a4xx_SOURCES) \
 	$(a5xx_SOURCES) \
+	$(a6xx_SOURCES) \
 	$(ir3_SOURCES)
 
 #LOCAL_CFLAGS := \
 #	-Wno-packed-bitfield-compat
 
 LOCAL_C_INCLUDES := \
-	$(LOCAL_PATH)/ir3
+	$(LOCAL_PATH)/ir3 \
+	$(MESA_TOP)/include/drm-uapi
 
 LOCAL_GENERATED_SOURCES := $(MESA_GEN_NIR_H)
 
-LOCAL_SHARED_LIBRARIES := libdrm_freedreno
+LOCAL_SHARED_LIBRARIES := libdrm
 LOCAL_STATIC_LIBRARIES := libmesa_glsl libmesa_nir
 LOCAL_MODULE := libmesa_pipe_freedreno
 

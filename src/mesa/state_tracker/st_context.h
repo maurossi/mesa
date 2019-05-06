@@ -32,8 +32,10 @@
 #include "state_tracker/st_api.h"
 #include "main/fbobject.h"
 #include "state_tracker/st_atom.h"
+#include "util/u_helpers.h"
 #include "util/u_inlines.h"
 #include "util/list.h"
+#include "vbo/vbo.h"
 
 
 #ifdef __cplusplus
@@ -86,6 +88,20 @@ struct st_bound_handles
    uint64_t *handles;
 };
 
+
+#define NUM_DRAWPIX_CACHE_ENTRIES 4
+
+struct drawpix_cache_entry
+{
+   GLsizei width, height;
+   GLenum format, type;
+   const void *user_pointer;  /**< Last user 'pixels' pointer */
+   void *image;               /**< Copy of the glDrawPixels image data */
+   struct pipe_resource *texture;
+   unsigned age;
+};
+
+
 struct st_context
 {
    struct st_context_iface iface;
@@ -105,11 +121,15 @@ struct st_context
    boolean has_shader_model3;
    boolean has_etc1;
    boolean has_etc2;
+   boolean has_astc_2d_ldr;
    boolean prefer_blit_based_texture_transfer;
    boolean force_persample_in_shader;
    boolean has_shareable_shaders;
    boolean has_half_float_packing;
    boolean has_multi_draw_indirect;
+   boolean has_single_pipe_stat;
+   boolean has_indep_blend_func;
+   boolean needs_rgb_dst_alpha_override;
    boolean can_bind_const_buffer_as_vertex;
 
    /**
@@ -137,9 +157,9 @@ struct st_context
       struct pipe_blend_state               blend;
       struct pipe_depth_stencil_alpha_state depth_stencil;
       struct pipe_rasterizer_state          rasterizer;
-      struct pipe_sampler_state samplers[PIPE_SHADER_TYPES][PIPE_MAX_SAMPLERS];
-      GLuint num_samplers[PIPE_SHADER_TYPES];
-      struct pipe_sampler_view *sampler_views[PIPE_SHADER_TYPES][PIPE_MAX_SAMPLERS];
+      struct pipe_sampler_state frag_samplers[PIPE_MAX_SAMPLERS];
+      GLuint num_frag_samplers;
+      struct pipe_sampler_view *frag_sampler_views[PIPE_MAX_SAMPLERS];
       GLuint num_sampler_views[PIPE_SHADER_TYPES];
       struct pipe_clip_state clip;
       struct {
@@ -150,6 +170,7 @@ struct st_context
       unsigned fb_height;
       unsigned fb_num_samples;
       unsigned fb_num_layers;
+      unsigned fb_num_cb;
       unsigned num_viewports;
       struct pipe_scissor_state scissor[PIPE_MAX_VIEWPORTS];
       struct pipe_viewport_state viewport[PIPE_MAX_VIEWPORTS];
@@ -162,12 +183,20 @@ struct st_context
       GLuint poly_stipple[32];  /**< In OpenGL's bottom-to-top order */
 
       GLuint fb_orientation;
+
+      bool enable_sample_locations;
+      unsigned sample_locations_samples;
+      uint8_t sample_locations[
+         PIPE_MAX_SAMPLE_LOCATION_GRID_SIZE *
+         PIPE_MAX_SAMPLE_LOCATION_GRID_SIZE * 32];
    } state;
 
    uint64_t dirty; /**< dirty states */
 
    /** This masks out unused shader resources. Only valid in draw calls. */
    uint64_t active_states;
+
+   unsigned pin_thread_counter; /* for L3 thread pinning on AMD Zen */
 
    /* If true, further analysis of states is required to know if something
     * has changed. Used mainly for shaders.
@@ -198,22 +227,18 @@ struct st_context
       struct pipe_sampler_state sampler;
       struct pipe_sampler_state atlas_sampler;
       enum pipe_format tex_format;
-      void *vs;
       struct st_bitmap_cache cache;
    } bitmap;
 
    /** for glDraw/CopyPixels */
    struct {
       void *zs_shaders[4];
-      void *vert_shaders[2];   /**< ureg shaders */
    } drawpix;
 
+   /** Cache of glDrawPixels images */
    struct {
-      GLsizei width, height;
-      GLenum format, type;
-      const void *user_pointer;  /**< Last user 'pixels' pointer */
-      void *image;               /**< Copy of the glDrawPixels image data */
-      struct pipe_resource *texture;
+      struct drawpix_cache_entry entries[NUM_DRAWPIX_CACHE_ENTRIES];
+      unsigned age;
    } drawpix_cache;
 
    /** for glReadPixels */
@@ -254,7 +279,8 @@ struct st_context
    /** for drawing with st_util_vertex */
    struct pipe_vertex_element util_velems[3];
 
-   void *passthrough_fs;  /**< simple pass-through frag shader */
+   /** passthrough vertex shader matching the util_velem attributes */
+   void *passthrough_vs;
 
    enum pipe_texture_target internal_target;
 
@@ -281,6 +307,12 @@ struct st_context
 
    /* Winsys buffers */
    struct list_head winsys_buffers;
+
+   /* Throttling for texture uploads and similar operations to limit memory
+    * usage by limiting the number of in-flight operations based on
+    * the estimated allocated size needed to execute those operations.
+    */
+   struct util_throttle throttle;
 };
 
 

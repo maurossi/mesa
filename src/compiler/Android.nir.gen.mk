@@ -47,6 +47,7 @@ LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
 # Modules using libmesa_nir must set LOCAL_GENERATED_SOURCES to this
 MESA_GEN_NIR_H := $(addprefix $(call local-generated-sources-dir)/, \
 	nir/nir_opcodes.h \
+	nir/nir_intrinsics.h \
 	nir/nir_builder_opcodes.h)
 
 $(intermediates)/nir/nir_builder_opcodes.h: $(prebuilt_intermediates)/nir/nir_builder_opcodes.h
@@ -74,5 +75,15 @@ $(intermediates)/spirv/spirv_info.c: $(prebuilt_intermediates)/spirv/spirv_info.
 	@cp -f $< $@
 
 $(intermediates)/spirv/vtn_gather_types.c: $(prebuilt_intermediates)/spirv/vtn_gather_types.c
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+nir_intrinsics_h_gen := $(LOCAL_PATH)/nir/nir_intrinsics_h.py
+$(intermediates)/nir/nir_intrinsics.h: $(prebuilt_intermediates)/nir/nir_intrinsics.h
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+nir_intrinsics_c_gen := $(LOCAL_PATH)/nir/nir_intrinsics_c.py
+$(intermediates)/nir/nir_intrinsics.c: $(prebuilt_intermediates)/nir/nir_intrinsics.c
 	@mkdir -p $(dir $@)
 	@cp -f $< $@

@@ -40,10 +40,10 @@ LOCAL_SRC_FILES := \
 
 LOCAL_CFLAGS := \
 	-D_EGL_NATIVE_PLATFORM=_EGL_PLATFORM_ANDROID \
-	-D_EGL_BUILT_IN_DRIVER_DRI2 \
 	-DHAVE_ANDROID_PLATFORM
 
 LOCAL_C_INCLUDES := \
+	$(MESA_TOP)/include/drm-uapi \
 	$(MESA_TOP)/src/egl/main \
 	$(MESA_TOP)/src/egl/drivers/dri2
 

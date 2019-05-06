@@ -37,7 +37,6 @@ LOCAL_CFLAGS += \
 	-Wno-missing-field-initializers \
 	-Wno-initializer-overrides \
 	-Wno-mismatched-tags \
-	-DVERSION=\"$(MESA_VERSION)\" \
 	-DPACKAGE_VERSION=\"$(MESA_VERSION)\" \
 	-DPACKAGE_BUGREPORT=\"https://bugs.freedesktop.org/enter_bug.cgi?product=Mesa\"
 
@@ -52,6 +51,7 @@ LOCAL_CFLAGS += \
 	-DHAVE___BUILTIN_EXPECT \
 	-DHAVE___BUILTIN_FFS \
 	-DHAVE___BUILTIN_FFSLL \
+	-DHAVE_DLFCN_H \
 	-DHAVE_FUNC_ATTRIBUTE_FLATTEN \
 	-DHAVE_FUNC_ATTRIBUTE_UNUSED \
 	-DHAVE_FUNC_ATTRIBUTE_FORMAT \
@@ -73,7 +73,10 @@ LOCAL_CFLAGS += \
 	-DHAVE_ENDIAN_H \
 	-DHAVE_ZLIB \
 	-DMAJOR_IN_SYSMACROS \
+	-DVK_USE_PLATFORM_ANDROID_KHR \
 	-fvisibility=hidden \
+	-fno-math-errno \
+	-fno-trapping-math \
 	-Wno-sign-compare
 
 LOCAL_CPPFLAGS += \
@@ -89,7 +92,10 @@ LOCAL_CONLYFLAGS += \
 
 # c11 timespec_get is part of bionic as well
 # https://android-review.googlesource.com/c/718518
+# This means releases from P and earlier won't need this
+ifeq ($(filter 5 6 7 8 9, $(MESA_ANDROID_MAJOR_VERSION)),)
 LOCAL_CFLAGS += -DHAVE_TIMESPEC_GET
+endif
 
 ifeq ($(strip $(MESA_ENABLE_ASM)),true)
 ifeq ($(TARGET_ARCH),x86)

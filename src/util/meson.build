@@ -23,6 +23,7 @@ inc_util = include_directories('.')
 subdir('xmlpool')
 
 files_mesa_util = files(
+  'bigmath.h',
   'bitscan.c',
   'bitscan.h',
   'bitset.h',
@@ -34,6 +35,8 @@ files_mesa_util = files(
   'debug.h',
   'disk_cache.c',
   'disk_cache.h',
+  'fast_idiv_by_const.c',
+  'fast_idiv_by_const.h',
   'format_r11g11b10f.h',
   'format_rgb9e5.h',
   'format_srgb.h',
@@ -48,12 +51,18 @@ files_mesa_util = files(
   'mesa-sha1.h',
   'os_time.c',
   'os_time.h',
+  'os_misc.c',
+  'os_misc.h',
+  'u_process.c',
+  'u_process.h',
   'sha1/sha1.c',
   'sha1/sha1.h',
   'ralloc.c',
   'ralloc.h',
   'rand_xor.c',
   'rand_xor.h',
+  'rb_tree.c',
+  'rb_tree.h',
   'register_allocate.c',
   'register_allocate.h',
   'rgtc.c',
@@ -81,9 +90,17 @@ files_mesa_util = files(
   'u_thread.h',
   'u_vector.c',
   'u_vector.h',
+  'u_math.c',
+  'u_math.h',
+  'u_debug.c',
+  'u_debug.h',
+  'u_cpu_detect.c',
+  'u_cpu_detect.h',
+  'vma.c',
+  'vma.h',
 )
 
-install_data('drirc', install_dir : get_option('sysconfdir'))
+install_data('00-mesa-defaults.conf', install_dir : join_paths(get_option('datadir'), 'drirc.d'))
 
 files_xmlconfig = files(
   'xmlconfig.c',
@@ -94,7 +111,7 @@ format_srgb = custom_target(
   'format_srgb',
   input : ['format_srgb.py'],
   output : 'format_srgb.c',
-  command : [prog_python2, '@INPUT0@'],
+  command : [prog_python, '@INPUT0@'],
   capture : true,
 )
 
@@ -102,7 +119,7 @@ libmesa_util = static_library(
   'mesa_util',
   [files_mesa_util, format_srgb],
   include_directories : inc_common,
-  dependencies : [dep_zlib, dep_clock, dep_thread],
+  dependencies : [dep_zlib, dep_clock, dep_thread, dep_atomic, dep_m],
   c_args : [c_msvc_compat_args, c_vis_args],
   build_by_default : false
 )
@@ -111,11 +128,15 @@ libxmlconfig = static_library(
   'xmlconfig',
   files_xmlconfig,
   include_directories : inc_common,
+  link_with : libmesa_util,
   dependencies : [dep_expat, dep_m],
   c_args : [
     c_msvc_compat_args, c_vis_args,
     '-DSYSCONFDIR="@0@"'.format(
       join_paths(get_option('prefix'), get_option('sysconfdir'))
+    ),
+    '-DDATADIR="@0@"'.format(
+      join_paths(get_option('prefix'), get_option('datadir'))
     ),
   ],
   build_by_default : false,
@@ -130,7 +151,8 @@ if with_tests
       include_directories : inc_common,
       link_with : libmesa_util,
       c_args : [c_msvc_compat_args],
-    )
+    ),
+    suite : ['util'],
   )
 
   test(
@@ -141,7 +163,8 @@ if with_tests
       include_directories : inc_common,
       c_args : [c_msvc_compat_args],
       dependencies : [dep_m],
-    )
+    ),
+    suite : ['util'],
   )
 
   test(
@@ -152,9 +175,13 @@ if with_tests
       include_directories : inc_common,
       link_with : libmesa_util,
       c_args : [c_msvc_compat_args],
-    )
+    ),
+    suite : ['util'],
   )
 
+  subdir('tests/fast_idiv_by_const')
   subdir('tests/hash_table')
   subdir('tests/string_buffer')
+  subdir('tests/vma')
+  subdir('tests/set')
 endif

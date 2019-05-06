@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2012 Rob Clark <robclark@freedesktop.org>
  *
@@ -35,6 +33,7 @@
 
 /* per-pipe configuration for hw binning: */
 struct fd_vsc_pipe {
+	// TODO a3xx/a4xx/a5xx could probably move to single bo for vsc stream, like a6xx does
 	struct fd_bo *bo;
 	uint8_t x, y, w, h;      /* VSC_PIPE[p].CONFIG */
 };
@@ -58,12 +57,12 @@ struct fd_gmem_stateobj {
 	uint16_t minx, miny;
 	uint16_t width, height;
 	uint16_t maxpw, maxph;   /* maximum pipe width/height */
+	uint8_t num_vsc_pipes;   /* number of pipes for a20x */
 };
 
 struct fd_batch;
 
 void fd_gmem_render_tiles(struct fd_batch *batch);
-void fd_gmem_render_noop(struct fd_batch *batch);
 
 bool fd_gmem_needs_restore(struct fd_batch *batch, struct fd_tile *tile,
 		uint32_t buffers);

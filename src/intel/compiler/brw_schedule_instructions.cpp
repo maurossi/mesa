@@ -323,7 +323,6 @@ schedule_node::set_latency_gen7(bool is_haswell)
       break;
 
    case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GEN4:
-   case FS_OPCODE_VARYING_PULL_CONSTANT_LOAD_GEN7:
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD:
    case FS_OPCODE_UNIFORM_PULL_CONSTANT_LOAD_GEN7:
    case VS_OPCODE_PULL_CONSTANT_LOAD:
@@ -369,6 +368,7 @@ schedule_node::set_latency_gen7(bool is_haswell)
       break;
 
    case SHADER_OPCODE_UNTYPED_ATOMIC:
+   case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT:
    case SHADER_OPCODE_TYPED_ATOMIC:
       /* Test code:
        *   mov(8)    g112<1>ud       0x00000000ud       { align1 WE_all 1Q };
@@ -413,6 +413,102 @@ schedule_node::set_latency_gen7(bool is_haswell)
       latency = is_haswell ? 300 : 600;
       break;
 
+   case SHADER_OPCODE_SEND:
+      switch (inst->sfid) {
+      case BRW_SFID_SAMPLER: {
+         unsigned msg_type = (inst->desc >> 12) & 0x1f;
+         switch (msg_type) {
+         case GEN5_SAMPLER_MESSAGE_SAMPLE_RESINFO:
+         case GEN6_SAMPLER_MESSAGE_SAMPLE_SAMPLEINFO:
+            /* See also SHADER_OPCODE_TXS */
+            latency = 100;
+            break;
+
+         default:
+            /* See also SHADER_OPCODE_TEX */
+            latency = 200;
+            break;
+         }
+         break;
+      }
+
+      case GEN6_SFID_DATAPORT_RENDER_CACHE:
+         switch ((inst->desc >> 14) & 0x1f) {
+         case GEN7_DATAPORT_RC_TYPED_SURFACE_WRITE:
+         case GEN7_DATAPORT_RC_TYPED_SURFACE_READ:
+            /* See also SHADER_OPCODE_TYPED_SURFACE_READ */
+            assert(!is_haswell);
+            latency = 600;
+            break;
+
+         case GEN7_DATAPORT_RC_TYPED_ATOMIC_OP:
+            /* See also SHADER_OPCODE_TYPED_ATOMIC */
+            assert(!is_haswell);
+            latency = 14000;
+            break;
+
+         default:
+            unreachable("Unknown render cache message");
+         }
+         break;
+
+      case GEN7_SFID_DATAPORT_DATA_CACHE:
+         switch ((inst->desc >> 14) & 0x1f) {
+         case HSW_DATAPORT_DC_PORT0_BYTE_SCATTERED_READ:
+         case HSW_DATAPORT_DC_PORT0_BYTE_SCATTERED_WRITE:
+            /* We have no data for this but assume it's roughly the same as
+             * untyped surface read/write.
+             */
+            latency = 300;
+            break;
+
+         case GEN7_DATAPORT_DC_UNTYPED_SURFACE_READ:
+         case GEN7_DATAPORT_DC_UNTYPED_SURFACE_WRITE:
+            /* See also SHADER_OPCODE_UNTYPED_SURFACE_READ */
+            assert(!is_haswell);
+            latency = 600;
+            break;
+
+         case GEN7_DATAPORT_DC_UNTYPED_ATOMIC_OP:
+            /* See also SHADER_OPCODE_UNTYPED_ATOMIC */
+            assert(!is_haswell);
+            latency = 14000;
+            break;
+
+         default:
+            unreachable("Unknown data cache message");
+         }
+         break;
+
+      case HSW_SFID_DATAPORT_DATA_CACHE_1:
+         switch ((inst->desc >> 14) & 0x1f) {
+         case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_READ:
+         case HSW_DATAPORT_DC_PORT1_UNTYPED_SURFACE_WRITE:
+         case HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_READ:
+         case HSW_DATAPORT_DC_PORT1_TYPED_SURFACE_WRITE:
+            /* See also SHADER_OPCODE_UNTYPED_SURFACE_READ */
+            latency = 300;
+            break;
+
+         case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP:
+         case HSW_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_OP_SIMD4X2:
+         case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP_SIMD4X2:
+         case HSW_DATAPORT_DC_PORT1_TYPED_ATOMIC_OP:
+         case GEN9_DATAPORT_DC_PORT1_UNTYPED_ATOMIC_FLOAT_OP:
+            /* See also SHADER_OPCODE_UNTYPED_ATOMIC */
+            latency = 14000;
+            break;
+
+         default:
+            unreachable("Unknown data cache message");
+         }
+         break;
+
+      default:
+         unreachable("Unknown SFID");
+      }
+      break;
+
    default:
       /* 2 cycles:
        * mul(8) g4<1>F g2<0,1,0>F      0.5F            { align1 WE_normal 1Q };
@@ -429,7 +525,7 @@ schedule_node::set_latency_gen7(bool is_haswell)
 class instruction_scheduler {
 public:
    instruction_scheduler(backend_shader *s, int grf_count,
-                         int hw_reg_count, int block_count,
+                         unsigned hw_reg_count, int block_count,
                          instruction_scheduler_mode mode)
    {
       this->bs = s;
@@ -510,7 +606,7 @@ public:
    bool post_reg_alloc;
    int instructions_to_schedule;
    int grf_count;
-   int hw_reg_count;
+   unsigned hw_reg_count;
    int reg_pressure;
    int block_idx;
    exec_list instructions;
@@ -664,7 +760,7 @@ fs_instruction_scheduler::setup_liveness(cfg_t *cfg)
    int payload_last_use_ip[hw_reg_count];
    v->calculate_payload_ranges(hw_reg_count, payload_last_use_ip);
 
-   for (int i = 0; i < hw_reg_count; i++) {
+   for (unsigned i = 0; i < hw_reg_count; i++) {
       if (payload_last_use_ip[i] == -1)
          continue;
 
@@ -763,22 +859,22 @@ vec4_instruction_scheduler::vec4_instruction_scheduler(vec4_visitor *v,
 }
 
 void
-vec4_instruction_scheduler::count_reads_remaining(backend_instruction *be)
+vec4_instruction_scheduler::count_reads_remaining(backend_instruction *)
 {
 }
 
 void
-vec4_instruction_scheduler::setup_liveness(cfg_t *cfg)
+vec4_instruction_scheduler::setup_liveness(cfg_t *)
 {
 }
 
 void
-vec4_instruction_scheduler::update_register_pressure(backend_instruction *be)
+vec4_instruction_scheduler::update_register_pressure(backend_instruction *)
 {
 }
 
 int
-vec4_instruction_scheduler::get_register_pressure_benefit(backend_instruction *be)
+vec4_instruction_scheduler::get_register_pressure_benefit(backend_instruction *)
 {
    return 0;
 }
@@ -972,9 +1068,9 @@ fs_instruction_scheduler::calculate_deps()
     * After register allocation, reg_offsets are gone and we track individual
     * GRF registers.
     */
-   schedule_node *last_grf_write[grf_count * 16];
+   schedule_node **last_grf_write;
    schedule_node *last_mrf_write[BRW_MAX_MRF(v->devinfo->gen)];
-   schedule_node *last_conditional_mod[4] = {};
+   schedule_node *last_conditional_mod[8] = {};
    schedule_node *last_accumulator_write = NULL;
    /* Fixed HW registers are assumed to be separate from the virtual
     * GRFs, so they can be tracked separately.  We don't really write
@@ -983,7 +1079,7 @@ fs_instruction_scheduler::calculate_deps()
     */
    schedule_node *last_fixed_grf_write = NULL;
 
-   memset(last_grf_write, 0, sizeof(last_grf_write));
+   last_grf_write = (schedule_node **)calloc(sizeof(schedule_node *), grf_count * 16);
    memset(last_mrf_write, 0, sizeof(last_mrf_write));
 
    /* top-to-bottom dependencies: RAW and WAW. */
@@ -1110,7 +1206,7 @@ fs_instruction_scheduler::calculate_deps()
    }
 
    /* bottom-to-top dependencies: WAR */
-   memset(last_grf_write, 0, sizeof(last_grf_write));
+   memset(last_grf_write, 0, sizeof(schedule_node *) * grf_count * 16);
    memset(last_mrf_write, 0, sizeof(last_mrf_write));
    memset(last_conditional_mod, 0, sizeof(last_conditional_mod));
    last_accumulator_write = NULL;
@@ -1226,6 +1322,8 @@ fs_instruction_scheduler::calculate_deps()
          last_accumulator_write = n;
       }
    }
+
+   free(last_grf_write);
 }
 
 void
@@ -1554,7 +1652,7 @@ fs_instruction_scheduler::issue_time(backend_instruction *inst)
 }
 
 int
-vec4_instruction_scheduler::issue_time(backend_instruction *inst)
+vec4_instruction_scheduler::issue_time(backend_instruction *)
 {
    /* We always execute as two vec4s in parallel. */
    return 2;

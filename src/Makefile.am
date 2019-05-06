@@ -20,13 +20,13 @@
 # IN THE SOFTWARE.
 
 .PHONY: git_sha1.h
-git_sha1.h: $(top_srcdir)/src/git_sha1.h.in
+git_sha1.h:
 	@echo "updating $@"
-	@$(PYTHON2) $(top_srcdir)/bin/git_sha1_gen.py --output $@
+	@$(PYTHON) $(top_srcdir)/bin/git_sha1_gen.py --output $@
 
 BUILT_SOURCES = git_sha1.h
 CLEANFILES = $(BUILT_SOURCES)
-EXTRA_DIST = git_sha1.h.in meson.build
+EXTRA_DIST = meson.build
 
 SUBDIRS = . gtest util mapi/glapi/gen mapi
 
@@ -39,6 +39,7 @@ gl_HEADERS = \
   $(top_srcdir)/include/GL/gl_mangle.h
 endif
 
+# TODO: When building with glvnd, glvnd itself should be providing gl.pc and the headers
 if HAVE_GLX
 glxdir = $(includedir)/GL
 glx_HEADERS = \
@@ -67,7 +68,6 @@ SUBDIRS += vulkan
 endif
 
 EXTRA_DIST += vulkan/registry/vk.xml
-EXTRA_DIST += vulkan/registry/vk_android_native_buffer.xml
 
 if HAVE_AMD_DRIVERS
 SUBDIRS += amd
@@ -79,6 +79,10 @@ endif
 
 if HAVE_BROADCOM_DRIVERS
 SUBDIRS += broadcom
+endif
+
+if HAVE_FREEDRENO_DRIVERS
+SUBDIRS += freedreno
 endif
 
 if NEED_OPENGL_COMMON
@@ -94,11 +98,6 @@ endif
 ## Optionally required by EGL (aka PLATFORM_GBM)
 if HAVE_GBM
 SUBDIRS += gbm
-endif
-
-## Optionally required by EGL
-if HAVE_PLATFORM_WAYLAND
-SUBDIRS += egl/wayland/wayland-egl
 endif
 
 if HAVE_EGL

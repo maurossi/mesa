@@ -78,6 +78,7 @@
 #define VC4_DIRTY_COMPILED_VS   (1 << 24)
 #define VC4_DIRTY_COMPILED_FS   (1 << 25)
 #define VC4_DIRTY_FS_INPUTS     (1 << 26)
+#define VC4_DIRTY_UBO_1_SIZE    (1 << 27)
 
 struct vc4_sampler_view {
         struct pipe_sampler_view base;
@@ -219,6 +220,13 @@ struct vc4_job_key {
         struct pipe_surface *zsbuf;
 };
 
+struct vc4_hwperfmon {
+        uint32_t id;
+        uint64_t last_seqno;
+        uint8_t events[DRM_VC4_MAX_PERF_COUNTERS];
+        uint64_t counters[DRM_VC4_MAX_PERF_COUNTERS];
+};
+
 /**
  * A complete bin/render job.
  *
@@ -309,6 +317,9 @@ struct vc4_job {
         /** Any flags to be passed in drm_vc4_submit_cl.flags. */
         uint32_t flags;
 
+	/* Performance monitor attached to this job. */
+	struct vc4_hwperfmon *perfmon;
+
         struct vc4_job_key key;
 };
 
@@ -366,6 +377,10 @@ struct vc4_context {
 
         struct u_upload_mgr *uploader;
 
+        struct pipe_shader_state *yuv_linear_blit_vs;
+        struct pipe_shader_state *yuv_linear_blit_fs_8bit;
+        struct pipe_shader_state *yuv_linear_blit_fs_16bit;
+
         /** @{ Current pipeline state objects */
         struct pipe_scissor_state scissor;
         struct pipe_blend_state *blend;
@@ -390,7 +405,17 @@ struct vc4_context {
         struct pipe_viewport_state viewport;
         struct vc4_constbuf_stateobj constbuf[PIPE_SHADER_TYPES];
         struct vc4_vertexbuf_stateobj vertexbuf;
+        struct pipe_debug_callback debug;
+
+        struct vc4_hwperfmon *perfmon;
         /** @} */
+
+        /** Handle of syncobj containing the last submitted job fence. */
+        uint32_t job_syncobj;
+
+        int in_fence_fd;
+        /** Handle of the syncobj that holds in_fence_fd for submission. */
+        uint32_t in_syncobj;
 };
 
 struct vc4_rasterizer_state {
@@ -427,6 +452,8 @@ struct vc4_depth_stencil_alpha_state {
 #define perf_debug(...) do {                            \
         if (unlikely(vc4_debug & VC4_DEBUG_PERF))       \
                 fprintf(stderr, __VA_ARGS__);           \
+        if (unlikely(vc4->debug.debug_message))         \
+                pipe_debug_message(&vc4->debug, PERF_INFO, __VA_ARGS__);    \
 } while (0)
 
 static inline struct vc4_context *
@@ -447,6 +474,12 @@ vc4_sampler_state(struct pipe_sampler_state *psampler)
         return (struct vc4_sampler_state *)psampler;
 }
 
+int vc4_get_driver_query_group_info(struct pipe_screen *pscreen,
+                                    unsigned index,
+                                    struct pipe_driver_query_group_info *info);
+int vc4_get_driver_query_info(struct pipe_screen *pscreen, unsigned index,
+                              struct pipe_driver_query_info *info);
+
 struct pipe_context *vc4_context_create(struct pipe_screen *pscreen,
                                         void *priv, unsigned flags);
 void vc4_draw_init(struct pipe_context *pctx);
@@ -456,12 +489,8 @@ void vc4_program_fini(struct pipe_context *pctx);
 void vc4_query_init(struct pipe_context *pctx);
 void vc4_simulator_init(struct vc4_screen *screen);
 void vc4_simulator_destroy(struct vc4_screen *screen);
-int vc4_simulator_flush(struct vc4_context *vc4,
-                        struct drm_vc4_submit_cl *args,
-                        struct vc4_job *job);
 int vc4_simulator_ioctl(int fd, unsigned long request, void *arg);
-void vc4_simulator_open_from_handle(int fd, uint32_t winsys_stride,
-                                    int handle, uint32_t size);
+void vc4_simulator_open_from_handle(int fd, int handle, uint32_t size);
 
 static inline int
 vc4_ioctl(int fd, unsigned long request, void *arg)
@@ -479,7 +508,8 @@ void vc4_write_uniforms(struct vc4_context *vc4,
                         struct vc4_texture_stateobj *texstate);
 
 void vc4_flush(struct pipe_context *pctx);
-void vc4_job_init(struct vc4_context *vc4);
+int vc4_job_init(struct vc4_context *vc4);
+int vc4_fence_context_init(struct vc4_context *vc4);
 struct vc4_job *vc4_get_job(struct vc4_context *vc4,
                             struct pipe_surface *cbuf,
                             struct pipe_surface *zsbuf);

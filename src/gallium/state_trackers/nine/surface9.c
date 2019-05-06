@@ -104,12 +104,15 @@ NineSurface9_ctor( struct NineSurface9 *This,
     This->base.info.last_level = 0;
     This->base.info.array_size = 1;
     This->base.info.nr_samples = multisample_type;
+    This->base.info.nr_storage_samples = multisample_type;
     This->base.info.usage = PIPE_USAGE_DEFAULT;
     This->base.info.bind = PIPE_BIND_SAMPLER_VIEW; /* StretchRect */
 
     if (pDesc->Usage & D3DUSAGE_RENDERTARGET) {
         This->base.info.bind |= PIPE_BIND_RENDER_TARGET;
     } else if (pDesc->Usage & D3DUSAGE_DEPTHSTENCIL) {
+        if (!depth_stencil_format(pDesc->Format))
+            return D3DERR_INVALIDCALL;
         This->base.info.bind = d3d9_get_pipe_depth_format_bindings(pDesc->Format);
         if (TextureType)
             This->base.info.bind |= PIPE_BIND_SAMPLER_VIEW;
@@ -242,7 +245,7 @@ NineSurface9_CreatePipeSurfaces( struct NineSurface9 *This )
     srgb_format = util_format_srgb(resource->format);
     if (srgb_format == PIPE_FORMAT_NONE ||
         !screen->is_format_supported(screen, srgb_format,
-                                     resource->target, 0, resource->bind))
+                                     resource->target, 0, 0, resource->bind))
         srgb_format = resource->format;
 
     memset(&templ, 0, sizeof(templ));
@@ -269,7 +272,7 @@ NineSurface9_CreatePipeSurfaces( struct NineSurface9 *This )
     assert(This->surface[1]);
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) || !defined(NDEBUG)
 void
 NineSurface9_Dump( struct NineSurface9 *This )
 {
@@ -297,7 +300,7 @@ NineSurface9_Dump( struct NineSurface9 *This )
         NineUnknown_Release(NineUnknown(tex));
     }
 }
-#endif /* DEBUG */
+#endif /* DEBUG || !NDEBUG */
 
 HRESULT NINE_WINAPI
 NineSurface9_GetContainer( struct NineSurface9 *This,
@@ -657,7 +660,7 @@ NineSurface9_CopyMemToDefault( struct NineSurface9 *This,
 
     nine_context_box_upload(This->base.base.device,
                             &From->pending_uploads_counter,
-                            (struct NineUnknown *)This,
+                            (struct NineUnknown *)From,
                             r_dst,
                             This->level,
                             &dst_box,
@@ -665,6 +668,19 @@ NineSurface9_CopyMemToDefault( struct NineSurface9 *This,
                             From->data, From->stride,
                             0, /* depth = 1 */
                             &src_box);
+    if (From->texture == D3DRTYPE_TEXTURE) {
+        struct NineTexture9 *tex =
+            NineTexture9(From->base.base.container);
+        /* D3DPOOL_SYSTEMMEM with buffer content passed
+         * from the user: execute the upload right now.
+         * It is possible it is enough to delay upload
+         * until the surface refcount is 0, but the
+         * bind refcount may not be 0, and thus the dtor
+         * is not executed (and doesn't trigger the
+         * pending_uploads_counter check). */
+        if (!tex->managed_buffer)
+            nine_csmt_process(This->base.base.device);
+    }
 
     if (This->data_conversion)
         (void) util_format_translate(This->format_conversion,
@@ -803,6 +819,7 @@ NineSurface9_SetResourceResize( struct NineSurface9 *This,
     This->desc.Width = This->base.info.width0 = resource->width0;
     This->desc.Height = This->base.info.height0 = resource->height0;
     This->base.info.nr_samples = resource->nr_samples;
+    This->base.info.nr_storage_samples = resource->nr_storage_samples;
 
     This->stride = nine_format_get_stride(This->base.info.format,
                                           This->desc.Width);

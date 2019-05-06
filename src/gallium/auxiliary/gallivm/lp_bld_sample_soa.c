@@ -2825,13 +2825,13 @@ lp_build_sample_soa_code(struct gallivm_state *gallivm,
    bld.format_desc = util_format_description(static_texture_state->format);
    bld.dims = dims;
 
-   if (gallivm_debug & GALLIVM_DEBUG_NO_QUAD_LOD || op_is_lodq) {
+   if (gallivm_perf & GALLIVM_PERF_NO_QUAD_LOD || op_is_lodq) {
       bld.no_quad_lod = TRUE;
    }
-   if (gallivm_debug & GALLIVM_DEBUG_NO_RHO_APPROX || op_is_lodq) {
+   if (gallivm_perf & GALLIVM_PERF_NO_RHO_APPROX || op_is_lodq) {
       bld.no_rho_approx = TRUE;
    }
-   if (gallivm_debug & GALLIVM_DEBUG_NO_BRILINEAR || op_is_lodq) {
+   if (gallivm_perf & GALLIVM_PERF_NO_BRILINEAR || op_is_lodq) {
       bld.no_brilinear = TRUE;
    }
 
@@ -3549,10 +3549,6 @@ lp_build_sample_soa_func(struct gallivm_state *gallivm,
       const struct util_format_description *format_desc;
       format_desc = util_format_description(static_texture_state->format);
       if (format_desc && format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
-         /*
-          * This is not 100% correct, if we have cache but the
-          * util_format_s3tc_prefer is true the cache won't get used
-          * regardless (could hook up the block decode there...) */
          need_cache = TRUE;
       }
    }

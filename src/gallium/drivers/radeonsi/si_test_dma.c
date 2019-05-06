@@ -1,5 +1,6 @@
 /*
  * Copyright 2016 Advanced Micro Devices, Inc.
+ * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -139,8 +140,22 @@ static const char *array_mode_to_string(struct si_screen *sscreen,
 					struct radeon_surf *surf)
 {
 	if (sscreen->info.chip_class >= GFX9) {
-		/* TODO */
-		return "       UNKNOWN";
+		switch (surf->u.gfx9.surf.swizzle_mode) {
+		case 0:
+			return "  LINEAR";
+		case 21:
+			return " 4KB_S_X";
+		case 22:
+			return " 4KB_D_X";
+		case 25:
+			return "64KB_S_X";
+		case 26:
+			return "64KB_D_X";
+		default:
+			printf("Unhandled swizzle mode = %u\n",
+			       surf->u.gfx9.surf.swizzle_mode);
+			return " UNKNOWN";
+		}
 	} else {
 		switch (surf->u.legacy.level[0].mode) {
 		case RADEON_SURF_MODE_LINEAR_ALIGNED:
@@ -205,8 +220,8 @@ void si_test_dma(struct si_screen *sscreen)
 	 */
 	for (i = 0; i < iterations; i++) {
 		struct pipe_resource tsrc = {}, tdst = {}, *src, *dst;
-		struct r600_texture *rdst;
-		struct r600_texture *rsrc;
+		struct si_texture *sdst;
+		struct si_texture *ssrc;
 		struct cpu_texture src_cpu, dst_cpu;
 		unsigned bpp, max_width, max_height, max_depth, j, num;
 		unsigned gfx_blits = 0, dma_blits = 0, max_tex_side_gen;
@@ -275,24 +290,26 @@ void si_test_dma(struct si_screen *sscreen)
 		dst = screen->resource_create(screen, &tdst);
 		assert(src);
 		assert(dst);
-		rdst = (struct r600_texture*)dst;
-		rsrc = (struct r600_texture*)src;
+		sdst = (struct si_texture*)dst;
+		ssrc = (struct si_texture*)src;
 		alloc_cpu_texture(&src_cpu, &tsrc, bpp);
 		alloc_cpu_texture(&dst_cpu, &tdst, bpp);
 
 		printf("%4u: dst = (%5u x %5u x %u, %s), "
 		       " src = (%5u x %5u x %u, %s), bpp = %2u, ",
 		       i, tdst.width0, tdst.height0, tdst.array_size,
-		       array_mode_to_string(sscreen, &rdst->surface),
+		       array_mode_to_string(sscreen, &sdst->surface),
 		       tsrc.width0, tsrc.height0, tsrc.array_size,
-		       array_mode_to_string(sscreen, &rsrc->surface), bpp);
+		       array_mode_to_string(sscreen, &ssrc->surface), bpp);
 		fflush(stdout);
 
 		/* set src pixels */
 		set_random_pixels(ctx, src, &src_cpu);
 
 		/* clear dst pixels */
-		si_clear_buffer(ctx, dst, 0, rdst->surface.surf_size, 0, true);
+		uint32_t zero = 0;
+		si_clear_buffer(sctx, dst, 0, sdst->surface.surf_size, &zero, 4,
+		                SI_COHERENCY_SHADER, false);
 		memset(dst_cpu.ptr, 0, dst_cpu.layer_stride * tdst.array_size);
 
 		/* preparation */
@@ -305,8 +322,8 @@ void si_test_dma(struct si_screen *sscreen)
 			int width, height, depth;
 			int srcx, srcy, srcz, dstx, dsty, dstz;
 			struct pipe_box box;
-			unsigned old_num_draw_calls = sctx->b.num_draw_calls;
-			unsigned old_num_dma_calls = sctx->b.num_dma_calls;
+			unsigned old_num_draw_calls = sctx->num_draw_calls;
+			unsigned old_num_dma_calls = sctx->num_dma_calls;
 
 			if (!do_partial_copies) {
 				/* copy whole src to dst */
@@ -322,8 +339,8 @@ void si_test_dma(struct si_screen *sscreen)
 				dstz = rand() % (tdst.array_size - depth + 1);
 
 				/* special code path to hit the tiled partial copies */
-				if (!rsrc->surface.is_linear &&
-				    !rdst->surface.is_linear &&
+				if (!ssrc->surface.is_linear &&
+				    !sdst->surface.is_linear &&
 				    rand() & 1) {
 					if (max_width < 8 || max_height < 8)
 						continue;
@@ -350,8 +367,8 @@ void si_test_dma(struct si_screen *sscreen)
 				}
 
 				/* special code path to hit out-of-bounds reads in L2T */
-				if (rsrc->surface.is_linear &&
-				    !rdst->surface.is_linear &&
+				if (ssrc->surface.is_linear &&
+				    !sdst->surface.is_linear &&
 				    rand() % 4 == 0) {
 					srcx = 0;
 					srcy = 0;
@@ -361,11 +378,11 @@ void si_test_dma(struct si_screen *sscreen)
 
 			/* GPU copy */
 			u_box_3d(srcx, srcy, srcz, width, height, depth, &box);
-			sctx->b.dma_copy(ctx, dst, 0, dstx, dsty, dstz, src, 0, &box);
+			sctx->dma_copy(ctx, dst, 0, dstx, dsty, dstz, src, 0, &box);
 
 			/* See which engine was used. */
-			gfx_blits += sctx->b.num_draw_calls > old_num_draw_calls;
-			dma_blits += sctx->b.num_dma_calls > old_num_dma_calls;
+			gfx_blits += sctx->num_draw_calls > old_num_draw_calls;
+			dma_blits += sctx->num_dma_calls > old_num_dma_calls;
 
 			/* CPU copy */
 			util_copy_box(dst_cpu.ptr, tdst.format, dst_cpu.stride,

@@ -46,9 +46,9 @@
 #include "util/debug.h"
 #else
 #include <sys/time.h>
-#ifdef XF86VIDMODE
+#ifndef GLX_USE_WINDOWSGL
 #include <X11/extensions/xf86vmode.h>
-#endif
+#endif /* GLX_USE_WINDOWSGL */
 #endif
 #endif
 
@@ -272,6 +272,44 @@ glx_context_init(struct glx_context *gc,
    return True;
 }
 
+/**
+ * Determine if a context uses direct rendering.
+ *
+ * \param dpy        Display where the context was created.
+ * \param contextID  ID of the context to be tested.
+ * \param error      Out parameter, set to True on error if not NULL
+ *
+ * \returns \c True if the context is direct rendering or not.
+ */
+static Bool
+__glXIsDirect(Display * dpy, GLXContextID contextID, Bool *error)
+{
+   CARD8 opcode;
+   xcb_connection_t *c;
+   xcb_generic_error_t *err;
+   xcb_glx_is_direct_reply_t *reply;
+   Bool is_direct;
+
+   opcode = __glXSetupForCommand(dpy);
+   if (!opcode) {
+      return False;
+   }
+
+   c = XGetXCBConnection(dpy);
+   reply = xcb_glx_is_direct_reply(c, xcb_glx_is_direct(c, contextID), &err);
+   is_direct = (reply != NULL && reply->is_direct) ? True : False;
+
+   if (err != NULL) {
+      if (error)
+         *error = True;
+      __glXSendErrorForXcb(dpy, err);
+      free(err);
+   }
+
+   free(reply);
+
+   return is_direct;
+}
 
 /**
  * Create a new context.
@@ -375,6 +413,21 @@ CreateContext(Display *dpy, int generic_id, struct glx_config *config,
 
    gc->share_xid = shareList ? shareList->xid : None;
    gc->imported = GL_FALSE;
+
+   /* Unlike most X resource creation requests, we're about to return a handle
+    * with client-side state, not just an XID. To simplify error handling
+    * elsewhere in libGL, force a round-trip here to ensure the CreateContext
+    * request above succeeded.
+    */
+   {
+      Bool error = False;
+      int isDirect = __glXIsDirect(dpy, gc->xid, &error);
+
+      if (error != False || isDirect != gc->isDirect) {
+         gc->vtable->destroy(gc);
+         gc = NULL;
+      }
+   }
 
    return (GLXContext) gc;
 }
@@ -613,42 +666,6 @@ glXCopyContext(Display * dpy, GLXContext source_user,
 
 
 /**
- * Determine if a context uses direct rendering.
- *
- * \param dpy        Display where the context was created.
- * \param contextID  ID of the context to be tested.
- *
- * \returns \c True if the context is direct rendering or not.
- */
-static Bool
-__glXIsDirect(Display * dpy, GLXContextID contextID)
-{
-   CARD8 opcode;
-   xcb_connection_t *c;
-   xcb_generic_error_t *err;
-   xcb_glx_is_direct_reply_t *reply;
-   Bool is_direct;
-
-   opcode = __glXSetupForCommand(dpy);
-   if (!opcode) {
-      return False;
-   }
-
-   c = XGetXCBConnection(dpy);
-   reply = xcb_glx_is_direct_reply(c, xcb_glx_is_direct(c, contextID), &err);
-   is_direct = (reply != NULL && reply->is_direct) ? True : False;
-
-   if (err != NULL) {
-      __glXSendErrorForXcb(dpy, err);
-      free(err);
-   }
-
-   free(reply);
-
-   return is_direct;
-}
-
-/**
  * \todo
  * Shouldn't this function \b always return \c False when
  * \c GLX_DIRECT_RENDERING is not defined?  Do we really need to bother with
@@ -668,7 +685,7 @@ glXIsDirect(Display * dpy, GLXContext gc_user)
 #ifdef GLX_USE_APPLEGL  /* TODO: indirect on darwin */
    return False;
 #else
-   return __glXIsDirect(dpy, gc->xid);
+   return __glXIsDirect(dpy, gc->xid, NULL);
 #endif
 }
 
@@ -937,6 +954,7 @@ init_fbconfig_for_chooser(struct glx_config * config,
    config->fbconfigID = (GLXFBConfigID) (GLX_DONT_CARE);
 
    config->swapMethod = GLX_DONT_CARE;
+   config->sRGBCapable = GLX_DONT_CARE;
 }
 
 #define MATCH_DONT_CARE( param )        \
@@ -1427,7 +1445,7 @@ glXImportContextEXT(Display *dpy, GLXContextID contextID)
       return NULL;
    }
 
-   if (__glXIsDirect(dpy, contextID))
+   if (__glXIsDirect(dpy, contextID, NULL))
       return NULL;
 
    opcode = __glXSetupForCommand(dpy);
@@ -1463,7 +1481,7 @@ glXImportContextEXT(Display *dpy, GLXContextID contextID)
    if (_XReply(dpy, (xReply *) & reply, 0, False) &&
        reply.n < (INT32_MAX / 2)) {
 
-      for (i = 0; i < reply.n * 2; i++) {
+      for (i = 0; i < reply.n; i++) {
          int prop[2];
 
          _XRead(dpy, (char *)prop, sizeof(prop));
@@ -2037,40 +2055,6 @@ glXGetFBConfigFromVisualSGIX(Display * dpy, XVisualInfo * vis)
 
 #ifndef GLX_USE_APPLEGL
 /*
-** GLX_SGIX_swap_group
-*/
-static void
-__glXJoinSwapGroupSGIX(Display * dpy, GLXDrawable drawable,
-                       GLXDrawable member)
-{
-   (void) dpy;
-   (void) drawable;
-   (void) member;
-}
-
-
-/*
-** GLX_SGIX_swap_barrier
-*/
-static void
-__glXBindSwapBarrierSGIX(Display * dpy, GLXDrawable drawable, int barrier)
-{
-   (void) dpy;
-   (void) drawable;
-   (void) barrier;
-}
-
-static Bool
-__glXQueryMaxSwapBarriersSGIX(Display * dpy, int screen, int *max)
-{
-   (void) dpy;
-   (void) screen;
-   (void) max;
-   return False;
-}
-
-
-/*
 ** GLX_OML_sync_control
 */
 static Bool
@@ -2104,7 +2088,7 @@ _X_HIDDEN GLboolean
 __glxGetMscRate(struct glx_screen *psc,
 		int32_t * numerator, int32_t * denominator)
 {
-#ifdef XF86VIDMODE
+#if !defined(GLX_USE_WINDOWSGL)
    XF86VidModeModeLine mode_line;
    int dot_clock;
    int i;
@@ -2151,7 +2135,6 @@ __glxGetMscRate(struct glx_screen *psc,
 
       return True;
    }
-   else
 #endif
 
    return False;
@@ -2178,7 +2161,7 @@ _X_HIDDEN GLboolean
 __glXGetMscRateOML(Display * dpy, GLXDrawable drawable,
                    int32_t * numerator, int32_t * denominator)
 {
-#if defined( GLX_DIRECT_RENDERING ) && defined( XF86VIDMODE )
+#if defined(GLX_DIRECT_RENDERING) && !defined(GLX_USE_APPLEGL) && !defined(GLX_USE_WINDOWSGL)
    __GLXDRIdrawable *draw = GetGLXDRIDrawable(dpy, drawable);
 
    if (draw == NULL)
@@ -2540,13 +2523,6 @@ static const struct name_address_pair GLX_functions[] = {
    GLX_FUNCTION(glXQueryGLXPbufferSGIX),
    GLX_FUNCTION(glXSelectEventSGIX),
    GLX_FUNCTION(glXGetSelectedEventSGIX),
-
-   /*** GLX_SGIX_swap_group ***/
-   GLX_FUNCTION2(glXJoinSwapGroupSGIX, __glXJoinSwapGroupSGIX),
-
-   /*** GLX_SGIX_swap_barrier ***/
-   GLX_FUNCTION2(glXBindSwapBarrierSGIX, __glXBindSwapBarrierSGIX),
-   GLX_FUNCTION2(glXQueryMaxSwapBarriersSGIX, __glXQueryMaxSwapBarriersSGIX),
 
    /*** GLX_MESA_copy_sub_buffer ***/
    GLX_FUNCTION2(glXCopySubBufferMESA, __glXCopySubBufferMESA),

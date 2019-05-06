@@ -59,6 +59,7 @@ struct backend_reg : private brw_reg
    }
 
    bool equals(const backend_reg &r) const;
+   bool negative_equals(const backend_reg &r) const;
 
    bool is_zero() const;
    bool is_one() const;
@@ -88,6 +89,8 @@ struct backend_reg : private brw_reg
    using brw_reg::f;
    using brw_reg::d;
    using brw_reg::ud;
+   using brw_reg::d64;
+   using brw_reg::u64;
 };
 #endif
 
@@ -153,8 +156,11 @@ struct backend_instruction {
 
    uint32_t offset; /**< spill/unspill offset or texture offset bitfield */
    uint8_t mlen; /**< SEND message length */
+   uint8_t ex_mlen; /**< SENDS extended message length */
    int8_t base_mrf; /**< First MRF in the SEND message, if mlen is nonzero. */
    uint8_t target; /**< MRT target. */
+   uint8_t sfid; /**< SFID for SEND instructions */
+   uint32_t desc; /**< SEND[S] message descriptor immediate */
    unsigned size_written; /**< Data written to the destination register in bytes. */
 
    enum opcode opcode; /* BRW_OPCODE_* or FS_OPCODE_* */
@@ -167,12 +173,15 @@ struct backend_instruction {
    bool no_dd_check:1;
    bool saturate:1;
    bool shadow_compare:1;
+   bool check_tdr:1; /**< Only valid for SEND; turns it into a SENDC */
+   bool send_has_side_effects:1; /**< Only valid for SHADER_OPCODE_SEND */
+   bool send_is_volatile:1; /**< Only valid for SHADER_OPCODE_SEND */
    bool eot:1;
 
-   /* Chooses which flag subregister (f0.0 or f0.1) is used for conditional
+   /* Chooses which flag subregister (f0.0 to f1.1) is used for conditional
     * mod and predication.
     */
-   unsigned flag_subreg:1;
+   unsigned flag_subreg:2;
 
    /** The number of hardware registers used for a message header. */
    uint8_t header_size;

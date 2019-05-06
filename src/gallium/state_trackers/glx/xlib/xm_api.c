@@ -61,11 +61,16 @@
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
+#include "state_tracker/st_api.h"
 
 #include "util/u_atomic.h"
 #include "util/u_inlines.h"
+#include "util/u_math.h"
 
 #include "hud/hud_context.h"
+
+#include "main/errors.h"
+#include "main/imports.h"
 
 #include "xm_public.h"
 #include <GL/glx.h>
@@ -485,7 +490,7 @@ choose_depth_stencil_format(XMesaDisplay xmdpy, int depth, int stencil,
    for (i = 0; i < count; i++) {
       if (xmdpy->screen->is_format_supported(xmdpy->screen, formats[i],
                                              target, sample_count,
-                                             tex_usage)) {
+                                             sample_count, tex_usage)) {
          fmt = formats[i];
          break;
       }
@@ -821,9 +826,9 @@ XMesaVisual XMesaCreateVisual( Display *display,
    {
       const int xclass = v->visualType;
       if (xclass == GLX_TRUE_COLOR || xclass == GLX_DIRECT_COLOR) {
-         red_bits   = _mesa_bitcount(GET_REDMASK(v));
-         green_bits = _mesa_bitcount(GET_GREENMASK(v));
-         blue_bits  = _mesa_bitcount(GET_BLUEMASK(v));
+         red_bits   = util_bitcount(GET_REDMASK(v));
+         green_bits = util_bitcount(GET_GREENMASK(v));
+         blue_bits  = util_bitcount(GET_BLUEMASK(v));
       }
       else {
          /* this is an approximation */
@@ -888,6 +893,7 @@ XMesaVisual XMesaCreateVisual( Display *display,
    if (!xmdpy->screen->is_format_supported(xmdpy->screen,
                                            v->stvis.color_format,
                                            PIPE_TEXTURE_2D, num_samples,
+                                           num_samples,
                                            PIPE_BIND_RENDER_TARGET))
       v->stvis.color_format = PIPE_FORMAT_NONE;
 
@@ -1175,8 +1181,8 @@ XMesaCreatePixmapTextureBuffer(XMesaVisual v, Pixmap p,
       if (ctx->Extensions.ARB_texture_non_power_of_two) {
          target = GLX_TEXTURE_2D_EXT;
       }
-      else if (   _mesa_bitcount(b->width)  == 1
-               && _mesa_bitcount(b->height) == 1) {
+      else if (   util_bitcount(b->width)  == 1
+               && util_bitcount(b->height) == 1) {
          /* power of two size */
          if (b->height == 1) {
             target = GLX_TEXTURE_1D_EXT;

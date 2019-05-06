@@ -27,6 +27,10 @@
 #include "util/slab.h"
 #include "virgl_winsys.h"
 
+#define VIRGL_DEBUG_VERBOSE 1
+#define VIRGL_DEBUG_TGSI    2
+extern int virgl_debug;
+
 struct virgl_screen {
    struct pipe_screen base;
 
@@ -39,7 +43,7 @@ struct virgl_screen {
 
    struct virgl_drm_caps caps;
 
-   struct slab_parent_pool texture_transfer_pool;
+   struct slab_parent_pool transfer_pool;
 
    uint32_t sub_ctx_id;
 };

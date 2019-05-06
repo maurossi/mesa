@@ -26,10 +26,12 @@
 #ifndef ST_GLSL_TO_TGSI_PRIVATE_H
 #define ST_GLSL_TO_TGSI_PRIVATE_H
 
-#include <mesa/main/mtypes.h>
-#include <compiler/glsl_types.h>
-#include <compiler/glsl/ir.h>
-#include <tgsi/tgsi_info.h>
+#include "mesa/main/mtypes.h"
+#include "program/prog_parameter.h"
+#include "compiler/glsl_types.h"
+#include "compiler/glsl/ir.h"
+#include "tgsi/tgsi_info.h"
+#include <ostream>
 
 int swizzle_for_size(int size);
 
@@ -49,6 +51,7 @@ public:
    st_src_reg();
    st_src_reg(const st_src_reg &reg);
    void operator=(const st_src_reg &reg);
+   void reset();
 
    explicit st_src_reg(st_dst_reg reg);
 
@@ -84,6 +87,10 @@ public:
    }
 };
 
+bool operator == (const st_src_reg& lhs, const st_src_reg& rhs);
+
+std::ostream& operator << (std::ostream& os, const st_src_reg& reg);
+
 class st_dst_reg {
 public:
    st_dst_reg(gl_register_file file, int writemask, enum glsl_base_type type, int index);
@@ -109,6 +116,11 @@ public:
    st_src_reg *reladdr2;
 };
 
+bool operator == (const st_dst_reg& lhs, const st_dst_reg& rhs);
+
+std::ostream& operator << (std::ostream& os, const st_dst_reg& reg);
+
+
 class glsl_to_tgsi_instruction : public exec_node {
 public:
    DECLARE_RALLOC_CXX_OPERATORS(glsl_to_tgsi_instruction)
@@ -121,7 +133,7 @@ public:
    /** Pointer to the ir source this tree came fe02549fdrom for debugging */
    ir_instruction *ir;
 
-   unsigned op:8; /**< TGSI opcode */
+   enum tgsi_opcode op:10; /**< TGSI opcode */
    unsigned precise:1;
    unsigned saturate:1;
    unsigned is_64bit_expanded:1;
@@ -134,9 +146,19 @@ public:
    unsigned tex_offset_num_offset:3;
    unsigned dead_mask:4; /**< Used in dead code elimination */
    unsigned buffer_access:3; /**< bitmask of TGSI_MEMORY_x bits */
+   unsigned read_only:1;
 
    const struct tgsi_opcode_info *info;
+
+   void print(std::ostream& os) const;
 };
+
+inline std::ostream&
+operator << (std::ostream& os, const glsl_to_tgsi_instruction& instr)
+{
+   instr.print(os);
+   return os;
+}
 
 struct rename_reg_pair {
    bool valid;
@@ -159,6 +181,8 @@ is_resource_instruction(unsigned opcode)
    case TGSI_OPCODE_ATOMUMAX:
    case TGSI_OPCODE_ATOMIMIN:
    case TGSI_OPCODE_ATOMIMAX:
+   case TGSI_OPCODE_ATOMFADD:
+   case TGSI_OPCODE_IMG2HND:
       return true;
    default:
       return false;

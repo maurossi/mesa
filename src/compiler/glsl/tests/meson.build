@@ -26,7 +26,8 @@ test(
     c_args : [c_vis_args, c_msvc_compat_args, no_override_init_args],
     include_directories : [inc_common, inc_compiler],
     link_with : [libglsl],
-  )
+  ),
+  suite : ['compiler', 'glsl'],
 )
 
 test(
@@ -38,7 +39,8 @@ test(
     include_directories : [inc_common, inc_glsl],
     link_with : [libglsl],
     dependencies : [dep_clock, dep_thread],
-  )
+  ),
+  suite : ['compiler', 'glsl'],
 )
 
 
@@ -54,7 +56,8 @@ test(
     include_directories : [inc_common, inc_glsl],
     link_with : [libglsl, libglsl_standalone, libglsl_util],
     dependencies : [dep_clock, dep_thread, idep_gtest],
-  )
+  ),
+  suite : ['compiler', 'glsl'],
 )
 
 test(
@@ -68,7 +71,8 @@ test(
     include_directories : [inc_common, inc_glsl],
     link_with : [libglsl, libglsl_util],
     dependencies : [dep_thread, idep_gtest],
-  )
+  ),
+  suite : ['compiler', 'glsl'],
 )
 
 test(
@@ -80,7 +84,29 @@ test(
     include_directories : [inc_common, inc_glsl],
     link_with : [libglsl, libglsl_util],
     dependencies : [dep_thread, idep_gtest],
-  )
+  ),
+  suite : ['compiler', 'glsl'],
 )
 
-# TODO: figure out how to get the shell based tests to work?
+test(
+  'glsl compiler warnings',
+  prog_python,
+  args : [
+    join_paths(meson.current_source_dir(), 'warnings_test.py'),
+    '--glsl-compiler', glsl_compiler,
+    '--test-directory', join_paths(
+      meson.source_root(), 'src', 'compiler', 'glsl', 'tests', 'warnings'
+    ),
+  ],
+  suite : ['compiler', 'glsl'],
+)
+
+test(
+  'glsl optimization',
+  prog_python,
+  args : [
+    join_paths(meson.current_source_dir(), 'optimization_test.py'),
+    '--test-runner', glsl_test
+  ],
+  suite : ['compiler', 'glsl'],
+)

@@ -1,5 +1,6 @@
 /*
  * Copyright 2016 Advanced Micro Devices, Inc.
+ * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,58 +23,17 @@
  */
 
 #include "si_shader_internal.h"
-#include "gallivm/lp_bld_const.h"
-#include "gallivm/lp_bld_intr.h"
-#include "gallivm/lp_bld_gather.h"
-#include "tgsi/tgsi_parse.h"
-#include "amd/common/ac_llvm_build.h"
+#include "ac_llvm_util.h"
 
-static void kill_if_fetch_args(struct lp_build_tgsi_context *bld_base,
-			       struct lp_build_emit_data *emit_data)
+void si_llvm_emit_kill(struct ac_shader_abi *abi, LLVMValueRef visible)
 {
-	const struct tgsi_full_instruction *inst = emit_data->inst;
-	struct si_shader_context *ctx = si_shader_context(bld_base);
+	struct si_shader_context *ctx = si_shader_context_from_abi(abi);
 	LLVMBuilderRef builder = ctx->ac.builder;
-	unsigned i;
-	LLVMValueRef conds[TGSI_NUM_CHANNELS];
-
-	for (i = 0; i < TGSI_NUM_CHANNELS; i++) {
-		LLVMValueRef value = lp_build_emit_fetch(bld_base, inst, 0, i);
-		conds[i] = LLVMBuildFCmp(builder, LLVMRealOGE, value,
-					ctx->ac.f32_0, "");
-	}
-
-	/* And the conditions together */
-	for (i = TGSI_NUM_CHANNELS - 1; i > 0; i--) {
-		conds[i - 1] = LLVMBuildAnd(builder, conds[i], conds[i - 1], "");
-	}
-
-	emit_data->dst_type = ctx->voidt;
-	emit_data->arg_count = 1;
-	emit_data->args[0] = conds[0];
-}
-
-static void kil_emit(const struct lp_build_tgsi_action *action,
-		     struct lp_build_tgsi_context *bld_base,
-		     struct lp_build_emit_data *emit_data)
-{
-	struct si_shader_context *ctx = si_shader_context(bld_base);
-	LLVMBuilderRef builder = ctx->ac.builder;
-	LLVMValueRef visible;
-
-	if (emit_data->inst->Instruction.Opcode == TGSI_OPCODE_KILL_IF) {
-		visible = emit_data->args[0];
-	} else {
-		assert(emit_data->inst->Instruction.Opcode == TGSI_OPCODE_KILL);
-		visible = LLVMConstInt(ctx->i1, false, 0);
-	}
 
 	if (ctx->shader->selector->force_correct_derivs_after_kill) {
-		/* LLVM 6.0 can kill immediately while maintaining WQM. */
-		if (HAVE_LLVM >= 0x0600) {
-			ac_build_kill_if_false(&ctx->ac,
-					       ac_build_wqm_vote(&ctx->ac, visible));
-		}
+		/* Kill immediately while maintaining WQM. */
+		ac_build_kill_if_false(&ctx->ac,
+				       ac_build_wqm_vote(&ctx->ac, visible));
 
 		LLVMValueRef mask = LLVMBuildLoad(builder, ctx->postponed_kill, "");
 		mask = LLVMBuildAnd(builder, mask, visible, "");
@@ -82,6 +42,40 @@ static void kil_emit(const struct lp_build_tgsi_action *action,
 	}
 
 	ac_build_kill_if_false(&ctx->ac, visible);
+}
+
+static void kil_emit(const struct lp_build_tgsi_action *action,
+		     struct lp_build_tgsi_context *bld_base,
+		     struct lp_build_emit_data *emit_data)
+{
+	struct si_shader_context *ctx = si_shader_context(bld_base);
+	LLVMValueRef visible;
+
+	if (emit_data->inst->Instruction.Opcode == TGSI_OPCODE_KILL_IF) {
+		const struct tgsi_full_instruction *inst = emit_data->inst;
+		struct si_shader_context *ctx = si_shader_context(bld_base);
+		LLVMBuilderRef builder = ctx->ac.builder;
+		unsigned i;
+		LLVMValueRef conds[TGSI_NUM_CHANNELS];
+
+		for (i = 0; i < TGSI_NUM_CHANNELS; i++) {
+			LLVMValueRef value = lp_build_emit_fetch(bld_base, inst, 0, i);
+			/* UGE because NaN shouldn't get killed */
+			conds[i] = LLVMBuildFCmp(builder, LLVMRealUGE, value,
+						ctx->ac.f32_0, "");
+		}
+
+		/* And the conditions together */
+		for (i = TGSI_NUM_CHANNELS - 1; i > 0; i--) {
+			conds[i - 1] = LLVMBuildAnd(builder, conds[i], conds[i - 1], "");
+		}
+		visible = conds[0];
+	} else {
+		assert(emit_data->inst->Instruction.Opcode == TGSI_OPCODE_KILL);
+		visible = ctx->i1false;
+	}
+
+	si_llvm_emit_kill(&ctx->abi, visible);
 }
 
 static void emit_icmp(const struct lp_build_tgsi_action *action,
@@ -240,7 +234,9 @@ static void emit_arl(const struct lp_build_tgsi_action *action,
 		     struct lp_build_emit_data *emit_data)
 {
 	struct si_shader_context *ctx = si_shader_context(bld_base);
-	LLVMValueRef floor_index =  lp_build_emit_llvm_unary(bld_base, TGSI_OPCODE_FLR, emit_data->args[0]);
+	LLVMValueRef floor_index =
+		ac_build_intrinsic(&ctx->ac, "llvm.floor.f32", ctx->f32,
+				   &emit_data->args[0], 1, AC_FUNC_ATTR_READNONE);
 	emit_data->output[emit_data->chan] = LLVMBuildFPToSI(ctx->ac.builder,
 			floor_index, ctx->i32, "");
 }
@@ -348,30 +344,17 @@ static void emit_ssg(const struct lp_build_tgsi_action *action,
 		     struct lp_build_emit_data *emit_data)
 {
 	struct si_shader_context *ctx = si_shader_context(bld_base);
-	LLVMBuilderRef builder = ctx->ac.builder;
 
-	LLVMValueRef cmp, val;
+	LLVMValueRef  val;
 
 	if (emit_data->inst->Instruction.Opcode == TGSI_OPCODE_I64SSG) {
-		cmp = LLVMBuildICmp(builder, LLVMIntSGT, emit_data->args[0], bld_base->int64_bld.zero, "");
-		val = LLVMBuildSelect(builder, cmp, bld_base->int64_bld.one, emit_data->args[0], "");
-		cmp = LLVMBuildICmp(builder, LLVMIntSGE, val, bld_base->int64_bld.zero, "");
-		val = LLVMBuildSelect(builder, cmp, val, LLVMConstInt(ctx->i64, -1, true), "");
+		val = ac_build_isign(&ctx->ac, emit_data->args[0], 64);
 	} else if (emit_data->inst->Instruction.Opcode == TGSI_OPCODE_ISSG) {
-		cmp = LLVMBuildICmp(builder, LLVMIntSGT, emit_data->args[0], ctx->i32_0, "");
-		val = LLVMBuildSelect(builder, cmp, ctx->i32_1, emit_data->args[0], "");
-		cmp = LLVMBuildICmp(builder, LLVMIntSGE, val, ctx->i32_0, "");
-		val = LLVMBuildSelect(builder, cmp, val, LLVMConstInt(ctx->i32, -1, true), "");
+		val = ac_build_isign(&ctx->ac, emit_data->args[0], 32);
 	} else if (emit_data->inst->Instruction.Opcode == TGSI_OPCODE_DSSG) {
-		cmp = LLVMBuildFCmp(builder, LLVMRealOGT, emit_data->args[0], bld_base->dbl_bld.zero, "");
-		val = LLVMBuildSelect(builder, cmp, bld_base->dbl_bld.one, emit_data->args[0], "");
-		cmp = LLVMBuildFCmp(builder, LLVMRealOGE, val, bld_base->dbl_bld.zero, "");
-		val = LLVMBuildSelect(builder, cmp, val, LLVMConstReal(bld_base->dbl_bld.elem_type, -1), "");
-	} else { // float SSG
-		cmp = LLVMBuildFCmp(builder, LLVMRealOGT, emit_data->args[0], ctx->ac.f32_0, "");
-		val = LLVMBuildSelect(builder, cmp, ctx->ac.f32_1, emit_data->args[0], "");
-		cmp = LLVMBuildFCmp(builder, LLVMRealOGE, val, ctx->ac.f32_0, "");
-		val = LLVMBuildSelect(builder, cmp, val, LLVMConstReal(ctx->f32, -1), "");
+		val = ac_build_fsign(&ctx->ac, emit_data->args[0], 64);
+	} else {
+		val = ac_build_fsign(&ctx->ac, emit_data->args[0], 32);
 	}
 
 	emit_data->output[emit_data->chan] = val;
@@ -400,22 +383,19 @@ static void emit_frac(const struct lp_build_tgsi_action *action,
 		      struct lp_build_emit_data *emit_data)
 {
 	struct si_shader_context *ctx = si_shader_context(bld_base);
-	char *intr;
+	unsigned bitsize;
 
 	if (emit_data->info->opcode == TGSI_OPCODE_FRC)
-		intr = "llvm.floor.f32";
+		bitsize = 32;
 	else if (emit_data->info->opcode == TGSI_OPCODE_DFRAC)
-		intr = "llvm.floor.f64";
+		bitsize = 64;
 	else {
 		assert(0);
 		return;
 	}
 
-	LLVMValueRef floor = lp_build_intrinsic(ctx->ac.builder, intr, emit_data->dst_type,
-						&emit_data->args[0], 1,
-						LP_FUNC_ATTR_READNONE);
-	emit_data->output[emit_data->chan] = LLVMBuildFSub(ctx->ac.builder,
-			emit_data->args[0], floor, "");
+	emit_data->output[emit_data->chan] =
+		ac_build_fract(&ctx->ac, emit_data->args[0], bitsize);
 }
 
 static void emit_f2i(const struct lp_build_tgsi_action *action,
@@ -461,9 +441,9 @@ build_tgsi_intrinsic_nomem(const struct lp_build_tgsi_action *action,
 {
 	struct si_shader_context *ctx = si_shader_context(bld_base);
 	emit_data->output[emit_data->chan] =
-		lp_build_intrinsic(ctx->ac.builder, action->intr_name,
+		ac_build_intrinsic(&ctx->ac, action->intr_name,
 				   emit_data->dst_type, emit_data->args,
-				   emit_data->arg_count, LP_FUNC_ATTR_READNONE);
+				   emit_data->arg_count, AC_FUNC_ATTR_READNONE);
 }
 
 static void emit_bfi(const struct lp_build_tgsi_action *action,
@@ -515,18 +495,24 @@ static void emit_bfe(const struct lp_build_tgsi_action *action,
 		     struct lp_build_emit_data *emit_data)
 {
 	struct si_shader_context *ctx = si_shader_context(bld_base);
-	LLVMValueRef bfe_sm5;
-	LLVMValueRef cond;
 
-	bfe_sm5 = ac_build_bfe(&ctx->ac, emit_data->args[0],
-			       emit_data->args[1], emit_data->args[2],
-			       emit_data->info->opcode == TGSI_OPCODE_IBFE);
+	/* FIXME: LLVM 7 returns incorrect result when count is 0.
+	 * https://bugs.freedesktop.org/show_bug.cgi?id=107276
+	 */
+	LLVMValueRef zero = ctx->i32_0;
+	LLVMValueRef bfe_sm5 =
+		ac_build_bfe(&ctx->ac, emit_data->args[0],
+			     emit_data->args[1], emit_data->args[2],
+			     emit_data->info->opcode == TGSI_OPCODE_IBFE);
 
 	/* Correct for GLSL semantics. */
-	cond = LLVMBuildICmp(ctx->ac.builder, LLVMIntUGE, emit_data->args[2],
-			     LLVMConstInt(ctx->i32, 32, 0), "");
+	LLVMValueRef cond = LLVMBuildICmp(ctx->ac.builder, LLVMIntUGE, emit_data->args[2],
+					  LLVMConstInt(ctx->i32, 32, 0), "");
+	LLVMValueRef cond2 = LLVMBuildICmp(ctx->ac.builder, LLVMIntEQ, emit_data->args[2],
+					   zero, "");
+	bfe_sm5 = LLVMBuildSelect(ctx->ac.builder, cond, emit_data->args[0], bfe_sm5, "");
 	emit_data->output[emit_data->chan] =
-		LLVMBuildSelect(ctx->ac.builder, cond, emit_data->args[0], bfe_sm5, "");
+		LLVMBuildSelect(ctx->ac.builder, cond2, zero, bfe_sm5, "");
 }
 
 /* this is ffs in C */
@@ -568,10 +554,8 @@ static void emit_iabs(const struct lp_build_tgsi_action *action,
 	struct si_shader_context *ctx = si_shader_context(bld_base);
 
 	emit_data->output[emit_data->chan] =
-		lp_build_emit_llvm_binary(bld_base, TGSI_OPCODE_IMAX,
-					  emit_data->args[0],
-					  LLVMBuildNeg(ctx->ac.builder,
-						       emit_data->args[0], ""));
+		ac_build_imax(&ctx->ac,  emit_data->args[0],
+			      LLVMBuildNeg(ctx->ac.builder, emit_data->args[0], ""));
 }
 
 static void emit_minmax_int(const struct lp_build_tgsi_action *action,
@@ -610,34 +594,25 @@ static void emit_minmax_int(const struct lp_build_tgsi_action *action,
 				emit_data->args[1], "");
 }
 
-static void pk2h_fetch_args(struct lp_build_tgsi_context *bld_base,
-			    struct lp_build_emit_data *emit_data)
-{
-	emit_data->args[0] = lp_build_emit_fetch(bld_base, emit_data->inst,
-						 0, TGSI_CHAN_X);
-	emit_data->args[1] = lp_build_emit_fetch(bld_base, emit_data->inst,
-						 0, TGSI_CHAN_Y);
-}
-
 static void emit_pk2h(const struct lp_build_tgsi_action *action,
 		      struct lp_build_tgsi_context *bld_base,
 		      struct lp_build_emit_data *emit_data)
 {
+	struct si_shader_context *ctx = si_shader_context(bld_base);
+	LLVMValueRef v[] = {
+		lp_build_emit_fetch(bld_base, emit_data->inst, 0, TGSI_CHAN_X),
+		lp_build_emit_fetch(bld_base, emit_data->inst, 0, TGSI_CHAN_Y),
+	};
+
+
 	/* From the GLSL 4.50 spec:
 	 *   "The rounding mode cannot be set and is undefined."
 	 *
 	 * v_cvt_pkrtz_f16 rounds to zero, but it's fastest.
 	 */
 	emit_data->output[emit_data->chan] =
-		ac_build_cvt_pkrtz_f16(&si_shader_context(bld_base)->ac,
-				       emit_data->args);
-}
-
-static void up2h_fetch_args(struct lp_build_tgsi_context *bld_base,
-			    struct lp_build_emit_data *emit_data)
-{
-	emit_data->args[0] = lp_build_emit_fetch(bld_base, emit_data->inst,
-						 0, TGSI_CHAN_X);
+		LLVMBuildBitCast(ctx->ac.builder, ac_build_cvt_pkrtz_f16(&ctx->ac, v),
+				 ctx->i32, "");
 }
 
 static void emit_up2h(const struct lp_build_tgsi_action *action,
@@ -651,7 +626,7 @@ static void emit_up2h(const struct lp_build_tgsi_action *action,
 
 	i16 = LLVMInt16TypeInContext(ctx->ac.context);
 	const16 = LLVMConstInt(ctx->i32, 16, 0);
-	input = emit_data->args[0];
+	input = lp_build_emit_fetch(bld_base, emit_data->inst, 0, TGSI_CHAN_X);
 
 	for (i = 0; i < 2; i++) {
 		val = i == 1 ? LLVMBuildLShr(ctx->ac.builder, input, const16, "") : input;
@@ -680,19 +655,11 @@ static void emit_rsq(const struct lp_build_tgsi_action *action,
 	struct si_shader_context *ctx = si_shader_context(bld_base);
 
 	LLVMValueRef sqrt =
-		lp_build_emit_llvm_unary(bld_base, TGSI_OPCODE_SQRT,
-					 emit_data->args[0]);
+		ac_build_intrinsic(&ctx->ac, "llvm.sqrt.f32", ctx->f32,
+				   &emit_data->args[0], 1, AC_FUNC_ATTR_READNONE);
 
 	emit_data->output[emit_data->chan] =
-		lp_build_emit_llvm_binary(bld_base, TGSI_OPCODE_DIV,
-					  ctx->ac.f32_1, sqrt);
-}
-
-static void dfracexp_fetch_args(struct lp_build_tgsi_context *bld_base,
-				struct lp_build_emit_data *emit_data)
-{
-	emit_data->args[0] = lp_build_emit_fetch(bld_base, emit_data->inst, 0, TGSI_CHAN_X);
-	emit_data->arg_count = 1;
+		ac_build_fdiv(&ctx->ac, ctx->ac.f32_1, sqrt);
 }
 
 static void dfracexp_emit(const struct lp_build_tgsi_action *action,
@@ -700,13 +667,14 @@ static void dfracexp_emit(const struct lp_build_tgsi_action *action,
 			  struct lp_build_emit_data *emit_data)
 {
 	struct si_shader_context *ctx = si_shader_context(bld_base);
+	LLVMValueRef in = lp_build_emit_fetch(bld_base, emit_data->inst, 0, TGSI_CHAN_X);
 
 	emit_data->output[emit_data->chan] =
-		lp_build_intrinsic(ctx->ac.builder, "llvm.amdgcn.frexp.mant.f64",
-				   ctx->ac.f64, &emit_data->args[0], 1, 0);
+		ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.frexp.mant.f64",
+				   ctx->ac.f64, &in, 1, 0);
 	emit_data->output1[emit_data->chan] =
-		lp_build_intrinsic(ctx->ac.builder, "llvm.amdgcn.frexp.exp.i32.f64",
-				   ctx->ac.i32, &emit_data->args[0], 1, 0);
+		ac_build_intrinsic(&ctx->ac, "llvm.amdgcn.frexp.exp.i32.f64",
+				   ctx->ac.i32, &in, 1, 0);
 }
 
 void si_shader_context_init_alu(struct lp_build_tgsi_context *bld_base)
@@ -747,7 +715,6 @@ void si_shader_context_init_alu(struct lp_build_tgsi_context *bld_base)
 	bld_base->op_actions[TGSI_OPCODE_DSQRT].intr_name = "llvm.sqrt.f64";
 	bld_base->op_actions[TGSI_OPCODE_DTRUNC].emit = build_tgsi_intrinsic_nomem;
 	bld_base->op_actions[TGSI_OPCODE_DTRUNC].intr_name = "llvm.trunc.f64";
-	bld_base->op_actions[TGSI_OPCODE_DFRACEXP].fetch_args = dfracexp_fetch_args;
 	bld_base->op_actions[TGSI_OPCODE_DFRACEXP].emit = dfracexp_emit;
 	bld_base->op_actions[TGSI_OPCODE_DLDEXP].emit = build_tgsi_intrinsic_nomem;
 	bld_base->op_actions[TGSI_OPCODE_DLDEXP].intr_name = "llvm.amdgcn.ldexp.f64";
@@ -776,7 +743,6 @@ void si_shader_context_init_alu(struct lp_build_tgsi_context *bld_base)
 	bld_base->op_actions[TGSI_OPCODE_ISLT].emit = emit_icmp;
 	bld_base->op_actions[TGSI_OPCODE_ISSG].emit = emit_ssg;
 	bld_base->op_actions[TGSI_OPCODE_I2F].emit = emit_i2f;
-	bld_base->op_actions[TGSI_OPCODE_KILL_IF].fetch_args = kill_if_fetch_args;
 	bld_base->op_actions[TGSI_OPCODE_KILL_IF].emit = kil_emit;
 	bld_base->op_actions[TGSI_OPCODE_KILL].emit = kil_emit;
 	bld_base->op_actions[TGSI_OPCODE_LDEXP].emit = build_tgsi_intrinsic_nomem;
@@ -792,7 +758,6 @@ void si_shader_context_init_alu(struct lp_build_tgsi_context *bld_base)
 	bld_base->op_actions[TGSI_OPCODE_UMSB].emit = emit_umsb;
 	bld_base->op_actions[TGSI_OPCODE_NOT].emit = emit_not;
 	bld_base->op_actions[TGSI_OPCODE_OR].emit = emit_or;
-	bld_base->op_actions[TGSI_OPCODE_PK2H].fetch_args = pk2h_fetch_args;
 	bld_base->op_actions[TGSI_OPCODE_PK2H].emit = emit_pk2h;
 	bld_base->op_actions[TGSI_OPCODE_POPC].emit = build_tgsi_intrinsic_nomem;
 	bld_base->op_actions[TGSI_OPCODE_POPC].intr_name = "llvm.ctpop.i32";
@@ -829,7 +794,6 @@ void si_shader_context_init_alu(struct lp_build_tgsi_context *bld_base)
 	bld_base->op_actions[TGSI_OPCODE_U2F].emit = emit_u2f;
 	bld_base->op_actions[TGSI_OPCODE_XOR].emit = emit_xor;
 	bld_base->op_actions[TGSI_OPCODE_UCMP].emit = emit_ucmp;
-	bld_base->op_actions[TGSI_OPCODE_UP2H].fetch_args = up2h_fetch_args;
 	bld_base->op_actions[TGSI_OPCODE_UP2H].emit = emit_up2h;
 
 	bld_base->op_actions[TGSI_OPCODE_I64MAX].emit = emit_minmax_int;

@@ -25,8 +25,9 @@
 #define BRW_COMPILER_H
 
 #include <stdio.h>
-#include "common/gen_device_info.h"
+#include "dev/gen_device_info.h"
 #include "main/macros.h"
+#include "main/mtypes.h"
 #include "util/ralloc.h"
 
 #ifdef __cplusplus
@@ -111,8 +112,22 @@ struct brw_compiler {
     * will attempt to push everything.
     */
    bool supports_pull_constants;
+
+   /**
+    * Whether or not the driver supports NIR shader constants.  This controls
+    * whether nir_opt_large_constants will be run.
+    */
+   bool supports_shader_constants;
 };
 
+/**
+ * We use a constant subgroup size of 32.  It really only needs to be a
+ * maximum and, since we do SIMD32 for compute shaders in some cases, it
+ * needs to be at least 32.  SIMD8 and SIMD16 shaders will still claim a
+ * subgroup size of 32 but will act as if 16 or 24 of those channels are
+ * disabled.
+ */
+#define BRW_SUBGROUP_SIZE 32
 
 /**
  * Program key structures.
@@ -180,6 +195,7 @@ struct brw_sampler_prog_key_data {
    uint32_t y_uv_image_mask;
    uint32_t yx_xuxv_image_mask;
    uint32_t xy_uxvx_image_mask;
+   uint32_t ayuv_image_mask;
 };
 
 /**
@@ -388,6 +404,7 @@ struct brw_wm_prog_key {
    bool force_dual_color_blend:1;
    bool coherent_fb_fetch:1;
 
+   uint8_t color_outputs_valid;
    uint64_t input_slots_valid;
    unsigned program_string_id;
    GLenum alpha_test_func;          /* < For Gen4/5 MRT alpha test */
@@ -418,18 +435,14 @@ union brw_any_prog_key {
  * entries [most of them except when we're doing untyped surface
  * access] will be removed by the uniform packing pass.
  */
-#define BRW_IMAGE_PARAM_SURFACE_IDX_OFFSET      0
-#define BRW_IMAGE_PARAM_OFFSET_OFFSET           4
-#define BRW_IMAGE_PARAM_SIZE_OFFSET             8
-#define BRW_IMAGE_PARAM_STRIDE_OFFSET           12
-#define BRW_IMAGE_PARAM_TILING_OFFSET           16
-#define BRW_IMAGE_PARAM_SWIZZLING_OFFSET        20
-#define BRW_IMAGE_PARAM_SIZE                    24
+#define BRW_IMAGE_PARAM_OFFSET_OFFSET           0
+#define BRW_IMAGE_PARAM_SIZE_OFFSET             4
+#define BRW_IMAGE_PARAM_STRIDE_OFFSET           8
+#define BRW_IMAGE_PARAM_TILING_OFFSET           12
+#define BRW_IMAGE_PARAM_SWIZZLING_OFFSET        16
+#define BRW_IMAGE_PARAM_SIZE                    20
 
 struct brw_image_param {
-   /** Surface binding table index. */
-   uint32_t surface_idx;
-
    /** Offset applied to the X and Y surface coordinates. */
    uint32_t offset[2];
 
@@ -551,6 +564,9 @@ enum brw_param_builtin {
    BRW_PARAM_BUILTIN_TESS_LEVEL_INNER_X,
    BRW_PARAM_BUILTIN_TESS_LEVEL_INNER_Y,
 
+   BRW_PARAM_BUILTIN_BASE_WORK_GROUP_ID_X,
+   BRW_PARAM_BUILTIN_BASE_WORK_GROUP_ID_Y,
+   BRW_PARAM_BUILTIN_BASE_WORK_GROUP_ID_Z,
    BRW_PARAM_BUILTIN_SUBGROUP_ID,
 };
 
@@ -627,19 +643,6 @@ brw_stage_prog_data_add_params(struct brw_stage_prog_data *prog_data,
    return prog_data->param + old_nr_params;
 }
 
-static inline void
-brw_mark_surface_used(struct brw_stage_prog_data *prog_data,
-                      unsigned surf_index)
-{
-   /* A binding table index is 8 bits and the top 3 values are reserved for
-    * special things (stateless and SLM).
-    */
-   assert(surf_index <= 252);
-
-   prog_data->binding_table.size_bytes =
-      MAX2(prog_data->binding_table.size_bytes, (surf_index + 1) * 4);
-}
-
 enum brw_barycentric_mode {
    BRW_BARYCENTRIC_PERSPECTIVE_PIXEL       = 0,
    BRW_BARYCENTRIC_PERSPECTIVE_CENTROID    = 1,
@@ -671,11 +674,14 @@ struct brw_wm_prog_data {
 
    GLuint num_varying_inputs;
 
-   uint8_t reg_blocks_0;
-   uint8_t reg_blocks_2;
+   uint8_t reg_blocks_8;
+   uint8_t reg_blocks_16;
+   uint8_t reg_blocks_32;
 
-   uint8_t dispatch_grf_start_reg_2;
-   uint32_t prog_offset_2;
+   uint8_t dispatch_grf_start_reg_16;
+   uint8_t dispatch_grf_start_reg_32;
+   uint32_t prog_offset_16;
+   uint32_t prog_offset_32;
 
    struct {
       /** @{
@@ -693,6 +699,7 @@ struct brw_wm_prog_data {
    bool inner_coverage;
    bool dispatch_8;
    bool dispatch_16;
+   bool dispatch_32;
    bool dual_src_blend;
    bool persample_dispatch;
    bool uses_pos_offset;
@@ -732,6 +739,91 @@ struct brw_wm_prog_data {
     */
    int urb_setup[VARYING_SLOT_MAX];
 };
+
+/** Returns the SIMD width corresponding to a given KSP index
+ *
+ * The "Variable Pixel Dispatch" table in the PRM (which can be found, for
+ * example in Vol. 7 of the SKL PRM) has a mapping from dispatch widths to
+ * kernel start pointer (KSP) indices that is based on what dispatch widths
+ * are enabled.  This function provides, effectively, the reverse mapping.
+ *
+ * If the given KSP is valid with respect to the SIMD8/16/32 enables, a SIMD
+ * width of 8, 16, or 32 is returned.  If the KSP is invalid, 0 is returned.
+ */
+static inline unsigned
+brw_fs_simd_width_for_ksp(unsigned ksp_idx, bool simd8_enabled,
+                          bool simd16_enabled, bool simd32_enabled)
+{
+   /* This function strictly ignores contiguous dispatch */
+   switch (ksp_idx) {
+   case 0:
+      return simd8_enabled ? 8 :
+             (simd16_enabled && !simd32_enabled) ? 16 :
+             (simd32_enabled && !simd16_enabled) ? 32 : 0;
+   case 1:
+      return (simd32_enabled && (simd16_enabled || simd8_enabled)) ? 32 : 0;
+   case 2:
+      return (simd16_enabled && (simd32_enabled || simd8_enabled)) ? 16 : 0;
+   default:
+      unreachable("Invalid KSP index");
+   }
+}
+
+#define brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx) \
+   brw_fs_simd_width_for_ksp((ksp_idx), (wm_state)._8PixelDispatchEnable, \
+                             (wm_state)._16PixelDispatchEnable, \
+                             (wm_state)._32PixelDispatchEnable)
+
+#define brw_wm_state_has_ksp(wm_state, ksp_idx) \
+   (brw_wm_state_simd_width_for_ksp((wm_state), (ksp_idx)) != 0)
+
+static inline uint32_t
+_brw_wm_prog_data_prog_offset(const struct brw_wm_prog_data *prog_data,
+                              unsigned simd_width)
+{
+   switch (simd_width) {
+   case 8: return 0;
+   case 16: return prog_data->prog_offset_16;
+   case 32: return prog_data->prog_offset_32;
+   default: return 0;
+   }
+}
+
+#define brw_wm_prog_data_prog_offset(prog_data, wm_state, ksp_idx) \
+   _brw_wm_prog_data_prog_offset(prog_data, \
+      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
+
+static inline uint8_t
+_brw_wm_prog_data_dispatch_grf_start_reg(const struct brw_wm_prog_data *prog_data,
+                                         unsigned simd_width)
+{
+   switch (simd_width) {
+   case 8: return prog_data->base.dispatch_grf_start_reg;
+   case 16: return prog_data->dispatch_grf_start_reg_16;
+   case 32: return prog_data->dispatch_grf_start_reg_32;
+   default: return 0;
+   }
+}
+
+#define brw_wm_prog_data_dispatch_grf_start_reg(prog_data, wm_state, ksp_idx) \
+   _brw_wm_prog_data_dispatch_grf_start_reg(prog_data, \
+      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
+
+static inline uint8_t
+_brw_wm_prog_data_reg_blocks(const struct brw_wm_prog_data *prog_data,
+                             unsigned simd_width)
+{
+   switch (simd_width) {
+   case 8: return prog_data->reg_blocks_8;
+   case 16: return prog_data->reg_blocks_16;
+   case 32: return prog_data->reg_blocks_32;
+   default: return 0;
+   }
+}
+
+#define brw_wm_prog_data_reg_blocks(prog_data, wm_state, ksp_idx) \
+   _brw_wm_prog_data_reg_blocks(prog_data, \
+      brw_wm_state_simd_width_for_ksp(wm_state, ksp_idx))
 
 struct brw_push_const_block {
    unsigned dwords;     /* Dword count, not reg aligned */
@@ -965,7 +1057,8 @@ struct brw_vs_prog_data {
 
    bool uses_vertexid;
    bool uses_instanceid;
-   bool uses_basevertex;
+   bool uses_is_indexed_draw;
+   bool uses_firstvertex;
    bool uses_baseinstance;
    bool uses_drawid;
 };
@@ -1105,6 +1198,18 @@ DEFINE_PROG_DATA_DOWNCAST(sf)
 struct brw_compiler *
 brw_compiler_create(void *mem_ctx, const struct gen_device_info *devinfo);
 
+/**
+ * Returns a compiler configuration for use with disk shader cache
+ *
+ * This value only needs to change for settings that can cause different
+ * program generation between two runs on the same hardware.
+ *
+ * For example, it doesn't need to be different for gen 8 and gen 9 hardware,
+ * but it does need to be different if INTEL_DEBUG=nocompact is or isn't used.
+ */
+uint64_t
+brw_get_compiler_config_value(const struct brw_compiler *compiler);
+
 unsigned
 brw_prog_data_size(gl_shader_stage stage);
 
@@ -1121,7 +1226,7 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
                void *mem_ctx,
                const struct brw_vs_prog_key *key,
                struct brw_vs_prog_data *prog_data,
-               const struct nir_shader *shader,
+               struct nir_shader *shader,
                int shader_time_index,
                char **error_str);
 
@@ -1136,7 +1241,7 @@ brw_compile_tcs(const struct brw_compiler *compiler,
                 void *mem_ctx,
                 const struct brw_tcs_prog_key *key,
                 struct brw_tcs_prog_data *prog_data,
-                const struct nir_shader *nir,
+                struct nir_shader *nir,
                 int shader_time_index,
                 char **error_str);
 
@@ -1151,7 +1256,7 @@ brw_compile_tes(const struct brw_compiler *compiler, void *log_data,
                 const struct brw_tes_prog_key *key,
                 const struct brw_vue_map *input_vue_map,
                 struct brw_tes_prog_data *prog_data,
-                const struct nir_shader *shader,
+                struct nir_shader *shader,
                 struct gl_program *prog,
                 int shader_time_index,
                 char **error_str);
@@ -1166,7 +1271,7 @@ brw_compile_gs(const struct brw_compiler *compiler, void *log_data,
                void *mem_ctx,
                const struct brw_gs_prog_key *key,
                struct brw_gs_prog_data *prog_data,
-               const struct nir_shader *shader,
+               struct nir_shader *shader,
                struct gl_program *prog,
                int shader_time_index,
                char **error_str);
@@ -1213,10 +1318,11 @@ brw_compile_fs(const struct brw_compiler *compiler, void *log_data,
                void *mem_ctx,
                const struct brw_wm_prog_key *key,
                struct brw_wm_prog_data *prog_data,
-               const struct nir_shader *shader,
+               struct nir_shader *shader,
                struct gl_program *prog,
                int shader_time_index8,
                int shader_time_index16,
+               int shader_time_index32,
                bool allow_spilling,
                bool use_rep_send, struct brw_vue_map *vue_map,
                char **error_str);
@@ -1274,7 +1380,7 @@ encode_slm_size(unsigned gen, uint32_t bytes)
  * '2^n - 1' for some n.
  */
 static inline bool
-brw_stage_has_packed_dispatch(const struct gen_device_info *devinfo,
+brw_stage_has_packed_dispatch(MAYBE_UNUSED const struct gen_device_info *devinfo,
                               gl_shader_stage stage,
                               const struct brw_stage_prog_data *prog_data)
 {
@@ -1283,7 +1389,7 @@ brw_stage_has_packed_dispatch(const struct gen_device_info *devinfo,
     * to do a full test run with brw_fs_test_dispatch_packing() hooked up to
     * the NIR front-end before changing this assertion.
     */
-   assert(devinfo->gen <= 10);
+   assert(devinfo->gen <= 11);
 
    switch (stage) {
    case MESA_SHADER_FRAGMENT: {

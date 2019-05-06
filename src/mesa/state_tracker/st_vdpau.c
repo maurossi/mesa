@@ -127,13 +127,13 @@ st_vdpau_resource_from_description(struct gl_context *ctx,
    templ.usage = PIPE_USAGE_DEFAULT;
 
    memset(&whandle, 0, sizeof(whandle));
-   whandle.type = DRM_API_HANDLE_TYPE_FD;
+   whandle.type = WINSYS_HANDLE_TYPE_FD;
    whandle.handle = desc->handle;
    whandle.offset = desc->offset;
    whandle.stride = desc->stride;
 
    res = st->pipe->screen->resource_from_handle(st->pipe->screen, &templ, &whandle,
-						PIPE_HANDLE_USAGE_READ_WRITE);
+						PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE);
    close(desc->handle);
 
    return res;
