@@ -45,16 +45,6 @@ def _init_exts_from_xml(xml):
         if ext_name not in ext_name_map:
             continue
 
-        # Workaround for VK_ANDROID_native_buffer. Its <extension> element in
-        # vk.xml lists it as supported="disabled" and provides only a stub
-        # definition.  Its <extension> element in Mesa's custom
-        # vk_android_native_buffer.xml, though, lists it as
-        # supported='android-vendor' and fully defines the extension. We want
-        # to skip the <extension> element in vk.xml.
-        if ext_elem.attrib['supported'] == 'disabled':
-            assert ext_name == 'VK_ANDROID_native_buffer'
-            continue
-
         ext = ext_name_map[ext_name]
         ext.type = ext_elem.attrib['type']
 
@@ -113,12 +103,12 @@ _TEMPLATE_C = Template(COPYRIGHT + """
 #include "vk_util.h"
 
 /* Convert the VK_USE_PLATFORM_* defines to booleans */
-%for platform in ['ANDROID', 'WAYLAND', 'XCB', 'XLIB']:
-#ifdef VK_USE_PLATFORM_${platform}_KHR
-#   undef VK_USE_PLATFORM_${platform}_KHR
-#   define VK_USE_PLATFORM_${platform}_KHR true
+%for platform in ['ANDROID_KHR', 'WAYLAND_KHR', 'XCB_KHR', 'XLIB_KHR', 'DISPLAY_KHR', 'XLIB_XRANDR_EXT']:
+#ifdef VK_USE_PLATFORM_${platform}
+#   undef VK_USE_PLATFORM_${platform}
+#   define VK_USE_PLATFORM_${platform} true
 #else
-#   define VK_USE_PLATFORM_${platform}_KHR false
+#   define VK_USE_PLATFORM_${platform} false
 #endif
 %endfor
 
@@ -132,7 +122,17 @@ _TEMPLATE_C = Template(COPYRIGHT + """
 
 #define ANV_HAS_SURFACE (VK_USE_PLATFORM_WAYLAND_KHR || \\
                          VK_USE_PLATFORM_XCB_KHR || \\
-                         VK_USE_PLATFORM_XLIB_KHR)
+                         VK_USE_PLATFORM_XLIB_KHR || \\
+                         VK_USE_PLATFORM_DISPLAY_KHR)
+
+static const uint32_t MAX_API_VERSION = ${MAX_API_VERSION.c_vk_version()};
+
+VkResult anv_EnumerateInstanceVersion(
+    uint32_t*                                   pApiVersion)
+{
+    *pApiVersion = MAX_API_VERSION;
+    return VK_SUCCESS;
+}
 
 const VkExtensionProperties anv_instance_extensions[ANV_INSTANCE_EXTENSION_COUNT] = {
 %for ext in instance_extensions:
@@ -147,9 +147,21 @@ const struct anv_instance_extension_table anv_instance_extensions_supported = {
 };
 
 uint32_t
-anv_physical_device_api_version(struct anv_physical_device *dev)
+anv_physical_device_api_version(struct anv_physical_device *device)
 {
-    return ${MAX_API_VERSION.c_vk_version()};
+    uint32_t version = 0;
+
+    uint32_t override = vk_get_version_override();
+    if (override)
+        return MIN2(override, MAX_API_VERSION);
+
+%for version in API_VERSIONS:
+    if (!(${version.enable}))
+        return version;
+    version = ${version.version.c_vk_version()};
+
+%endfor
+    return version;
 }
 
 const VkExtensionProperties anv_device_extensions[ANV_DEVICE_EXTENSION_COUNT] = {
@@ -188,6 +200,7 @@ if __name__ == '__main__':
         assert ext.type == 'instance' or ext.type == 'device'
 
     template_env = {
+        'API_VERSIONS': API_VERSIONS,
         'MAX_API_VERSION': MAX_API_VERSION,
         'instance_extensions': [e for e in EXTENSIONS if e.type == 'instance'],
         'device_extensions': [e for e in EXTENSIONS if e.type == 'device'],

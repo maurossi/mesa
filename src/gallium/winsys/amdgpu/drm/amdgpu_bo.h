@@ -66,13 +66,14 @@ struct amdgpu_winsys_bo {
          bool use_reusable_pool;
 
          struct list_head global_list_item;
+
+         uint32_t kms_handle;
       } real;
       struct {
          struct pb_slab_entry entry;
          struct amdgpu_winsys_bo *real;
       } slab;
       struct {
-         simple_mtx_t commit_lock;
          amdgpu_va_handle va_handle;
          enum radeon_bo_flag flags;
 
@@ -87,10 +88,12 @@ struct amdgpu_winsys_bo {
    } u;
 
    struct amdgpu_winsys *ws;
-   void *user_ptr; /* from buffer_from_ptr */
+   void *cpu_ptr; /* for user_ptr and permanent maps */
 
    amdgpu_bo_handle bo; /* NULL for slab entries and sparse buffers */
    bool sparse;
+   bool is_user_ptr;
+   bool is_local;
    uint32_t unique_id;
    uint64_t va;
    enum radeon_bo_domain initial_domain;
@@ -112,7 +115,7 @@ struct amdgpu_winsys_bo {
    unsigned max_fences;
    struct pipe_fence_handle **fences;
 
-   bool is_local;
+   simple_mtx_t lock;
 };
 
 struct amdgpu_slab {

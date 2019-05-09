@@ -1,6 +1,4 @@
 C_SOURCES := \
-	adreno_common.xml.h \
-	adreno_pm4.xml.h \
 	disasm.h \
 	freedreno_batch.c \
 	freedreno_batch.h \
@@ -16,6 +14,7 @@ C_SOURCES := \
 	freedreno_fence.h \
 	freedreno_gmem.c \
 	freedreno_gmem.h \
+	freedreno_perfcntr.h \
 	freedreno_program.c \
 	freedreno_program.h \
 	freedreno_query.c \
@@ -40,12 +39,9 @@ C_SOURCES := \
 	freedreno_util.h
 
 a2xx_SOURCES := \
-	a2xx/a2xx.xml.h \
 	a2xx/disasm-a2xx.c \
 	a2xx/fd2_blend.c \
 	a2xx/fd2_blend.h \
-	a2xx/fd2_compiler.c \
-	a2xx/fd2_compiler.h \
 	a2xx/fd2_context.c \
 	a2xx/fd2_context.h \
 	a2xx/fd2_draw.c \
@@ -54,10 +50,15 @@ a2xx_SOURCES := \
 	a2xx/fd2_emit.h \
 	a2xx/fd2_gmem.c \
 	a2xx/fd2_gmem.h \
+	a2xx/fd2_perfcntr.c \
 	a2xx/fd2_program.c \
 	a2xx/fd2_program.h \
+	a2xx/fd2_query.c \
+	a2xx/fd2_query.h \
 	a2xx/fd2_rasterizer.c \
 	a2xx/fd2_rasterizer.h \
+	a2xx/fd2_resource.c \
+	a2xx/fd2_resource.h \
 	a2xx/fd2_screen.c \
 	a2xx/fd2_screen.h \
 	a2xx/fd2_texture.c \
@@ -67,11 +68,16 @@ a2xx_SOURCES := \
 	a2xx/fd2_zsa.c \
 	a2xx/fd2_zsa.h \
 	a2xx/instr-a2xx.h \
-	a2xx/ir-a2xx.c \
-	a2xx/ir-a2xx.h
+	a2xx/ir2.c \
+	a2xx/ir2.h \
+	a2xx/ir2_assemble.c \
+	a2xx/ir2_cp.c \
+	a2xx/ir2_nir.c \
+	a2xx/ir2_nir_lower_scalar.c \
+	a2xx/ir2_private.h \
+	a2xx/ir2_ra.c
 
 a3xx_SOURCES := \
-	a3xx/a3xx.xml.h \
 	a3xx/fd3_blend.c \
 	a3xx/fd3_blend.h \
 	a3xx/fd3_context.c \
@@ -98,7 +104,6 @@ a3xx_SOURCES := \
 	a3xx/fd3_zsa.h
 
 a4xx_SOURCES := \
-	a4xx/a4xx.xml.h \
 	a4xx/fd4_blend.c \
 	a4xx/fd4_blend.h \
 	a4xx/fd4_context.c \
@@ -125,7 +130,6 @@ a4xx_SOURCES := \
 	a4xx/fd4_zsa.h
 
 a5xx_SOURCES := \
-	a5xx/a5xx.xml.h \
 	a5xx/fd5_blend.c \
 	a5xx/fd5_blend.h \
 	a5xx/fd5_blitter.c \
@@ -144,6 +148,7 @@ a5xx_SOURCES := \
 	a5xx/fd5_gmem.h \
 	a5xx/fd5_image.c \
 	a5xx/fd5_image.h \
+	a5xx/fd5_perfcntr.c \
 	a5xx/fd5_program.c \
 	a5xx/fd5_program.h \
 	a5xx/fd5_query.c \
@@ -159,27 +164,41 @@ a5xx_SOURCES := \
 	a5xx/fd5_zsa.c \
 	a5xx/fd5_zsa.h
 
-ir3_SOURCES := \
-	ir3/disasm-a3xx.c \
-	ir3/instr-a3xx.h \
-	ir3/ir3.c \
-	ir3/ir3_compiler_nir.c \
-	ir3/ir3_compiler.c \
-	ir3/ir3_compiler.h \
-	ir3/ir3_cp.c \
-	ir3/ir3_depth.c \
-	ir3/ir3_group.c \
-	ir3/ir3.h \
-	ir3/ir3_legalize.c \
-	ir3/ir3_nir.c \
-	ir3/ir3_nir.h \
-	ir3/ir3_nir_lower_if_else.c \
-	ir3/ir3_nir_lower_tg4_to_tex.c \
-	ir3/ir3_print.c \
-	ir3/ir3_ra.c \
-	ir3/ir3_sched.c \
-	ir3/ir3_shader.c \
-	ir3/ir3_shader.h
+a6xx_SOURCES := \
+	a6xx/fd6_blend.c \
+	a6xx/fd6_blend.h \
+	a6xx/fd6_blitter.c \
+	a6xx/fd6_blitter.h \
+	a6xx/fd6_context.c \
+	a6xx/fd6_context.h \
+	a6xx/fd6_draw.c \
+	a6xx/fd6_draw.h \
+	a6xx/fd6_emit.c \
+	a6xx/fd6_emit.h \
+	a6xx/fd6_format.c \
+	a6xx/fd6_format.h \
+	a6xx/fd6_gmem.c \
+	a6xx/fd6_gmem.h \
+	a6xx/fd6_image.c \
+	a6xx/fd6_image.h \
+	a6xx/fd6_program.c \
+	a6xx/fd6_program.h \
+	a6xx/fd6_query.c \
+	a6xx/fd6_query.h \
+	a6xx/fd6_rasterizer.c \
+	a6xx/fd6_rasterizer.h \
+	a6xx/fd6_resource.c \
+	a6xx/fd6_resource.h \
+	a6xx/fd6_screen.c \
+	a6xx/fd6_screen.h \
+	a6xx/fd6_texture.c \
+	a6xx/fd6_texture.h \
+	a6xx/fd6_zsa.c \
+	a6xx/fd6_zsa.h
 
-ir3_GENERATED_FILES := \
-	ir3/ir3_nir_trig.c
+ir3_SOURCES := \
+	ir3/ir3_cache.c \
+	ir3/ir3_cache.h \
+	ir3/ir3_gallium.c \
+	ir3/ir3_gallium.h
+

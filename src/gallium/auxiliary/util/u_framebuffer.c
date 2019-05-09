@@ -229,14 +229,50 @@ util_framebuffer_get_num_samples(const struct pipe_framebuffer_state *fb)
    if (!(fb->nr_cbufs || fb->zsbuf))
       return MAX2(fb->samples, 1);
 
+   /**
+    * If a driver doesn't advertise PIPE_CAP_SURFACE_SAMPLE_COUNT,
+    * pipe_surface::nr_samples will always be 0.
+    */
    for (i = 0; i < fb->nr_cbufs; i++) {
       if (fb->cbufs[i]) {
-         return MAX2(1, fb->cbufs[i]->texture->nr_samples);
+         return MAX3(1, fb->cbufs[i]->texture->nr_samples,
+                     fb->cbufs[i]->nr_samples);
       }
    }
    if (fb->zsbuf) {
-      return MAX2(1, fb->zsbuf->texture->nr_samples);
+      return MAX3(1, fb->zsbuf->texture->nr_samples,
+                  fb->zsbuf->nr_samples);
    }
 
    return 1;
+}
+
+
+/**
+ * Flip the sample location state along the Y axis.
+ */
+void
+util_sample_locations_flip_y(struct pipe_screen *screen, unsigned fb_height,
+                             unsigned samples, uint8_t *locations)
+{
+   unsigned row, i, shift, grid_width, grid_height;
+   uint8_t new_locations[
+      PIPE_MAX_SAMPLE_LOCATION_GRID_SIZE *
+      PIPE_MAX_SAMPLE_LOCATION_GRID_SIZE * 32];
+
+   screen->get_sample_pixel_grid(screen, samples, &grid_width, &grid_height);
+
+   shift = fb_height % grid_height;
+
+   for (row = 0; row < grid_height; row++) {
+      unsigned row_size = grid_width * samples;
+      for (i = 0; i < row_size; i++) {
+         unsigned dest_row = grid_height - row - 1;
+         /* this relies on unsigned integer wraparound behaviour */
+         dest_row = (dest_row - shift) % grid_height;
+         new_locations[dest_row * row_size + i] = locations[row * row_size + i];
+      }
+   }
+
+   memcpy(locations, new_locations, grid_width * grid_height * samples);
 }

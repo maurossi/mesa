@@ -224,6 +224,28 @@ uint32_t radv_translate_tex_dataformat(VkFormat format,
 		}
 	}
 
+	if (desc->layout == VK_FORMAT_LAYOUT_ETC) {
+		switch (format) {
+		case VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+		case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+			return V_008F14_IMG_DATA_FORMAT_ETC2_RGB;
+		case VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK:
+		case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
+			return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA1;
+		case VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+		case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+			return V_008F14_IMG_DATA_FORMAT_ETC2_RGBA;
+		case VK_FORMAT_EAC_R11_UNORM_BLOCK:
+		case VK_FORMAT_EAC_R11_SNORM_BLOCK:
+			return V_008F14_IMG_DATA_FORMAT_ETC2_R;
+		case VK_FORMAT_EAC_R11G11_UNORM_BLOCK:
+		case VK_FORMAT_EAC_R11G11_SNORM_BLOCK:
+			return V_008F14_IMG_DATA_FORMAT_ETC2_RG;
+		default:
+			break;
+		}
+	}
+
 	if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
 		return V_008F14_IMG_DATA_FORMAT_5_9_9_9;
 	} else if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
@@ -321,10 +343,8 @@ uint32_t radv_translate_tex_dataformat(VkFormat format,
 			return V_008F14_IMG_DATA_FORMAT_32;
 		case 2:
 			return V_008F14_IMG_DATA_FORMAT_32_32;
-#if 0 /* Not supported for render targets */
 		case 3:
 			return V_008F14_IMG_DATA_FORMAT_32_32_32;
-#endif
 		case 4:
 			return V_008F14_IMG_DATA_FORMAT_32_32_32_32;
 		}
@@ -351,10 +371,15 @@ uint32_t radv_translate_tex_numformat(VkFormat format,
 				case VK_FORMAT_BC2_SRGB_BLOCK:
 				case VK_FORMAT_BC3_SRGB_BLOCK:
 				case VK_FORMAT_BC7_SRGB_BLOCK:
+				case VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+				case VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
+				case VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
 					return V_008F14_IMG_NUM_FORMAT_SRGB;
 				case VK_FORMAT_BC4_SNORM_BLOCK:
 				case VK_FORMAT_BC5_SNORM_BLOCK:
 			        case VK_FORMAT_BC6H_SFLOAT_BLOCK:
+				case VK_FORMAT_EAC_R11_SNORM_BLOCK:
+				case VK_FORMAT_EAC_R11G11_SNORM_BLOCK:
 					return V_008F14_IMG_NUM_FORMAT_SNORM;
 				default:
 					return V_008F14_IMG_NUM_FORMAT_UNORM;
@@ -541,6 +566,43 @@ static bool radv_is_zs_format_supported(VkFormat format)
 	return radv_translate_dbformat(format) != V_028040_Z_INVALID || format == VK_FORMAT_S8_UINT;
 }
 
+static bool radv_is_filter_minmax_format_supported(VkFormat format)
+{
+	/* From the Vulkan spec 1.1.71:
+	 *
+	 * "The following formats must support the
+	 *  VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_MINMAX_BIT_EXT feature with
+	 *  VK_IMAGE_TILING_OPTIMAL, if they support
+	 *  VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT."
+	 */
+	/* TODO: enable more formats. */
+	switch (format) {
+	case VK_FORMAT_R8_UNORM:
+	case VK_FORMAT_R8_SNORM:
+	case VK_FORMAT_R16_UNORM:
+	case VK_FORMAT_R16_SNORM:
+	case VK_FORMAT_R16_SFLOAT:
+	case VK_FORMAT_R32_SFLOAT:
+	case VK_FORMAT_D16_UNORM:
+	case VK_FORMAT_X8_D24_UNORM_PACK32:
+	case VK_FORMAT_D32_SFLOAT:
+	case VK_FORMAT_D16_UNORM_S8_UINT:
+	case VK_FORMAT_D24_UNORM_S8_UINT:
+	case VK_FORMAT_D32_SFLOAT_S8_UINT:
+		return true;
+	default:
+		return false;
+	}
+}
+
+bool
+radv_device_supports_etc(struct radv_physical_device *physical_device)
+{
+	return physical_device->rad_info.family == CHIP_VEGA10 ||
+	       physical_device->rad_info.family == CHIP_RAVEN ||
+	       physical_device->rad_info.family == CHIP_STONEY;
+}
+
 static void
 radv_physical_device_get_format_properties(struct radv_physical_device *physical_device,
 					   VkFormat format,
@@ -551,6 +613,14 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
 	bool blendable;
 	bool scaled = false;
 	if (!desc) {
+		out_properties->linearTilingFeatures = linear;
+		out_properties->optimalTilingFeatures = tiled;
+		out_properties->bufferFeatures = buffer;
+		return;
+	}
+
+	if (desc->layout == VK_FORMAT_LAYOUT_ETC &&
+	    !radv_device_supports_etc(physical_device)) {
 		out_properties->linearTilingFeatures = linear;
 		out_properties->optimalTilingFeatures = tiled;
 		out_properties->bufferFeatures = buffer;
@@ -575,12 +645,18 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
 			tiled |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT;
 			tiled |= VK_FORMAT_FEATURE_BLIT_SRC_BIT |
 			         VK_FORMAT_FEATURE_BLIT_DST_BIT;
-			tiled |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR |
-			         VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR;
+			tiled |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
+			         VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
 
-			/* GFX9 doesn't support linear depth surfaces */
-			if (physical_device->rad_info.chip_class >= GFX9)
-				linear = 0;
+			if (radv_is_filter_minmax_format_supported(format))
+				 tiled |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_MINMAX_BIT_EXT;
+
+			/* Don't support blitting surfaces with depth/stencil. */
+			if (vk_format_is_depth(format) && vk_format_is_stencil(format))
+				tiled &= ~VK_FORMAT_FEATURE_BLIT_DST_BIT;
+
+			/* Don't support linear depth surfaces */
+			linear = 0;
 		}
 	} else {
 		bool linear_sampling;
@@ -589,9 +665,20 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
 				VK_FORMAT_FEATURE_BLIT_SRC_BIT;
 			tiled |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT |
 				VK_FORMAT_FEATURE_BLIT_SRC_BIT;
+
+			if (radv_is_filter_minmax_format_supported(format))
+				 tiled |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_MINMAX_BIT_EXT;
+
 			if (linear_sampling) {
 				linear |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
 				tiled |= VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
+			}
+
+			/* Don't support blitting for R32G32B32 formats. */
+			if (format == VK_FORMAT_R32G32B32_SFLOAT ||
+			    format == VK_FORMAT_R32G32B32_UINT ||
+			    format == VK_FORMAT_R32G32B32_SINT) {
+				linear &= ~VK_FORMAT_FEATURE_BLIT_SRC_BIT;
 			}
 		}
 		if (radv_is_colorbuffer_format_supported(format, &blendable)) {
@@ -602,21 +689,44 @@ radv_physical_device_get_format_properties(struct radv_physical_device *physical
 				tiled |= VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BLEND_BIT;
 			}
 		}
-		if (tiled && util_is_power_of_two(vk_format_get_blocksize(format)) && !scaled) {
-			tiled |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR |
-			         VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR;
+		if (tiled && !scaled) {
+			tiled |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
+			         VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
 		}
+
+		/* Tiled formatting does not support NPOT pixel sizes */
+		if (!util_is_power_of_two_or_zero(vk_format_get_blocksize(format)))
+			tiled = 0;
 	}
 
-	if (linear && util_is_power_of_two(vk_format_get_blocksize(format)) && !scaled) {
-		linear |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT_KHR |
-		          VK_FORMAT_FEATURE_TRANSFER_DST_BIT_KHR;
+	if (linear && !scaled) {
+		linear |= VK_FORMAT_FEATURE_TRANSFER_SRC_BIT |
+		          VK_FORMAT_FEATURE_TRANSFER_DST_BIT;
 	}
 
 	if (format == VK_FORMAT_R32_UINT || format == VK_FORMAT_R32_SINT) {
 		buffer |= VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_ATOMIC_BIT;
 		linear |= VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT;
 		tiled |= VK_FORMAT_FEATURE_STORAGE_IMAGE_ATOMIC_BIT;
+	}
+
+	switch(format) {
+	case VK_FORMAT_A2R10G10B10_SNORM_PACK32:
+	case VK_FORMAT_A2B10G10R10_SNORM_PACK32:
+	case VK_FORMAT_A2R10G10B10_SSCALED_PACK32:
+	case VK_FORMAT_A2B10G10R10_SSCALED_PACK32:
+	case VK_FORMAT_A2R10G10B10_SINT_PACK32:
+	case VK_FORMAT_A2B10G10R10_SINT_PACK32:
+		if (physical_device->rad_info.chip_class <= VI &&
+		    physical_device->rad_info.family != CHIP_STONEY) {
+			buffer &= ~(VK_FORMAT_FEATURE_UNIFORM_TEXEL_BUFFER_BIT |
+			            VK_FORMAT_FEATURE_STORAGE_TEXEL_BUFFER_BIT);
+			linear = 0;
+			tiled = 0;
+		}
+		break;
+	default:
+		break;
 	}
 
 	out_properties->linearTilingFeatures = linear;
@@ -823,194 +933,87 @@ bool radv_format_pack_clear_color(VkFormat format,
 				  uint32_t clear_vals[2],
 				  VkClearColorValue *value)
 {
-	uint8_t r = 0, g = 0, b = 0, a = 0;
 	const struct vk_format_description *desc = vk_format_description(format);
 
-	if (vk_format_get_component_bits(format, VK_FORMAT_COLORSPACE_RGB, 0) <= 8) {
-		if (desc->colorspace == VK_FORMAT_COLORSPACE_RGB) {
-			r = float_to_ubyte(value->float32[0]);
-			g = float_to_ubyte(value->float32[1]);
-			b = float_to_ubyte(value->float32[2]);
-			a = float_to_ubyte(value->float32[3]);
-		} else if (desc->colorspace == VK_FORMAT_COLORSPACE_SRGB) {
-			r = util_format_linear_float_to_srgb_8unorm(value->float32[0]);
-			g = util_format_linear_float_to_srgb_8unorm(value->float32[1]);
-			b = util_format_linear_float_to_srgb_8unorm(value->float32[2]);
-			a = float_to_ubyte(value->float32[3]);
-		}
-	}
-	switch (format) {
-	case VK_FORMAT_R8_UNORM:
-	case VK_FORMAT_R8_SRGB:
-		clear_vals[0] = r;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8G8_UNORM:
-	case VK_FORMAT_R8G8_SRGB:
-		clear_vals[0] = r | g << 8;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8G8B8A8_SRGB:
-	case VK_FORMAT_R8G8B8A8_UNORM:
-		clear_vals[0] = r | g << 8 | b << 16 | a << 24;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_B8G8R8A8_SRGB:
-	case VK_FORMAT_B8G8R8A8_UNORM:
-		clear_vals[0] = b | g << 8 | r << 16 | a << 24;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_A8B8G8R8_UNORM_PACK32:
-	case VK_FORMAT_A8B8G8R8_SRGB_PACK32:
-		clear_vals[0] = r | g << 8 | b << 16 | a << 24;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8_UINT:
-		clear_vals[0] = value->uint32[0] & 0xff;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8_SINT:
-		clear_vals[0] = value->int32[0] & 0xff;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16_UINT:
-		clear_vals[0] = value->uint32[0] & 0xffff;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8G8_UINT:
-		clear_vals[0] = value->uint32[0] & 0xff;
-		clear_vals[0] |= (value->uint32[1] & 0xff) << 8;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8G8_SINT:
-		clear_vals[0] = value->int32[0] & 0xff;
-		clear_vals[0] |= (value->int32[1] & 0xff) << 8;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8G8B8A8_UINT:
-		clear_vals[0] = value->uint32[0] & 0xff;
-		clear_vals[0] |= (value->uint32[1] & 0xff) << 8;
-		clear_vals[0] |= (value->uint32[2] & 0xff) << 16;
-		clear_vals[0] |= (value->uint32[3] & 0xff) << 24;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R8G8B8A8_SINT:
-		clear_vals[0] = value->int32[0] & 0xff;
-		clear_vals[0] |= (value->int32[1] & 0xff) << 8;
-		clear_vals[0] |= (value->int32[2] & 0xff) << 16;
-		clear_vals[0] |= (value->int32[3] & 0xff) << 24;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_A8B8G8R8_UINT_PACK32:
-		clear_vals[0] = value->uint32[0] & 0xff;
-		clear_vals[0] |= (value->uint32[1] & 0xff) << 8;
-		clear_vals[0] |= (value->uint32[2] & 0xff) << 16;
-		clear_vals[0] |= (value->uint32[3] & 0xff) << 24;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16G16_UINT:
-		clear_vals[0] = value->uint32[0] & 0xffff;
-		clear_vals[0] |= (value->uint32[1] & 0xffff) << 16;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16G16B16A16_UINT:
-		clear_vals[0] = value->uint32[0] & 0xffff;
-		clear_vals[0] |= (value->uint32[1] & 0xffff) << 16;
-		clear_vals[1] = value->uint32[2] & 0xffff;
-		clear_vals[1] |= (value->uint32[3] & 0xffff) << 16;
-		break;
-	case VK_FORMAT_R32_UINT:
-		clear_vals[0] = value->uint32[0];
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R32G32_UINT:
-		clear_vals[0] = value->uint32[0];
-		clear_vals[1] = value->uint32[1];
-		break;
-	case VK_FORMAT_R32_SINT:
-		clear_vals[0] = value->int32[0];
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16_SFLOAT:
-		clear_vals[0] = util_float_to_half(value->float32[0]);
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16G16_SFLOAT:
-		clear_vals[0] = util_float_to_half(value->float32[0]);
-		clear_vals[0] |= (uint32_t)util_float_to_half(value->float32[1]) << 16;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16G16B16A16_SFLOAT:
-		clear_vals[0] = util_float_to_half(value->float32[0]);
-		clear_vals[0] |= (uint32_t)util_float_to_half(value->float32[1]) << 16;
-		clear_vals[1] = util_float_to_half(value->float32[2]);
-		clear_vals[1] |= (uint32_t)util_float_to_half(value->float32[3]) << 16;
-		break;
-	case VK_FORMAT_R16_UNORM:
-		clear_vals[0] = ((uint16_t)util_iround(CLAMP(value->float32[0], 0.0f, 1.0f) * 0xffff)) & 0xffff;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16G16_UNORM:
-		clear_vals[0] = ((uint16_t)util_iround(CLAMP(value->float32[0], 0.0f, 1.0f) * 0xffff)) & 0xffff;
-		clear_vals[0] |= ((uint16_t)util_iround(CLAMP(value->float32[1], 0.0f, 1.0f) * 0xffff)) << 16;
-		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R16G16B16A16_UNORM:
-		clear_vals[0] = ((uint16_t)util_iround(CLAMP(value->float32[0], 0.0f, 1.0f) * 0xffff)) & 0xffff;
-		clear_vals[0] |= ((uint16_t)util_iround(CLAMP(value->float32[1], 0.0f, 1.0f) * 0xffff)) << 16;
-		clear_vals[1] = ((uint16_t)util_iround(CLAMP(value->float32[2], 0.0f, 1.0f) * 0xffff)) & 0xffff;
-		clear_vals[1] |= ((uint16_t)util_iround(CLAMP(value->float32[3], 0.0f, 1.0f) * 0xffff)) << 16;
-		break;
-	case VK_FORMAT_R16G16B16A16_SNORM:
-		clear_vals[0] = ((uint16_t)util_iround(CLAMP(value->float32[0], -1.0f, 1.0f) * 0x7fff)) & 0xffff;
-		clear_vals[0] |= ((uint16_t)util_iround(CLAMP(value->float32[1], -1.0f, 1.0f) * 0x7fff)) << 16;
-		clear_vals[1] = ((uint16_t)util_iround(CLAMP(value->float32[2], -1.0f, 1.0f) * 0x7fff)) & 0xffff;
-		clear_vals[1] |= ((uint16_t)util_iround(CLAMP(value->float32[3], -1.0f, 1.0f) * 0x7fff)) << 16;
-		break;
-	case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
-		clear_vals[0] = ((uint16_t)util_iround(CLAMP(value->float32[0], 0.0f, 1.0f) * 0x3ff)) & 0x3ff;
-		clear_vals[0] |= (((uint16_t)util_iround(CLAMP(value->float32[1], 0.0f, 1.0f) * 0x3ff)) & 0x3ff) << 10;
-		clear_vals[0] |= (((uint16_t)util_iround(CLAMP(value->float32[2], 0.0f, 1.0f) * 0x3ff)) & 0x3ff) << 20;
-		clear_vals[0] |= (((uint16_t)util_iround(CLAMP(value->float32[3], 0.0f, 1.0f) * 0x3)) & 0x3) << 30;
-		clear_vals[1] = 0;
-		return true;
-	case VK_FORMAT_R32G32_SFLOAT:
-		clear_vals[0] = fui(value->float32[0]);
-		clear_vals[1] = fui(value->float32[1]);
-		break;
-	case VK_FORMAT_R32_SFLOAT:
-		clear_vals[1] = 0;
-		clear_vals[0] = fui(value->float32[0]);
-		break;
-	case VK_FORMAT_B10G11R11_UFLOAT_PACK32:
+	if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
 		clear_vals[0] = float3_to_r11g11b10f(value->float32);
 		clear_vals[1] = 0;
-		break;
-	case VK_FORMAT_R32G32B32A32_SFLOAT:
-		if (value->float32[0] != value->float32[1] ||
-		    value->float32[0] != value->float32[2])
-			return false;
-		clear_vals[0] = fui(value->float32[0]);
-		clear_vals[1] = fui(value->float32[3]);
-		break;
-	case VK_FORMAT_R32G32B32A32_UINT:
-		if (value->uint32[0] != value->uint32[1] ||
-		    value->uint32[0] != value->uint32[2])
-			return false;
-		clear_vals[0] = value->uint32[0];
-		clear_vals[1] = value->uint32[3];
-		break;
-	case VK_FORMAT_R32G32B32A32_SINT:
-		if (value->int32[0] != value->int32[1] ||
-		    value->int32[0] != value->int32[2])
-			return false;
-		clear_vals[0] = value->int32[0];
-		clear_vals[1] = value->int32[3];
-		break;
-	default:
-		fprintf(stderr, "failed to fast clear %d\n", format);
+		return true;
+	}
+
+	if (desc->layout != VK_FORMAT_LAYOUT_PLAIN) {
+		fprintf(stderr, "failed to fast clear for non-plain format %d\n", format);
 		return false;
 	}
+
+	if (!util_is_power_of_two_or_zero(desc->block.bits)) {
+		fprintf(stderr, "failed to fast clear for NPOT format %d\n", format);
+		return false;
+	}
+
+	if (desc->block.bits > 64) {
+		/*
+		 * We have a 128 bits format, check if the first 3 components are the same.
+		 * Every elements has to be 32 bits since we don't support 64-bit formats,
+		 * and we can skip swizzling checks as alpha always comes last for these and
+		 * we do not care about the rest as they have to be the same.
+		 */
+		if (desc->channel[0].type == VK_FORMAT_TYPE_FLOAT) {
+			if (value->float32[0] != value->float32[1] ||
+			    value->float32[0] != value->float32[2])
+				return false;
+		} else {
+			if (value->uint32[0] != value->uint32[1] ||
+			    value->uint32[0] != value->uint32[2])
+				return false;
+		}
+		clear_vals[0] = value->uint32[0];
+		clear_vals[1] = value->uint32[3];
+		return true;
+	}
+	uint64_t clear_val = 0;
+
+	for (unsigned c = 0; c < 4; ++c) {
+		if (desc->swizzle[c] >= 4)
+			continue;
+
+		const struct vk_format_channel_description *channel = &desc->channel[desc->swizzle[c]];
+		assert(channel->size);
+
+		uint64_t v = 0;
+		if (channel->pure_integer) {
+			v = value->uint32[c]  & ((1ULL << channel->size) - 1);
+		} else if (channel->normalized) {
+			if (channel->type == VK_FORMAT_TYPE_UNSIGNED &&
+			    desc->swizzle[c] < 3 &&
+			    desc->colorspace == VK_FORMAT_COLORSPACE_SRGB) {
+				assert(channel->size == 8);
+
+				v = util_format_linear_float_to_srgb_8unorm(value->float32[c]);
+			} else if (channel->type == VK_FORMAT_TYPE_UNSIGNED) {
+				v = MAX2(MIN2(value->float32[c], 1.0f), 0.0f) * ((1ULL << channel->size) - 1);
+			} else  {
+				v = MAX2(MIN2(value->float32[c], 1.0f), -1.0f) * ((1ULL << (channel->size - 1)) - 1);
+			}
+		} else if (channel->type == VK_FORMAT_TYPE_FLOAT) {
+			if (channel->size == 32) {
+				memcpy(&v, &value->float32[c], 4);
+			} else if(channel->size == 16) {
+				v = util_float_to_half(value->float32[c]);
+			} else {
+				fprintf(stderr, "failed to fast clear for unhandled float size in format %d\n", format);
+				return false;
+			}
+		} else {
+			fprintf(stderr, "failed to fast clear for unhandled component type in format %d\n", format);
+			return false;
+		}
+		clear_val |= (v & ((1ULL << channel->size) - 1)) << channel->shift;
+	}
+
+	clear_vals[0] = clear_val;
+	clear_vals[1] = clear_val >> 32;
+
 	return true;
 }
 
@@ -1026,10 +1029,10 @@ void radv_GetPhysicalDeviceFormatProperties(
 						   pFormatProperties);
 }
 
-void radv_GetPhysicalDeviceFormatProperties2KHR(
+void radv_GetPhysicalDeviceFormatProperties2(
 	VkPhysicalDevice                            physicalDevice,
 	VkFormat                                    format,
-	VkFormatProperties2KHR*                         pFormatProperties)
+	VkFormatProperties2*                        pFormatProperties)
 {
 	RADV_FROM_HANDLE(radv_physical_device, physical_device, physicalDevice);
 
@@ -1039,7 +1042,7 @@ void radv_GetPhysicalDeviceFormatProperties2KHR(
 }
 
 static VkResult radv_get_image_format_properties(struct radv_physical_device *physical_device,
-						 const VkPhysicalDeviceImageFormatInfo2KHR *info,
+						 const VkPhysicalDeviceImageFormatInfo2 *info,
 						 VkImageFormatProperties *pImageFormatProperties)
 
 {
@@ -1096,9 +1099,34 @@ static VkResult radv_get_image_format_properties(struct radv_physical_device *ph
 	    info->type == VK_IMAGE_TYPE_2D &&
 	    (format_feature_flags & (VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
 				     VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) &&
-	    !(info->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) &&
-	    !(info->usage & VK_IMAGE_USAGE_STORAGE_BIT)) {
+	    !(info->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)) {
 		sampleCounts |= VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT | VK_SAMPLE_COUNT_8_BIT;
+	}
+
+	if (info->tiling == VK_IMAGE_TILING_LINEAR &&
+	    (info->format == VK_FORMAT_R32G32B32_SFLOAT ||
+	     info->format == VK_FORMAT_R32G32B32_SINT ||
+	     info->format == VK_FORMAT_R32G32B32_UINT)) {
+		/* R32G32B32 is a weird format and the driver currently only
+		 * supports the barely minimum.
+		 * TODO: Implement more if we really need to.
+		 */
+		if (info->type == VK_IMAGE_TYPE_3D)
+			goto unsupported;
+		maxArraySize = 1;
+		maxMipLevels = 1;
+	}
+
+
+	/* We can't create 3d compressed 128bpp images that can be rendered to on GFX9 */
+	if (physical_device->rad_info.chip_class >= GFX9 &&
+	    info->type == VK_IMAGE_TYPE_3D &&
+	    vk_format_get_blocksizebits(info->format) == 128 &&
+	    vk_format_is_compressed(info->format) &&
+	    (info->flags & VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT) &&
+	    ((info->flags & VK_IMAGE_CREATE_EXTENDED_USAGE_BIT) ||
+	     (info->usage & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT))) {
+		goto unsupported;
 	}
 
 	if (info->usage & VK_IMAGE_USAGE_SAMPLED_BIT) {
@@ -1121,6 +1149,25 @@ static VkResult radv_get_image_format_properties(struct radv_physical_device *ph
 
 	if (info->usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
 		if (!(format_feature_flags & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+			goto unsupported;
+		}
+	}
+
+	if (info->usage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT) {
+		if (!(format_feature_flags & VK_FORMAT_FEATURE_TRANSFER_SRC_BIT)) {
+			goto unsupported;
+		}
+	}
+
+	if (info->usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT) {
+		if (!(format_feature_flags & VK_FORMAT_FEATURE_TRANSFER_DST_BIT)) {
+			goto unsupported;
+		}
+	}
+
+	if (info->usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT) {
+		if (!(format_feature_flags & (VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT |
+		                              VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT))) {
 			goto unsupported;
 		}
 	}
@@ -1161,8 +1208,8 @@ VkResult radv_GetPhysicalDeviceImageFormatProperties(
 {
 	RADV_FROM_HANDLE(radv_physical_device, physical_device, physicalDevice);
 
-	const VkPhysicalDeviceImageFormatInfo2KHR info = {
-		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2_KHR,
+	const VkPhysicalDeviceImageFormatInfo2 info = {
+		.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
 		.pNext = NULL,
 		.format = format,
 		.type = type,
@@ -1176,37 +1223,49 @@ VkResult radv_GetPhysicalDeviceImageFormatProperties(
 }
 
 static void
-get_external_image_format_properties(const VkPhysicalDeviceImageFormatInfo2KHR *pImageFormatInfo,
-				     VkExternalMemoryPropertiesKHR *external_properties)
+get_external_image_format_properties(const VkPhysicalDeviceImageFormatInfo2 *pImageFormatInfo,
+				     VkExternalMemoryHandleTypeFlagBits handleType,
+				     VkExternalMemoryProperties *external_properties)
 {
-	VkExternalMemoryFeatureFlagBitsKHR flags = 0;
-	VkExternalMemoryHandleTypeFlagsKHR export_flags = 0;
-	VkExternalMemoryHandleTypeFlagsKHR compat_flags = 0;
-	switch (pImageFormatInfo->type) {
-	case VK_IMAGE_TYPE_2D:
-		flags = VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT_KHR|VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT_KHR|VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT_KHR;
-		compat_flags = export_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR |
-					      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+	VkExternalMemoryFeatureFlagBits flags = 0;
+	VkExternalMemoryHandleTypeFlags export_flags = 0;
+	VkExternalMemoryHandleTypeFlags compat_flags = 0;
+	switch (handleType) {
+	case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
+	case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
+		switch (pImageFormatInfo->type) {
+		case VK_IMAGE_TYPE_2D:
+			flags = VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT|VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT|VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+			compat_flags = export_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
+						      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+			break;
+		default:
+			break;
+		}
+		break;
+	case VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT:
+		flags = VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+		compat_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
 		break;
 	default:
 		break;
 	}
 
-	*external_properties = (VkExternalMemoryPropertiesKHR) {
+	*external_properties = (VkExternalMemoryProperties) {
 		.externalMemoryFeatures = flags,
 		.exportFromImportedHandleTypes = export_flags,
 		.compatibleHandleTypes = compat_flags,
 	};
 }
 
-VkResult radv_GetPhysicalDeviceImageFormatProperties2KHR(
+VkResult radv_GetPhysicalDeviceImageFormatProperties2(
 	VkPhysicalDevice                            physicalDevice,
-	const VkPhysicalDeviceImageFormatInfo2KHR  *base_info,
-	VkImageFormatProperties2KHR                *base_props)
+	const VkPhysicalDeviceImageFormatInfo2     *base_info,
+	VkImageFormatProperties2                   *base_props)
 {
 	RADV_FROM_HANDLE(radv_physical_device, physical_device, physicalDevice);
-	const VkPhysicalDeviceExternalImageFormatInfoKHR *external_info = NULL;
-	VkExternalImageFormatPropertiesKHR *external_props = NULL;
+	const VkPhysicalDeviceExternalImageFormatInfo *external_info = NULL;
+	VkExternalImageFormatProperties *external_props = NULL;
 	VkResult result;
 
 	result = radv_get_image_format_properties(physical_device, base_info,
@@ -1217,7 +1276,7 @@ VkResult radv_GetPhysicalDeviceImageFormatProperties2KHR(
 	   /* Extract input structs */
 	vk_foreach_struct_const(s, base_info->pNext) {
 		switch (s->sType) {
-		case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO_KHR:
+		case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO:
 			external_info = (const void *) s;
 			break;
 		default:
@@ -1228,7 +1287,7 @@ VkResult radv_GetPhysicalDeviceImageFormatProperties2KHR(
 	/* Extract output structs */
 	vk_foreach_struct(s, base_props->pNext) {
 		switch (s->sType) {
-		case VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES_KHR:
+		case VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES:
 			external_props = (void *) s;
 			break;
 		default:
@@ -1236,27 +1295,29 @@ VkResult radv_GetPhysicalDeviceImageFormatProperties2KHR(
 		}
 	}
 
-	/* From the Vulkan 1.0.42 spec:
+	/* From the Vulkan 1.0.97 spec:
 	 *
-	 *    If handleType is 0, vkGetPhysicalDeviceImageFormatProperties2KHR will
-	 *    behave as if VkPhysicalDeviceExternalImageFormatInfoKHR was not
-	 *    present and VkExternalImageFormatPropertiesKHR will be ignored.
+	 *    If handleType is 0, vkGetPhysicalDeviceImageFormatProperties2 will
+	 *    behave as if VkPhysicalDeviceExternalImageFormatInfo was not
+	 *    present and VkExternalImageFormatProperties will be ignored.
 	 */
 	if (external_info && external_info->handleType != 0) {
 		switch (external_info->handleType) {
-		case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR:
+		case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
 		case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
-			get_external_image_format_properties(base_info, &external_props->externalMemoryProperties);
+		case VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT:
+			get_external_image_format_properties(base_info, external_info->handleType,
+			                                     &external_props->externalMemoryProperties);
 			break;
 		default:
-			/* From the Vulkan 1.0.42 spec:
+			/* From the Vulkan 1.0.97 spec:
 			 *
 			 *    If handleType is not compatible with the [parameters] specified
-			 *    in VkPhysicalDeviceImageFormatInfo2KHR, then
-			 *    vkGetPhysicalDeviceImageFormatProperties2KHR returns
+			 *    in VkPhysicalDeviceImageFormatInfo2, then
+			 *    vkGetPhysicalDeviceImageFormatProperties2 returns
 			 *    VK_ERROR_FORMAT_NOT_SUPPORTED.
 			 */
-			result = vk_errorf(VK_ERROR_FORMAT_NOT_SUPPORTED,
+			result = vk_errorf(physical_device->instance, VK_ERROR_FORMAT_NOT_SUPPORTED,
 					   "unsupported VkExternalMemoryTypeFlagBitsKHR 0x%x",
 					   external_info->handleType);
 			goto fail;
@@ -1267,10 +1328,10 @@ VkResult radv_GetPhysicalDeviceImageFormatProperties2KHR(
 
 fail:
 	if (result == VK_ERROR_FORMAT_NOT_SUPPORTED) {
-		/* From the Vulkan 1.0.42 spec:
+		/* From the Vulkan 1.0.97 spec:
 		 *
 		 *    If the combination of parameters to
-		 *    vkGetPhysicalDeviceImageFormatProperties2KHR is not supported by
+		 *    vkGetPhysicalDeviceImageFormatProperties2 is not supported by
 		 *    the implementation for use in vkCreateImage, then all members of
 		 *    imageFormatProperties will be filled with zero.
 		 */
@@ -1294,36 +1355,40 @@ void radv_GetPhysicalDeviceSparseImageFormatProperties(
 	*pNumProperties = 0;
 }
 
-void radv_GetPhysicalDeviceSparseImageFormatProperties2KHR(
+void radv_GetPhysicalDeviceSparseImageFormatProperties2(
 	VkPhysicalDevice                            physicalDevice,
-	const VkPhysicalDeviceSparseImageFormatInfo2KHR* pFormatInfo,
+	const VkPhysicalDeviceSparseImageFormatInfo2 *pFormatInfo,
 	uint32_t                                   *pPropertyCount,
-	VkSparseImageFormatProperties2KHR*          pProperties)
+	VkSparseImageFormatProperties2             *pProperties)
 {
 	/* Sparse images are not yet supported. */
 	*pPropertyCount = 0;
 }
 
-void radv_GetPhysicalDeviceExternalBufferPropertiesKHR(
+void radv_GetPhysicalDeviceExternalBufferProperties(
 	VkPhysicalDevice                            physicalDevice,
-	const VkPhysicalDeviceExternalBufferInfoKHR *pExternalBufferInfo,
-	VkExternalBufferPropertiesKHR               *pExternalBufferProperties)
+	const VkPhysicalDeviceExternalBufferInfo    *pExternalBufferInfo,
+	VkExternalBufferProperties                  *pExternalBufferProperties)
 {
-	VkExternalMemoryFeatureFlagBitsKHR flags = 0;
-	VkExternalMemoryHandleTypeFlagsKHR export_flags = 0;
-	VkExternalMemoryHandleTypeFlagsKHR compat_flags = 0;
+	VkExternalMemoryFeatureFlagBits flags = 0;
+	VkExternalMemoryHandleTypeFlags export_flags = 0;
+	VkExternalMemoryHandleTypeFlags compat_flags = 0;
 	switch(pExternalBufferInfo->handleType) {
-	case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR:
+	case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
 	case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
-		flags = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT_KHR |
-		        VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT_KHR;
-		compat_flags = export_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR |
+		flags = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
+		        VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+		compat_flags = export_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
 					      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
+		break;
+	case VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT:
+		flags = VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
+		compat_flags = VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT;
 		break;
 	default:
 		break;
 	}
-	pExternalBufferProperties->externalMemoryProperties = (VkExternalMemoryPropertiesKHR) {
+	pExternalBufferProperties->externalMemoryProperties = (VkExternalMemoryProperties) {
 		.externalMemoryFeatures = flags,
 		.exportFromImportedHandleTypes = export_flags,
 		.compatibleHandleTypes = compat_flags,

@@ -33,7 +33,6 @@
 #include "list.h"
 #include "ir_visitor.h"
 #include "ir_hierarchical_visitor.h"
-#include "main/mtypes.h"
 
 #ifdef __cplusplus
 
@@ -397,7 +396,7 @@ depth_layout_string(ir_depth_layout layout);
  * \sa ir_variable::state_slots
  */
 struct ir_state_slot {
-   int tokens[5];
+   gl_state_index16 tokens[STATE_LENGTH];
    int swizzle;
 };
 
@@ -658,6 +657,19 @@ public:
       unsigned centroid:1;
       unsigned sample:1;
       unsigned patch:1;
+      /**
+       * Was an 'invariant' qualifier explicitly set in the shader?
+       *
+       * This is used to cross validate qualifiers.
+       */
+      unsigned explicit_invariant:1;
+      /**
+       * Is the variable invariant?
+       *
+       * It can happen either by having the 'invariant' qualifier
+       * explicitly set in the shader or by being used in calculations
+       * of other invariant variables.
+       */
       unsigned invariant:1;
       unsigned precise:1;
 
@@ -668,8 +680,8 @@ public:
        * variable has been used.  For example, it is an error to redeclare a
        * variable as invariant after it has been used.
        *
-       * This is only maintained in the ast_to_hir.cpp path, not in
-       * Mesa's fixed function or ARB program paths.
+       * This is maintained in the ast_to_hir.cpp path and during linking,
+       * but not in Mesa's fixed function or ARB program paths.
        */
       unsigned used:1;
 
@@ -1121,6 +1133,8 @@ enum ir_intrinsic_id {
    ir_intrinsic_memory_barrier_buffer,
    ir_intrinsic_memory_barrier_image,
    ir_intrinsic_memory_barrier_shared,
+   ir_intrinsic_begin_invocation_interlock,
+   ir_intrinsic_end_invocation_interlock,
 
    ir_intrinsic_vote_all,
    ir_intrinsic_vote_any,

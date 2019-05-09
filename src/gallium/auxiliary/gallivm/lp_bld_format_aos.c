@@ -464,6 +464,7 @@ lp_build_pack_rgba_aos(struct gallivm_state *gallivm,
  * \param ptr  address of the pixel block (or the texel if uncompressed)
  * \param i, j  the sub-block pixel coordinates.  For non-compressed formats
  *              these will always be (0, 0).
+ * \param cache  optional value pointing to a lp_build_format_cache structure
  * \return  a 4 element vector with the pixel's RGBA values.
  */
 LLVMValueRef
@@ -496,7 +497,7 @@ lp_build_fetch_rgba_aos(struct gallivm_state *gallivm,
    if (format_matches_type(format_desc, type) &&
        format_desc->block.bits <= type.width * 4 &&
        /* XXX this shouldn't be needed */
-       util_is_power_of_two(format_desc->block.bits)) {
+       util_is_power_of_two_or_zero(format_desc->block.bits)) {
       LLVMValueRef packed;
       LLVMTypeRef dst_vec_type = lp_build_vec_type(gallivm, type);
       struct lp_type fetch_type;
@@ -609,7 +610,7 @@ lp_build_fetch_rgba_aos(struct gallivm_state *gallivm,
        format_desc->block.width == 1 &&
        format_desc->block.height == 1 &&
        /* XXX this shouldn't be needed */
-       util_is_power_of_two(format_desc->block.bits) &&
+       util_is_power_of_two_or_zero(format_desc->block.bits) &&
        format_desc->block.bits <= 32 &&
        format_desc->is_bitmask &&
        !format_desc->is_mixed &&
@@ -728,7 +729,7 @@ lp_build_fetch_rgba_aos(struct gallivm_state *gallivm,
     * s3tc rgb formats
     */
 
-   if (format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC && cache) {
+   if (format_desc->layout == UTIL_FORMAT_LAYOUT_S3TC) {
       struct lp_type tmp_type;
       LLVMValueRef tmp;
 
@@ -737,7 +738,7 @@ lp_build_fetch_rgba_aos(struct gallivm_state *gallivm,
       tmp_type.length = num_pixels * 4;
       tmp_type.norm = TRUE;
 
-      tmp = lp_build_fetch_cached_texels(gallivm,
+      tmp = lp_build_fetch_s3tc_rgba_aos(gallivm,
                                          format_desc,
                                          num_pixels,
                                          base_ptr,

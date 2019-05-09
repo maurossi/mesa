@@ -99,3 +99,7 @@ $(intermediates)/glsl/ir_expression_operation_constant.h: $(prebuilt_intermediat
 
 $(intermediates)/glsl/ir_expression_operation_strings.h: $(prebuilt_intermediates)/glsl/ir_expression_operation_strings.h
 	cp -a $< $@
+
+$(intermediates)/glsl/float64_glsl.h: $(LOCAL_PATH)/glsl/xxd.py
+	@mkdir -p $(dir $@)
+	$(hide) $(MESA_PYTHON2) $< $(MESA_TOP)/src/compiler/glsl/float64.glsl $@ -n float64_source > $@

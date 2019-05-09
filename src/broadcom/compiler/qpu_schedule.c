@@ -195,6 +195,9 @@ process_waddr_deps(struct schedule_state *state, struct schedule_node *n,
         if (!magic) {
                 add_write_dep(state, &state->last_rf[waddr], n);
         } else if (v3d_qpu_magic_waddr_is_tmu(waddr)) {
+                /* XXX perf: For V3D 4.x, we could reorder TMU writes other
+                 * than the TMUS/TMUD/TMUA to improve scheduling flexibility.
+                 */
                 add_write_dep(state, &state->last_tmu_write, n);
                 switch (waddr) {
                 case V3D_QPU_WADDR_TMUS:
@@ -233,6 +236,16 @@ process_waddr_deps(struct schedule_state *state, struct schedule_node *n,
                         add_write_dep(state, &state->last_tlb, n);
                         break;
 
+                case V3D_QPU_WADDR_SYNC:
+                case V3D_QPU_WADDR_SYNCB:
+                case V3D_QPU_WADDR_SYNCU:
+                        /* For CS barrier(): Sync against any other memory
+                         * accesses.  There doesn't appear to be any need for
+                         * barriers to affect ALU operations.
+                         */
+                        add_write_dep(state, &state->last_tmu_write, n);
+                        break;
+
                 case V3D_QPU_WADDR_NOP:
                         break;
 
@@ -241,30 +254,6 @@ process_waddr_deps(struct schedule_state *state, struct schedule_node *n,
                         abort();
                 }
         }
-}
-
-static void
-process_cond_deps(struct schedule_state *state, struct schedule_node *n,
-                  enum v3d_qpu_cond cond)
-{
-        if (cond != V3D_QPU_COND_NONE)
-                add_read_dep(state, state->last_sf, n);
-}
-
-static void
-process_pf_deps(struct schedule_state *state, struct schedule_node *n,
-                enum v3d_qpu_pf pf)
-{
-        if (pf != V3D_QPU_PF_NONE)
-                add_write_dep(state, &state->last_sf, n);
-}
-
-static void
-process_uf_deps(struct schedule_state *state, struct schedule_node *n,
-                enum v3d_qpu_uf uf)
-{
-        if (uf != V3D_QPU_UF_NONE)
-                add_write_dep(state, &state->last_sf, n);
 }
 
 /**
@@ -280,6 +269,11 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
         const struct v3d_device_info *devinfo = state->devinfo;
         struct qinst *qinst = n->inst;
         struct v3d_qpu_instr *inst = &qinst->qpu;
+        /* If the input and output segments are shared, then all VPM reads to
+         * a location need to happen before all writes.  We handle this by
+         * serializing all VPM operations for now.
+         */
+        bool separate_vpm_segment = false;
 
         if (inst->type == V3D_QPU_INSTR_TYPE_BRANCH) {
                 if (inst->branch.cond != V3D_QPU_BRANCH_COND_ALWAYS)
@@ -321,6 +315,14 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
                 add_write_dep(state, &state->last_vpm, n);
                 break;
 
+        case V3D_QPU_A_LDVPMV_IN:
+        case V3D_QPU_A_LDVPMD_IN:
+        case V3D_QPU_A_LDVPMG_IN:
+        case V3D_QPU_A_LDVPMP:
+                if (!separate_vpm_segment)
+                        add_write_dep(state, &state->last_vpm, n);
+                break;
+
         case V3D_QPU_A_VPMWT:
                 add_read_dep(state, state->last_vpm, n);
                 break;
@@ -332,19 +334,6 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
         case V3D_QPU_A_SETMSF:
         case V3D_QPU_A_SETREVF:
                 add_write_dep(state, &state->last_tlb, n);
-                break;
-
-        case V3D_QPU_A_FLAPUSH:
-        case V3D_QPU_A_FLBPUSH:
-        case V3D_QPU_A_VFLA:
-        case V3D_QPU_A_VFLNA:
-        case V3D_QPU_A_VFLB:
-        case V3D_QPU_A_VFLNB:
-                add_read_dep(state, state->last_sf, n);
-                break;
-
-        case V3D_QPU_A_FLBPOP:
-                add_write_dep(state, &state->last_sf, n);
                 break;
 
         default:
@@ -392,6 +381,7 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
                 for (int i = 0; i < ARRAY_SIZE(state->last_r); i++)
                         add_write_dep(state, &state->last_r[i], n);
                 add_write_dep(state, &state->last_sf, n);
+                add_write_dep(state, &state->last_rtop, n);
 
                 /* Scoreboard-locking operations have to stay after the last
                  * thread switch.
@@ -402,7 +392,7 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
                 add_write_dep(state, &state->last_tmu_config, n);
         }
 
-        if (inst->sig.ldtmu) {
+        if (v3d_qpu_waits_on_tmu(inst)) {
                 /* TMU loads are coming from a FIFO, so ordering is important.
                  */
                 add_write_dep(state, &state->last_tmu_write, n);
@@ -414,19 +404,24 @@ calculate_deps(struct schedule_state *state, struct schedule_node *n)
         if (inst->sig.ldtlb | inst->sig.ldtlbu)
                 add_read_dep(state, state->last_tlb, n);
 
-        if (inst->sig.ldvpm)
+        if (inst->sig.ldvpm) {
                 add_write_dep(state, &state->last_vpm_read, n);
+
+                /* At least for now, we're doing shared I/O segments, so queue
+                 * all writes after all reads.
+                 */
+                if (!separate_vpm_segment)
+                        add_write_dep(state, &state->last_vpm, n);
+        }
 
         /* inst->sig.ldunif or sideband uniform read */
         if (qinst->uniform != ~0)
                 add_write_dep(state, &state->last_unif, n);
 
-        process_cond_deps(state, n, inst->flags.ac);
-        process_cond_deps(state, n, inst->flags.mc);
-        process_pf_deps(state, n, inst->flags.apf);
-        process_pf_deps(state, n, inst->flags.mpf);
-        process_uf_deps(state, n, inst->flags.auf);
-        process_uf_deps(state, n, inst->flags.muf);
+        if (v3d_qpu_reads_flags(inst))
+                add_read_dep(state, state->last_sf, n);
+        if (v3d_qpu_writes_flags(inst))
+                add_write_dep(state, &state->last_sf, n);
 }
 
 static void
@@ -459,10 +454,10 @@ calculate_reverse_deps(struct v3d_compile *c, struct list_head *schedule_list)
 
 struct choose_scoreboard {
         int tick;
-        int last_sfu_write_tick;
+        int last_magic_sfu_write_tick;
         int last_ldvary_tick;
         int last_uniforms_reset_tick;
-        uint32_t last_waddr_add, last_waddr_mul;
+        int last_thrsw_tick;
         bool tlb_locked;
 };
 
@@ -471,22 +466,8 @@ mux_reads_too_soon(struct choose_scoreboard *scoreboard,
                    const struct v3d_qpu_instr *inst, enum v3d_qpu_mux mux)
 {
         switch (mux) {
-        case V3D_QPU_MUX_A:
-                if (scoreboard->last_waddr_add == inst->raddr_a ||
-                    scoreboard->last_waddr_mul == inst->raddr_a) {
-                        return true;
-                }
-                break;
-
-        case V3D_QPU_MUX_B:
-                if (scoreboard->last_waddr_add == inst->raddr_b ||
-                    scoreboard->last_waddr_mul == inst->raddr_b) {
-                        return true;
-                }
-                break;
-
         case V3D_QPU_MUX_R4:
-                if (scoreboard->tick - scoreboard->last_sfu_write_tick <= 2)
+                if (scoreboard->tick - scoreboard->last_magic_sfu_write_tick <= 2)
                         return true;
                 break;
 
@@ -551,7 +532,7 @@ writes_too_soon_after_write(const struct v3d_device_info *devinfo,
          * This would normally be prevented by dependency tracking, but might
          * occur if a dead SFU computation makes it to scheduling.
          */
-        if (scoreboard->tick - scoreboard->last_sfu_write_tick < 2 &&
+        if (scoreboard->tick - scoreboard->last_magic_sfu_write_tick < 2 &&
             v3d_qpu_writes_r4(devinfo, inst))
                 return true;
 
@@ -579,22 +560,21 @@ get_instruction_priority(const struct v3d_qpu_instr *inst)
         next_score++;
 
         /* Schedule texture read results collection late to hide latency. */
-        if (inst->sig.ldtmu)
+        if (v3d_qpu_waits_on_tmu(inst))
                 return next_score;
         next_score++;
+
+        /* XXX perf: We should schedule SFU ALU ops so that the reader is 2
+         * instructions after the producer if possible, not just 1.
+         */
 
         /* Default score for things that aren't otherwise special. */
         baseline_score = next_score;
         next_score++;
 
         /* Schedule texture read setup early to hide their latency better. */
-        if (inst->type == V3D_QPU_INSTR_TYPE_ALU &&
-            ((inst->alu.add.magic_write &&
-              v3d_qpu_magic_waddr_is_tmu(inst->alu.add.waddr)) ||
-             (inst->alu.mul.magic_write &&
-              v3d_qpu_magic_waddr_is_tmu(inst->alu.mul.waddr)))) {
+        if (v3d_qpu_writes_tmu(inst))
                 return next_score;
-        }
         next_score++;
 
         return baseline_score;
@@ -615,6 +595,8 @@ qpu_accesses_peripheral(const struct v3d_qpu_instr *inst)
 {
         if (v3d_qpu_uses_vpm(inst))
                 return true;
+        if (v3d_qpu_uses_sfu(inst))
+                return true;
 
         if (inst->type == V3D_QPU_INSTR_TYPE_ALU) {
                 if (inst->alu.add.op != V3D_QPU_A_NOP &&
@@ -622,6 +604,9 @@ qpu_accesses_peripheral(const struct v3d_qpu_instr *inst)
                     qpu_magic_waddr_is_periph(inst->alu.add.waddr)) {
                         return true;
                 }
+
+                if (inst->alu.add.op == V3D_QPU_A_TMUWT)
+                        return true;
 
                 if (inst->alu.mul.op != V3D_QPU_M_NOP &&
                     inst->alu.mul.magic_write &&
@@ -688,7 +673,8 @@ qpu_merge_inst(const struct v3d_device_info *devinfo,
 
         if (v3d_qpu_uses_mux(b, V3D_QPU_MUX_B)) {
                 if (v3d_qpu_uses_mux(a, V3D_QPU_MUX_B) &&
-                    a->raddr_b != b->raddr_b) {
+                    (a->raddr_b != b->raddr_b ||
+                     a->sig.small_imm != b->sig.small_imm)) {
                         return false;
                 }
                 merge.raddr_b = b->raddr_b;
@@ -776,6 +762,12 @@ choose_instruction_to_schedule(const struct v3d_device_info *devinfo,
                  * sooner.  If the ldvary's r5 wasn't used, then ldunif might
                  * otherwise get scheduled so ldunif and ldvary try to update
                  * r5 in the same tick.
+                 *
+                 * XXX perf: To get good pipelining of a sequence of varying
+                 * loads, we need to figure out how to pair the ldvary signal
+                 * up to the instruction before the last r5 user in the
+                 * previous ldvary sequence.  Currently, it usually pairs with
+                 * the last r5 user.
                  */
                 if ((inst->sig.ldunif || inst->sig.ldunifa) &&
                     scoreboard->tick == scoreboard->last_ldvary_tick + 1) {
@@ -845,16 +837,13 @@ update_scoreboard_for_magic_waddr(struct choose_scoreboard *scoreboard,
                                   enum v3d_qpu_waddr waddr)
 {
         if (v3d_qpu_magic_waddr_is_sfu(waddr))
-                scoreboard->last_sfu_write_tick = scoreboard->tick;
+                scoreboard->last_magic_sfu_write_tick = scoreboard->tick;
 }
 
 static void
 update_scoreboard_for_chosen(struct choose_scoreboard *scoreboard,
                              const struct v3d_qpu_instr *inst)
 {
-        scoreboard->last_waddr_add = ~0;
-        scoreboard->last_waddr_mul = ~0;
-
         if (inst->type == V3D_QPU_INSTR_TYPE_BRANCH)
                 return;
 
@@ -864,8 +853,6 @@ update_scoreboard_for_chosen(struct choose_scoreboard *scoreboard,
                 if (inst->alu.add.magic_write) {
                         update_scoreboard_for_magic_waddr(scoreboard,
                                                           inst->alu.add.waddr);
-                } else {
-                        scoreboard->last_waddr_add = inst->alu.add.waddr;
                 }
         }
 
@@ -873,8 +860,6 @@ update_scoreboard_for_chosen(struct choose_scoreboard *scoreboard,
                 if (inst->alu.mul.magic_write) {
                         update_scoreboard_for_magic_waddr(scoreboard,
                                                           inst->alu.mul.waddr);
-                } else {
-                        scoreboard->last_waddr_mul = inst->alu.mul.waddr;
                 }
         }
 
@@ -934,7 +919,7 @@ static uint32_t magic_waddr_latency(enum v3d_qpu_waddr waddr,
          *
          * because we associate the first load_tmu0 with the *second* tmu0_s.
          */
-        if (v3d_qpu_magic_waddr_is_tmu(waddr) && after->sig.ldtmu)
+        if (v3d_qpu_magic_waddr_is_tmu(waddr) && v3d_qpu_waits_on_tmu(after))
                 return 100;
 
         /* Assume that anything depending on us is consuming the SFU result. */
@@ -1078,6 +1063,10 @@ qpu_instruction_valid_in_thrend_slot(struct v3d_compile *c,
                 return false;
 
         if (inst->type == V3D_QPU_INSTR_TYPE_ALU) {
+                /* GFXH-1625: TMUWT not allowed in the final instruction. */
+                if (slot == 2 && inst->alu.add.op == V3D_QPU_A_TMUWT)
+                        return false;
+
                 /* No writing physical registers at the end. */
                 if (!inst->alu.add.magic_write ||
                     !inst->alu.mul.magic_write) {
@@ -1112,10 +1101,16 @@ qpu_instruction_valid_in_thrend_slot(struct v3d_compile *c,
 }
 
 static bool
-valid_thrsw_sequence(struct v3d_compile *c,
+valid_thrsw_sequence(struct v3d_compile *c, struct choose_scoreboard *scoreboard,
                      struct qinst *qinst, int instructions_in_sequence,
                      bool is_thrend)
 {
+        /* No emitting our thrsw while the previous thrsw hasn't happened yet. */
+        if (scoreboard->last_thrsw_tick + 3 >
+            scoreboard->tick - instructions_in_sequence) {
+                return false;
+        }
+
         for (int slot = 0; slot < instructions_in_sequence; slot++) {
                 /* No scheduling SFU when the result would land in the other
                  * thread.  The simulator complains for safety, though it
@@ -1176,7 +1171,8 @@ emit_thrsw(struct v3d_compile *c,
                 if (!v3d_qpu_sig_pack(c->devinfo, &sig, &packed_sig))
                         break;
 
-                if (!valid_thrsw_sequence(c, prev_inst, slots_filled + 1,
+                if (!valid_thrsw_sequence(c, scoreboard,
+                                          prev_inst, slots_filled + 1,
                                           is_thrend)) {
                         break;
                 }
@@ -1190,7 +1186,9 @@ emit_thrsw(struct v3d_compile *c,
         if (merge_inst) {
                 merge_inst->qpu.sig.thrsw = true;
                 needs_free = true;
+                scoreboard->last_thrsw_tick = scoreboard->tick - slots_filled;
         } else {
+                scoreboard->last_thrsw_tick = scoreboard->tick;
                 insert_scheduled_instruction(c, block, scoreboard, inst);
                 time++;
                 slots_filled++;
@@ -1268,6 +1266,13 @@ schedule_instructions(struct v3d_compile *c,
                         fprintf(stderr, "\n");
                 }
 
+                /* We can't mark_instruction_scheduled() the chosen inst until
+                 * we're done identifying instructions to merge, so put the
+                 * merged instructions on a list for a moment.
+                 */
+                struct list_head merged_list;
+                list_inithead(&merged_list);
+
                 /* Schedule this instruction onto the QPU list. Also try to
                  * find an instruction to pair with it.
                  */
@@ -1277,13 +1282,14 @@ schedule_instructions(struct v3d_compile *c,
                         mark_instruction_scheduled(schedule_list, time,
                                                    chosen, true);
 
-                        merge = choose_instruction_to_schedule(devinfo,
+                        while ((merge =
+                                choose_instruction_to_schedule(devinfo,
                                                                scoreboard,
                                                                schedule_list,
-                                                               chosen);
-                        if (merge) {
+                                                               chosen))) {
                                 time = MAX2(merge->unblocked_time, time);
                                 list_del(&merge->link);
+                                list_addtail(&merge->link, &merged_list);
                                 (void)qpu_merge_inst(devinfo, inst,
                                                      inst, &merge->inst->qpu);
                                 if (merge->inst->uniform != -1) {
@@ -1329,8 +1335,8 @@ schedule_instructions(struct v3d_compile *c,
                  * DAG edge as we do so.
                  */
                 mark_instruction_scheduled(schedule_list, time, chosen, false);
-
-                if (merge) {
+                list_for_each_entry(struct schedule_node, merge, &merged_list,
+                                    link) {
                         mark_instruction_scheduled(schedule_list, time, merge,
                                                    false);
 
@@ -1481,11 +1487,10 @@ v3d_qpu_schedule_instructions(struct v3d_compile *c)
 
         struct choose_scoreboard scoreboard;
         memset(&scoreboard, 0, sizeof(scoreboard));
-        scoreboard.last_waddr_add = ~0;
-        scoreboard.last_waddr_mul = ~0;
         scoreboard.last_ldvary_tick = -10;
-        scoreboard.last_sfu_write_tick = -10;
+        scoreboard.last_magic_sfu_write_tick = -10;
         scoreboard.last_uniforms_reset_tick = -10;
+        scoreboard.last_thrsw_tick = -10;
 
         if (debug) {
                 fprintf(stderr, "Pre-schedule instructions\n");

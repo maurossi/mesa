@@ -41,23 +41,36 @@
    .lower_usub_borrow = true,                                                 \
    .lower_fdiv = true,                                                        \
    .lower_flrp64 = true,                                                      \
+   .lower_ldexp = true,                                                       \
+   .lower_cs_local_id_from_index = true,                                      \
+   .lower_device_index_to_zero = true,                                        \
    .native_integers = true,                                                   \
    .use_interpolated_input_intrinsics = true,                                 \
-   .vertex_id_zero_based = true
+   .vertex_id_zero_based = true,                                              \
+   .lower_base_vertex = true
+
+#define COMMON_SCALAR_OPTIONS                                                 \
+   .lower_pack_half_2x16 = true,                                              \
+   .lower_pack_snorm_2x16 = true,                                             \
+   .lower_pack_snorm_4x8 = true,                                              \
+   .lower_pack_unorm_2x16 = true,                                             \
+   .lower_pack_unorm_4x8 = true,                                              \
+   .lower_unpack_half_2x16 = true,                                            \
+   .lower_unpack_snorm_2x16 = true,                                           \
+   .lower_unpack_snorm_4x8 = true,                                            \
+   .lower_unpack_unorm_2x16 = true,                                           \
+   .lower_unpack_unorm_4x8 = true,                                            \
+   .max_unroll_iterations = 32
 
 static const struct nir_shader_compiler_options scalar_nir_options = {
    COMMON_OPTIONS,
-   .lower_pack_half_2x16 = true,
-   .lower_pack_snorm_2x16 = true,
-   .lower_pack_snorm_4x8 = true,
-   .lower_pack_unorm_2x16 = true,
-   .lower_pack_unorm_4x8 = true,
-   .lower_unpack_half_2x16 = true,
-   .lower_unpack_snorm_2x16 = true,
-   .lower_unpack_snorm_4x8 = true,
-   .lower_unpack_unorm_2x16 = true,
-   .lower_unpack_unorm_4x8 = true,
-   .max_unroll_iterations = 32,
+   COMMON_SCALAR_OPTIONS,
+};
+
+static const struct nir_shader_compiler_options scalar_nir_options_gen11 = {
+   COMMON_OPTIONS,
+   COMMON_SCALAR_OPTIONS,
+   .lower_flrp32 = true,
 };
 
 static const struct nir_shader_compiler_options vector_nir_options = {
@@ -145,7 +158,8 @@ brw_compiler_create(void *mem_ctx, const struct gen_device_info *devinfo)
       compiler->glsl_compiler_options[i].OptimizeForAOS = !is_scalar;
 
       if (is_scalar) {
-         compiler->glsl_compiler_options[i].NirOptions = &scalar_nir_options;
+         compiler->glsl_compiler_options[i].NirOptions =
+            devinfo->gen < 11 ? &scalar_nir_options : &scalar_nir_options_gen11;
       } else {
          compiler->glsl_compiler_options[i].NirOptions =
             devinfo->gen < 6 ? &vector_nir_options : &vector_nir_options_gen6;
@@ -163,6 +177,33 @@ brw_compiler_create(void *mem_ctx, const struct gen_device_info *devinfo)
       compiler->glsl_compiler_options[MESA_SHADER_GEOMETRY].EmitNoIndirectInput = false;
 
    return compiler;
+}
+
+static void
+insert_u64_bit(uint64_t *val, bool add)
+{
+   *val = (*val << 1) | !!add;
+}
+
+uint64_t
+brw_get_compiler_config_value(const struct brw_compiler *compiler)
+{
+   uint64_t config = 0;
+   insert_u64_bit(&config, compiler->precise_trig);
+   if (compiler->devinfo->gen >= 8 && compiler->devinfo->gen < 10) {
+      insert_u64_bit(&config, compiler->scalar_stage[MESA_SHADER_VERTEX]);
+      insert_u64_bit(&config, compiler->scalar_stage[MESA_SHADER_TESS_CTRL]);
+      insert_u64_bit(&config, compiler->scalar_stage[MESA_SHADER_TESS_EVAL]);
+      insert_u64_bit(&config, compiler->scalar_stage[MESA_SHADER_GEOMETRY]);
+   }
+   uint64_t debug_bits = INTEL_DEBUG;
+   uint64_t mask = DEBUG_DISK_CACHE_MASK;
+   while (mask != 0) {
+      const uint64_t bit = 1ULL << (ffsll(mask) - 1);
+      insert_u64_bit(&config, (debug_bits & bit) != 0);
+      mask &= ~bit;
+   }
+   return config;
 }
 
 unsigned

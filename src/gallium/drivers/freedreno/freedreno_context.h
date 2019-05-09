@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2012 Rob Clark <robclark@freedesktop.org>
  *
@@ -52,43 +50,33 @@ struct fd_texture_stateobj {
 	struct pipe_sampler_state *samplers[PIPE_MAX_SAMPLERS];
 	unsigned num_samplers;
 	unsigned valid_samplers;
+	/* number of samples per sampler, 2 bits per sampler: */
+	uint32_t samples;
 };
 
 struct fd_program_stateobj {
 	void *vp, *fp;
-
-	/* rest only used by fd2.. split out: */
-	uint8_t num_exports;
-	/* Indexed by semantic name or TGSI_SEMANTIC_COUNT + semantic index
-	 * for TGSI_SEMANTIC_GENERIC.  Special vs exports (position and point-
-	 * size) are not included in this
-	 */
-	uint8_t export_linkage[63];
 };
 
 struct fd_constbuf_stateobj {
 	struct pipe_constant_buffer cb[PIPE_MAX_CONSTANT_BUFFERS];
 	uint32_t enabled_mask;
-	uint32_t dirty_mask;
 };
 
 struct fd_shaderbuf_stateobj {
 	struct pipe_shader_buffer sb[PIPE_MAX_SHADER_BUFFERS];
 	uint32_t enabled_mask;
-	uint32_t dirty_mask;
 };
 
 struct fd_shaderimg_stateobj {
 	struct pipe_image_view si[PIPE_MAX_SHADER_IMAGES];
 	uint32_t enabled_mask;
-	uint32_t dirty_mask;
 };
 
 struct fd_vertexbuf_stateobj {
 	struct pipe_vertex_buffer vb[PIPE_MAX_ATTRIBS];
 	unsigned count;
 	uint32_t enabled_mask;
-	uint32_t dirty_mask;
 };
 
 struct fd_vertex_stateobj {
@@ -108,6 +96,12 @@ struct fd_streamout_stateobj {
 	 * something more clever.
 	 */
 	unsigned offsets[PIPE_MAX_SO_BUFFERS];
+};
+
+#define MAX_GLOBAL_BUFFERS 16
+struct fd_global_bindings_stateobj {
+	struct pipe_resource *buf[MAX_GLOBAL_BUFFERS];
+	uint32_t enabled_mask;
 };
 
 /* group together the vertex and vertexbuf state.. for ease of passing
@@ -217,6 +211,7 @@ struct fd_context {
 		uint64_t draw_calls;
 		uint64_t batch_total, batch_sysmem, batch_gmem, batch_nondraw, batch_restore;
 		uint64_t staging_uploads, shadow_uploads;
+		uint64_t vs_regs, fs_regs;
 	} stats;
 
 	/* Current batch.. the rule here is that you can deref ctx->batch
@@ -226,6 +221,12 @@ struct fd_context {
 	 * you care about is not necessarily the same as ctx->batch.
 	 */
 	struct fd_batch *batch;
+
+	/* NULL if there has been rendering since last flush.  Otherwise
+	 * keeps a reference to the last fence so we can re-use it rather
+	 * than having to flush no-op batch.
+	 */
+	struct pipe_fence_handle *last_fence;
 
 	/* Are we in process of shadowing a resource? Used to detect recursion
 	 * in transfer_map, and skip unneeded synchronization.
@@ -253,7 +254,7 @@ struct fd_context {
 	 * means we'd always have to recalc tiles ever batch)
 	 */
 	struct fd_gmem_stateobj gmem;
-	struct fd_vsc_pipe      vsc_pipe[16];
+	struct fd_vsc_pipe      vsc_pipe[32];
 	struct fd_tile          tile[512];
 
 	/* which state objects need to be re-emit'd: */
@@ -276,12 +277,16 @@ struct fd_context {
 	struct pipe_blend_color blend_color;
 	struct pipe_stencil_ref stencil_ref;
 	unsigned sample_mask;
+	/* local context fb state, for when ctx->batch is null: */
+	struct pipe_framebuffer_state framebuffer;
 	struct pipe_poly_stipple stipple;
 	struct pipe_viewport_state viewport;
+	struct pipe_scissor_state viewport_scissor;
 	struct fd_constbuf_stateobj constbuf[PIPE_SHADER_TYPES];
 	struct fd_shaderbuf_stateobj shaderbuf[PIPE_SHADER_TYPES];
 	struct fd_shaderimg_stateobj shaderimg[PIPE_SHADER_TYPES];
 	struct fd_streamout_stateobj streamout;
+	struct fd_global_bindings_stateobj global_bindings;
 	struct pipe_clip_state ucp;
 
 	struct pipe_query *cond_query;
@@ -312,11 +317,11 @@ struct fd_context {
 	void (*launch_grid)(struct fd_context *ctx, const struct pipe_grid_info *info);
 
 	/* constant emit:  (note currently not used/needed for a2xx) */
-	void (*emit_const)(struct fd_ringbuffer *ring, enum shader_t type,
+	void (*emit_const)(struct fd_ringbuffer *ring, gl_shader_stage type,
 			uint32_t regid, uint32_t offset, uint32_t sizedwords,
 			const uint32_t *dwords, struct pipe_resource *prsc);
 	/* emit bo addresses as constant: */
-	void (*emit_const_bo)(struct fd_ringbuffer *ring, enum shader_t type, boolean write,
+	void (*emit_const_bo)(struct fd_ringbuffer *ring, gl_shader_stage type, boolean write,
 			uint32_t regid, uint32_t num, struct pipe_resource **prscs, uint32_t *offsets);
 
 	/* indirect-branch emit: */
@@ -330,7 +335,7 @@ struct fd_context {
 	void (*query_set_stage)(struct fd_batch *batch, enum fd_render_stage stage);
 
 	/* blitter: */
-	void (*blit)(struct fd_context *ctx, const struct pipe_blit_info *info);
+	bool (*blit)(struct fd_context *ctx, const struct pipe_blit_info *info);
 
 	/* simple gpu "memcpy": */
 	void (*mem_to_mem)(struct fd_ringbuffer *ring, struct pipe_resource *dst,
@@ -420,6 +425,19 @@ static inline bool
 fd_supported_prim(struct fd_context *ctx, unsigned prim)
 {
 	return (1 << prim) & ctx->primtype_mask;
+}
+
+static inline struct fd_batch *
+fd_context_batch(struct fd_context *ctx)
+{
+	if (unlikely(!ctx->batch)) {
+		struct fd_batch *batch =
+			fd_batch_from_fb(&ctx->screen->batch_cache, ctx, &ctx->framebuffer);
+		util_copy_framebuffer_state(&batch->framebuffer, &ctx->framebuffer);
+		ctx->batch = batch;
+		fd_context_all_dirty(ctx);
+	}
+	return ctx->batch;
 }
 
 static inline void

@@ -573,7 +573,8 @@ osmesa_MapRenderbuffer(struct gl_context *ctx,
                        struct gl_renderbuffer *rb,
                        GLuint x, GLuint y, GLuint w, GLuint h,
                        GLbitfield mode,
-                       GLubyte **mapOut, GLint *rowStrideOut)
+                       GLubyte **mapOut, GLint *rowStrideOut,
+                       bool flip_y)
 {
    const OSMesaContext osmesa = OSMESA_CONTEXT(ctx);
 
@@ -601,7 +602,7 @@ osmesa_MapRenderbuffer(struct gl_context *ctx,
    }
    else {
       _swrast_map_soft_renderbuffer(ctx, rb, x, y, w, h, mode,
-                                    mapOut, rowStrideOut);
+                                    mapOut, rowStrideOut, flip_y);
    }
 }
 
@@ -832,6 +833,7 @@ OSMesaCreateContextAttribs(const int *attribList, OSMesaContext sharelist)
 
       /* Initialize device driver function table */
       _mesa_init_driver_functions(&functions);
+      _tnl_init_driver_draw_function(&functions);
       /* override with our functions */
       functions.GetString = get_string;
       functions.UpdateState = osmesa_update_state_wrapper;
@@ -1016,12 +1018,6 @@ OSMesaMakeCurrent( OSMesaContext osmesa, void *buffer, GLenum type,
 #endif
 
    osmesa_update_state( &osmesa->mesa, 0 );
-
-   /* Call this periodically to detect when the user has begun using
-    * GL rendering from multiple threads.
-    */
-   _glapi_check_multithread();
-
 
    /* Create a front/left color buffer which wraps the user-provided buffer.
     * There is no back color buffer.

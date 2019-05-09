@@ -304,28 +304,6 @@ dri_bind_extensions(struct gbm_dri_device *dri,
 static const __DRIextension **
 dri_open_driver(struct gbm_dri_device *dri)
 {
-   const __DRIextension **extensions = NULL;
-   char path[PATH_MAX], *search_paths, *p, *next, *end;
-   char *get_extensions_name;
-
-   search_paths = NULL;
-   /* don't allow setuid apps to use LIBGL_DRIVERS_PATH or GBM_DRIVERS_PATH */
-   if (geteuid() == getuid()) {
-      /* Read GBM_DRIVERS_PATH first for compatibility, but LIBGL_DRIVERS_PATH
-       * is recommended over GBM_DRIVERS_PATH.
-       */
-      search_paths = getenv("GBM_DRIVERS_PATH");
-
-      /* Read LIBGL_DRIVERS_PATH if GBM_DRIVERS_PATH was not set.
-       * LIBGL_DRIVERS_PATH is recommended over GBM_DRIVERS_PATH.
-       */
-      if (search_paths == NULL) {
-         search_paths = getenv("LIBGL_DRIVERS_PATH");
-      }
-   }
-   if (search_paths == NULL)
-      search_paths = DEFAULT_DRIVER_DIR;
-
    /* Temporarily work around dri driver libs that need symbols in libglapi
     * but don't automatically link it in.
     */
@@ -334,56 +312,18 @@ dri_open_driver(struct gbm_dri_device *dri)
     */
    dlopen("libglapi.so.0", RTLD_LAZY | RTLD_GLOBAL);
 
-   dri->driver = NULL;
-   end = search_paths + strlen(search_paths);
-   for (p = search_paths; p < end && dri->driver == NULL; p = next + 1) {
-      int len;
-      next = strchr(p, ':');
-      if (next == NULL)
-         next = end;
-
-      len = next - p;
-#if GLX_USE_TLS
-      snprintf(path, sizeof path,
-               "%.*s/tls/%s_dri.so", len, p, dri->driver_name);
-      dri->driver = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
-#endif
-      if (dri->driver == NULL) {
-         snprintf(path, sizeof path,
-                  "%.*s/%s_dri.so", len, p, dri->driver_name);
-         dri->driver = dlopen(path, RTLD_NOW | RTLD_GLOBAL);
-      }
-      /* not need continue to loop all paths once the driver is found */
-      if (dri->driver != NULL)
-         break;
-   }
-
-   if (dri->driver == NULL) {
-      fprintf(stderr, "gbm: failed to open any driver (search paths %s)\n",
-              search_paths);
-      fprintf(stderr, "gbm: Last dlopen error: %s\n", dlerror());
-      return NULL;
-   }
-
-   get_extensions_name = loader_get_extensions_name(dri->driver_name);
-   if (get_extensions_name) {
-      const __DRIextension **(*get_extensions)(void);
-
-      get_extensions = dlsym(dri->driver, get_extensions_name);
-      free(get_extensions_name);
-
-      if (get_extensions)
-         extensions = get_extensions();
-   }
-
-   if (!extensions)
-      extensions = dlsym(dri->driver, __DRI_DRIVER_EXTENSIONS);
-   if (extensions == NULL) {
-      fprintf(stderr, "gbm: driver exports no extensions (%s)", dlerror());
-      dlclose(dri->driver);
-   }
-
-   return extensions;
+   static const char *search_path_vars[] = {
+      /* Read GBM_DRIVERS_PATH first for compatibility, but LIBGL_DRIVERS_PATH
+       * is recommended over GBM_DRIVERS_PATH.
+       */
+      "GBM_DRIVERS_PATH",
+      /* Read LIBGL_DRIVERS_PATH if GBM_DRIVERS_PATH was not set.
+       * LIBGL_DRIVERS_PATH is recommended over GBM_DRIVERS_PATH.
+       */
+      "LIBGL_DRIVERS_PATH",
+      NULL
+   };
+   return loader_open_driver(dri->driver_name, &dri->driver, search_path_vars);
 }
 
 static int
@@ -543,36 +483,56 @@ dri_screen_create_sw(struct gbm_dri_device *dri)
    return dri_screen_create_swrast(dri);
 }
 
-static const struct {
-   uint32_t gbm_format;
-   int dri_image_format;
-} gbm_to_dri_image_formats[] = {
-   { GBM_FORMAT_R8,          __DRI_IMAGE_FORMAT_R8          },
-   { GBM_FORMAT_GR88,        __DRI_IMAGE_FORMAT_GR88        },
-   { GBM_FORMAT_RGB565,      __DRI_IMAGE_FORMAT_RGB565      },
-   { GBM_FORMAT_XRGB8888,    __DRI_IMAGE_FORMAT_XRGB8888    },
-   { GBM_FORMAT_ARGB8888,    __DRI_IMAGE_FORMAT_ARGB8888    },
-   { GBM_FORMAT_XBGR8888,    __DRI_IMAGE_FORMAT_XBGR8888    },
-   { GBM_FORMAT_ABGR8888,    __DRI_IMAGE_FORMAT_ABGR8888    },
-   { GBM_FORMAT_XRGB2101010, __DRI_IMAGE_FORMAT_XRGB2101010 },
-   { GBM_FORMAT_ARGB2101010, __DRI_IMAGE_FORMAT_ARGB2101010 },
+static const struct gbm_dri_visual gbm_dri_visuals_table[] = {
+   {
+     GBM_FORMAT_R8, __DRI_IMAGE_FORMAT_R8,
+     { 0x000000ff, 0x00000000, 0x00000000, 0x00000000 },
+   },
+   {
+     GBM_FORMAT_GR88, __DRI_IMAGE_FORMAT_GR88,
+     { 0x000000ff, 0x0000ff00, 0x00000000, 0x00000000 },
+   },
+   {
+     GBM_FORMAT_ARGB1555, __DRI_IMAGE_FORMAT_ARGB1555,
+     { 0x00007c00, 0x000003e0, 0x0000001f, 0x00008000 },
+   },
+   {
+     GBM_FORMAT_RGB565, __DRI_IMAGE_FORMAT_RGB565,
+     { 0x0000f800, 0x000007e0, 0x0000001f, 0x00000000 },
+   },
+   {
+     GBM_FORMAT_XRGB8888, __DRI_IMAGE_FORMAT_XRGB8888,
+     { 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000 },
+   },
+   {
+     GBM_FORMAT_ARGB8888, __DRI_IMAGE_FORMAT_ARGB8888,
+     { 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 },
+   },
+   {
+     GBM_FORMAT_XBGR8888, __DRI_IMAGE_FORMAT_XBGR8888,
+     { 0x000000ff, 0x0000ff00, 0x00ff0000, 0x00000000 },
+   },
+   {
+     GBM_FORMAT_ABGR8888, __DRI_IMAGE_FORMAT_ABGR8888,
+     { 0x000000ff, 0x0000ff00, 0x00ff0000, 0xff000000 },
+   },
+   {
+     GBM_FORMAT_XRGB2101010, __DRI_IMAGE_FORMAT_XRGB2101010,
+     { 0x3ff00000, 0x000ffc00, 0x000003ff, 0x00000000 },
+   },
+   {
+     GBM_FORMAT_ARGB2101010, __DRI_IMAGE_FORMAT_ARGB2101010,
+     { 0x3ff00000, 0x000ffc00, 0x000003ff, 0xc0000000 },
+   },
+   {
+     GBM_FORMAT_XBGR2101010, __DRI_IMAGE_FORMAT_XBGR2101010,
+     { 0x000003ff, 0x000ffc00, 0x3ff00000, 0x00000000 },
+   },
+   {
+     GBM_FORMAT_ABGR2101010, __DRI_IMAGE_FORMAT_ABGR2101010,
+     { 0x000003ff, 0x000ffc00, 0x3ff00000, 0xc0000000 },
+   },
 };
-
-/* The two GBM_BO_FORMAT_[XA]RGB8888 formats alias the GBM_FORMAT_*
- * formats of the same name. We want to accept them whenever someone
- * has a GBM format, but never return them to the user. */
-static int
-gbm_format_canonicalize(uint32_t gbm_format)
-{
-   switch (gbm_format) {
-   case GBM_BO_FORMAT_XRGB8888:
-      return GBM_FORMAT_XRGB8888;
-   case GBM_BO_FORMAT_ARGB8888:
-      return GBM_FORMAT_ARGB8888;
-   default:
-      return gbm_format;
-   }
-}
 
 static int
 gbm_format_to_dri_format(uint32_t gbm_format)
@@ -580,9 +540,9 @@ gbm_format_to_dri_format(uint32_t gbm_format)
    int i;
 
    gbm_format = gbm_format_canonicalize(gbm_format);
-   for (i = 0; i < ARRAY_SIZE(gbm_to_dri_image_formats); i++) {
-      if (gbm_to_dri_image_formats[i].gbm_format == gbm_format)
-         return gbm_to_dri_image_formats[i].dri_image_format;
+   for (i = 0; i < ARRAY_SIZE(gbm_dri_visuals_table); i++) {
+      if (gbm_dri_visuals_table[i].gbm_format == gbm_format)
+         return gbm_dri_visuals_table[i].dri_image_format;
    }
 
    return 0;
@@ -593,9 +553,9 @@ gbm_dri_to_gbm_format(int dri_format)
 {
    int i;
 
-   for (i = 0; i < ARRAY_SIZE(gbm_to_dri_image_formats); i++) {
-      if (gbm_to_dri_image_formats[i].dri_image_format == dri_format)
-         return gbm_to_dri_image_formats[i].gbm_format;
+   for (i = 0; i < ARRAY_SIZE(gbm_dri_visuals_table); i++) {
+      if (gbm_dri_visuals_table[i].dri_image_format == dri_format)
+         return gbm_dri_visuals_table[i].gbm_format;
    }
 
    return 0;
@@ -825,6 +785,7 @@ gbm_dri_bo_get_offset(struct gbm_bo *_bo, int plane)
       dri->image->queryImage(image, __DRI_IMAGE_ATTRIB_OFFSET, &offset);
       dri->image->destroyImage(image);
    } else {
+      assert(plane == 0);
       dri->image->queryImage(bo->image, __DRI_IMAGE_ATTRIB_OFFSET, &offset);
    }
 
@@ -1389,6 +1350,9 @@ dri_device_create(int fd)
    dri->base.surface_destroy = gbm_dri_surface_destroy;
 
    dri->base.name = "drm";
+
+   dri->visual_table = gbm_dri_visuals_table;
+   dri->num_visuals = ARRAY_SIZE(gbm_dri_visuals_table);
 
    mtx_init(&dri->mutex, mtx_plain);
 

@@ -75,7 +75,7 @@ int bc_parser::decode() {
 	}
 
 	sh = new shader(ctx, t, bc->debug_id);
-	sh->safe_math = sb_context::safe_math || (t == TARGET_COMPUTE);
+	sh->safe_math = sb_context::safe_math || (t == TARGET_COMPUTE || bc->precise);
 
 	int r = decode_shader();
 
@@ -617,7 +617,7 @@ int bc_parser::decode_fetch_clause(cf_node* cf) {
 	int r;
 	unsigned i = cf->bc.addr << 1, cnt = cf->bc.count + 1;
 
-	if (cf->bc.op_ptr->flags && FF_GDS)
+	if (cf->bc.op_ptr->flags & FF_GDS)
 		cf->subtype = NST_GDS_CLAUSE;
 	else
 		cf->subtype = NST_TEX_CLAUSE;
@@ -725,6 +725,11 @@ int bc_parser::prepare_fetch_clause(cf_node *cf) {
 				n->src.push_back(get_cf_index_value(n->bc.resource_index_mode == V_SQ_CF_INDEX_1));
 			}
 		}
+
+		if (n->bc.op == FETCH_OP_READ_SCRATCH) {
+			n->src.push_back(sh->get_special_value(SV_SCRATCH));
+			n->dst.push_back(sh->get_special_value(SV_SCRATCH));
+		}
 	}
 
 	return 0;
@@ -827,12 +832,23 @@ int bc_parser::prepare_ir() {
 
 			do {
 
-				c->src.resize(4);
-
-				for(int s = 0; s < 4; ++s) {
-					if (c->bc.comp_mask & (1 << s))
-						c->src[s] =
+				if (ctx.hw_class == HW_CLASS_R600 && c->bc.op == CF_OP_MEM_SCRATCH &&
+				    (c->bc.type == 2 || c->bc.type == 3)) {
+					c->dst.resize(4);
+					for(int s = 0; s < 4; ++s) {
+						if (c->bc.comp_mask & (1 << s))
+							c->dst[s] =
 								sh->get_gpr_value(true, c->bc.rw_gpr, s, false);
+					}
+				} else {
+					c->src.resize(4);
+
+				
+					for(int s = 0; s < 4; ++s) {
+						if (c->bc.comp_mask & (1 << s))
+							c->src[s] =
+								sh->get_gpr_value(true, c->bc.rw_gpr, s, false);
+					}
 				}
 
 				if (((flags & CF_RAT) || (!(flags & CF_STRM))) && (c->bc.type & 1)) { // indexed write
@@ -854,6 +870,10 @@ int bc_parser::prepare_ir() {
 						// For ES shaders this is an export
 						c->flags |= NF_DONT_KILL;
 					}
+				}
+				else if (c->bc.op == CF_OP_MEM_SCRATCH) {
+					c->src.push_back(sh->get_special_value(SV_SCRATCH));
+					c->dst.push_back(sh->get_special_value(SV_SCRATCH));
 				}
 
 				if (!burst_count--)
@@ -889,6 +909,9 @@ int bc_parser::prepare_ir() {
 				c->src.push_back(sh->get_special_value(SV_GEOMETRY_EMIT));
 				c->dst.push_back(sh->get_special_value(SV_GEOMETRY_EMIT));
 			}
+		} else if (c->bc.op == CF_OP_WAIT_ACK) {
+			c->src.push_back(sh->get_special_value(SV_SCRATCH));
+			c->dst.push_back(sh->get_special_value(SV_SCRATCH));
 		}
 	}
 

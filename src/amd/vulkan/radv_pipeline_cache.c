@@ -32,7 +32,7 @@
 #include "ac_nir_to_llvm.h"
 
 struct cache_entry_variant_info {
-	struct ac_shader_variant_info variant_info;
+	struct radv_shader_variant_info variant_info;
 	struct ac_shader_config config;
 	uint32_t rsrc1, rsrc2;
 };
@@ -206,7 +206,7 @@ radv_pipeline_cache_grow(struct radv_pipeline_cache *cache)
 
 	table = malloc(byte_size);
 	if (table == NULL)
-		return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+		return vk_error(cache->device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	cache->hash_table = table;
 	cache->table_size = table_size;
@@ -241,6 +241,16 @@ radv_pipeline_cache_add_entry(struct radv_pipeline_cache *cache,
 		radv_pipeline_cache_set_entry(cache, entry);
 }
 
+static bool
+radv_is_cache_disabled(struct radv_device *device)
+{
+	/* Pipeline caches can be disabled with RADV_DEBUG=nocache, with
+	 * MESA_GLSL_CACHE_DISABLE=1, and when VK_AMD_shader_info is requested.
+	 */
+	return (device->instance->debug_flags & RADV_DEBUG_NO_CACHE) ||
+	       device->keep_shader_info;
+}
+
 bool
 radv_create_shader_variants_from_pipeline_cache(struct radv_device *device,
 					        struct radv_pipeline_cache *cache,
@@ -257,11 +267,10 @@ radv_create_shader_variants_from_pipeline_cache(struct radv_device *device,
 	entry = radv_pipeline_cache_search_unlocked(cache, sha1);
 
 	if (!entry) {
-		/* Again, don't cache when we want debug info, since this isn't
-		 * present in the cache. */
-		if (!device->physical_device->disk_cache ||
-		    (device->instance->debug_flags & RADV_DEBUG_NO_CACHE) ||
-		    device->keep_shader_info) {
+		/* Don't cache when we want debug info, since this isn't
+		 * present in the cache.
+		 */
+		if (radv_is_cache_disabled(device) || !device->physical_device->disk_cache) {
 			pthread_mutex_unlock(&cache->mutex);
 			return false;
 		}
@@ -362,6 +371,15 @@ radv_pipeline_cache_insert_shaders(struct radv_device *device,
 		pthread_mutex_unlock(&cache->mutex);
 		return;
 	}
+
+	/* Don't cache when we want debug info, since this isn't
+	 * present in the cache.
+	 */
+	if (radv_is_cache_disabled(device)) {
+		pthread_mutex_unlock(&cache->mutex);
+		return;
+	}
+
 	size_t size = sizeof(*entry);
 	for (int i = 0; i < MESA_SHADER_STAGES; ++i)
 		if (variants[i])
@@ -437,7 +455,7 @@ struct cache_header {
 	uint8_t  uuid[VK_UUID_SIZE];
 };
 
-void
+bool
 radv_pipeline_cache_load(struct radv_pipeline_cache *cache,
 			 const void *data, size_t size)
 {
@@ -445,18 +463,18 @@ radv_pipeline_cache_load(struct radv_pipeline_cache *cache,
 	struct cache_header header;
 
 	if (size < sizeof(header))
-		return;
+		return false;
 	memcpy(&header, data, sizeof(header));
 	if (header.header_size < sizeof(header))
-		return;
+		return false;
 	if (header.header_version != VK_PIPELINE_CACHE_HEADER_VERSION_ONE)
-		return;
+		return false;
 	if (header.vendor_id != ATI_VENDOR_ID)
-		return;
+		return false;
 	if (header.device_id != device->physical_device->rad_info.pci_id)
-		return;
+		return false;
 	if (memcmp(header.uuid, device->physical_device->cache_uuid, VK_UUID_SIZE) != 0)
-		return;
+		return false;
 
 	char *end = (void *) data + size;
 	char *p = (void *) data + header.header_size;
@@ -478,6 +496,8 @@ radv_pipeline_cache_load(struct radv_pipeline_cache *cache,
 		}
 		p += size;
 	}
+
+	return true;
 }
 
 VkResult radv_CreatePipelineCache(
@@ -496,7 +516,7 @@ VkResult radv_CreatePipelineCache(
 			    sizeof(*cache), 8,
 			    VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
 	if (cache == NULL)
-		return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+		return vk_error(device->instance, VK_ERROR_OUT_OF_HOST_MEMORY);
 
 	if (pAllocator)
 		cache->alloc = *pAllocator;

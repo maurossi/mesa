@@ -181,7 +181,7 @@ nvc0_compute_invalidate_constbufs(struct nvc0_context *nvc0)
    /* Invalidate all 3D constbufs because they are aliased with COMPUTE. */
    for (s = 0; s < 5; s++) {
       nvc0->constbuf_dirty[s] |= nvc0->constbuf_valid[s];
-      nvc0->state.uniform_buffer_bound[s] = 0;
+      nvc0->state.uniform_buffer_bound[s] = false;
    }
    nvc0->dirty_3d |= NVC0_NEW_3D_CONSTBUF;
 }
@@ -203,19 +203,18 @@ nvc0_compute_validate_constbufs(struct nvc0_context *nvc0)
          assert(i == 0); /* we really only want OpenGL uniforms here */
          assert(nvc0->constbuf[s][0].u.data);
 
-         if (nvc0->state.uniform_buffer_bound[s] < size) {
-            nvc0->state.uniform_buffer_bound[s] = align(size, 0x100);
+         if (!nvc0->state.uniform_buffer_bound[s]) {
+            nvc0->state.uniform_buffer_bound[s] = true;
 
             BEGIN_NVC0(push, NVC0_CP(CB_SIZE), 3);
-            PUSH_DATA (push, nvc0->state.uniform_buffer_bound[s]);
+            PUSH_DATA (push, NVC0_MAX_CONSTBUF_SIZE);
             PUSH_DATAh(push, bo->offset + base);
             PUSH_DATA (push, bo->offset + base);
             BEGIN_NVC0(push, NVC0_CP(CB_BIND), 1);
             PUSH_DATA (push, (0 << 8) | 1);
          }
          nvc0_cb_bo_push(&nvc0->base, bo, NV_VRAM_DOMAIN(&nvc0->screen->base),
-                         base, nvc0->state.uniform_buffer_bound[s],
-                         0, (size + 3) / 4,
+                         base, NVC0_MAX_CONSTBUF_SIZE, 0, (size + 3) / 4,
                          nvc0->constbuf[s][0].u.data);
       } else {
          struct nv04_resource *res =
@@ -236,7 +235,7 @@ nvc0_compute_validate_constbufs(struct nvc0_context *nvc0)
             PUSH_DATA (push, (i << 8) | 0);
          }
          if (i == 0)
-            nvc0->state.uniform_buffer_bound[s] = 0;
+            nvc0->state.uniform_buffer_bound[s] = false;
       }
    }
 
@@ -424,6 +423,7 @@ void
 nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *cp = nvc0->compprog;
    int ret;
@@ -464,12 +464,14 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    PUSH_DATA (push, (info->block[1] << 16) | info->block[0]);
    PUSH_DATA (push, info->block[2]);
 
+   nouveau_pushbuf_space(push, 32, 2, 1);
+   PUSH_REFN(push, screen->text, NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD);
+
    if (unlikely(info->indirect)) {
       struct nv04_resource *res = nv04_resource(info->indirect);
       uint32_t offset = res->offset + info->indirect_offset;
       unsigned macro = NVC0_CP_MACRO_LAUNCH_GRID_INDIRECT;
 
-      nouveau_pushbuf_space(push, 16, 0, 1);
       PUSH_REFN(push, res->bo, NOUVEAU_BO_RD | res->domain);
       PUSH_DATA(push, NVC0_FIFO_PKHDR_1I(1, macro, 3));
       nouveau_pushbuf_data(push, res->bo, offset,

@@ -53,13 +53,13 @@
 #include "ir_uniform.h"
 #include "linker.h"
 #include "link_varyings.h"
-#include "main/core.h"
 #include "nir.h"
 #include "program.h"
 #include "serialize.h"
 #include "shader_cache.h"
 #include "util/mesa-sha1.h"
 #include "string_to_uint_map.h"
+#include "main/mtypes.h"
 
 extern "C" {
 #include "main/enums.h"
@@ -102,6 +102,14 @@ shader_cache_write_program_metadata(struct gl_context *ctx,
    struct blob metadata;
    blob_init(&metadata);
 
+   if (ctx->Driver.ShaderCacheSerializeDriverBlob) {
+      for (unsigned i = 0; i < MESA_SHADER_STAGES; i++) {
+         struct gl_linked_shader *sh = prog->_LinkedShaders[i];
+         if (sh)
+            ctx->Driver.ShaderCacheSerializeDriverBlob(ctx, sh->Program);
+      }
+   }
+
    serialize_glsl_program(&metadata, ctx, prog);
 
    struct cache_item_metadata cache_item_metadata;
@@ -113,20 +121,15 @@ shader_cache_write_program_metadata(struct gl_context *ctx,
    if (!cache_item_metadata.keys)
       goto fail;
 
-   char sha1_buf[41];
    for (unsigned i = 0; i < prog->NumShaders; i++) {
-      disk_cache_put_key(cache, prog->Shaders[i]->sha1);
       memcpy(cache_item_metadata.keys[i], prog->Shaders[i]->sha1,
              sizeof(cache_key));
-      if (ctx->_Shader->Flags & GLSL_CACHE_INFO) {
-         _mesa_sha1_format(sha1_buf, prog->Shaders[i]->sha1);
-         fprintf(stderr, "marking shader: %s\n", sha1_buf);
-      }
    }
 
    disk_cache_put(cache, prog->data->sha1, metadata.data, metadata.size,
                   &cache_item_metadata);
 
+   char sha1_buf[41];
    if (ctx->_Shader->Flags & GLSL_CACHE_INFO) {
       _mesa_sha1_format(sha1_buf, prog->data->sha1);
       fprintf(stderr, "putting program metadata in cache: %s\n", sha1_buf);
@@ -160,6 +163,12 @@ shader_cache_read_program_metadata(struct gl_context *ctx,
    prog->FragDataBindings->iterate(create_binding_str, &buf);
    ralloc_strcat(&buf, "fbi: ");
    prog->FragDataIndexBindings->iterate(create_binding_str, &buf);
+   ralloc_asprintf_append(&buf, "tf: %d ", prog->TransformFeedback.BufferMode);
+   for (unsigned int i = 0; i < prog->TransformFeedback.NumVarying; i++) {
+      ralloc_asprintf_append(&buf, "%s:%d ",
+                             prog->TransformFeedback.VaryingNames[i],
+                             prog->TransformFeedback.BufferStride[i]);
+   }
 
    /* SSO has an effect on the linked program so include this when generating
     * the sha also.
@@ -248,24 +257,7 @@ shader_cache_read_program_metadata(struct gl_context *ctx,
    }
 
    /* This is used to flag a shader retrieved from cache */
-   prog->data->LinkStatus = linking_skipped;
-
-   /* Since the program load was successful, CompileStatus of all shaders at
-    * this point should normally be compile_skipped. However because of how
-    * the eviction works, it may happen that some of the individual shader keys
-    * have been evicted, resulting in unnecessary recompiles on this load, so
-    * mark them again to skip such recompiles next time.
-    */
-   char sha1_buf[41];
-   for (unsigned i = 0; i < prog->NumShaders; i++) {
-      if (prog->Shaders[i]->CompileStatus == compiled_no_opts) {
-         disk_cache_put_key(cache, prog->Shaders[i]->sha1);
-         if (ctx->_Shader->Flags & GLSL_CACHE_INFO) {
-            _mesa_sha1_format(sha1_buf, prog->Shaders[i]->sha1);
-            fprintf(stderr, "re-marking shader: %s\n", sha1_buf);
-         }
-      }
-   }
+   prog->data->LinkStatus = LINKING_SKIPPED;
 
    free (buffer);
 

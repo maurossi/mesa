@@ -156,30 +156,23 @@ static const VkPipelineVertexInputStateCreateInfo normal_vi_create_info = {
 	.vertexAttributeDescriptionCount = 0,
 };
 
-static VkFormat pipeline_formats[] = {
-   VK_FORMAT_R8G8B8A8_UNORM,
-   VK_FORMAT_R8G8B8A8_UINT,
-   VK_FORMAT_R8G8B8A8_SINT,
-   VK_FORMAT_A2R10G10B10_UINT_PACK32,
-   VK_FORMAT_A2R10G10B10_SINT_PACK32,
-   VK_FORMAT_R16G16B16A16_UNORM,
-   VK_FORMAT_R16G16B16A16_SNORM,
-   VK_FORMAT_R16G16B16A16_UINT,
-   VK_FORMAT_R16G16B16A16_SINT,
-   VK_FORMAT_R32_SFLOAT,
-   VK_FORMAT_R32G32_SFLOAT,
-   VK_FORMAT_R32G32B32A32_SFLOAT
-};
-
 static VkResult
 create_resolve_pipeline(struct radv_device *device,
 			int samples_log2,
 			VkFormat format)
 {
+	mtx_lock(&device->meta_state.mtx);
+
+	unsigned fs_key = radv_format_meta_fs_key(format);
+	VkPipeline *pipeline = &device->meta_state.resolve_fragment.rc[samples_log2].pipeline[fs_key];
+	if (*pipeline) {
+		mtx_unlock(&device->meta_state.mtx);
+		return VK_SUCCESS;
+	}
+
 	VkResult result;
 	bool is_integer = false;
 	uint32_t samples = 1 << samples_log2;
-	unsigned fs_key = radv_format_meta_fs_key(format);
 	const VkPipelineVertexInputStateCreateInfo *vi_create_info;
 	vi_create_info = &normal_vi_create_info;
 	if (vk_format_is_int(format))
@@ -194,9 +187,6 @@ create_resolve_pipeline(struct radv_device *device,
 	VkRenderPass *rp = &device->meta_state.resolve_fragment.rc[samples_log2].render_pass[fs_key][0];
 
 	assert(!*rp);
-
-	VkPipeline *pipeline = &device->meta_state.resolve_fragment.rc[samples_log2].pipeline[fs_key];
-	assert(!*pipeline);
 
 	VkPipelineShaderStageCreateInfo pipeline_shader_stages[] = {
 		{
@@ -322,11 +312,12 @@ create_resolve_pipeline(struct radv_device *device,
 	ralloc_free(vs.nir);
 	ralloc_free(fs.nir);
 
+	mtx_unlock(&device->meta_state.mtx);
 	return result;
 }
 
 VkResult
-radv_device_init_meta_resolve_fragment_state(struct radv_device *device)
+radv_device_init_meta_resolve_fragment_state(struct radv_device *device, bool on_demand)
 {
 	VkResult res;
 
@@ -334,9 +325,12 @@ radv_device_init_meta_resolve_fragment_state(struct radv_device *device)
 	if (res != VK_SUCCESS)
 		goto fail;
 
+	if (on_demand)
+		return VK_SUCCESS;
+
 	for (uint32_t i = 0; i < MAX_SAMPLES_LOG2; ++i) {
-		for (unsigned j = 0; j < ARRAY_SIZE(pipeline_formats); ++j) {
-			res = create_resolve_pipeline(device, i, pipeline_formats[j]);
+		for (unsigned j = 0; j < NUM_META_FS_KEYS; ++j) {
+			res = create_resolve_pipeline(device, i, radv_fs_key_format_exemplars[j]);
 			if (res != VK_SUCCESS)
 				goto fail;
 		}
@@ -419,10 +413,18 @@ emit_resolve(struct radv_cmd_buffer *cmd_buffer,
 			      push_constants);
 
 	unsigned fs_key = radv_format_meta_fs_key(dest_iview->vk_format);
-	VkPipeline pipeline_h = device->meta_state.resolve_fragment.rc[samples_log2].pipeline[fs_key];
+	VkPipeline* pipeline = &device->meta_state.resolve_fragment.rc[samples_log2].pipeline[fs_key];
+
+	if (*pipeline == VK_NULL_HANDLE) {
+		VkResult ret = create_resolve_pipeline(device, samples_log2, radv_fs_key_format_exemplars[fs_key]);
+		if (ret != VK_SUCCESS) {
+			cmd_buffer->record_result = ret;
+			return;
+		}
+	}
 
 	radv_CmdBindPipeline(cmd_buffer_h, VK_PIPELINE_BIND_POINT_GRAPHICS,
-			     pipeline_h);
+			     *pipeline);
 
 	radv_CmdSetViewport(radv_cmd_buffer_to_handle(cmd_buffer), 0, 1, &(VkViewport) {
 		.x = dest_offset->x,
@@ -457,18 +459,16 @@ void radv_meta_resolve_fragment_image(struct radv_cmd_buffer *cmd_buffer,
 	unsigned fs_key = radv_format_meta_fs_key(dest_image->vk_format);
 	unsigned dst_layout = radv_meta_dst_layout_from_layout(dest_image_layout);
 	VkRenderPass rp;
-	for (uint32_t r = 0; r < region_count; ++r) {
-		const VkImageResolve *region = &regions[r];
-		const uint32_t src_base_layer =
-			radv_meta_get_iview_layer(src_image, &region->srcSubresource,
-						  &region->srcOffset);
-		VkImageSubresourceRange range;
-		range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		range.baseMipLevel = region->srcSubresource.mipLevel;
-		range.levelCount = 1;
-		range.baseArrayLayer = src_base_layer;
-		range.layerCount = region->srcSubresource.layerCount;
-		radv_fast_clear_flush_image_inplace(cmd_buffer, src_image, &range);
+
+	radv_decompress_resolve_src(cmd_buffer, src_image, src_image_layout,
+				    region_count, regions);
+
+	if (!device->meta_state.resolve_fragment.rc[samples_log2].render_pass[fs_key][dst_layout]) {
+		VkResult ret = create_resolve_pipeline(device, samples_log2, radv_fs_key_format_exemplars[fs_key]);
+		if (ret != VK_SUCCESS) {
+			cmd_buffer->record_result = ret;
+			return;
+		}
 	}
 
 	rp = device->meta_state.resolve_fragment.rc[samples_log2].render_pass[fs_key][dst_layout];
@@ -590,37 +590,25 @@ radv_cmd_buffer_resolve_subpass_fs(struct radv_cmd_buffer *cmd_buffer)
 	struct radv_framebuffer *fb = cmd_buffer->state.framebuffer;
 	const struct radv_subpass *subpass = cmd_buffer->state.subpass;
 	struct radv_meta_saved_state saved_state;
+	struct radv_subpass_barrier barrier;
 
-	/* FINISHME(perf): Skip clears for resolve attachments.
-	 *
-	 * From the Vulkan 1.0 spec:
-	 *
-	 *    If the first use of an attachment in a render pass is as a resolve
-	 *    attachment, then the loadOp is effectively ignored as the resolve is
-	 *    guaranteed to overwrite all pixels in the render area.
-	 */
+	/* Resolves happen before the end-of-subpass barriers get executed,
+	 * so we have to make the attachment shader-readable */
+	barrier.src_stage_mask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	barrier.src_access_mask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	barrier.dst_access_mask = VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+	radv_subpass_barrier(cmd_buffer, &barrier);
 
-	if (!subpass->has_resolve)
-		return;
+	radv_decompress_resolve_subpass_src(cmd_buffer);
 
 	radv_meta_save(&saved_state, cmd_buffer,
 		       RADV_META_SAVE_GRAPHICS_PIPELINE |
 		       RADV_META_SAVE_CONSTANTS |
 		       RADV_META_SAVE_DESCRIPTORS);
 
-	/* Resolves happen before the end-of-subpass barriers get executed,
-	 * so we have to make the attachment shader-readable */
-	cmd_buffer->state.flush_bits |= RADV_CMD_FLAG_PS_PARTIAL_FLUSH |
-	                                RADV_CMD_FLAG_FLUSH_AND_INV_CB |
-	                                RADV_CMD_FLAG_FLUSH_AND_INV_CB_META |
-	                                RADV_CMD_FLAG_FLUSH_AND_INV_DB |
-	                                RADV_CMD_FLAG_FLUSH_AND_INV_DB_META |
-	                                RADV_CMD_FLAG_INV_GLOBAL_L2 |
-	                                RADV_CMD_FLAG_INV_VMEM_L1;
-
 	for (uint32_t i = 0; i < subpass->color_count; ++i) {
-		VkAttachmentReference src_att = subpass->color_attachments[i];
-		VkAttachmentReference dest_att = subpass->resolve_attachments[i];
+		struct radv_subpass_attachment src_att = subpass->color_attachments[i];
+		struct radv_subpass_attachment dest_att = subpass->resolve_attachments[i];
 
 		if (src_att.attachment == VK_ATTACHMENT_UNUSED ||
 		    dest_att.attachment == VK_ATTACHMENT_UNUSED)
@@ -629,19 +617,9 @@ radv_cmd_buffer_resolve_subpass_fs(struct radv_cmd_buffer *cmd_buffer)
 		struct radv_image_view *dest_iview = cmd_buffer->state.framebuffer->attachments[dest_att.attachment].attachment;
 		struct radv_image_view *src_iview = cmd_buffer->state.framebuffer->attachments[src_att.attachment].attachment;
 
-		{
-			VkImageSubresourceRange range;
-			range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			range.baseMipLevel = 0;
-			range.levelCount = 1;
-			range.baseArrayLayer = 0;
-			range.layerCount = 1;
-			radv_fast_clear_flush_image_inplace(cmd_buffer, src_iview->image, &range);
-		}
-
 		struct radv_subpass resolve_subpass = {
 			.color_count = 1,
-			.color_attachments = (VkAttachmentReference[]) { dest_att },
+			.color_attachments = (struct radv_subpass_attachment[]) { dest_att },
 			.depth_stencil_attachment = { .attachment = VK_ATTACHMENT_UNUSED },
 		};
 

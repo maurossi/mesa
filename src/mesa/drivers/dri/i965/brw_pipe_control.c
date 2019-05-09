@@ -308,7 +308,7 @@ brw_emit_depth_stall_flushes(struct brw_context *brw)
 void
 gen7_emit_vs_workaround_flush(struct brw_context *brw)
 {
-   const struct gen_device_info *devinfo = &brw->screen->devinfo;
+   MAYBE_UNUSED const struct gen_device_info *devinfo = &brw->screen->devinfo;
 
    assert(devinfo->gen == 7);
    brw_emit_pipe_control_write(brw,
@@ -349,10 +349,18 @@ gen7_emit_vs_workaround_flush(struct brw_context *brw)
  * context restore, so the mentioned hang doesn't happen. However,
  * software must program push constant commands for all stages prior to
  * rendering anything, so we flag them as dirty.
+ *
+ * Finally, we also make sure to stall at pixel scoreboard to make sure the
+ * constants have been loaded into the EUs prior to disable the push constants
+ * so that it doesn't hang a previous 3DPRIMITIVE.
  */
 void
 gen10_emit_isp_disable(struct brw_context *brw)
 {
+   brw_emit_pipe_control(brw,
+                         PIPE_CONTROL_STALL_AT_SCOREBOARD |
+                         PIPE_CONTROL_CS_STALL,
+                         NULL, 0, 0);
    brw_emit_pipe_control(brw,
                          PIPE_CONTROL_ISP_DIS |
                          PIPE_CONTROL_CS_STALL,
@@ -536,29 +544,17 @@ brw_emit_mi_flush(struct brw_context *brw)
 {
    const struct gen_device_info *devinfo = &brw->screen->devinfo;
 
-   if (brw->batch.ring == BLT_RING && devinfo->gen >= 6) {
-      const unsigned n_dwords = devinfo->gen >= 8 ? 5 : 4;
-      BEGIN_BATCH_BLT(n_dwords);
-      OUT_BATCH(MI_FLUSH_DW | (n_dwords - 2));
-      OUT_BATCH(0);
-      OUT_BATCH(0);
-      OUT_BATCH(0);
-      if (n_dwords == 5)
-         OUT_BATCH(0);
-      ADVANCE_BATCH();
-   } else {
-      int flags = PIPE_CONTROL_NO_WRITE | PIPE_CONTROL_RENDER_TARGET_FLUSH;
-      if (devinfo->gen >= 6) {
-         flags |= PIPE_CONTROL_INSTRUCTION_INVALIDATE |
-                  PIPE_CONTROL_CONST_CACHE_INVALIDATE |
-                  PIPE_CONTROL_DATA_CACHE_FLUSH |
-                  PIPE_CONTROL_DEPTH_CACHE_FLUSH |
-                  PIPE_CONTROL_VF_CACHE_INVALIDATE |
-                  PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE |
-                  PIPE_CONTROL_CS_STALL;
-      }
-      brw_emit_pipe_control_flush(brw, flags);
+   int flags = PIPE_CONTROL_RENDER_TARGET_FLUSH;
+   if (devinfo->gen >= 6) {
+      flags |= PIPE_CONTROL_INSTRUCTION_INVALIDATE |
+               PIPE_CONTROL_CONST_CACHE_INVALIDATE |
+               PIPE_CONTROL_DATA_CACHE_FLUSH |
+               PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+               PIPE_CONTROL_VF_CACHE_INVALIDATE |
+               PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE |
+               PIPE_CONTROL_CS_STALL;
    }
+   brw_emit_pipe_control_flush(brw, flags);
 }
 
 int
@@ -572,9 +568,8 @@ brw_init_pipe_control(struct brw_context *brw,
     * the gen6 workaround because it involves actually writing to
     * the buffer, and the kernel doesn't let us write to the batch.
     */
-   brw->workaround_bo = brw_bo_alloc(brw->bufmgr,
-                                     "pipe_control workaround",
-                                     4096, 4096);
+   brw->workaround_bo = brw_bo_alloc(brw->bufmgr, "workaround", 4096,
+                                     BRW_MEMZONE_OTHER);
    if (brw->workaround_bo == NULL)
       return -ENOMEM;
 

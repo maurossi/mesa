@@ -22,7 +22,7 @@
  * IN THE SOFTWARE.
  */
 
-#include "os/os_misc.h"
+#include "util/os_misc.h"
 #include "pipe/p_defines.h"
 #include "pipe/p_screen.h"
 #include "pipe/p_state.h"
@@ -32,6 +32,8 @@
 #include "util/u_memory.h"
 #include "util/u_format.h"
 #include "util/u_hash_table.h"
+#include "util/u_screen.h"
+#include "util/u_transfer_helper.h"
 #include "util/ralloc.h"
 
 #include <xf86drm.h>
@@ -109,6 +111,8 @@ vc4_screen_destroy(struct pipe_screen *pscreen)
         vc4_simulator_destroy(screen);
 #endif
 
+        u_transfer_helper_destroy(pscreen->transfer_helper);
+
         close(screen->fd);
         ralloc_free(pscreen);
 }
@@ -143,10 +147,11 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_BLEND_EQUATION_SEPARATE:
         case PIPE_CAP_TEXTURE_MULTISAMPLE:
         case PIPE_CAP_TEXTURE_SWIZZLE:
-        case PIPE_CAP_GLSL_OPTIMIZE_CONSERVATIVELY:
-        case PIPE_CAP_ALLOW_MAPPED_BUFFERS_DURING_EXECUTION:
         case PIPE_CAP_TEXTURE_BARRIER:
                 return 1;
+
+        case PIPE_CAP_NATIVE_FENCE_FD:
+                return screen->has_syncobj;
 
         case PIPE_CAP_TILE_RASTER_ORDER:
                 return vc4_has_feature(screen,
@@ -157,15 +162,6 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_POINT_SPRITE:
                 return 1;
 
-        case PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT:
-                return 256;
-
-        case PIPE_CAP_GLSL_FEATURE_LEVEL:
-                return 120;
-
-        case PIPE_CAP_MAX_VIEWPORTS:
-                return 1;
-
         case PIPE_CAP_TGSI_FS_COORD_ORIGIN_UPPER_LEFT:
         case PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
                 return 1;
@@ -174,133 +170,6 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
                 return 1;
 
-                /* Unsupported features. */
-        case PIPE_CAP_ANISOTROPIC_FILTER:
-        case PIPE_CAP_TEXTURE_BUFFER_OBJECTS:
-        case PIPE_CAP_BUFFER_SAMPLER_VIEW_RGBA_ONLY:
-        case PIPE_CAP_CUBE_MAP_ARRAY:
-        case PIPE_CAP_TEXTURE_MIRROR_CLAMP:
-        case PIPE_CAP_VERTEX_ELEMENT_INSTANCE_DIVISOR:
-        case PIPE_CAP_MIXED_COLORBUFFER_FORMATS:
-        case PIPE_CAP_SEAMLESS_CUBE_MAP:
-        case PIPE_CAP_QUADS_FOLLOW_PROVOKING_VERTEX_CONVENTION:
-        case PIPE_CAP_TGSI_INSTANCEID:
-        case PIPE_CAP_VERTEX_BUFFER_OFFSET_4BYTE_ALIGNED_ONLY:
-        case PIPE_CAP_VERTEX_BUFFER_STRIDE_4BYTE_ALIGNED_ONLY:
-        case PIPE_CAP_VERTEX_ELEMENT_SRC_OFFSET_4BYTE_ALIGNED_ONLY:
-        case PIPE_CAP_COMPUTE:
-        case PIPE_CAP_START_INSTANCE:
-        case PIPE_CAP_MAX_DUAL_SOURCE_RENDER_TARGETS:
-        case PIPE_CAP_SHADER_STENCIL_EXPORT:
-        case PIPE_CAP_TGSI_TEXCOORD:
-        case PIPE_CAP_PREFER_BLIT_BASED_TEXTURE_TRANSFER:
-        case PIPE_CAP_CONDITIONAL_RENDER:
-        case PIPE_CAP_PRIMITIVE_RESTART:
-        case PIPE_CAP_SM3:
-        case PIPE_CAP_INDEP_BLEND_ENABLE:
-        case PIPE_CAP_INDEP_BLEND_FUNC:
-        case PIPE_CAP_DEPTH_CLIP_DISABLE:
-        case PIPE_CAP_SEAMLESS_CUBE_MAP_PER_TEXTURE:
-        case PIPE_CAP_TGSI_FS_COORD_ORIGIN_LOWER_LEFT:
-        case PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_INTEGER:
-        case PIPE_CAP_TGSI_CAN_COMPACT_CONSTANTS:
-        case PIPE_CAP_USER_VERTEX_BUFFERS:
-        case PIPE_CAP_QUERY_PIPELINE_STATISTICS:
-        case PIPE_CAP_TEXTURE_BORDER_COLOR_QUIRK:
-        case PIPE_CAP_TGSI_VS_LAYER_VIEWPORT:
-        case PIPE_CAP_MAX_TEXTURE_GATHER_COMPONENTS:
-        case PIPE_CAP_TEXTURE_GATHER_SM5:
-        case PIPE_CAP_FAKE_SW_MSAA:
-        case PIPE_CAP_TEXTURE_QUERY_LOD:
-        case PIPE_CAP_SAMPLE_SHADING:
-        case PIPE_CAP_TEXTURE_GATHER_OFFSETS:
-        case PIPE_CAP_MAX_TEXTURE_GATHER_OFFSET:
-        case PIPE_CAP_TGSI_VS_WINDOW_SPACE_POSITION:
-        case PIPE_CAP_MAX_TEXEL_OFFSET:
-        case PIPE_CAP_MAX_VERTEX_STREAMS:
-        case PIPE_CAP_DRAW_INDIRECT:
-        case PIPE_CAP_MULTI_DRAW_INDIRECT:
-        case PIPE_CAP_MULTI_DRAW_INDIRECT_PARAMS:
-        case PIPE_CAP_TGSI_FS_FINE_DERIVATIVE:
-        case PIPE_CAP_CONDITIONAL_RENDER_INVERTED:
-        case PIPE_CAP_SAMPLER_VIEW_TARGET:
-        case PIPE_CAP_CLIP_HALFZ:
-        case PIPE_CAP_VERTEXID_NOBASE:
-        case PIPE_CAP_POLYGON_OFFSET_CLAMP:
-        case PIPE_CAP_MULTISAMPLE_Z_RESOLVE:
-        case PIPE_CAP_RESOURCE_FROM_USER_MEMORY:
-        case PIPE_CAP_DEVICE_RESET_STATUS_QUERY:
-        case PIPE_CAP_MAX_SHADER_PATCH_VARYINGS:
-        case PIPE_CAP_TEXTURE_FLOAT_LINEAR:
-        case PIPE_CAP_TEXTURE_HALF_FLOAT_LINEAR:
-        case PIPE_CAP_DEPTH_BOUNDS_TEST:
-        case PIPE_CAP_TGSI_TXQS:
-        case PIPE_CAP_FORCE_PERSAMPLE_INTERP:
-        case PIPE_CAP_COPY_BETWEEN_COMPRESSED_AND_PLAIN_FORMATS:
-        case PIPE_CAP_CLEAR_TEXTURE:
-        case PIPE_CAP_DRAW_PARAMETERS:
-        case PIPE_CAP_TGSI_PACK_HALF_FLOAT:
-        case PIPE_CAP_TGSI_FS_POSITION_IS_SYSVAL:
-        case PIPE_CAP_TGSI_FS_FACE_IS_INTEGER_SYSVAL:
-        case PIPE_CAP_SHADER_BUFFER_OFFSET_ALIGNMENT:
-        case PIPE_CAP_INVALIDATE_BUFFER:
-        case PIPE_CAP_GENERATE_MIPMAP:
-        case PIPE_CAP_STRING_MARKER:
-        case PIPE_CAP_SURFACE_REINTERPRET_BLOCKS:
-        case PIPE_CAP_QUERY_BUFFER_OBJECT:
-        case PIPE_CAP_QUERY_MEMORY_INFO:
-        case PIPE_CAP_PCI_GROUP:
-        case PIPE_CAP_PCI_BUS:
-        case PIPE_CAP_PCI_DEVICE:
-        case PIPE_CAP_PCI_FUNCTION:
-        case PIPE_CAP_FRAMEBUFFER_NO_ATTACHMENT:
-        case PIPE_CAP_ROBUST_BUFFER_ACCESS_BEHAVIOR:
-        case PIPE_CAP_CULL_DISTANCE:
-        case PIPE_CAP_PRIMITIVE_RESTART_FOR_PATCHES:
-        case PIPE_CAP_TGSI_VOTE:
-        case PIPE_CAP_MAX_WINDOW_RECTANGLES:
-        case PIPE_CAP_POLYGON_OFFSET_UNITS_UNSCALED:
-        case PIPE_CAP_VIEWPORT_SUBPIXEL_BITS:
-        case PIPE_CAP_TGSI_ARRAY_COMPONENTS:
-        case PIPE_CAP_TGSI_CAN_READ_OUTPUTS:
-        case PIPE_CAP_NATIVE_FENCE_FD:
-        case PIPE_CAP_TGSI_FS_FBFETCH:
-        case PIPE_CAP_TGSI_MUL_ZERO_WINS:
-        case PIPE_CAP_DOUBLES:
-        case PIPE_CAP_INT64:
-        case PIPE_CAP_INT64_DIVMOD:
-        case PIPE_CAP_TGSI_TEX_TXF_LZ:
-        case PIPE_CAP_TGSI_CLOCK:
-        case PIPE_CAP_POLYGON_MODE_FILL_RECTANGLE:
-        case PIPE_CAP_SPARSE_BUFFER_PAGE_SIZE:
-        case PIPE_CAP_TGSI_BALLOT:
-        case PIPE_CAP_TGSI_TES_LAYER_VIEWPORT:
-        case PIPE_CAP_CAN_BIND_CONST_BUFFER_AS_VERTEX:
-        case PIPE_CAP_POST_DEPTH_COVERAGE:
-        case PIPE_CAP_BINDLESS_TEXTURE:
-        case PIPE_CAP_NIR_SAMPLERS_AS_DEREF:
-        case PIPE_CAP_QUERY_SO_OVERFLOW:
-        case PIPE_CAP_MEMOBJ:
-        case PIPE_CAP_LOAD_CONSTBUF:
-        case PIPE_CAP_TGSI_ANY_REG_AS_ADDRESS:
-        case PIPE_CAP_MAX_COMBINED_SHADER_OUTPUT_RESOURCES:
-        case PIPE_CAP_SIGNED_VERTEX_BUFFER_OFFSET:
-        case PIPE_CAP_CONTEXT_PRIORITY_MASK:
-                return 0;
-
-                /* Stream output. */
-        case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
-        case PIPE_CAP_STREAM_OUTPUT_PAUSE_RESUME:
-        case PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS:
-        case PIPE_CAP_MAX_STREAM_OUTPUT_SEPARATE_COMPONENTS:
-        case PIPE_CAP_MAX_STREAM_OUTPUT_INTERLEAVED_COMPONENTS:
-                return 0;
-
-                /* Geometry shader output, unsupported. */
-        case PIPE_CAP_MAX_GEOMETRY_OUTPUT_VERTICES:
-        case PIPE_CAP_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS:
-                return 0;
-
                 /* Texturing. */
         case PIPE_CAP_MAX_TEXTURE_2D_LEVELS:
         case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
@@ -308,35 +177,12 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
         case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
                 /* Note: Not supported in hardware, just faking it. */
                 return 5;
-        case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
-                return 0;
 
-                /* Render targets. */
-        case PIPE_CAP_MAX_RENDER_TARGETS:
-                return 1;
-
-                /* Queries. */
-        case PIPE_CAP_QUERY_TIME_ELAPSED:
-        case PIPE_CAP_QUERY_TIMESTAMP:
-                return 0;
-
-        case PIPE_CAP_MIN_TEXTURE_GATHER_OFFSET:
-        case PIPE_CAP_MIN_TEXEL_OFFSET:
-                return 0;
-
-        case PIPE_CAP_MAX_VERTEX_ATTRIB_STRIDE:
-                return 2048;
-
-        case PIPE_CAP_ENDIANNESS:
-                return PIPE_ENDIAN_LITTLE;
-
-        case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
-                return 64;
+        case PIPE_CAP_MAX_VARYINGS:
+                return 8;
 
         case PIPE_CAP_VENDOR_ID:
                 return 0x14E4;
-        case PIPE_CAP_DEVICE_ID:
-                return 0xFFFFFFFF;
         case PIPE_CAP_ACCELERATED:
                 return 1;
         case PIPE_CAP_VIDEO_MEMORY: {
@@ -351,8 +197,7 @@ vc4_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
                 return 1;
 
         default:
-                fprintf(stderr, "unknown param %d\n", param);
-                return 0;
+                return u_pipe_screen_get_param_defaults(pscreen, param);
         }
 }
 
@@ -372,10 +217,10 @@ vc4_screen_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
                 return 0.0f;
         case PIPE_CAPF_MAX_TEXTURE_LOD_BIAS:
                 return 0.0f;
-        case PIPE_CAPF_GUARD_BAND_LEFT:
-        case PIPE_CAPF_GUARD_BAND_TOP:
-        case PIPE_CAPF_GUARD_BAND_RIGHT:
-        case PIPE_CAPF_GUARD_BAND_BOTTOM:
+
+        case PIPE_CAPF_MIN_CONSERVATIVE_RASTER_DILATE:
+        case PIPE_CAPF_MAX_CONSERVATIVE_RASTER_DILATE:
+        case PIPE_CAPF_CONSERVATIVE_RASTER_DILATE_GRANULARITY:
                 return 0.0f;
         default:
                 fprintf(stderr, "unknown paramf %d\n", param);
@@ -452,6 +297,8 @@ vc4_screen_get_shader_param(struct pipe_screen *pscreen,
         case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
         case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTER_BUFFERS:
                 return 0;
+        case PIPE_SHADER_CAP_SCALAR_ISA:
+                return 1;
         default:
                 fprintf(stderr, "unknown shader param %d\n", param);
                 return 0;
@@ -464,16 +311,18 @@ vc4_screen_is_format_supported(struct pipe_screen *pscreen,
                                enum pipe_format format,
                                enum pipe_texture_target target,
                                unsigned sample_count,
+                               unsigned storage_sample_count,
                                unsigned usage)
 {
         struct vc4_screen *screen = vc4_screen(pscreen);
-        unsigned retval = 0;
+
+        if (MAX2(1, sample_count) != MAX2(1, storage_sample_count))
+                return false;
 
         if (sample_count > 1 && sample_count != VC4_MAX_SAMPLES)
                 return FALSE;
 
-        if ((target >= PIPE_MAX_TEXTURE_TYPES) ||
-            !util_format_is_supported(format, usage)) {
+        if (target >= PIPE_MAX_TEXTURE_TYPES) {
                 return FALSE;
         }
 
@@ -523,46 +372,36 @@ vc4_screen_is_format_supported(struct pipe_screen *pscreen,
                 case PIPE_FORMAT_R8G8B8_SSCALED:
                 case PIPE_FORMAT_R8G8_SSCALED:
                 case PIPE_FORMAT_R8_SSCALED:
-                        retval |= PIPE_BIND_VERTEX_BUFFER;
                         break;
                 default:
-                        break;
+                        return FALSE;
                 }
         }
 
         if ((usage & PIPE_BIND_RENDER_TARGET) &&
-            vc4_rt_format_supported(format)) {
-                retval |= PIPE_BIND_RENDER_TARGET;
+            !vc4_rt_format_supported(format)) {
+                return FALSE;
         }
 
         if ((usage & PIPE_BIND_SAMPLER_VIEW) &&
-            vc4_tex_format_supported(format) &&
-            (format != PIPE_FORMAT_ETC1_RGB8 || screen->has_etc1)) {
-                retval |= PIPE_BIND_SAMPLER_VIEW;
+            (!vc4_tex_format_supported(format) ||
+             (format == PIPE_FORMAT_ETC1_RGB8 && !screen->has_etc1))) {
+                return FALSE;
         }
 
         if ((usage & PIPE_BIND_DEPTH_STENCIL) &&
-            (format == PIPE_FORMAT_S8_UINT_Z24_UNORM ||
-             format == PIPE_FORMAT_X8Z24_UNORM)) {
-                retval |= PIPE_BIND_DEPTH_STENCIL;
+            format != PIPE_FORMAT_S8_UINT_Z24_UNORM &&
+            format != PIPE_FORMAT_X8Z24_UNORM) {
+                return FALSE;
         }
 
         if ((usage & PIPE_BIND_INDEX_BUFFER) &&
-            (format == PIPE_FORMAT_I8_UINT ||
-             format == PIPE_FORMAT_I16_UINT)) {
-                retval |= PIPE_BIND_INDEX_BUFFER;
+            format != PIPE_FORMAT_I8_UINT &&
+            format != PIPE_FORMAT_I16_UINT) {
+                return FALSE;
         }
 
-#if 0
-        if (retval != usage) {
-                fprintf(stderr,
-                        "not supported: format=%s, target=%d, sample_count=%d, "
-                        "usage=0x%x, retval=0x%x\n", util_format_name(format),
-                        target, sample_count, usage, retval);
-        }
-#endif
-
-        return retval == usage;
+        return TRUE;
 }
 
 static void
@@ -661,7 +500,9 @@ struct pipe_screen *
 vc4_screen_create(int fd, struct renderonly *ro)
 {
         struct vc4_screen *screen = rzalloc(NULL, struct vc4_screen);
+        uint64_t syncobj_cap = 0;
         struct pipe_screen *pscreen;
+        int err;
 
         pscreen = &screen->base;
 
@@ -694,6 +535,12 @@ vc4_screen_create(int fd, struct renderonly *ro)
                 vc4_has_feature(screen, DRM_VC4_PARAM_SUPPORTS_THREADED_FS);
         screen->has_madvise =
                 vc4_has_feature(screen, DRM_VC4_PARAM_SUPPORTS_MADVISE);
+        screen->has_perfmon_ioctl =
+                vc4_has_feature(screen, DRM_VC4_PARAM_SUPPORTS_PERFMON);
+
+        err = drmGetCap(fd, DRM_CAP_SYNCOBJ, &syncobj_cap);
+        if (err == 0 && syncobj_cap)
+                screen->has_syncobj = true;
 
         if (!vc4_get_chip_info(screen))
                 goto fail;
@@ -702,7 +549,7 @@ vc4_screen_create(int fd, struct renderonly *ro)
 
         slab_create_parent(&screen->transfer_pool, sizeof(struct vc4_transfer), 16);
 
-        vc4_fence_init(screen);
+        vc4_fence_screen_init(screen);
 
         vc4_debug = debug_get_option_vc4_debug();
         if (vc4_debug & VC4_DEBUG_SHADERDB)
@@ -719,6 +566,11 @@ vc4_screen_create(int fd, struct renderonly *ro)
         pscreen->get_device_vendor = vc4_screen_get_vendor;
         pscreen->get_compiler_options = vc4_screen_get_compiler_options;
         pscreen->query_dmabuf_modifiers = vc4_screen_query_dmabuf_modifiers;
+
+        if (screen->has_perfmon_ioctl) {
+                pscreen->get_driver_query_group_info = vc4_get_driver_query_group_info;
+                pscreen->get_driver_query_info = vc4_get_driver_query_info;
+        }
 
         return pscreen;
 

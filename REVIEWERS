@@ -72,7 +72,9 @@ F: src/loader/
 
 EGL
 R: Eric Engestrom <eric@engestrom.ch>
+R: Emil Velikov <emil.l.velikov@gmail.com>
 F: src/egl/
+F: include/EGL/
 
 HAIKU
 R: Alexander von Gluck IV <kallisti5@unixzen.com>
@@ -116,6 +118,7 @@ MESON BUILD
 R: Dylan Baker <dylan@pnwbakers.com>
 R: Eric Engestrom <eric@engestrom.ch>
 F: */meson.build
+F: meson.build
 F: meson_options.txt
 
 ANDROID EGL SUPPORT
@@ -135,3 +138,8 @@ F:	src/gallium/drivers/freedreno/
 GLX
 R: Adam Jackson <ajax@redhat.com>
 F: src/glx/
+
+VULKAN
+R: Eric Engestrom <eric@engestrom.ch>
+F: src/vulkan/
+F: include/vulkan/

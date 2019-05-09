@@ -29,11 +29,8 @@
 
 #include "pipe/p_context.h"
 #include "freedreno_context.h"
-#include "ir3_shader.h"
 
-struct fd5_shader_stateobj {
-	struct ir3_shader *shader;
-};
+#include "ir3/ir3_shader.h"
 
 struct fd5_emit;
 

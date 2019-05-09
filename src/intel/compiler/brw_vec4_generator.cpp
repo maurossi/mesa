@@ -291,8 +291,6 @@ generate_tex(struct brw_codegen *p,
                  inst->header_size != 0,
                  BRW_SAMPLER_SIMD_MODE_SIMD4X2,
                  return_format);
-
-      brw_mark_surface_used(&prog_data->base, sampler + base_binding_table_index);
    } else {
       /* Non-constant sampler index. */
 
@@ -324,17 +322,15 @@ generate_tex(struct brw_codegen *p,
          gen6_resolve_implied_move(p, &src, inst->base_mrf);
 
       /* dst = send(offset, a0.0 | <descriptor>) */
-      brw_inst *insn = brw_send_indirect_message(
-         p, BRW_SFID_SAMPLER, dst, src, addr);
-      brw_set_sampler_message(p, insn,
-                              0 /* surface */,
-                              0 /* sampler */,
-                              msg_type,
-                              1 /* rlen */,
-                              inst->mlen /* mlen */,
-                              inst->header_size != 0 /* header */,
-                              BRW_SAMPLER_SIMD_MODE_SIMD4X2,
-                              return_format);
+      brw_send_indirect_message(
+         p, BRW_SFID_SAMPLER, dst, src, addr,
+         brw_message_desc(devinfo, inst->mlen, 1, inst->header_size) |
+         brw_sampler_desc(devinfo,
+                          0 /* surface */,
+                          0 /* sampler */,
+                          msg_type,
+                          BRW_SAMPLER_SIMD_MODE_SIMD4X2,
+                          return_format));
 
       /* visitor knows more than we do about the surface limit required,
        * so has already done marking.
@@ -777,10 +773,9 @@ generate_tcs_urb_write(struct brw_codegen *p,
    brw_inst *send = brw_next_insn(p, BRW_OPCODE_SEND);
    brw_set_dest(p, send, brw_null_reg());
    brw_set_src0(p, send, urb_header);
+   brw_set_desc(p, send, brw_message_desc(devinfo, inst->mlen, 0, true));
 
-   brw_set_message_descriptor(p, send, BRW_SFID_URB,
-                              inst->mlen /* mlen */, 0 /* rlen */,
-                              true /* header */, false /* eot */);
+   brw_inst_set_sfid(devinfo, send, BRW_SFID_URB);
    brw_inst_set_urb_opcode(devinfo, send, BRW_URB_OPCODE_WRITE_OWORD);
    brw_inst_set_urb_global_offset(devinfo, send, inst->offset);
    if (inst->urb_write_flags & BRW_URB_WRITE_EOT) {
@@ -932,8 +927,21 @@ generate_tes_add_indirect_urb_offset(struct brw_codegen *p,
    brw_set_default_mask_control(p, BRW_MASK_DISABLE);
 
    brw_MOV(p, dst, header);
+
+   /* Uniforms will have a stride <0;4,1>, and we need to convert to <0;1,0>.
+    * Other values get <4;1,0>.
+    */
+   struct brw_reg restrided_offset;
+   if (offset.vstride == BRW_VERTICAL_STRIDE_0 &&
+       offset.width == BRW_WIDTH_4 &&
+       offset.hstride == BRW_HORIZONTAL_STRIDE_1) {
+      restrided_offset = stride(offset, 0, 1, 0);
+   } else {
+      restrided_offset = stride(offset, 4, 1, 0);
+   }
+
    /* m0.3-0.4: 128-bit-granular offsets into the URB from the handles */
-   brw_MOV(p, vec2(get_element_ud(dst, 3)), stride(offset, 4, 1, 0));
+   brw_MOV(p, vec2(get_element_ud(dst, 3)), restrided_offset);
 
    brw_pop_insn_state(p);
 }
@@ -953,9 +961,9 @@ generate_vec4_urb_read(struct brw_codegen *p,
    brw_set_dest(p, send, dst);
    brw_set_src0(p, send, header);
 
-   brw_set_message_descriptor(p, send, BRW_SFID_URB,
-                              1 /* mlen */, 1 /* rlen */,
-                              true /* header */, false /* eot */);
+   brw_set_desc(p, send, brw_message_desc(devinfo, 1, 1, true));
+
+   brw_inst_set_sfid(devinfo, send, BRW_SFID_URB);
    brw_inst_set_urb_opcode(devinfo, send, BRW_URB_OPCODE_READ_OWORD);
    brw_inst_set_urb_swizzle_control(devinfo, send, BRW_URB_SWIZZLE_INTERLEAVE);
    brw_inst_set_urb_per_slot_offset(devinfo, send, 1);
@@ -989,9 +997,9 @@ generate_tcs_release_input(struct brw_codegen *p,
    brw_inst *send = brw_next_insn(p, BRW_OPCODE_SEND);
    brw_set_dest(p, send, brw_null_reg());
    brw_set_src0(p, send, header);
-   brw_set_message_descriptor(p, send, BRW_SFID_URB,
-                              1 /* mlen */, 0 /* rlen */,
-                              true /* header */, false /* eot */);
+   brw_set_desc(p, send, brw_message_desc(devinfo, 1, 0, true));
+
+   brw_inst_set_sfid(devinfo, send, BRW_SFID_URB);
    brw_inst_set_urb_opcode(devinfo, send, BRW_URB_OPCODE_READ_OWORD);
    brw_inst_set_urb_complete(devinfo, send, 1);
    brw_inst_set_urb_swizzle_control(devinfo, send, is_unpaired.ud ?
@@ -1158,23 +1166,23 @@ generate_scratch_read(struct brw_codegen *p,
    const unsigned target_cache =
       devinfo->gen >= 7 ? GEN7_SFID_DATAPORT_DATA_CACHE :
       devinfo->gen >= 6 ? GEN6_SFID_DATAPORT_RENDER_CACHE :
-      BRW_DATAPORT_READ_TARGET_RENDER_CACHE;
+      BRW_SFID_DATAPORT_READ;
 
    /* Each of the 8 channel enables is considered for whether each
     * dword is written.
     */
    brw_inst *send = brw_next_insn(p, BRW_OPCODE_SEND);
+   brw_inst_set_sfid(devinfo, send, target_cache);
    brw_set_dest(p, send, dst);
    brw_set_src0(p, send, header);
    if (devinfo->gen < 6)
       brw_inst_set_cond_modifier(devinfo, send, inst->base_mrf);
-   brw_set_dp_read_message(p, send,
-                           brw_scratch_surface_idx(p),
-			   BRW_DATAPORT_OWORD_DUAL_BLOCK_1OWORD,
-			   msg_type, target_cache,
-			   2, /* mlen */
-                           true, /* header_present */
-			   1 /* rlen */);
+   brw_set_desc(p, send,
+                brw_message_desc(devinfo, 2, 1, true) |
+                brw_dp_read_desc(devinfo,
+                                 brw_scratch_surface_idx(p),
+                                 BRW_DATAPORT_OWORD_DUAL_BLOCK_1OWORD,
+                                 msg_type, BRW_DATAPORT_READ_TARGET_RENDER_CACHE));
 }
 
 static void
@@ -1188,7 +1196,7 @@ generate_scratch_write(struct brw_codegen *p,
    const unsigned target_cache =
       (devinfo->gen >= 7 ? GEN7_SFID_DATAPORT_DATA_CACHE :
        devinfo->gen >= 6 ? GEN6_SFID_DATAPORT_RENDER_CACHE :
-       BRW_DATAPORT_READ_TARGET_RENDER_CACHE);
+       BRW_SFID_DATAPORT_WRITE);
    struct brw_reg header = brw_vec8_grf(0, 0);
    bool write_commit;
 
@@ -1240,21 +1248,19 @@ generate_scratch_write(struct brw_codegen *p,
     * dword is written.
     */
    brw_inst *send = brw_next_insn(p, BRW_OPCODE_SEND);
+   brw_inst_set_sfid(p->devinfo, send, target_cache);
    brw_set_dest(p, send, dst);
    brw_set_src0(p, send, header);
    if (devinfo->gen < 6)
       brw_inst_set_cond_modifier(p->devinfo, send, inst->base_mrf);
-   brw_set_dp_write_message(p, send,
-                            brw_scratch_surface_idx(p),
-			    BRW_DATAPORT_OWORD_DUAL_BLOCK_1OWORD,
-			    msg_type,
-                            target_cache,
-			    3, /* mlen */
-			    true, /* header present */
-			    false, /* not a render target write */
-			    write_commit, /* rlen */
-			    false, /* eot */
-			    write_commit);
+   brw_set_desc(p, send,
+                brw_message_desc(devinfo, 3, write_commit, true) |
+                brw_dp_write_desc(devinfo,
+                                  brw_scratch_surface_idx(p),
+                                  BRW_DATAPORT_OWORD_DUAL_BLOCK_1OWORD,
+                                  msg_type,
+                                  false, /* not a render target write */
+                                  write_commit));
 }
 
 static void
@@ -1268,7 +1274,7 @@ generate_pull_constant_load(struct brw_codegen *p,
    const struct gen_device_info *devinfo = p->devinfo;
    const unsigned target_cache =
       (devinfo->gen >= 6 ? GEN6_SFID_DATAPORT_SAMPLER_CACHE :
-       BRW_DATAPORT_READ_TARGET_DATA_CACHE);
+       BRW_SFID_DATAPORT_READ);
    assert(index.file == BRW_IMMEDIATE_VALUE &&
 	  index.type == BRW_REGISTER_TYPE_UD);
    uint32_t surf_index = index.ud;
@@ -1306,18 +1312,17 @@ generate_pull_constant_load(struct brw_codegen *p,
     * dword is written.
     */
    brw_inst *send = brw_next_insn(p, BRW_OPCODE_SEND);
+   brw_inst_set_sfid(devinfo, send, target_cache);
    brw_set_dest(p, send, dst);
    brw_set_src0(p, send, header);
    if (devinfo->gen < 6)
       brw_inst_set_cond_modifier(p->devinfo, send, inst->base_mrf);
-   brw_set_dp_read_message(p, send,
-			   surf_index,
-			   BRW_DATAPORT_OWORD_DUAL_BLOCK_1OWORD,
-			   msg_type,
-                           target_cache,
-			   2, /* mlen */
-                           true, /* header_present */
-			   1 /* rlen */);
+   brw_set_desc(p, send,
+                brw_message_desc(devinfo, 2, 1, true) |
+                brw_dp_read_desc(devinfo, surf_index,
+                                 BRW_DATAPORT_OWORD_DUAL_BLOCK_1OWORD,
+                                 msg_type,
+                                 BRW_DATAPORT_READ_TARGET_DATA_CACHE));
 }
 
 static void
@@ -1344,8 +1349,6 @@ generate_get_buffer_size(struct brw_codegen *p,
               inst->header_size > 0,
               BRW_SAMPLER_SIMD_MODE_SIMD4X2,
               BRW_SAMPLER_RETURN_FORMAT_SINT32);
-
-   brw_mark_surface_used(&prog_data->base, surf_index.ud);
 }
 
 static void
@@ -1356,25 +1359,21 @@ generate_pull_constant_load_gen7(struct brw_codegen *p,
                                  struct brw_reg surf_index,
                                  struct brw_reg offset)
 {
+   const struct gen_device_info *devinfo = p->devinfo;
    assert(surf_index.type == BRW_REGISTER_TYPE_UD);
 
    if (surf_index.file == BRW_IMMEDIATE_VALUE) {
 
       brw_inst *insn = brw_next_insn(p, BRW_OPCODE_SEND);
+      brw_inst_set_sfid(devinfo, insn, BRW_SFID_SAMPLER);
       brw_set_dest(p, insn, dst);
       brw_set_src0(p, insn, offset);
-      brw_set_sampler_message(p, insn,
-                              surf_index.ud,
-                              0, /* LD message ignores sampler unit */
-                              GEN5_SAMPLER_MESSAGE_SAMPLE_LD,
-                              1, /* rlen */
-                              inst->mlen,
-                              inst->header_size != 0,
-                              BRW_SAMPLER_SIMD_MODE_SIMD4X2,
-                              0);
-
-      brw_mark_surface_used(&prog_data->base, surf_index.ud);
-
+      brw_set_desc(p, insn,
+                   brw_message_desc(devinfo, inst->mlen, 1, inst->header_size) |
+                   brw_sampler_desc(devinfo, surf_index.ud,
+                                    0, /* LD message ignores sampler unit */
+                                    GEN5_SAMPLER_MESSAGE_SAMPLE_LD,
+                                    BRW_SAMPLER_SIMD_MODE_SIMD4X2, 0));
    } else {
 
       struct brw_reg addr = vec1(retype(brw_address_reg(0), BRW_REGISTER_TYPE_UD));
@@ -1385,7 +1384,7 @@ generate_pull_constant_load_gen7(struct brw_codegen *p,
 
       /* a0.0 = surf_index & 0xff */
       brw_inst *insn_and = brw_next_insn(p, BRW_OPCODE_AND);
-      brw_inst_set_exec_size(p->devinfo, insn_and, BRW_EXECUTE_1);
+      brw_inst_set_exec_size(devinfo, insn_and, BRW_EXECUTE_1);
       brw_set_dest(p, insn_and, addr);
       brw_set_src0(p, insn_and, vec1(retype(surf_index, BRW_REGISTER_TYPE_UD)));
       brw_set_src1(p, insn_and, brw_imm_ud(0x0ff));
@@ -1393,23 +1392,21 @@ generate_pull_constant_load_gen7(struct brw_codegen *p,
       brw_pop_insn_state(p);
 
       /* dst = send(offset, a0.0 | <descriptor>) */
-      brw_inst *insn = brw_send_indirect_message(
-         p, BRW_SFID_SAMPLER, dst, offset, addr);
-      brw_set_sampler_message(p, insn,
-                              0 /* surface */,
-                              0 /* sampler */,
-                              GEN5_SAMPLER_MESSAGE_SAMPLE_LD,
-                              1 /* rlen */,
-                              inst->mlen,
-                              inst->header_size != 0,
-                              BRW_SAMPLER_SIMD_MODE_SIMD4X2,
-                              0);
+      brw_send_indirect_message(
+         p, BRW_SFID_SAMPLER, dst, offset, addr,
+         brw_message_desc(devinfo, inst->mlen, 1, inst->header_size) |
+         brw_sampler_desc(devinfo,
+                          0 /* surface */,
+                          0 /* sampler */,
+                          GEN5_SAMPLER_MESSAGE_SAMPLE_LD,
+                          BRW_SAMPLER_SIMD_MODE_SIMD4X2,
+                          0));
    }
 }
 
 static void
 generate_set_simd4x2_header_gen9(struct brw_codegen *p,
-                                 vec4_instruction *inst,
+                                 vec4_instruction *,
                                  struct brw_reg dst)
 {
    brw_push_insn_state(p);
@@ -1427,9 +1424,9 @@ generate_set_simd4x2_header_gen9(struct brw_codegen *p,
 
 static void
 generate_mov_indirect(struct brw_codegen *p,
-                      vec4_instruction *inst,
+                      vec4_instruction *,
                       struct brw_reg dst, struct brw_reg reg,
-                      struct brw_reg indirect, struct brw_reg length)
+                      struct brw_reg indirect)
 {
    assert(indirect.type == BRW_REGISTER_TYPE_UD);
    assert(p->devinfo->gen >= 6);
@@ -1517,7 +1514,7 @@ generate_code(struct brw_codegen *p,
 
       brw_set_default_predicate_control(p, inst->predicate);
       brw_set_default_predicate_inverse(p, inst->predicate_inverse);
-      brw_set_default_flag_reg(p, 0, inst->flag_subreg);
+      brw_set_default_flag_reg(p, inst->flag_subreg / 2, inst->flag_subreg % 2);
       brw_set_default_saturate(p, inst->saturate);
       brw_set_default_mask_control(p, inst->force_writemask_all);
       brw_set_default_acc_write_control(p, inst->writes_accumulator);
@@ -1862,17 +1859,16 @@ generate_code(struct brw_codegen *p,
       case SHADER_OPCODE_SHADER_TIME_ADD:
          brw_shader_time_add(p, src[0],
                              prog_data->base.binding_table.shader_time_start);
-         brw_mark_surface_used(&prog_data->base,
-                               prog_data->base.binding_table.shader_time_start);
          break;
 
       case SHADER_OPCODE_UNTYPED_ATOMIC:
          assert(src[2].file == BRW_IMMEDIATE_VALUE);
          brw_untyped_atomic(p, dst, src[0], src[1], src[2].ud, inst->mlen,
-                            !inst->dst.is_null());
+                            !inst->dst.is_null(), inst->header_size);
          break;
 
       case SHADER_OPCODE_UNTYPED_SURFACE_READ:
+         assert(!inst->header_size);
          assert(src[2].file == BRW_IMMEDIATE_VALUE);
          brw_untyped_surface_read(p, dst, src[0], src[1], inst->mlen,
                                   src[2].ud);
@@ -1881,29 +1877,29 @@ generate_code(struct brw_codegen *p,
       case SHADER_OPCODE_UNTYPED_SURFACE_WRITE:
          assert(src[2].file == BRW_IMMEDIATE_VALUE);
          brw_untyped_surface_write(p, src[0], src[1], inst->mlen,
-                                   src[2].ud);
+                                   src[2].ud, inst->header_size);
          break;
 
       case SHADER_OPCODE_TYPED_ATOMIC:
          assert(src[2].file == BRW_IMMEDIATE_VALUE);
          brw_typed_atomic(p, dst, src[0], src[1], src[2].ud, inst->mlen,
-                          !inst->dst.is_null());
+                          !inst->dst.is_null(), inst->header_size);
          break;
 
       case SHADER_OPCODE_TYPED_SURFACE_READ:
          assert(src[2].file == BRW_IMMEDIATE_VALUE);
          brw_typed_surface_read(p, dst, src[0], src[1], inst->mlen,
-                                src[2].ud);
+                                src[2].ud, inst->header_size);
          break;
 
       case SHADER_OPCODE_TYPED_SURFACE_WRITE:
          assert(src[2].file == BRW_IMMEDIATE_VALUE);
          brw_typed_surface_write(p, src[0], src[1], inst->mlen,
-                                 src[2].ud);
+                                 src[2].ud, inst->header_size);
          break;
 
       case SHADER_OPCODE_MEMORY_FENCE:
-         brw_memory_fence(p, dst);
+         brw_memory_fence(p, dst, BRW_OPCODE_SEND);
          break;
 
       case SHADER_OPCODE_FIND_LIVE_CHANNEL: {
@@ -2140,7 +2136,7 @@ generate_code(struct brw_codegen *p,
          break;
 
       case SHADER_OPCODE_MOV_INDIRECT:
-         generate_mov_indirect(p, inst, dst, src[0], src[1], src[2]);
+         generate_mov_indirect(p, inst, dst, src[0], src[1]);
          break;
 
       case BRW_OPCODE_DIM:
@@ -2221,8 +2217,7 @@ brw_vec4_generate_assembly(const struct brw_compiler *compiler,
                            void *mem_ctx,
                            const nir_shader *nir,
                            struct brw_vue_prog_data *prog_data,
-                           const struct cfg_t *cfg,
-                           unsigned *out_assembly_size)
+                           const struct cfg_t *cfg)
 {
    struct brw_codegen *p = rzalloc(mem_ctx, struct brw_codegen);
    brw_init_codegen(compiler->devinfo, p, mem_ctx);
@@ -2230,5 +2225,5 @@ brw_vec4_generate_assembly(const struct brw_compiler *compiler,
 
    generate_code(p, compiler, log_data, nir, prog_data, cfg);
 
-   return brw_get_program(p, out_assembly_size);
+   return brw_get_program(p, &prog_data->base.program_size);
 }

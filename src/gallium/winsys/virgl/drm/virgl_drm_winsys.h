@@ -50,6 +50,7 @@ struct virgl_hw_res {
    int64_t start, end;
    boolean flinked;
    uint32_t flink;
+   int fence_fd;
 };
 
 struct virgl_drm_winsys
@@ -64,6 +65,7 @@ struct virgl_drm_winsys
    struct util_hash_table *bo_handles;
    struct util_hash_table *bo_names;
    mtx_t bo_handles_mutex;
+   bool has_capset_query_fix;
 };
 
 struct virgl_drm_cmd_buf {

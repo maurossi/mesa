@@ -18,13 +18,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-nir_depends = files('nir_opcodes.py')
+nir_depends = files('nir_opcodes.py', 'nir_intrinsics.py')
 
 nir_builder_opcodes_h = custom_target(
   'nir_builder_opcodes.h',
   input : 'nir_builder_opcodes_h.py',
   output : 'nir_builder_opcodes.h',
-  command : [prog_python2, '@INPUT@'],
+  command : [prog_python, '@INPUT@'],
   capture : true,
   depend_files : nir_depends,
 )
@@ -33,7 +33,7 @@ nir_constant_expressions_c = custom_target(
   'nir_constant_expressions.c',
   input : 'nir_constant_expressions.py',
   output : 'nir_constant_expressions.c',
-  command : [prog_python2, '@INPUT@'],
+  command : [prog_python, '@INPUT@'],
   capture : true,
   depend_files : nir_depends,
 )
@@ -42,7 +42,7 @@ nir_opcodes_h = custom_target(
   'nir_opcodes.h',
   input : 'nir_opcodes_h.py',
   output : 'nir_opcodes.h',
-  command : [prog_python2, '@INPUT@'],
+  command : [prog_python, '@INPUT@'],
   capture : true,
   depend_files : nir_depends,
 )
@@ -51,7 +51,7 @@ nir_opcodes_c = custom_target(
   'nir_opcodes.c',
   input : 'nir_opcodes_c.py',
   output : 'nir_opcodes.c',
-  command : [prog_python2, '@INPUT@'],
+  command : [prog_python, '@INPUT@'],
   capture : true,
   depend_files : nir_depends,
 )
@@ -60,54 +60,63 @@ nir_opt_algebraic_c = custom_target(
   'nir_opt_algebraic.c',
   input : 'nir_opt_algebraic.py',
   output : 'nir_opt_algebraic.c',
-  command : [prog_python2, '@INPUT@'],
+  command : [prog_python, '@INPUT@'],
   capture : true,
   depend_files : files('nir_algebraic.py'),
 )
 
-spirv_info_c = custom_target(
-  'spirv_info.c',
-  input : files('../spirv/spirv_info_c.py', '../spirv/spirv.core.grammar.json'),
-  output : 'spirv_info.c',
-  command : [prog_python2, '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
+nir_intrinsics_h = custom_target(
+  'nir_intrinsics.h',
+  input : 'nir_intrinsics_h.py',
+  output : 'nir_intrinsics.h',
+  command : [prog_python, '@INPUT@', '--outdir', meson.current_build_dir()],
+  capture : false,
+  depend_files : files('nir_intrinsics.py'),
 )
 
-vtn_gather_types_c = custom_target(
-  'vtn_gather_types.c',
-  input : files('../spirv/vtn_gather_types_c.py',
-                '../spirv/spirv.core.grammar.json'),
-  output : 'vtn_gather_types.c',
-  command : [prog_python2, '@INPUT0@', '@INPUT1@', '@OUTPUT@'],
+nir_intrinsics_c = custom_target(
+  'nir_intrinsic.c',
+  input : 'nir_intrinsics_c.py',
+  output : 'nir_intrinsics.c',
+  command : [prog_python, '@INPUT@', '--outdir', meson.current_build_dir()],
+  capture: false,
+  depend_files : files('nir_intrinsics.py'),
 )
 
 files_libnir = files(
   'nir.c',
   'nir.h',
   'nir_builder.h',
+  'nir_builtin_builder.c',
+  'nir_builtin_builder.h',
   'nir_clone.c',
   'nir_constant_expressions.h',
   'nir_control_flow.c',
   'nir_control_flow.h',
   'nir_control_flow_private.h',
+  'nir_deref.c',
+  'nir_deref.h',
   'nir_dominance.c',
+  'nir_format_convert.h',
   'nir_from_ssa.c',
   'nir_gather_info.c',
+  'nir_gather_xfb_info.c',
   'nir_gs_count_vertices.c',
   'nir_inline_functions.c',
   'nir_instr_set.c',
   'nir_instr_set.h',
-  'nir_intrinsics.c',
-  'nir_intrinsics.h',
   'nir_linking_helpers.c',
   'nir_liveness.c',
   'nir_loop_analyze.c',
   'nir_loop_analyze.h',
-  'nir_lower_64bit_packing.c',
+  'nir_lower_alu.c',
   'nir_lower_alu_to_scalar.c',
   'nir_lower_alpha_test.c',
-  'nir_lower_atomics.c',
+  'nir_lower_array_deref_of_vec.c',
   'nir_lower_atomics_to_ssbo.c',
   'nir_lower_bitmap.c',
+  'nir_lower_bool_to_float.c',
+  'nir_lower_bool_to_int32.c',
   'nir_lower_clamp_color_outputs.c',
   'nir_lower_clip.c',
   'nir_lower_clip_cull_distance_arrays.c',
@@ -125,26 +134,26 @@ files_libnir = files(
   'nir_lower_io_arrays_to_elements.c',
   'nir_lower_io_to_temporaries.c',
   'nir_lower_io_to_scalar.c',
-  'nir_lower_io_types.c',
+  'nir_lower_io_to_vector.c',
+  'nir_lower_packing.c',
   'nir_lower_passthrough_edgeflags.c',
   'nir_lower_patch_vertices.c',
   'nir_lower_phis_to_scalar.c',
   'nir_lower_regs_to_ssa.c',
   'nir_lower_returns.c',
-  'nir_lower_samplers.c',
-  'nir_lower_samplers_as_deref.c',
   'nir_lower_subgroups.c',
   'nir_lower_system_values.c',
   'nir_lower_tex.c',
   'nir_lower_to_source_mods.c',
   'nir_lower_two_sided_color.c',
-  'nir_lower_uniforms_to_ubo.c',
   'nir_lower_vars_to_ssa.c',
   'nir_lower_var_copies.c',
   'nir_lower_vec_to_movs.c',
   'nir_lower_wpos_center.c',
   'nir_lower_wpos_ytransform.c',
+  'nir_lower_bit_size.c',
   'nir_metadata.c',
+  'nir_move_load_const.c',
   'nir_move_vec_src_uses_to_dest.c',
   'nir_normalize_cubemap_coords.c',
   'nir_opt_conditional_discard.c',
@@ -154,14 +163,20 @@ files_libnir = files(
   'nir_opt_cse.c',
   'nir_opt_dce.c',
   'nir_opt_dead_cf.c',
+  'nir_opt_dead_write_vars.c',
+  'nir_opt_find_array_copies.c',
   'nir_opt_gcm.c',
   'nir_opt_global_to_local.c',
+  'nir_opt_idiv_const.c',
   'nir_opt_if.c',
   'nir_opt_intrinsics.c',
+  'nir_opt_large_constants.c',
   'nir_opt_loop_unroll.c',
   'nir_opt_move_comparisons.c',
+  'nir_opt_move_load_ubo.c',
   'nir_opt_peephole_select.c',
   'nir_opt_remove_phis.c',
+  'nir_opt_shrink_load.c',
   'nir_opt_trivial_continues.c',
   'nir_opt_undef.c',
   'nir_phi_builder.c',
@@ -175,22 +190,29 @@ files_libnir = files(
   'nir_search_helpers.h',
   'nir_serialize.c',
   'nir_serialize.h',
+  'nir_split_per_member_structs.c',
   'nir_split_var_copies.c',
+  'nir_split_vars.c',
   'nir_sweep.c',
   'nir_to_lcssa.c',
   'nir_validate.c',
   'nir_vla.h',
   'nir_worklist.c',
   'nir_worklist.h',
+  'nir_xfb_info.h',
+  '../spirv/GLSL.ext.AMD.h',
   '../spirv/GLSL.std.450.h',
+  '../spirv/gl_spirv.c',
   '../spirv/nir_spirv.h',
   '../spirv/spirv.h',
   '../spirv/spirv_info.h',
   '../spirv/spirv_to_nir.c',
   '../spirv/vtn_alu.c',
+  '../spirv/vtn_amd.c',
   '../spirv/vtn_cfg.c',
   '../spirv/vtn_glsl450.c',
   '../spirv/vtn_private.h',
+  '../spirv/vtn_subgroup.c',
   '../spirv/vtn_variables.c',
 )
 
@@ -198,7 +220,7 @@ libnir = static_library(
   'nir',
   [files_libnir, spirv_info_c, nir_opt_algebraic_c, nir_opcodes_c,
    nir_opcodes_h, nir_constant_expressions_c, nir_builder_opcodes_h,
-   vtn_gather_types_c],
+   vtn_gather_types_c, nir_intrinsics_c, nir_intrinsics_h],
   include_directories : [inc_common, inc_compiler, include_directories('../spirv')],
   c_args : [c_vis_args, c_msvc_compat_args, no_override_init_args],
   link_with : libcompiler,
@@ -207,7 +229,7 @@ libnir = static_library(
 
 # Headers-only dependency
 idep_nir_headers = declare_dependency(
-  sources : [nir_opcodes_h, nir_builder_opcodes_h],
+  sources : [nir_opcodes_h, nir_builder_opcodes_h, nir_intrinsics_h],
   include_directories : include_directories('.'),
 )
 
@@ -225,10 +247,32 @@ if with_tests
     executable(
       'nir_control_flow_test',
       files('tests/control_flow_tests.cpp'),
-      c_args : [c_vis_args, c_msvc_compat_args, no_override_init_args],
+      cpp_args : [cpp_vis_args, cpp_msvc_compat_args],
       include_directories : [inc_common],
       dependencies : [dep_thread, idep_gtest, idep_nir],
       link_with : libmesa_util,
-    )
+    ), 
+    suite : ['compiler', 'nir'],
+  )
+
+  test(
+    'nir_vars',
+    executable(
+      'nir_vars_test',
+      files('tests/vars_tests.cpp'),
+      cpp_args : [cpp_vis_args, cpp_msvc_compat_args],
+      include_directories : [inc_common],
+      dependencies : [dep_thread, idep_gtest, idep_nir],
+      link_with : libmesa_util,
+    ),
+    suite : ['compiler', 'nir'],
+  )
+  test(
+    'nir_algebraic_parser',
+    prog_python,
+    args : [
+      join_paths(meson.current_source_dir(), 'tests/algebraic_parser_test.py')
+    ],
+    suite : ['compiler', 'nir'],
   )
 endif

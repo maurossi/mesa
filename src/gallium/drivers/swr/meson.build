@@ -68,6 +68,10 @@ files_swr_mesa = files(
   'rasterizer/jitter/builder.cpp',
   'rasterizer/jitter/builder.h',
   'rasterizer/jitter/builder_math.h',
+  'rasterizer/jitter/builder_mem.cpp',
+  'rasterizer/jitter/builder_mem.h',
+  'rasterizer/jitter/builder_gfx_mem.cpp',
+  'rasterizer/jitter/builder_gfx_mem.h',
   'rasterizer/jitter/builder_misc.cpp',
   'rasterizer/jitter/builder_misc.h',
   'rasterizer/jitter/fetch_jit.cpp',
@@ -77,6 +81,8 @@ files_swr_mesa = files(
   'rasterizer/jitter/JitManager.h',
   'rasterizer/jitter/streamout_jit.cpp',
   'rasterizer/jitter/streamout_jit.h',
+  'rasterizer/jitter/shader_lib/DebugOutput.cpp',
+  'rasterizer/jitter/functionpasses/lower_x86.cpp',
 )
 
 files_swr_arch = files(
@@ -125,6 +131,7 @@ files_swr_arch = files(
   'rasterizer/core/threads.h',
   'rasterizer/core/tilemgr.cpp',
   'rasterizer/core/tilemgr.h',
+  'rasterizer/core/tileset.h',
   'rasterizer/core/utils.h',
   'rasterizer/memory/ClearTile.cpp',
   'rasterizer/memory/Convert.h',
@@ -144,11 +151,14 @@ files_swr_arch = files(
   'rasterizer/memory/StoreTile_TileY.cpp',
   'rasterizer/memory/TilingFunctions.h',
   'rasterizer/memory/tilingtraits.h',
+  'rasterizer/memory/InitMemory.h',
+  'rasterizer/memory/InitMemory.cpp',
 )
 
 swr_context_files = files('swr_context.h')
 swr_state_files = files('rasterizer/core/state.h')
 swr_event_proto_files = files('rasterizer/archrast/events.proto')
+swr_event_pproto_files = files('rasterizer/archrast/events_private.proto')
 swr_gen_backend_files = files('rasterizer/codegen/templates/gen_backend.cpp')
 swr_gen_rasterizer_files = files('rasterizer/codegen/templates/gen_rasterizer.cpp')
 swr_gen_header_init_files = files('rasterizer/codegen/templates/gen_header_init.hpp')
@@ -180,11 +190,7 @@ swr_arch_libs = []
 swr_arch_defines = []
 
 swr_avx_args = cpp.first_supported_argument(
-  '-target-cpu=sandybridge', '-mavx', '-march=core-avx', '-tp=sandybridge',
-  prefix : '''
-    #if !defined(__AVX__)
-    # error
-    #endif ''',
+  '-mavx', '-target-cpu=sandybridge', '-march=core-avx', '-tp=sandybridge',
 )
 if swr_avx_args == []
   error('Cannot find AVX support for swr. (these are required for SWR an all architectures.)')
@@ -198,24 +204,17 @@ if with_swr_arches.contains('avx')
     link_args : [ld_args_gc_sections],
     include_directories : [swr_incs],
     dependencies : [dep_thread, dep_llvm],
+    version : '0.0.0',
     install : true,
   )
 endif
 
 if with_swr_arches.contains('avx2')
   swr_avx2_args = cpp.first_supported_argument(
-    '-target-cpu=haswell', '-march=core-avx2', '-tp=haswell',
-    prefix : '''
-      #if !defined(__AVX2__)
-      # error
-      #endif ''',
+    '-march=core-avx2', '-target-cpu=haswell', '-tp=haswell',
   )
   if swr_avx2_args == []
-    if cpp.has_argument(['-mavx2', '-mfma', '-mbmi2', '-mf16c'],
-                        prefix : '''
-                          #if !defined(__AVX2__)
-                          # error
-                          #endif ''')
+    if cpp.has_argument(['-mavx2', '-mfma', '-mbmi2', '-mf16c'])
       swr_avx2_args = ['-mavx2', '-mfma', '-mbmi2', '-mf16c']
     else
       error('Cannot find AVX2 support for swr.')
@@ -230,17 +229,14 @@ if with_swr_arches.contains('avx2')
     link_args : [ld_args_gc_sections],
     include_directories : [swr_incs],
     dependencies : [dep_thread, dep_llvm],
+    version : '0.0.0',
     install : true,
   )
 endif
 
 if with_swr_arches.contains('knl')
   swr_knl_args = cpp.first_supported_argument(
-    '-target-cpu=mic-knl', '-march=knl', '-xMIC-AVX512',
-    prefix : '''
-      #if !defined(__AVX512F__) || !defined(__AVX512ER__)
-      # error
-      #endif ''',
+    '-march=knl', '-target-cpu=mic-knl', '-xMIC-AVX512',
   )
   if swr_knl_args == []
     error('Cannot find KNL support for swr.')
@@ -252,22 +248,19 @@ if with_swr_arches.contains('knl')
     [files_swr_common, files_swr_arch],
     cpp_args : [
       swr_cpp_args, swr_knl_args, '-DKNOB_ARCH=KNOB_ARCH_AVX512',
-      '-DKNOB_ARCH_KNIGHTS',
+      '-DSIMD_ARCH_KNIGHTS',
     ],
     link_args : [ld_args_gc_sections],
     include_directories : [swr_incs],
     dependencies : [dep_thread, dep_llvm],
+    version : '0.0.0',
     install : true,
   )
 endif
 
 if with_swr_arches.contains('skx')
   swr_skx_args = cpp.first_supported_argument(
-    '-target-cpu=x86-skylake', '-march=skylake-avx512', '-xCORE-AVX512',
-    prefix : '''
-      #if !defined(__AVX512F__) || !defined(__AVX512BW__)
-      # error
-      #endif ''',
+    '-march=skylake-avx512', '-target-cpu=x86-skylake', '-xCORE-AVX512',
   )
   if swr_skx_args == []
     error('Cannot find SKX support for swr.')
@@ -281,6 +274,7 @@ if with_swr_arches.contains('skx')
     link_args : [ld_args_gc_sections],
     include_directories : [swr_incs],
     dependencies : [dep_thread, dep_llvm],
+    version : '0.0.0',
     install : true,
   )
 endif
@@ -293,7 +287,7 @@ endif
 libmesaswr = static_library(
   'mesaswr',
   [files_swr_mesa, files_swr_common, gen_knobs_h, gen_knobs_cpp,
-   gen_builder_hpp, gen_builder_x86_hpp],
+   gen_builder_hpp, gen_builder_meta_hpp, gen_builder_intrin_hpp],
   cpp_args : [cpp_vis_args, swr_cpp_args, swr_avx_args, swr_arch_defines],
   include_directories : [inc_common, swr_incs],
   dependencies : dep_llvm,

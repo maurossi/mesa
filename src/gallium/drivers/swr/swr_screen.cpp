@@ -85,6 +85,7 @@ swr_is_format_supported(struct pipe_screen *_screen,
                         enum pipe_format format,
                         enum pipe_texture_target target,
                         unsigned sample_count,
+                        unsigned storage_sample_count,
                         unsigned bind)
 {
    struct swr_screen *screen = swr_screen(_screen);
@@ -100,12 +101,15 @@ swr_is_format_supported(struct pipe_screen *_screen,
           || target == PIPE_TEXTURE_CUBE
           || target == PIPE_TEXTURE_CUBE_ARRAY);
 
+   if (MAX2(1, sample_count) != MAX2(1, storage_sample_count))
+      return false;
+
    format_desc = util_format_description(format);
    if (!format_desc)
       return FALSE;
 
    if ((sample_count > screen->msaa_max_count)
-      || !util_is_power_of_two(sample_count))
+      || !util_is_power_of_two_or_zero(sample_count))
       return FALSE;
 
    if (bind & PIPE_BIND_DISPLAY_TARGET) {
@@ -183,6 +187,8 @@ swr_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return 7;
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
       return 330;
+   case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
+      return 140;
    case PIPE_CAP_CONSTANT_BUFFER_OFFSET_ALIGNMENT:
       return 16;
    case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
@@ -197,6 +203,7 @@ swr_get_param(struct pipe_screen *screen, enum pipe_cap param)
       return PIPE_ENDIAN_NATIVE;
    case PIPE_CAP_MIN_TEXTURE_GATHER_OFFSET:
    case PIPE_CAP_MAX_TEXTURE_GATHER_OFFSET:
+   case PIPE_CAP_DEPTH_CLIP_DISABLE_SEPARATE:
       return 0;
 
       /* supported features */
@@ -210,6 +217,7 @@ swr_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_QUERY_TIME_ELAPSED:
    case PIPE_CAP_QUERY_PIPELINE_STATISTICS:
    case PIPE_CAP_TEXTURE_MIRROR_CLAMP:
+   case PIPE_CAP_TEXTURE_MIRROR_CLAMP_TO_EDGE:
    case PIPE_CAP_TEXTURE_SWIZZLE:
    case PIPE_CAP_BLEND_EQUATION_SEPARATE:
    case PIPE_CAP_INDEP_BLEND_ENABLE:
@@ -342,9 +350,27 @@ swr_get_param(struct pipe_screen *screen, enum pipe_cap param)
    case PIPE_CAP_TGSI_ANY_REG_AS_ADDRESS:
    case PIPE_CAP_TILE_RASTER_ORDER:
    case PIPE_CAP_MAX_COMBINED_SHADER_OUTPUT_RESOURCES:
+   case PIPE_CAP_FRAMEBUFFER_MSAA_CONSTRAINTS:
    case PIPE_CAP_SIGNED_VERTEX_BUFFER_OFFSET:
    case PIPE_CAP_CONTEXT_PRIORITY_MASK:
+   case PIPE_CAP_FENCE_SIGNAL:
+   case PIPE_CAP_CONSTBUF0_FLAGS:
+   case PIPE_CAP_PACKED_UNIFORMS:
+   case PIPE_CAP_CONSERVATIVE_RASTER_POST_SNAP_TRIANGLES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_POST_SNAP_POINTS_LINES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_PRE_SNAP_TRIANGLES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_PRE_SNAP_POINTS_LINES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_POST_DEPTH_COVERAGE:
+   case PIPE_CAP_MAX_CONSERVATIVE_RASTER_SUBPIXEL_PRECISION_BIAS:
+   case PIPE_CAP_PROGRAMMABLE_SAMPLE_LOCATIONS:
+   case PIPE_CAP_MAX_TEXTURE_UPLOAD_MEMORY_BUDGET:
       return 0;
+   case PIPE_CAP_MAX_GS_INVOCATIONS:
+      return 32;
+   case PIPE_CAP_MAX_SHADER_BUFFER_SIZE:
+      return 1 << 27;
+   case PIPE_CAP_MAX_VARYINGS:
+      return 32;
 
    case PIPE_CAP_VENDOR_ID:
       return 0xFFFFFFFF;
@@ -397,11 +423,10 @@ swr_get_paramf(struct pipe_screen *screen, enum pipe_capf param)
       return 0.0;
    case PIPE_CAPF_MAX_TEXTURE_LOD_BIAS:
       return 16.0; /* arbitrary */
-   case PIPE_CAPF_GUARD_BAND_LEFT:
-   case PIPE_CAPF_GUARD_BAND_TOP:
-   case PIPE_CAPF_GUARD_BAND_RIGHT:
-   case PIPE_CAPF_GUARD_BAND_BOTTOM:
-      return 0.0;
+   case PIPE_CAPF_MIN_CONSERVATIVE_RASTER_DILATE:
+   case PIPE_CAPF_MAX_CONSERVATIVE_RASTER_DILATE:
+   case PIPE_CAPF_CONSERVATIVE_RASTER_DILATE_GRANULARITY:
+      return 0.0f;
    }
    /* should only get here on unhandled cases */
    debug_printf("Unexpected PIPE_CAPF %d query\n", param);
@@ -821,7 +846,9 @@ swr_texture_layout(struct swr_screen *screen,
 
    size_t total_size = (uint64_t)res->swr.depth * res->swr.qpitch *
                                  res->swr.pitch * res->swr.numSamples;
-   if (total_size > SWR_MAX_TEXTURE_SIZE)
+
+   // Let non-sampled textures (e.g. buffer objects) bypass the size limit
+   if (swr_resource_is_texture(&res->base) && total_size > SWR_MAX_TEXTURE_SIZE)
       return false;
 
    if (allocate) {
@@ -1105,7 +1132,7 @@ swr_validate_env_options(struct swr_screen *screen)
    int msaa_max_count = debug_get_num_option("SWR_MSAA_MAX_COUNT", 1);
    if (msaa_max_count != 1) {
       if ((msaa_max_count < 1) || (msaa_max_count > SWR_MAX_NUM_MULTISAMPLES)
-            || !util_is_power_of_two(msaa_max_count)) {
+            || !util_is_power_of_two_or_zero(msaa_max_count)) {
          fprintf(stderr, "SWR_MSAA_MAX_COUNT invalid: %d\n", msaa_max_count);
          fprintf(stderr, "must be power of 2 between 1 and %d" \
                          " (or 1 to disable msaa)\n",
@@ -1127,12 +1154,10 @@ swr_validate_env_options(struct swr_screen *screen)
 }
 
 
-PUBLIC
 struct pipe_screen *
 swr_create_screen_internal(struct sw_winsys *winsys)
 {
    struct swr_screen *screen = CALLOC_STRUCT(swr_screen);
-   memset(screen, 0, sizeof(struct swr_screen));
 
    if (!screen)
       return NULL;
