@@ -66,14 +66,16 @@ dri_fill_st_options(struct dri_screen *screen)
       driQueryOptionb(optionCache, "disable_blend_func_extended");
    options->disable_glsl_line_continuations =
       driQueryOptionb(optionCache, "disable_glsl_line_continuations");
-   options->disable_shader_bit_encoding =
-      driQueryOptionb(optionCache, "disable_shader_bit_encoding");
    options->force_glsl_extensions_warn =
       driQueryOptionb(optionCache, "force_glsl_extensions_warn");
    options->force_glsl_version =
       driQueryOptioni(optionCache, "force_glsl_version");
    options->allow_glsl_extension_directive_midshader =
       driQueryOptionb(optionCache, "allow_glsl_extension_directive_midshader");
+   options->allow_glsl_builtin_const_expression =
+      driQueryOptionb(optionCache, "allow_glsl_builtin_const_expression");
+   options->allow_glsl_relaxed_es =
+      driQueryOptionb(optionCache, "allow_glsl_relaxed_es");
    options->allow_glsl_builtin_variable_redeclaration =
       driQueryOptionb(optionCache, "allow_glsl_builtin_variable_redeclaration");
    options->allow_higher_compat_version =
@@ -83,6 +85,8 @@ dri_fill_st_options(struct dri_screen *screen)
       driQueryOptionb(optionCache, "force_glsl_abs_sqrt");
    options->allow_glsl_cross_stage_interpolation_mismatch =
       driQueryOptionb(optionCache, "allow_glsl_cross_stage_interpolation_mismatch");
+   options->allow_glsl_layout_qualifier_on_function_parameters =
+      driQueryOptionb(optionCache, "allow_glsl_layout_qualifier_on_function_parameters");
 
    driComputeOptionsSha1(optionCache, options->config_options_sha1);
 }
@@ -110,6 +114,8 @@ dri_fill_in_modes(struct dri_screen *screen)
    static const mesa_format mesa_formats[] = {
       MESA_FORMAT_B10G10R10A2_UNORM,
       MESA_FORMAT_B10G10R10X2_UNORM,
+      MESA_FORMAT_R10G10B10A2_UNORM,
+      MESA_FORMAT_R10G10B10X2_UNORM,
       MESA_FORMAT_B8G8R8A8_UNORM,
       MESA_FORMAT_B8G8R8X8_UNORM,
       MESA_FORMAT_B8G8R8A8_SRGB,
@@ -140,6 +146,8 @@ dri_fill_in_modes(struct dri_screen *screen)
    static const enum pipe_format pipe_formats[] = {
       PIPE_FORMAT_B10G10R10A2_UNORM,
       PIPE_FORMAT_B10G10R10X2_UNORM,
+      PIPE_FORMAT_R10G10B10A2_UNORM,
+      PIPE_FORMAT_R10G10B10X2_UNORM,
       PIPE_FORMAT_BGRA8888_UNORM,
       PIPE_FORMAT_BGRX8888_UNORM,
       PIPE_FORMAT_BGRA8888_SRGB,
@@ -181,22 +189,22 @@ dri_fill_in_modes(struct dri_screen *screen)
       ? MSAA_VISUAL_MAX_SAMPLES : 1;
 
    pf_x8z24 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z24X8_UNORM,
-					    PIPE_TEXTURE_2D, 0,
+					    PIPE_TEXTURE_2D, 0, 0,
                                             PIPE_BIND_DEPTH_STENCIL);
    pf_z24x8 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_X8Z24_UNORM,
-					    PIPE_TEXTURE_2D, 0,
+					    PIPE_TEXTURE_2D, 0, 0,
                                             PIPE_BIND_DEPTH_STENCIL);
    pf_s8z24 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z24_UNORM_S8_UINT,
-					    PIPE_TEXTURE_2D, 0,
+					    PIPE_TEXTURE_2D, 0, 0,
                                             PIPE_BIND_DEPTH_STENCIL);
    pf_z24s8 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_S8_UINT_Z24_UNORM,
-					    PIPE_TEXTURE_2D, 0,
+					    PIPE_TEXTURE_2D, 0, 0,
                                             PIPE_BIND_DEPTH_STENCIL);
    pf_z16 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z16_UNORM,
-                                          PIPE_TEXTURE_2D, 0,
+                                          PIPE_TEXTURE_2D, 0, 0,
                                           PIPE_BIND_DEPTH_STENCIL);
    pf_z32 = p_screen->is_format_supported(p_screen, PIPE_FORMAT_Z32_UNORM,
-                                          PIPE_TEXTURE_2D, 0,
+                                          PIPE_TEXTURE_2D, 0, 0,
                                           PIPE_BIND_DEPTH_STENCIL);
 
    if (pf_z16) {
@@ -238,19 +246,22 @@ dri_fill_in_modes(struct dri_screen *screen)
 
       if (!allow_rgb10 &&
           (mesa_formats[format] == MESA_FORMAT_B10G10R10A2_UNORM ||
-           mesa_formats[format] == MESA_FORMAT_B10G10R10X2_UNORM))
+           mesa_formats[format] == MESA_FORMAT_B10G10R10X2_UNORM ||
+           mesa_formats[format] == MESA_FORMAT_R10G10B10A2_UNORM ||
+           mesa_formats[format] == MESA_FORMAT_R10G10B10X2_UNORM))
          continue;
 
       if (!p_screen->is_format_supported(p_screen, pipe_formats[format],
-                                         PIPE_TEXTURE_2D, 0,
-                                         PIPE_BIND_RENDER_TARGET))
+                                         PIPE_TEXTURE_2D, 0, 0,
+                                         PIPE_BIND_RENDER_TARGET |
+                                         PIPE_BIND_DISPLAY_TARGET))
          continue;
 
       for (i = 1; i <= msaa_samples_max; i++) {
          int samples = i > 1 ? i : 0;
 
          if (p_screen->is_format_supported(p_screen, pipe_formats[format],
-                                           PIPE_TEXTURE_2D, samples,
+                                           PIPE_TEXTURE_2D, samples, samples,
                                            PIPE_BIND_RENDER_TARGET)) {
             msaa_modes[num_msaa_modes++] = samples;
          }
@@ -263,7 +274,7 @@ dri_fill_in_modes(struct dri_screen *screen)
                                         depth_buffer_factor, back_buffer_modes,
                                         ARRAY_SIZE(back_buffer_modes),
                                         msaa_modes, 1,
-                                        GL_TRUE, !mixed_color_depth);
+                                        GL_TRUE, !mixed_color_depth, GL_FALSE);
          configs = driConcatConfigs(configs, new_configs);
 
          /* Multi-sample configs without an accumulation buffer. */
@@ -273,7 +284,7 @@ dri_fill_in_modes(struct dri_screen *screen)
                                            depth_buffer_factor, back_buffer_modes,
                                            ARRAY_SIZE(back_buffer_modes),
                                            msaa_modes+1, num_msaa_modes-1,
-                                           GL_FALSE, !mixed_color_depth);
+                                           GL_FALSE, !mixed_color_depth, GL_FALSE);
             configs = driConcatConfigs(configs, new_configs);
          }
       }
@@ -291,13 +302,16 @@ dri_fill_in_modes(struct dri_screen *screen)
  * Roughly the converse of dri_fill_in_modes.
  */
 void
-dri_fill_st_visual(struct st_visual *stvis, struct dri_screen *screen,
+dri_fill_st_visual(struct st_visual *stvis,
+                   const struct dri_screen *screen,
                    const struct gl_config *mode)
 {
    memset(stvis, 0, sizeof(*stvis));
 
-   if (!mode)
+   if (!mode) {
+      stvis->no_config = true;
       return;
+   }
 
    /* Deduce the color format. */
    switch (mode->redMask) {
@@ -307,6 +321,15 @@ dri_fill_st_visual(struct st_visual *stvis, struct dri_screen *screen,
          stvis->color_format = PIPE_FORMAT_B10G10R10A2_UNORM;
       } else {
          stvis->color_format = PIPE_FORMAT_B10G10R10X2_UNORM;
+      }
+      break;
+
+   case 0x000003FF:
+      if (mode->alphaMask) {
+         assert(mode->alphaMask == 0xC0000000);
+         stvis->color_format = PIPE_FORMAT_R10G10B10A2_UNORM;
+      } else {
+         stvis->color_format = PIPE_FORMAT_R10G10B10X2_UNORM;
       }
       break;
 
@@ -465,6 +488,7 @@ dri_destroy_screen(__DRIscreen * sPriv)
 
    pipe_loader_release(&screen->dev, 1);
 
+   /* The caller in dri_util preserves the fd ownership */
    free(screen);
    sPriv->driverPrivate = NULL;
    sPriv->extensions = NULL;

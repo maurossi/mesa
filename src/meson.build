@@ -42,7 +42,7 @@ libglsl_util = static_library(
 sha1_h = custom_target(
   'git_sha1.h',
   output : 'git_sha1.h',
-  command : [prog_python2, git_sha1_gen_py, '--output', '@OUTPUT@'],
+  command : [prog_python, git_sha1_gen_py, '--output', '@OUTPUT@'],
   build_always : true, # commit sha1 can change without having touched these files
 )
 
@@ -51,20 +51,32 @@ subdir('util')
 subdir('mapi')
 # TODO: opengl
 subdir('compiler')
-subdir('egl/wayland/wayland-drm')
-subdir('vulkan')
+if with_platform_wayland
+  subdir('egl/wayland/wayland-drm')
+endif
+if with_any_vk
+  subdir('vulkan')
+endif
 if with_gallium_radeonsi or with_amd_vk
   subdir('amd')
 endif
-if with_gallium_vc4
+if with_gallium_vc4 or with_gallium_v3d
   subdir('broadcom')
+endif
+if with_gallium_freedreno
+  subdir('freedreno')
 endif
 if with_dri_i965 or with_intel_vk
   subdir('intel')
 endif
 subdir('mesa')
 subdir('loader')
-subdir('glx')
+if with_platform_haiku
+  subdir('hgl')
+endif
+if with_glx == 'dri'
+  subdir('glx')
+endif
 if with_gbm
   subdir('gbm')
 else
@@ -75,6 +87,11 @@ if with_egl
 endif
 if with_gallium
   subdir('gallium')
+  # This has to be here since it requires libgallium, and subdir cannot
+  # contain ..
+  if with_tests and with_shared_glapi
+    subdir('mesa/state_tracker/tests')
+  endif
 endif
 
 # This must be after at least mesa, glx, and gallium, since libgl will be

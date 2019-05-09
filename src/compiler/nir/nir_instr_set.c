@@ -79,12 +79,57 @@ hash_alu(uint32_t hash, const nir_alu_instr *instr)
 }
 
 static uint32_t
+hash_deref(uint32_t hash, const nir_deref_instr *instr)
+{
+   hash = HASH(hash, instr->deref_type);
+   hash = HASH(hash, instr->mode);
+   hash = HASH(hash, instr->type);
+
+   if (instr->deref_type == nir_deref_type_var)
+      return HASH(hash, instr->var);
+
+   hash = hash_src(hash, &instr->parent);
+
+   switch (instr->deref_type) {
+   case nir_deref_type_struct:
+      hash = HASH(hash, instr->strct.index);
+      break;
+
+   case nir_deref_type_array:
+   case nir_deref_type_ptr_as_array:
+      hash = hash_src(hash, &instr->arr.index);
+      break;
+
+   case nir_deref_type_cast:
+      hash = HASH(hash, instr->cast.ptr_stride);
+      break;
+
+   case nir_deref_type_var:
+   case nir_deref_type_array_wildcard:
+      /* Nothing to do */
+      break;
+
+   default:
+      unreachable("Invalid instruction deref type");
+   }
+
+   return hash;
+}
+
+static uint32_t
 hash_load_const(uint32_t hash, const nir_load_const_instr *instr)
 {
    hash = HASH(hash, instr->def.num_components);
 
-   unsigned size = instr->def.num_components * (instr->def.bit_size / 8);
-   hash = _mesa_fnv32_1a_accumulate_block(hash, instr->value.f32, size);
+   if (instr->def.bit_size == 1) {
+      for (unsigned i = 0; i < instr->def.num_components; i++) {
+         uint8_t b = instr->value.b[i];
+         hash = HASH(hash, b);
+      }
+   } else {
+      unsigned size = instr->def.num_components * (instr->def.bit_size / 8);
+      hash = _mesa_fnv32_1a_accumulate_block(hash, instr->value.f32, size);
+   }
 
    return hash;
 }
@@ -131,8 +176,6 @@ hash_intrinsic(uint32_t hash, const nir_intrinsic_instr *instr)
       hash = HASH(hash, instr->dest.ssa.bit_size);
    }
 
-   assert(info->num_variables == 0);
-
    hash = _mesa_fnv32_1a_accumulate_block(hash, instr->const_index,
                                           info->num_indices
                                              * sizeof(instr->const_index[0]));
@@ -161,8 +204,6 @@ hash_tex(uint32_t hash, const nir_tex_instr *instr)
    hash = HASH(hash, instr->texture_array_size);
    hash = HASH(hash, instr->sampler_index);
 
-   assert(!instr->texture && !instr->sampler);
-
    return hash;
 }
 
@@ -181,6 +222,9 @@ hash_instr(const void *data)
    switch (instr->type) {
    case nir_instr_type_alu:
       hash = hash_alu(hash, nir_instr_as_alu(instr));
+      break;
+   case nir_instr_type_deref:
+      hash = hash_deref(hash, nir_instr_as_deref(instr));
       break;
    case nir_instr_type_load_const:
       hash = hash_load_const(hash, nir_instr_as_load_const(instr));
@@ -289,6 +333,48 @@ nir_instrs_equal(const nir_instr *instr1, const nir_instr *instr2)
       }
       return true;
    }
+   case nir_instr_type_deref: {
+      nir_deref_instr *deref1 = nir_instr_as_deref(instr1);
+      nir_deref_instr *deref2 = nir_instr_as_deref(instr2);
+
+      if (deref1->deref_type != deref2->deref_type ||
+          deref1->mode != deref2->mode ||
+          deref1->type != deref2->type)
+         return false;
+
+      if (deref1->deref_type == nir_deref_type_var)
+         return deref1->var == deref2->var;
+
+      if (!nir_srcs_equal(deref1->parent, deref2->parent))
+         return false;
+
+      switch (deref1->deref_type) {
+      case nir_deref_type_struct:
+         if (deref1->strct.index != deref2->strct.index)
+            return false;
+         break;
+
+      case nir_deref_type_array:
+      case nir_deref_type_ptr_as_array:
+         if (!nir_srcs_equal(deref1->arr.index, deref2->arr.index))
+            return false;
+         break;
+
+      case nir_deref_type_cast:
+         if (deref1->cast.ptr_stride != deref2->cast.ptr_stride)
+            return false;
+         break;
+
+      case nir_deref_type_var:
+      case nir_deref_type_array_wildcard:
+         /* Nothing to do */
+         break;
+
+      default:
+         unreachable("Invalid instruction deref type");
+      }
+      return true;
+   }
    case nir_instr_type_tex: {
       nir_tex_instr *tex1 = nir_instr_as_tex(instr1);
       nir_tex_instr *tex2 = nir_instr_as_tex(instr2);
@@ -317,10 +403,6 @@ nir_instrs_equal(const nir_instr *instr1, const nir_instr *instr2)
          return false;
       }
 
-      /* Don't support un-lowered sampler derefs currently. */
-      assert(!tex1->texture && !tex1->sampler &&
-             !tex2->texture && !tex2->sampler);
-
       return true;
    }
    case nir_instr_type_load_const: {
@@ -333,8 +415,13 @@ nir_instrs_equal(const nir_instr *instr1, const nir_instr *instr2)
       if (load1->def.bit_size != load2->def.bit_size)
          return false;
 
-      return memcmp(load1->value.f32, load2->value.f32,
-                    load1->def.num_components * (load1->def.bit_size / 8u)) == 0;
+      if (load1->def.bit_size == 1) {
+         unsigned size = load1->def.num_components * sizeof(bool);
+         return memcmp(load1->value.b, load2->value.b, size) == 0;
+      } else {
+         unsigned size = load1->def.num_components * (load1->def.bit_size / 8);
+         return memcmp(load1->value.f32, load2->value.f32, size) == 0;
+      }
    }
    case nir_instr_type_phi: {
       nir_phi_instr *phi1 = nir_instr_as_phi(instr1);
@@ -379,8 +466,6 @@ nir_instrs_equal(const nir_instr *instr1, const nir_instr *instr2)
             return false;
       }
 
-      assert(info->num_variables == 0);
-
       for (unsigned i = 0; i < info->num_indices; i++) {
          if (intrinsic1->const_index[i] != intrinsic2->const_index[i])
             return false;
@@ -396,7 +481,7 @@ nir_instrs_equal(const nir_instr *instr1, const nir_instr *instr2)
       unreachable("Invalid instruction type");
    }
 
-   return false;
+   unreachable("All cases in the above switch should return");
 }
 
 static bool
@@ -430,24 +515,16 @@ instr_can_rewrite(nir_instr *instr)
 
    switch (instr->type) {
    case nir_instr_type_alu:
+   case nir_instr_type_deref:
+   case nir_instr_type_tex:
    case nir_instr_type_load_const:
    case nir_instr_type_phi:
       return true;
-   case nir_instr_type_tex: {
-      nir_tex_instr *tex = nir_instr_as_tex(instr);
-
-      /* Don't support un-lowered sampler derefs currently. */
-      if (tex->texture || tex->sampler)
-         return false;
-
-      return true;
-   }
    case nir_instr_type_intrinsic: {
       const nir_intrinsic_info *info =
          &nir_intrinsic_infos[nir_instr_as_intrinsic(instr)->intrinsic];
       return (info->flags & NIR_INTRINSIC_CAN_ELIMINATE) &&
-             (info->flags & NIR_INTRINSIC_CAN_REORDER) &&
-             info->num_variables == 0; /* not implemented yet */
+             (info->flags & NIR_INTRINSIC_CAN_REORDER);
    }
    case nir_instr_type_call:
    case nir_instr_type_jump:
@@ -468,6 +545,9 @@ nir_instr_get_dest_ssa_def(nir_instr *instr)
    case nir_instr_type_alu:
       assert(nir_instr_as_alu(instr)->dest.dest.is_ssa);
       return &nir_instr_as_alu(instr)->dest.dest.ssa;
+   case nir_instr_type_deref:
+      assert(nir_instr_as_deref(instr)->dest.is_ssa);
+      return &nir_instr_as_deref(instr)->dest.ssa;
    case nir_instr_type_load_const:
       return &nir_instr_as_load_const(instr)->def;
    case nir_instr_type_phi:

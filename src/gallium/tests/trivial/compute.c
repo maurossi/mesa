@@ -240,7 +240,7 @@ static void check_tex(struct context *ctx, int slot,
                   util_format_get_nblocksy(tex->format, tex->height0));
         struct pipe_transfer *xfer;
         char *map;
-        int x, y, i;
+        int x = 0, y, i;
         int err = 0;
 
         if (!check)
@@ -1131,7 +1131,7 @@ static void test_surface_ld(struct context *ctx)
                 printf("   - %s\n", util_format_name(surface_fmts[i]));
 
                 if (!ctx->screen->is_format_supported(ctx->screen,
-                       surface_fmts[i], PIPE_TEXTURE_2D, 1,
+                       surface_fmts[i], PIPE_TEXTURE_2D, 1, 1,
                        PIPE_BIND_COMPUTE_RESOURCE)) {
                    printf("(unsupported)\n");
                    continue;
@@ -1251,7 +1251,7 @@ static void test_surface_st(struct context *ctx)
                 printf("   - %s\n", util_format_name(surface_fmts[i]));
 
                 if (!ctx->screen->is_format_supported(ctx->screen,
-                       surface_fmts[i], PIPE_TEXTURE_2D, 1,
+                       surface_fmts[i], PIPE_TEXTURE_2D, 1, 1,
                        PIPE_BIND_COMPUTE_RESOURCE)) {
                    printf("(unsupported)\n");
                    continue;

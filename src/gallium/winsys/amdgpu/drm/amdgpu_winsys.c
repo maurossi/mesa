@@ -30,11 +30,15 @@
 #include "amdgpu_cs.h"
 #include "amdgpu_public.h"
 
+#include "util/u_cpu_detect.h"
 #include "util/u_hash_table.h"
+#include "util/hash_table.h"
+#include "util/xmlconfig.h"
 #include <amdgpu_drm.h>
 #include <xf86drm.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include "amd/common/ac_llvm_util.h"
 #include "amd/common/sid.h"
 #include "amd/common/gfx9d.h"
 
@@ -47,18 +51,52 @@ static simple_mtx_t dev_tab_mutex = _SIMPLE_MTX_INITIALIZER_NP;
 
 DEBUG_GET_ONCE_BOOL_OPTION(all_bos, "RADEON_ALL_BOS", false)
 
+static void handle_env_var_force_family(struct amdgpu_winsys *ws)
+{
+      const char *family = debug_get_option("SI_FORCE_FAMILY", NULL);
+      unsigned i;
+
+      if (!family)
+               return;
+
+      for (i = CHIP_TAHITI; i < CHIP_LAST; i++) {
+         if (!strcmp(family, ac_get_llvm_processor_name(i))) {
+            /* Override family and chip_class. */
+            ws->info.family = i;
+            ws->info.name = "GCN-NOOP";
+
+            if (i >= CHIP_VEGA10)
+               ws->info.chip_class = GFX9;
+            else if (i >= CHIP_TONGA)
+               ws->info.chip_class = VI;
+            else if (i >= CHIP_BONAIRE)
+               ws->info.chip_class = CIK;
+            else
+               ws->info.chip_class = SI;
+
+            /* Don't submit any IBs. */
+            setenv("RADEON_NOOP", "1", 1);
+            return;
+         }
+      }
+
+      fprintf(stderr, "radeonsi: Unknown family: %s\n", family);
+      exit(1);
+}
+
 /* Helper function to do the ioctls needed for setup and init. */
-static bool do_winsys_init(struct amdgpu_winsys *ws, int fd)
+static bool do_winsys_init(struct amdgpu_winsys *ws,
+                           const struct pipe_screen_config *config,
+                           int fd)
 {
    if (!ac_query_gpu_info(fd, ws->dev, &ws->info, &ws->amdinfo))
       goto fail;
 
-   /* LLVM 5.0 is required for GFX9. */
-   if (ws->info.chip_class >= GFX9 && HAVE_LLVM < 0x0500) {
-      fprintf(stderr, "amdgpu: LLVM 5.0 is required, got LLVM %i.%i\n",
-              HAVE_LLVM >> 8, HAVE_LLVM & 255);
-      goto fail;
-   }
+   /* TODO: Enable this once the kernel handles it efficiently. */
+   if (ws->info.has_dedicated_vram)
+      ws->info.has_local_buffers = false;
+
+   handle_env_var_force_family(ws);
 
    ws->addrlib = amdgpu_addr_create(&ws->info, &ws->amdinfo, &ws->info.max_alignment);
    if (!ws->addrlib) {
@@ -69,6 +107,8 @@ static bool do_winsys_init(struct amdgpu_winsys *ws, int fd)
    ws->check_vm = strstr(debug_get_option("R600_DEBUG", ""), "check_vm") != NULL;
    ws->debug_all_bos = debug_get_option_all_bos();
    ws->reserve_vmid = strstr(debug_get_option("R600_DEBUG", ""), "reserve_vmid") != NULL;
+   ws->zero_all_vram_allocs = strstr(debug_get_option("R600_DEBUG", ""), "zerovram") != NULL ||
+      driQueryOptionb(config->options, "radeonsi_zerovram");
 
    return true;
 
@@ -95,9 +135,14 @@ static void amdgpu_winsys_destroy(struct radeon_winsys *rws)
       util_queue_destroy(&ws->cs_queue);
 
    simple_mtx_destroy(&ws->bo_fence_lock);
-   pb_slabs_deinit(&ws->bo_slabs);
+   for (unsigned i = 0; i < NUM_SLAB_ALLOCATORS; i++) {
+      if (ws->bo_slabs[i].groups)
+         pb_slabs_deinit(&ws->bo_slabs[i]);
+   }
    pb_cache_deinit(&ws->bo_cache);
+   util_hash_table_destroy(ws->bo_export_table);
    simple_mtx_destroy(&ws->global_bo_list_lock);
+   simple_mtx_destroy(&ws->bo_export_table_lock);
    do_winsys_deinit(ws);
    FREE(rws);
 }
@@ -108,7 +153,7 @@ static void amdgpu_winsys_query_info(struct radeon_winsys *rws,
    *info = ((struct amdgpu_winsys *)rws)->info;
 }
 
-static bool amdgpu_cs_request_feature(struct radeon_winsys_cs *rcs,
+static bool amdgpu_cs_request_feature(struct radeon_cmdbuf *rcs,
                                       enum radeon_feature_id fid,
                                       bool enable)
 {
@@ -193,16 +238,12 @@ static bool amdgpu_read_registers(struct radeon_winsys *rws,
                                    0xffffffff, 0, out) == 0;
 }
 
-static unsigned hash_dev(void *key)
+static unsigned hash_pointer(void *key)
 {
-#if defined(PIPE_ARCH_X86_64)
-   return pointer_to_intptr(key) ^ (pointer_to_intptr(key) >> 32);
-#else
-   return pointer_to_intptr(key);
-#endif
+   return _mesa_hash_pointer(key);
 }
 
-static int compare_dev(void *key1, void *key2)
+static int compare_pointers(void *key1, void *key2)
 {
    return key1 != key2;
 }
@@ -220,8 +261,13 @@ static bool amdgpu_winsys_unref(struct radeon_winsys *rws)
    simple_mtx_lock(&dev_tab_mutex);
 
    destroy = pipe_reference(&ws->reference, NULL);
-   if (destroy && dev_tab)
+   if (destroy && dev_tab) {
       util_hash_table_remove(dev_tab, ws->dev);
+      if (util_hash_table_count(dev_tab) == 0) {
+         util_hash_table_destroy(dev_tab);
+         dev_tab = NULL;
+      }
+   }
 
    simple_mtx_unlock(&dev_tab_mutex);
    return destroy;
@@ -233,6 +279,14 @@ static const char* amdgpu_get_chip_name(struct radeon_winsys *ws)
    return amdgpu_get_marketing_name(dev);
 }
 
+static void amdgpu_pin_threads_to_L3_cache(struct radeon_winsys *rws,
+                                           unsigned cache)
+{
+   struct amdgpu_winsys *ws = (struct amdgpu_winsys*)rws;
+
+   util_pin_thread_to_L3(ws->cs_queue.threads[0], cache,
+                         util_cpu_caps.cores_per_L3);
+}
 
 PUBLIC struct radeon_winsys *
 amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
@@ -253,7 +307,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
    /* Look up the winsys from the dev table. */
    simple_mtx_lock(&dev_tab_mutex);
    if (!dev_tab)
-      dev_tab = util_hash_table_create(hash_dev, compare_dev);
+      dev_tab = util_hash_table_create(hash_pointer, compare_pointers);
 
    /* Initialize the amdgpu device. This should always return the same pointer
     * for the same fd. */
@@ -269,6 +323,12 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
    if (ws) {
       pipe_reference(NULL, &ws->reference);
       simple_mtx_unlock(&dev_tab_mutex);
+
+      /* Release the device handle, because we don't need it anymore.
+       * This function is returning an existing winsys instance, which
+       * has its own device handle.
+       */
+      amdgpu_device_deinitialize(dev);
       return &ws->base;
    }
 
@@ -281,24 +341,42 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
    ws->info.drm_major = drm_major;
    ws->info.drm_minor = drm_minor;
 
-   if (!do_winsys_init(ws, fd))
+   if (!do_winsys_init(ws, config, fd))
       goto fail_alloc;
 
    /* Create managers. */
-   pb_cache_init(&ws->bo_cache, 500000, ws->check_vm ? 1.0f : 2.0f, 0,
+   pb_cache_init(&ws->bo_cache, RADEON_MAX_CACHED_HEAPS,
+                 500000, ws->check_vm ? 1.0f : 2.0f, 0,
                  (ws->info.vram_size + ws->info.gart_size) / 8,
                  amdgpu_bo_destroy, amdgpu_bo_can_reclaim);
 
-   if (!pb_slabs_init(&ws->bo_slabs,
-                      AMDGPU_SLAB_MIN_SIZE_LOG2, AMDGPU_SLAB_MAX_SIZE_LOG2,
-                      RADEON_MAX_SLAB_HEAPS,
-                      ws,
-                      amdgpu_bo_can_reclaim_slab,
-                      amdgpu_bo_slab_alloc,
-                      amdgpu_bo_slab_free))
-      goto fail_cache;
+   unsigned min_slab_order = 9;  /* 512 bytes */
+   unsigned max_slab_order = 18; /* 256 KB - higher numbers increase memory usage */
+   unsigned num_slab_orders_per_allocator = (max_slab_order - min_slab_order) /
+                                            NUM_SLAB_ALLOCATORS;
 
-   ws->info.min_alloc_size = 1 << AMDGPU_SLAB_MIN_SIZE_LOG2;
+   /* Divide the size order range among slab managers. */
+   for (unsigned i = 0; i < NUM_SLAB_ALLOCATORS; i++) {
+      unsigned min_order = min_slab_order;
+      unsigned max_order = MIN2(min_order + num_slab_orders_per_allocator,
+                                max_slab_order);
+
+      if (!pb_slabs_init(&ws->bo_slabs[i],
+                         min_order, max_order,
+                         RADEON_MAX_SLAB_HEAPS,
+                         ws,
+                         amdgpu_bo_can_reclaim_slab,
+                         amdgpu_bo_slab_alloc,
+                         amdgpu_bo_slab_free)) {
+         amdgpu_winsys_destroy(&ws->base);
+         simple_mtx_unlock(&dev_tab_mutex);
+         return NULL;
+      }
+
+      min_slab_order = max_order + 1;
+   }
+
+   ws->info.min_alloc_size = 1 << ws->bo_slabs[0].min_order;
 
    /* init reference */
    pipe_reference_init(&ws->reference, 1);
@@ -311,16 +389,20 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
    ws->base.query_value = amdgpu_query_value;
    ws->base.read_registers = amdgpu_read_registers;
    ws->base.get_chip_name = amdgpu_get_chip_name;
+   ws->base.pin_threads_to_L3_cache = amdgpu_pin_threads_to_L3_cache;
 
    amdgpu_bo_init_functions(ws);
    amdgpu_cs_init_functions(ws);
    amdgpu_surface_init_functions(ws);
 
    LIST_INITHEAD(&ws->global_bo_list);
+   ws->bo_export_table = util_hash_table_create(hash_pointer, compare_pointers);
+
    (void) simple_mtx_init(&ws->global_bo_list_lock, mtx_plain);
    (void) simple_mtx_init(&ws->bo_fence_lock, mtx_plain);
+   (void) simple_mtx_init(&ws->bo_export_table_lock, mtx_plain);
 
-   if (!util_queue_init(&ws->cs_queue, "amdgpu_cs", 8, 1,
+   if (!util_queue_init(&ws->cs_queue, "cs", 8, 1,
                         UTIL_QUEUE_INIT_RESIZE_IF_FULL)) {
       amdgpu_winsys_destroy(&ws->base);
       simple_mtx_unlock(&dev_tab_mutex);

@@ -109,6 +109,12 @@ new_ldunif_instr(struct qinst *inst, int i)
 static void
 set_src(struct v3d_qpu_instr *instr, enum v3d_qpu_mux *mux, struct qpu_reg src)
 {
+        if (src.smimm) {
+                assert(instr->sig.small_imm);
+                *mux = V3D_QPU_MUX_B;
+                return;
+        }
+
         if (src.magic) {
                 assert(src.index >= V3D_QPU_WADDR_R0 &&
                        src.index <= V3D_QPU_WADDR_R5);
@@ -138,6 +144,60 @@ set_src(struct v3d_qpu_instr *instr, enum v3d_qpu_mux *mux, struct qpu_reg src)
         }
 }
 
+static bool
+is_no_op_mov(struct qinst *qinst)
+{
+        static const struct v3d_qpu_sig no_sig = {0};
+
+        /* Make sure it's just a lone MOV. */
+        if (qinst->qpu.type != V3D_QPU_INSTR_TYPE_ALU ||
+            qinst->qpu.alu.mul.op != V3D_QPU_M_MOV ||
+            qinst->qpu.alu.add.op != V3D_QPU_A_NOP ||
+            memcmp(&qinst->qpu.sig, &no_sig, sizeof(no_sig)) != 0) {
+                return false;
+        }
+
+        /* Check if it's a MOV from a register to itself. */
+        enum v3d_qpu_waddr waddr = qinst->qpu.alu.mul.waddr;
+        if (qinst->qpu.alu.mul.magic_write) {
+                if (waddr < V3D_QPU_WADDR_R0 || waddr > V3D_QPU_WADDR_R4)
+                        return false;
+
+                if (qinst->qpu.alu.mul.a !=
+                    V3D_QPU_MUX_R0 + (waddr - V3D_QPU_WADDR_R0)) {
+                        return false;
+                }
+        } else {
+                int raddr;
+
+                switch (qinst->qpu.alu.mul.a) {
+                case V3D_QPU_MUX_A:
+                        raddr = qinst->qpu.raddr_a;
+                        break;
+                case V3D_QPU_MUX_B:
+                        raddr = qinst->qpu.raddr_b;
+                        break;
+                default:
+                        return false;
+                }
+                if (raddr != waddr)
+                        return false;
+        }
+
+        /* No packing or flags updates, or we need to execute the
+         * instruction.
+         */
+        if (qinst->qpu.alu.mul.a_unpack != V3D_QPU_UNPACK_NONE ||
+            qinst->qpu.alu.mul.output_pack != V3D_QPU_PACK_NONE ||
+            qinst->qpu.flags.mc != V3D_QPU_COND_NONE ||
+            qinst->qpu.flags.mpf != V3D_QPU_PF_NONE ||
+            qinst->qpu.flags.muf != V3D_QPU_UF_NONE) {
+                return false;
+        }
+
+        return true;
+}
+
 static void
 v3d_generate_code_block(struct v3d_compile *c,
                         struct qblock *block,
@@ -145,7 +205,7 @@ v3d_generate_code_block(struct v3d_compile *c,
 {
         int last_vpm_read_index = -1;
 
-        vir_for_each_inst(qinst, block) {
+        vir_for_each_inst_safe(qinst, block) {
 #if 0
                 fprintf(stderr, "translating qinst to qpu: ");
                 vir_dump_inst(c, qinst);
@@ -181,6 +241,10 @@ v3d_generate_code_block(struct v3d_compile *c,
                                 src[i] = temp_registers[index];
                                 break;
                         case QFILE_UNIF:
+                                /* XXX perf: If the last ldunif we emitted was
+                                 * the same uniform value, skip it.  Common
+                                 * for multop/umul24 sequences.
+                                 */
                                 if (!emitted_ldunif) {
                                         new_ldunif_instr(qinst, i);
                                         c->num_uniforms++;
@@ -190,15 +254,7 @@ v3d_generate_code_block(struct v3d_compile *c,
                                 src[i] = qpu_acc(5);
                                 break;
                         case QFILE_SMALL_IMM:
-                                abort(); /* XXX */
-#if 0
-                                src[i].mux = QPU_MUX_SMALL_IMM;
-                                src[i].addr = qpu_encode_small_immediate(qinst->src[i].index);
-                                /* This should only have returned a valid
-                                 * small immediate field, not ~0 for failure.
-                                 */
-                                assert(src[i].addr <= 47);
-#endif
+                                src[i].smimm = true;
                                 break;
 
                         case QFILE_VPM:
@@ -289,6 +345,11 @@ v3d_generate_code_block(struct v3d_compile *c,
 
                                 qinst->qpu.alu.mul.waddr = dst.index;
                                 qinst->qpu.alu.mul.magic_write = dst.magic;
+
+                                if (is_no_op_mov(qinst)) {
+                                        vir_remove_instruction(c, qinst);
+                                        continue;
+                                }
                         }
                 } else {
                         assert(qinst->qpu.type == V3D_QPU_INSTR_TYPE_BRANCH);
@@ -296,6 +357,36 @@ v3d_generate_code_block(struct v3d_compile *c,
         }
 }
 
+static bool
+reads_uniform(const struct v3d_device_info *devinfo, uint64_t instruction)
+{
+        struct v3d_qpu_instr qpu;
+        MAYBE_UNUSED bool ok = v3d_qpu_instr_unpack(devinfo, instruction, &qpu);
+        assert(ok);
+
+        if (qpu.sig.ldunif ||
+            qpu.sig.ldunifarf ||
+            qpu.sig.wrtmuc) {
+                return true;
+        }
+
+        if (qpu.type == V3D_QPU_INSTR_TYPE_BRANCH)
+                return true;
+
+        if (qpu.type == V3D_QPU_INSTR_TYPE_ALU) {
+                if (qpu.alu.add.magic_write &&
+                    v3d_qpu_magic_waddr_loads_unif(qpu.alu.add.waddr)) {
+                        return true;
+                }
+
+                if (qpu.alu.mul.magic_write &&
+                    v3d_qpu_magic_waddr_loads_unif(qpu.alu.mul.waddr)) {
+                        return true;
+                }
+        }
+
+        return false;
+}
 
 static void
 v3d_dump_qpu(struct v3d_compile *c)
@@ -304,10 +395,30 @@ v3d_dump_qpu(struct v3d_compile *c)
                 vir_get_stage_name(c),
                 c->program_id, c->variant_id);
 
+        int next_uniform = 0;
         for (int i = 0; i < c->qpu_inst_count; i++) {
                 const char *str = v3d_qpu_disasm(c->devinfo, c->qpu_insts[i]);
-                fprintf(stderr, "0x%016"PRIx64" %s\n", c->qpu_insts[i], str);
+                fprintf(stderr, "0x%016"PRIx64" %s", c->qpu_insts[i], str);
+
+                /* We can only do this on 4.x, because we're not tracking TMU
+                 * implicit uniforms here on 3.x.
+                 */
+                if (c->devinfo->ver >= 40 &&
+                    reads_uniform(c->devinfo, c->qpu_insts[i])) {
+                        fprintf(stderr, " (");
+                        vir_dump_uniform(c->uniform_contents[next_uniform],
+                                         c->uniform_data[next_uniform]);
+                        fprintf(stderr, ")");
+                        next_uniform++;
+                }
+                fprintf(stderr, "\n");
+                ralloc_free((void *)str);
         }
+
+        /* Make sure our dumping lined up. */
+        if (c->devinfo->ver >= 40)
+                assert(next_uniform == c->num_uniforms);
+
         fprintf(stderr, "\n");
 }
 
@@ -329,11 +440,27 @@ v3d_vir_to_qpu(struct v3d_compile *c, struct qpu_reg *temp_registers)
         vir_for_each_inst_inorder(inst, c) {
                 bool ok = v3d_qpu_instr_pack(c->devinfo, &inst->qpu,
                                              &c->qpu_insts[i++]);
-                assert(ok); (void) ok;
+                if (!ok) {
+                        fprintf(stderr, "Failed to pack instruction:\n");
+                        vir_dump_inst(c, inst);
+                        fprintf(stderr, "\n");
+                        c->failed = true;
+                        return;
+                }
         }
         assert(i == c->qpu_inst_count);
 
         if (V3D_DEBUG & V3D_DEBUG_SHADERDB) {
+                fprintf(stderr, "SHADER-DB: %s prog %d/%d: %d instructions\n",
+                        vir_get_stage_name(c),
+                        c->program_id, c->variant_id,
+                        c->qpu_inst_count);
+        }
+
+        /* The QPU cycle estimates are pretty broken (see waddr_latency()), so
+         * don't report them for now.
+         */
+        if (false) {
                 fprintf(stderr, "SHADER-DB: %s prog %d/%d: %d estimated cycles\n",
                         vir_get_stage_name(c),
                         c->program_id, c->variant_id,

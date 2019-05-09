@@ -45,10 +45,33 @@
 #include "brw_cs.h"
 #include "main/framebuffer.h"
 
+void
+brw_enable_obj_preemption(struct brw_context *brw, bool enable)
+{
+   const struct gen_device_info *devinfo = &brw->screen->devinfo;
+   assert(devinfo->gen >= 9);
+
+   if (enable == brw->object_preemption)
+      return;
+
+   /* A fixed function pipe flush is required before modifying this field */
+   brw_emit_end_of_pipe_sync(brw, PIPE_CONTROL_RENDER_TARGET_FLUSH);
+
+   bool replay_mode = enable ?
+      GEN9_REPLAY_MODE_MIDOBJECT : GEN9_REPLAY_MODE_MIDBUFFER;
+
+   /* enable object level preemption */
+   brw_load_register_imm32(brw, CS_CHICKEN1,
+                           replay_mode | GEN9_REPLAY_MODE_MASK);
+
+   brw->object_preemption = enable;
+}
+
 static void
 brw_upload_initial_gpu_state(struct brw_context *brw)
 {
    const struct gen_device_info *devinfo = &brw->screen->devinfo;
+   const struct brw_compiler *compiler = brw->screen->compiler;
 
    /* On platforms with hardware contexts, we can set our initial GPU state
     * right away rather than doing it via state atoms.  This saves a small
@@ -62,11 +85,32 @@ brw_upload_initial_gpu_state(struct brw_context *brw)
 
    brw_upload_invariant_state(brw);
 
-   if (devinfo->gen == 10) {
-      brw_load_register_imm32(brw, GEN10_CACHE_MODE_SS,
-                              REG_MASK(GEN10_FLOAT_BLEND_OPTIMIZATION_ENABLE) |
-                              GEN10_FLOAT_BLEND_OPTIMIZATION_ENABLE);
+   if (devinfo->gen == 11) {
+      /* The default behavior of bit 5 "Headerless Message for Pre-emptable
+       * Contexts" in SAMPLER MODE register is set to 0, which means
+       * headerless sampler messages are not allowed for pre-emptable
+       * contexts. Set the bit 5 to 1 to allow them.
+       */
+      brw_load_register_imm32(brw, GEN11_SAMPLER_MODE,
+                              HEADERLESS_MESSAGE_FOR_PREEMPTABLE_CONTEXTS_MASK |
+                              HEADERLESS_MESSAGE_FOR_PREEMPTABLE_CONTEXTS);
 
+      /* Bit 1 "Enabled Texel Offset Precision Fix" must be set in
+       * HALF_SLICE_CHICKEN7 register.
+       */
+      brw_load_register_imm32(brw, HALF_SLICE_CHICKEN7,
+                              TEXEL_OFFSET_FIX_MASK |
+                              TEXEL_OFFSET_FIX_ENABLE);
+
+      /* WA_1406697149: Bit 9 "Error Detection Behavior Control" must be set
+       * in L3CNTLREG register. The default setting of the bit is not the
+       * desirable behavior.
+       */
+      brw_load_register_imm32(brw, GEN8_L3CNTLREG,
+                              GEN8_L3CNTLREG_EDBC_NO_HANG);
+   }
+
+   if (devinfo->gen == 10 || devinfo->gen == 11) {
       /* From gen10 workaround table in h/w specs:
        *
        *    "On 3DSTATE_3D_MODE, driver must always program bits 31:16 of DW1
@@ -115,6 +159,34 @@ brw_upload_initial_gpu_state(struct brw_context *brw)
       OUT_BATCH(0);
       ADVANCE_BATCH();
    }
+
+   /* Set the "CONSTANT_BUFFER Address Offset Disable" bit, so
+    * 3DSTATE_CONSTANT_XS buffer 0 is an absolute address.
+    *
+    * This is only safe on kernels with context isolation support.
+    */
+   if (!compiler->constant_buffer_0_is_relative) {
+      if (devinfo->gen >= 9) {
+         BEGIN_BATCH(3);
+         OUT_BATCH(MI_LOAD_REGISTER_IMM | (3 - 2));
+         OUT_BATCH(CS_DEBUG_MODE2);
+         OUT_BATCH(REG_MASK(CSDBG2_CONSTANT_BUFFER_ADDRESS_OFFSET_DISABLE) |
+                   CSDBG2_CONSTANT_BUFFER_ADDRESS_OFFSET_DISABLE);
+         ADVANCE_BATCH();
+      } else if (devinfo->gen == 8) {
+         BEGIN_BATCH(3);
+         OUT_BATCH(MI_LOAD_REGISTER_IMM | (3 - 2));
+         OUT_BATCH(INSTPM);
+         OUT_BATCH(REG_MASK(INSTPM_CONSTANT_BUFFER_ADDRESS_OFFSET_DISABLE) |
+                   INSTPM_CONSTANT_BUFFER_ADDRESS_OFFSET_DISABLE);
+         ADVANCE_BATCH();
+      }
+   }
+
+   brw->object_preemption = false;
+
+   if (devinfo->gen >= 10)
+      brw_enable_obj_preemption(brw, true);
 }
 
 static inline const struct brw_tracked_state *
@@ -164,7 +236,9 @@ void brw_init_state( struct brw_context *brw )
 
    brw_init_caches(brw);
 
-   if (devinfo->gen >= 10)
+   if (devinfo->gen >= 11)
+      gen11_init_atoms(brw);
+   else if (devinfo->gen >= 10)
       gen10_init_atoms(brw);
    else if (devinfo->gen >= 9)
       gen9_init_atoms(brw);

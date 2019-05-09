@@ -91,8 +91,12 @@ gen10_emit_wa_lri_to_cache_mode_zero(struct anv_batch *batch)
 VkResult
 genX(init_device_state)(struct anv_device *device)
 {
-   GENX(MEMORY_OBJECT_CONTROL_STATE_pack)(NULL, &device->default_mocs,
-                                          &GENX(MOCS));
+   device->default_mocs = GENX(MOCS);
+#if GEN_GEN >= 8
+   device->external_mocs = GENX(EXTERNAL_MOCS);
+#else
+   device->external_mocs = device->default_mocs;
+#endif
 
    struct anv_batch batch;
 
@@ -118,18 +122,6 @@ genX(init_device_state)(struct anv_device *device)
    anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
       lri.RegisterOffset = GENX(CACHE_MODE_1_num);
       lri.DataDWord      = cache_mode_1;
-   }
-#endif
-
-#if GEN_GEN == 10
-   uint32_t cache_mode_ss;
-   anv_pack_struct(&cache_mode_ss, GENX(CACHE_MODE_SS),
-                   .FloatBlendOptimizationEnable = true,
-                   .FloatBlendOptimizationEnableMask = true);
-
-   anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
-      lri.RegisterOffset = GENX(CACHE_MODE_SS_num);
-      lri.DataDWord      = cache_mode_ss;
    }
 #endif
 
@@ -163,11 +155,79 @@ genX(init_device_state)(struct anv_device *device)
       GEN_SAMPLE_POS_16X(sp._16xSample);
 #endif
    }
+
+   /* The BDW+ docs describe how to use the 3DSTATE_WM_HZ_OP instruction in the
+    * section titled, "Optimized Depth Buffer Clear and/or Stencil Buffer
+    * Clear." It mentions that the packet overrides GPU state for the clear
+    * operation and needs to be reset to 0s to clear the overrides. Depending
+    * on the kernel, we may not get a context with the state for this packet
+    * zeroed. Do it ourselves just in case. We've observed this to prevent a
+    * number of GPU hangs on ICL.
+    */
+   anv_batch_emit(&batch, GENX(3DSTATE_WM_HZ_OP), hzp);
 #endif
 
 #if GEN_GEN == 10
    gen10_emit_wa_lri_to_cache_mode_zero(&batch);
 #endif
+
+#if GEN_GEN == 11
+   /* The default behavior of bit 5 "Headerless Message for Pre-emptable
+    * Contexts" in SAMPLER MODE register is set to 0, which means
+    * headerless sampler messages are not allowed for pre-emptable
+    * contexts. Set the bit 5 to 1 to allow them.
+    */
+   uint32_t sampler_mode;
+   anv_pack_struct(&sampler_mode, GENX(SAMPLER_MODE),
+                   .HeaderlessMessageforPreemptableContexts = true,
+                   .HeaderlessMessageforPreemptableContextsMask = true);
+
+    anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
+      lri.RegisterOffset = GENX(SAMPLER_MODE_num);
+      lri.DataDWord      = sampler_mode;
+   }
+
+   /* Bit 1 "Enabled Texel Offset Precision Fix" must be set in
+    * HALF_SLICE_CHICKEN7 register.
+    */
+   uint32_t half_slice_chicken7;
+   anv_pack_struct(&half_slice_chicken7, GENX(HALF_SLICE_CHICKEN7),
+                   .EnabledTexelOffsetPrecisionFix = true,
+                   .EnabledTexelOffsetPrecisionFixMask = true);
+
+    anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
+      lri.RegisterOffset = GENX(HALF_SLICE_CHICKEN7_num);
+      lri.DataDWord      = half_slice_chicken7;
+   }
+
+#endif
+
+   /* Set the "CONSTANT_BUFFER Address Offset Disable" bit, so
+    * 3DSTATE_CONSTANT_XS buffer 0 is an absolute address.
+    *
+    * This is only safe on kernels with context isolation support.
+    */
+   if (GEN_GEN >= 8 &&
+       device->instance->physicalDevice.has_context_isolation) {
+      UNUSED uint32_t tmp_reg;
+#if GEN_GEN >= 9
+      anv_pack_struct(&tmp_reg, GENX(CS_DEBUG_MODE2),
+                      .CONSTANT_BUFFERAddressOffsetDisable = true,
+                      .CONSTANT_BUFFERAddressOffsetDisableMask = true);
+      anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
+         lri.RegisterOffset = GENX(CS_DEBUG_MODE2_num);
+         lri.DataDWord      = tmp_reg;
+      }
+#elif GEN_GEN == 8
+      anv_pack_struct(&tmp_reg, GENX(INSTPM),
+                      .CONSTANT_BUFFERAddressOffsetDisable = true,
+                      .CONSTANT_BUFFERAddressOffsetDisableMask = true);
+      anv_batch_emit(&batch, GENX(MI_LOAD_REGISTER_IMM), lri) {
+         lri.RegisterOffset = GENX(INSTPM_num);
+         lri.DataDWord      = tmp_reg;
+      }
+#endif
+   }
 
    anv_batch_emit(&batch, GENX(MI_BATCH_BUFFER_END), bbe);
 
@@ -230,6 +290,14 @@ static const uint32_t vk_to_gen_shadow_compare_op[] = {
    [VK_COMPARE_OP_ALWAYS]                       = PREFILTEROPNEVER,
 };
 
+#if GEN_GEN >= 9
+static const uint32_t vk_to_gen_sampler_reduction_mode[] = {
+   [VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE_EXT] = STD_FILTER,
+   [VK_SAMPLER_REDUCTION_MODE_MIN_EXT]              = MINIMUM,
+   [VK_SAMPLER_REDUCTION_MODE_MAX_EXT]              = MAXIMUM,
+};
+#endif
+
 VkResult genX(CreateSampler)(
     VkDevice                                    _device,
     const VkSamplerCreateInfo*                  pCreateInfo,
@@ -251,21 +319,41 @@ VkResult genX(CreateSampler)(
    uint32_t border_color_offset = device->border_colors.offset +
                                   pCreateInfo->borderColor * 64;
 
+#if GEN_GEN >= 9
+   unsigned sampler_reduction_mode = STD_FILTER;
+   bool enable_sampler_reduction = false;
+#endif
+
    vk_foreach_struct(ext, pCreateInfo->pNext) {
       switch (ext->sType) {
-      case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO_KHR: {
-         VkSamplerYcbcrConversionInfoKHR *pSamplerConversion =
-            (VkSamplerYcbcrConversionInfoKHR *) ext;
+      case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO: {
+         VkSamplerYcbcrConversionInfo *pSamplerConversion =
+            (VkSamplerYcbcrConversionInfo *) ext;
          ANV_FROM_HANDLE(anv_ycbcr_conversion, conversion,
                          pSamplerConversion->conversion);
 
-         if (conversion == NULL)
+         /* Ignore conversion for non-YUV formats. This fulfills a requirement
+          * for clients that want to utilize same code path for images with
+          * external formats (VK_FORMAT_UNDEFINED) and "regular" RGBA images
+          * where format is known.
+          */
+         if (conversion == NULL || !conversion->format->can_ycbcr)
             break;
 
          sampler->n_planes = conversion->format->n_planes;
          sampler->conversion = conversion;
          break;
       }
+#if GEN_GEN >= 9
+      case VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO_EXT: {
+         struct VkSamplerReductionModeCreateInfoEXT *sampler_reduction =
+            (struct VkSamplerReductionModeCreateInfoEXT *) ext;
+         sampler_reduction_mode =
+            vk_to_gen_sampler_reduction_mode[sampler_reduction->reductionMode];
+         enable_sampler_reduction = true;
+         break;
+      }
+#endif
       default:
          anv_debug_ignored_stype(ext->sType);
          break;
@@ -333,6 +421,11 @@ VkResult genX(CreateSampler)(
          .TCXAddressControlMode = vk_to_gen_tex_address[pCreateInfo->addressModeU],
          .TCYAddressControlMode = vk_to_gen_tex_address[pCreateInfo->addressModeV],
          .TCZAddressControlMode = vk_to_gen_tex_address[pCreateInfo->addressModeW],
+
+#if GEN_GEN >= 9
+         .ReductionType = sampler_reduction_mode,
+         .ReductionTypeEnable = enable_sampler_reduction,
+#endif
       };
 
       GENX(SAMPLER_STATE_pack)(NULL, sampler->state[p], &sampler_state);

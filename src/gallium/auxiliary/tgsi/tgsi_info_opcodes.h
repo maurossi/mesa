@@ -101,7 +101,7 @@ OPCODE(0, 0, NONE, BGNLOOP, .is_branch = 1, .post_indent = 1)
 OPCODE(0, 0, NONE, BGNSUB, .post_indent = 1)
 OPCODE(0, 0, NONE, ENDLOOP, .is_branch = 1, .pre_dedent = 1)
 OPCODE(0, 0, NONE, ENDSUB, .pre_dedent = 1)
-OPCODE_GAP(103) /* removed */
+OPCODE(1, 3, OTHR, ATOMFADD, .is_store = 1)
 OPCODE(1, 1, OTHR, TXQS, .is_tex = 1)
 OPCODE(1, 1, OTHR, RESQ)
 OPCODE(1, 1, COMP, READ_FIRST)
@@ -162,8 +162,8 @@ OPCODE(1, 1, COMP, IABS)
 OPCODE(1, 1, COMP, ISSG)
 OPCODE(1, 2, OTHR, LOAD)
 OPCODE(1, 2, OTHR, STORE, .is_store = 1)
-OPCODE_GAP(163) /* removed */
-OPCODE_GAP(164) /* removed */
+OPCODE(1, 1, OTHR, IMG2HND)
+OPCODE(1, 1, OTHR, SAMP2HND, .is_tex = 1)
 OPCODE_GAP(165) /* removed */
 OPCODE(0, 0, OTHR, BARRIER)
 

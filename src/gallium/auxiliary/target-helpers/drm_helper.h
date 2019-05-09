@@ -83,24 +83,24 @@ pipe_nouveau_create_screen(int fd, const struct pipe_screen_config *config)
 
 #endif
 
-#ifdef GALLIUM_PL111
-#include "pl111/drm/pl111_drm_public.h"
+#ifdef GALLIUM_KMSRO
+#include "kmsro/drm/kmsro_drm_public.h"
 
 struct pipe_screen *
-pipe_pl111_create_screen(int fd, const struct pipe_screen_config *config)
+pipe_kmsro_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = pl111_drm_screen_create(fd);
+   screen = kmsro_drm_screen_create(fd);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 
 #else
 
 struct pipe_screen *
-pipe_pl111_create_screen(int fd, const struct pipe_screen_config *config)
+pipe_kmsro_create_screen(int fd, const struct pipe_screen_config *config)
 {
-   fprintf(stderr, "pl111: driver missing\n");
+   fprintf(stderr, "kmsro: driver missing\n");
    return NULL;
 }
 
@@ -248,7 +248,7 @@ pipe_freedreno_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = fd_drm_screen_create(fd);
+   screen = fd_drm_screen_create(fd, NULL);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 
@@ -310,24 +310,24 @@ pipe_vc4_create_screen(int fd, const struct pipe_screen_config *config)
 
 #endif
 
-#ifdef GALLIUM_VC5
-#include "vc5/drm/vc5_drm_public.h"
+#ifdef GALLIUM_V3D
+#include "v3d/drm/v3d_drm_public.h"
 
 struct pipe_screen *
-pipe_vc5_create_screen(int fd, const struct pipe_screen_config *config)
+pipe_v3d_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = vc5_drm_screen_create(fd);
+   screen = v3d_drm_screen_create(fd);
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 
 #else
 
 struct pipe_screen *
-pipe_vc5_create_screen(int fd, const struct pipe_screen_config *config)
+pipe_v3d_create_screen(int fd, const struct pipe_screen_config *config)
 {
-   fprintf(stderr, "vc5: driver missing\n");
+   fprintf(stderr, "v3d: driver missing\n");
    return NULL;
 }
 
@@ -356,28 +356,28 @@ pipe_etna_create_screen(int fd, const struct pipe_screen_config *config)
 
 #endif
 
-#ifdef GALLIUM_IMX
-#include "imx/drm/imx_drm_public.h"
+#ifdef GALLIUM_TEGRA
+#include "tegra/drm/tegra_drm_public.h"
 
 struct pipe_screen *
-pipe_imx_drm_create_screen(int fd, const struct pipe_screen_config *config)
+pipe_tegra_create_screen(int fd, const struct pipe_screen_config *config)
 {
    struct pipe_screen *screen;
 
-   screen = imx_drm_screen_create(fd);
+   screen = tegra_drm_screen_create(fd);
+
    return screen ? debug_screen_wrap(screen) : NULL;
 }
 
 #else
 
 struct pipe_screen *
-pipe_imx_drm_create_screen(int fd, const struct pipe_screen_config *config)
+pipe_tegra_create_screen(int fd, const struct pipe_screen_config *config)
 {
-   fprintf(stderr, "imx-drm: driver missing\n");
+   fprintf(stderr, "tegra: driver missing\n");
    return NULL;
 }
 
 #endif
-
 
 #endif /* DRM_HELPER_H */

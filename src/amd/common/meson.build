@@ -22,7 +22,7 @@ sid_tables_h = custom_target(
   'sid_tables_h',
   input : ['sid_tables.py', 'sid.h', 'gfx9d.h'],
   output : 'sid_tables.h',
-  command : [prog_python2, '@INPUT@'],
+  command : [prog_python, '@INPUT@'],
   capture : true,
 )
 
@@ -36,8 +36,6 @@ amd_common_files = files(
   'ac_llvm_util.c',
   'ac_llvm_util.h',
   'ac_shader_abi.h',
-  'ac_shader_info.c',
-  'ac_shader_info.h',
   'ac_shader_util.c',
   'ac_shader_util.h',
   'ac_nir_to_llvm.c',

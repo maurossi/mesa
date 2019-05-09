@@ -37,6 +37,7 @@
 #include "fbobject.h"
 #include "mtypes.h"
 #include "util/bitscan.h"
+#include "util/u_math.h"
 
 
 #define BAD_MASK ~0u
@@ -299,14 +300,15 @@ draw_buffer(struct gl_context *ctx, struct gl_framebuffer *fb,
    }
 
    /* if we get here, there's no error so set new state */
-   _mesa_drawbuffers(ctx, fb, 1, &buffer, &destMask);
+   const GLenum16 buffer16 = buffer;
+   _mesa_drawbuffers(ctx, fb, 1, &buffer16, &destMask);
 
    /* Call device driver function only if fb is the bound draw buffer */
    if (fb == ctx->DrawBuffer) {
-      if (ctx->Driver.DrawBuffers)
-         ctx->Driver.DrawBuffers(ctx, 1, &buffer);
-      else if (ctx->Driver.DrawBuffer)
-         ctx->Driver.DrawBuffer(ctx, buffer);
+      if (ctx->Driver.DrawBuffer)
+         ctx->Driver.DrawBuffer(ctx);
+      if (ctx->Driver.DrawBufferAllocate)
+         ctx->Driver.DrawBufferAllocate(ctx);
    }
 }
 
@@ -467,7 +469,7 @@ draw_buffers(struct gl_context *ctx, struct gl_framebuffer *fb, GLsizei n,
           * For OpenGL 4.x we check that behaviour. For any previous version we
           * keep considering it wrong (as INVALID_ENUM).
           */
-         if (_mesa_bitcount(destMask[output]) > 1) {
+         if (util_bitcount(destMask[output]) > 1) {
             if (_mesa_is_winsys_fbo(fb) && ctx->Version >= 40 &&
                 buffers[output] == GL_BACK) {
                if (n != 1) {
@@ -573,7 +575,11 @@ draw_buffers(struct gl_context *ctx, struct gl_framebuffer *fb, GLsizei n,
    }
 
    /* OK, if we get here, there were no errors so set the new state */
-   _mesa_drawbuffers(ctx, fb, n, buffers, destMask);
+   GLenum16 buffers16[MAX_DRAW_BUFFERS];
+   for (int i = 0; i < n; i++)
+      buffers16[i] = buffers[i];
+
+   _mesa_drawbuffers(ctx, fb, n, buffers16, destMask);
 
    /*
     * Call device driver function if fb is the bound draw buffer.
@@ -582,10 +588,10 @@ draw_buffers(struct gl_context *ctx, struct gl_framebuffer *fb, GLsizei n,
     * may not be valid.
     */
    if (fb == ctx->DrawBuffer) {
-      if (ctx->Driver.DrawBuffers)
-         ctx->Driver.DrawBuffers(ctx, n, buffers);
-      else if (ctx->Driver.DrawBuffer)
-         ctx->Driver.DrawBuffer(ctx, n > 0 ? buffers[0] : GL_NONE);
+      if (ctx->Driver.DrawBuffer)
+         ctx->Driver.DrawBuffer(ctx);
+      if (ctx->Driver.DrawBufferAllocate)
+         ctx->Driver.DrawBufferAllocate(ctx);
    }
 }
 
@@ -694,7 +700,8 @@ updated_drawbuffers(struct gl_context *ctx, struct gl_framebuffer *fb)
  */
 void
 _mesa_drawbuffers(struct gl_context *ctx, struct gl_framebuffer *fb,
-                  GLuint n, const GLenum *buffers, const GLbitfield *destMask)
+                  GLuint n, const GLenum16 *buffers,
+                  const GLbitfield *destMask)
 {
    GLbitfield mask[MAX_DRAW_BUFFERS];
    GLuint buf;
@@ -716,7 +723,7 @@ _mesa_drawbuffers(struct gl_context *ctx, struct gl_framebuffer *fb,
     * (ex: glDrawBuffer(GL_FRONT_AND_BACK)).
     * Otherwise, destMask[x] can only have one bit set.
     */
-   if (n > 0 && _mesa_bitcount(destMask[0]) > 1) {
+   if (n > 0 && util_bitcount(destMask[0]) > 1) {
       GLuint count = 0, destMask0 = destMask[0];
       while (destMask0) {
          const gl_buffer_index bufIndex = u_bit_scan(&destMask0);
@@ -735,7 +742,7 @@ _mesa_drawbuffers(struct gl_context *ctx, struct gl_framebuffer *fb,
          if (destMask[buf]) {
             gl_buffer_index bufIndex = ffs(destMask[buf]) - 1;
             /* only one bit should be set in the destMask[buf] field */
-            assert(_mesa_bitcount(destMask[buf]) == 1);
+            assert(util_bitcount(destMask[buf]) == 1);
             if (fb->_ColorDrawBufferIndexes[buf] != bufIndex) {
 	       updated_drawbuffers(ctx, fb);
                fb->_ColorDrawBufferIndexes[buf] = bufIndex;

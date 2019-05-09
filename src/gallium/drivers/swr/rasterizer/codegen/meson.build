@@ -22,7 +22,7 @@ gen_knobs_cpp = custom_target(
   'gen_knobs.cpp',
   input : ['gen_knobs.py'],
   output : 'gen_knobs.cpp',
-  command : [prog_python2, '@INPUT0@', '--output', '@OUTPUT@', '--gen_cpp'],
+  command : [prog_python, '@INPUT0@', '--output', '@OUTPUT@', '--gen_cpp'],
   depend_files : files(
     'knob_defs.py', 'gen_common.py',
     'templates/gen_knobs.cpp',
@@ -33,7 +33,7 @@ gen_knobs_h = custom_target(
   'gen_knobs.h',
   input : ['gen_knobs.py'],
   output : 'gen_knobs.h',
-  command : [prog_python2, '@INPUT0@', '--output', '@OUTPUT@', '--gen_h'],
+  command : [prog_python, '@INPUT0@', '--output', '@OUTPUT@', '--gen_h'],
   depend_files : files(
     'knob_defs.py', 'gen_common.py',
     'templates/gen_knobs.h',
@@ -44,7 +44,7 @@ gen_knobs_h = custom_target(
 # The generators above this are needed individually, while the below generators
 # are all inputs to the same lib, so they don't need unique names.
 files_swr_common += [
-  gen_builder_hpp, gen_builder_x86_hpp, gen_knobs_h, gen_knobs_cpp
+  gen_builder_hpp, gen_builder_meta_hpp, gen_knobs_h, gen_knobs_cpp
 ]
 
 foreach x : [[swr_context_files, 'gen_swr_context_llvm.h'],
@@ -53,7 +53,7 @@ foreach x : [[swr_context_files, 'gen_swr_context_llvm.h'],
     x[1],
     input : ['gen_llvm_types.py', x[0]],
     output : x[1],
-    command : [prog_python2, '@INPUT0@', '--input', '@INPUT1@', '--output', '@OUTPUT@'],
+    command : [prog_python, '@INPUT0@', '--input', '@INPUT1@', '--output', '@OUTPUT@'],
     depend_files : files(
       'templates/gen_llvm.hpp',
       'gen_common.py',
@@ -67,10 +67,14 @@ foreach x : [['gen_ar_event.hpp', '--gen_event_hpp'],
              ['gen_ar_eventhandlerfile.hpp', '--gen_eventhandlerfile_h']]
   files_swr_common += custom_target(
     x[0],
-    input : ['gen_archrast.py', swr_event_proto_files],
+    input : ['gen_archrast.py', swr_event_proto_files, swr_event_pproto_files],
     output : x[0],
     command : [
-      prog_python2, '@INPUT0@', '--proto', '@INPUT1@', '--output', '@OUTPUT@',
+      prog_python,
+      '@INPUT0@',
+      '--proto', '@INPUT1@',
+      '--proto_private', '@INPUT2@',
+      '--output', '@OUTPUT@',
       x[1],
     ],
     depend_files : files(

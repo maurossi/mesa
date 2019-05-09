@@ -48,6 +48,7 @@ extern "C" {
 
 #define UTIL_QUEUE_INIT_USE_MINIMUM_PRIORITY      (1 << 0)
 #define UTIL_QUEUE_INIT_RESIZE_IF_FULL            (1 << 1)
+#define UTIL_QUEUE_INIT_SET_FULL_THREAD_AFFINITY  (1 << 2)
 
 #if defined(__GNUC__) && defined(HAVE_LINUX_FUTEX_H)
 #define UTIL_QUEUE_FENCE_FUTEX
@@ -199,7 +200,7 @@ struct util_queue_job {
 
 /* Put this into your context. */
 struct util_queue {
-   const char *name;
+   char name[14]; /* 13 characters = the thread name without the index */
    mtx_t finish_lock; /* only for util_queue_finish */
    mtx_t lock;
    cnd_t has_queued_cond;

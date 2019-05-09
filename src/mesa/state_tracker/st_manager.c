@@ -56,6 +56,7 @@
 #include "pipe/p_context.h"
 #include "pipe/p_screen.h"
 #include "util/u_format.h"
+#include "util/u_helpers.h"
 #include "util/u_pointer.h"
 #include "util/u_inlines.h"
 #include "util/u_atomic.h"
@@ -172,6 +173,26 @@ st_context_validate(struct st_context *st,
 }
 
 
+void
+st_set_ws_renderbuffer_surface(struct st_renderbuffer *strb,
+                               struct pipe_surface *surf)
+{
+   pipe_surface_reference(&strb->surface_srgb, NULL);
+   pipe_surface_reference(&strb->surface_linear, NULL);
+
+   if (util_format_is_srgb(surf->format))
+      pipe_surface_reference(&strb->surface_srgb, surf);
+   else
+      pipe_surface_reference(&strb->surface_linear, surf);
+
+   strb->surface = surf; /* just assign, don't ref */
+   pipe_resource_reference(&strb->texture, surf->texture);
+
+   strb->Base.Width = surf->width;
+   strb->Base.Height = surf->height;
+}
+
+
 /**
  * Validate a framebuffer to make sure up-to-date pipe_textures are used.
  * The context is only used for creating pipe surfaces and for calling
@@ -233,20 +254,10 @@ st_framebuffer_validate(struct st_framebuffer *stfb,
       u_surface_default_template(&surf_tmpl, textures[i]);
       ps = st->pipe->create_surface(st->pipe, textures[i], &surf_tmpl);
       if (ps) {
-         struct pipe_surface **psurf =
-            util_format_is_srgb(ps->format) ? &strb->surface_srgb :
-                                              &strb->surface_linear;
-
-         pipe_surface_reference(psurf, ps);
-         strb->surface = *psurf;
-         pipe_resource_reference(&strb->texture, ps->texture);
-         /* ownership transfered */
+         st_set_ws_renderbuffer_surface(strb, ps);
          pipe_surface_reference(&ps, NULL);
 
          changed = TRUE;
-
-         strb->Base.Width = strb->surface->width;
-         strb->Base.Height = strb->surface->height;
 
          width = strb->Base.Width;
          height = strb->Base.Height;
@@ -294,7 +305,7 @@ st_framebuffer_update_attachments(struct st_framebuffer *stfb)
  */
 static boolean
 st_framebuffer_add_renderbuffer(struct st_framebuffer *stfb,
-                                gl_buffer_index idx)
+                                gl_buffer_index idx, bool prefer_srgb)
 {
    struct gl_renderbuffer *rb;
    enum pipe_format format;
@@ -317,7 +328,7 @@ st_framebuffer_add_renderbuffer(struct st_framebuffer *stfb,
       break;
    default:
       format = stfb->iface->visual->color_format;
-      if (stfb->Base.Visual.sRGBCapable)
+      if (prefer_srgb)
          format = util_format_srgb(format);
       sw = FALSE;
       break;
@@ -435,6 +446,7 @@ st_framebuffer_create(struct st_context *st,
    struct st_framebuffer *stfb;
    struct gl_config mode;
    gl_buffer_index idx;
+   bool prefer_srgb = false;
 
    if (!stfbi)
       return NULL;
@@ -456,14 +468,15 @@ st_framebuffer_create(struct st_context *st,
     * format such that util_format_srgb(visual->color_format) can be supported
     * by the pipe driver.  We still need to advertise the capability here.
     *
-    * For GLES, however, sRGB framebuffer write is controlled only by the
-    * capability of the framebuffer.  There is GL_EXT_sRGB_write_control to
-    * give applications the control back, but sRGB write is still enabled by
-    * default.  To avoid unexpected results, we should not advertise the
-    * capability.  This could change when we add support for
-    * EGL_KHR_gl_colorspace.
+    * For GLES, however, sRGB framebuffer write is initially only controlled
+    * by the capability of the framebuffer, with GL_EXT_sRGB_write_control
+    * control is given back to the applications, but GL_FRAMEBUFFER_SRGB is
+    * still enabled by default since this is the behaviour when
+    * EXT_sRGB_write_control is not available. Since GL_EXT_sRGB_write_control
+    * brings GLES on par with desktop GLs EXT_framebuffer_sRGB, in mesa this
+    * is also expressed by using the same extension flag
     */
-   if (_mesa_is_desktop_gl(st->ctx)) {
+   if (_mesa_has_EXT_framebuffer_sRGB(st->ctx)) {
       struct pipe_screen *screen = st->pipe->screen;
       const enum pipe_format srgb_format =
          util_format_srgb(stfbi->visual->color_format);
@@ -472,9 +485,16 @@ st_framebuffer_create(struct st_context *st,
           st_pipe_format_to_mesa_format(srgb_format) != MESA_FORMAT_NONE &&
           screen->is_format_supported(screen, srgb_format,
                                       PIPE_TEXTURE_2D, stfbi->visual->samples,
+                                      stfbi->visual->samples,
                                       (PIPE_BIND_DISPLAY_TARGET |
-                                       PIPE_BIND_RENDER_TARGET)))
+                                       PIPE_BIND_RENDER_TARGET))) {
          mode.sRGBCapable = GL_TRUE;
+         /* Since GL_FRAMEBUFFER_SRGB is enabled by default on GLES we must not
+          * create renderbuffers with an sRGB format derived from the
+          * visual->color_format, but we still want sRGB for desktop GL.
+          */
+         prefer_srgb = _mesa_is_desktop_gl(st->ctx);
+      }
    }
 
    _mesa_initialize_window_framebuffer(&stfb->Base, &mode);
@@ -485,13 +505,13 @@ st_framebuffer_create(struct st_context *st,
 
    /* add the color buffer */
    idx = stfb->Base._ColorDrawBufferIndexes[0];
-   if (!st_framebuffer_add_renderbuffer(stfb, idx)) {
+   if (!st_framebuffer_add_renderbuffer(stfb, idx, prefer_srgb)) {
       free(stfb);
       return NULL;
    }
 
-   st_framebuffer_add_renderbuffer(stfb, BUFFER_DEPTH);
-   st_framebuffer_add_renderbuffer(stfb, BUFFER_ACCUM);
+   st_framebuffer_add_renderbuffer(stfb, BUFFER_DEPTH, false);
+   st_framebuffer_add_renderbuffer(stfb, BUFFER_ACCUM, false);
 
    stfb->stamp = 0;
    st_framebuffer_update_attachments(stfb);
@@ -798,6 +818,17 @@ st_start_thread(struct st_context_iface *stctxi)
    struct st_context *st = (struct st_context *) stctxi;
 
    _mesa_glthread_init(st->ctx);
+
+   /* Pin all driver threads to one L3 cache for optimal performance
+    * on AMD Zen. This is only done if glthread is enabled.
+    *
+    * If glthread is disabled, st_draw.c re-pins driver threads regularly
+    * based on the location of the app thread.
+    */
+   struct glthread_state *glthread = st->ctx->GLThread;
+   if (glthread && st->pipe->set_context_param) {
+      util_pin_driver_threads_to_random_L3(st->pipe, &glthread->queue.threads[0]);
+   }
 }
 
 
@@ -833,6 +864,7 @@ st_api_create_context(struct st_api *stapi, struct st_manager *smapi,
    struct st_context *shared_ctx = (struct st_context *) shared_stctxi;
    struct st_context *st;
    struct pipe_context *pipe;
+   struct gl_config* mode_ptr;
    struct gl_config mode;
    gl_api api;
    bool no_error = false;
@@ -885,6 +917,9 @@ st_api_create_context(struct st_api *stapi, struct st_manager *smapi,
    else if (attribs->flags & ST_CONTEXT_FLAG_HIGH_PRIORITY)
       ctx_flags |= PIPE_CONTEXT_HIGH_PRIORITY;
 
+   if (attribs->flags & ST_CONTEXT_FLAG_RESET_NOTIFICATION_ENABLED)
+      ctx_flags |= PIPE_CONTEXT_LOSE_CONTEXT_ON_RESET;
+
    pipe = smapi->screen->context_create(smapi->screen, NULL, ctx_flags);
    if (!pipe) {
       *error = ST_CONTEXT_ERROR_NO_MEMORY;
@@ -892,7 +927,13 @@ st_api_create_context(struct st_api *stapi, struct st_manager *smapi,
    }
 
    st_visual_to_context_mode(&attribs->visual, &mode);
-   st = st_create_context(api, pipe, &mode, shared_ctx,
+
+   if (attribs->visual.no_config)
+      mode_ptr = NULL;
+   else
+      mode_ptr = &mode;
+
+   st = st_create_context(api, pipe, mode_ptr, shared_ctx,
                           &attribs->options, no_error);
    if (!st) {
       *error = ST_CONTEXT_ERROR_NO_MEMORY;
@@ -1021,8 +1062,6 @@ st_api_make_current(struct st_api *stapi, struct st_context_iface *stctxi,
    struct st_framebuffer *stdraw, *stread;
    boolean ret;
 
-   _glapi_check_multithread();
-
    if (st) {
       /* reuse or create the draw fb */
       stdraw = st_framebuffer_reuse_or_create(st,
@@ -1064,7 +1103,12 @@ st_api_make_current(struct st_api *stapi, struct st_context_iface *stctxi,
       st_framebuffers_purge(st);
    }
    else {
+      GET_CURRENT_CONTEXT(ctx);
+
       ret = _mesa_make_current(NULL, NULL, NULL);
+
+      if (ctx)
+         st_framebuffers_purge(ctx->st);
    }
 
    return ret;
@@ -1173,7 +1217,8 @@ st_manager_add_color_renderbuffer(struct st_context *st,
       return FALSE;
    }
 
-   if (!st_framebuffer_add_renderbuffer(stfb, idx))
+   if (!st_framebuffer_add_renderbuffer(stfb, idx,
+                                        stfb->Base.Visual.sRGBCapable))
       return FALSE;
 
    st_framebuffer_update_attachments(stfb);

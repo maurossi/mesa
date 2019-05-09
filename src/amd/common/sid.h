@@ -119,6 +119,7 @@
 #define			STRMOUT_OFFSET_FROM_VGT_FILLED_SIZE	1
 #define			STRMOUT_OFFSET_FROM_MEM			2
 #define			STRMOUT_OFFSET_NONE			3
+#define		STRMOUT_DATA_TYPE(x)		(((unsigned)(x) & 0x1) << 7)
 #define		STRMOUT_SELECT_BUFFER(x)	(((unsigned)(x) & 0x3) << 8)
 #define PKT3_DRAW_INDEX_OFFSET_2               0x35
 #define PKT3_WRITE_DATA                        0x37
@@ -132,11 +133,11 @@
 #define     S_370_WR_ONE_ADDR(x)		(((unsigned)(x) & 0x1) << 16)
 #define     S_370_DST_SEL(x)			(((unsigned)(x) & 0xf) << 8)
 #define       V_370_MEM_MAPPED_REGISTER		0
-#define       V_370_MEMORY_SYNC			1
+#define       V_370_MEM_GRBM			1 /* sync across GRBM */
 #define       V_370_TC_L2			2
 #define       V_370_GDS				3
 #define       V_370_RESERVED			4
-#define       V_370_MEM_ASYNC			5
+#define       V_370_MEM				5 /* not on SI */
 #define   R_371_DST_ADDR_LO			0x371
 #define   R_372_DST_ADDR_HI			0x372
 #define PKT3_DRAW_INDEX_INDIRECT_MULTI         0x38
@@ -144,7 +145,10 @@
 #define PKT3_MPEG_INDEX                        0x3A /* not on CIK */
 #define PKT3_WAIT_REG_MEM                      0x3C
 #define		WAIT_REG_MEM_EQUAL		3
+#define		WAIT_REG_MEM_NOT_EQUAL		4
+#define		WAIT_REG_MEM_GREATER_OR_EQUAL   5
 #define         WAIT_REG_MEM_MEM_SPACE(x)       (((unsigned)(x) & 0x3) << 4)
+#define         WAIT_REG_MEM_PFP		(1 << 8)
 #define PKT3_MEM_WRITE                         0x3D /* not on CIK */
 #define PKT3_INDIRECT_BUFFER_CIK               0x3F /* new on CIK */
 #define   R_3F0_IB_BASE_LO                     0x3F0
@@ -159,20 +163,30 @@
 #define PKT3_COPY_DATA			       0x40
 #define		COPY_DATA_SRC_SEL(x)		((x) & 0xf)
 #define			COPY_DATA_REG		0
-#define			COPY_DATA_MEM		1
+#define			COPY_DATA_SRC_MEM	1 /* only valid as source */
+#define                 COPY_DATA_TC_L2         2
+#define                 COPY_DATA_GDS           3
 #define                 COPY_DATA_PERF          4
 #define                 COPY_DATA_IMM           5
 #define                 COPY_DATA_TIMESTAMP     9
 #define		COPY_DATA_DST_SEL(x)		(((unsigned)(x) & 0xf) << 8)
-#define                 COPY_DATA_MEM_ASYNC     5
+#define                 COPY_DATA_DST_MEM_GRBM	1 /* sync across GRBM, deprecated */
+#define                 COPY_DATA_TC_L2         2
+#define                 COPY_DATA_GDS           3
+#define                 COPY_DATA_PERF          4
+#define                 COPY_DATA_DST_MEM       5
 #define		COPY_DATA_COUNT_SEL		(1 << 16)
 #define		COPY_DATA_WR_CONFIRM		(1 << 20)
+#define		COPY_DATA_ENGINE_PFP		(1 << 30)
 #define PKT3_PFP_SYNC_ME		       0x42
 #define PKT3_SURFACE_SYNC                      0x43 /* deprecated on CIK, use ACQUIRE_MEM */
 #define PKT3_ME_INITIALIZE                     0x44 /* not on CIK */
 #define PKT3_COND_WRITE                        0x45
 #define PKT3_EVENT_WRITE                       0x46
 #define PKT3_EVENT_WRITE_EOP                   0x47 /* not on GFX9 */
+#define         EOP_DST_SEL(x)				((x) << 16)
+#define			EOP_DST_SEL_MEM			0
+#define			EOP_DST_SEL_TC_L2		1
 #define         EOP_INT_SEL(x)                          ((x) << 24)
 #define			EOP_INT_SEL_NONE			0
 #define			EOP_INT_SEL_SEND_DATA_AFTER_WR_CONFIRM	3
@@ -181,6 +195,8 @@
 #define			EOP_DATA_SEL_VALUE_32BIT	1
 #define			EOP_DATA_SEL_VALUE_64BIT	2
 #define			EOP_DATA_SEL_TIMESTAMP		3
+#define			EOP_DATA_SEL_GDS		5
+#define		EOP_DATA_GDS(dw_offset, num_dwords)	((dw_offset) | ((unsigned)(num_dwords) << 16))
 /* CP DMA bug: Any use of CP_DMA.DST_SEL=TC must be avoided when EOS packets
  * are used. Use DST_SEL=MC instead. For prefetch, use SRC_SEL=TC and
  * DST_SEL=MC. Only CIK chips are affected.
@@ -195,12 +211,14 @@
 #define PKT3_SET_SH_REG                        0x76
 #define PKT3_SET_SH_REG_OFFSET                 0x77
 #define PKT3_SET_UCONFIG_REG                   0x79 /* new for CIK */
+#define PKT3_SET_UCONFIG_REG_INDEX             0x7A /* new for GFX9, CP ucode version >= 26 */
 #define PKT3_LOAD_CONST_RAM                    0x80
 #define PKT3_WRITE_CONST_RAM                   0x81
 #define PKT3_DUMP_CONST_RAM                    0x83
 #define PKT3_INCREMENT_CE_COUNTER              0x84
 #define PKT3_INCREMENT_DE_COUNTER              0x85
 #define PKT3_WAIT_ON_CE_COUNTER                0x86
+#define PKT3_LOAD_CONTEXT_REG                  0x9F /* new for VI */
 
 #define PKT_TYPE_S(x)                   (((unsigned)(x) & 0x3) << 30)
 #define PKT_TYPE_G(x)                   (((x) >> 30) & 0x3)
@@ -239,7 +257,7 @@
 #define     S_411_ENGINE(x)		(((unsigned)(x) & 0x1) << 27)
 #define       V_411_ME			0
 #define       V_411_PFP			1
-#define     S_411_DSL_SEL(x)		(((unsigned)(x) & 0x3) << 20)
+#define     S_411_DST_SEL(x)		(((unsigned)(x) & 0x3) << 20)
 #define       V_411_DST_ADDR		0
 #define       V_411_GDS			1 /* program DAS to 1 as well */
 #define       V_411_NOWHERE		2 /* new for GFX9 */
@@ -294,11 +312,13 @@
 #define       V_500_GDS			1 /* program SAS to 1 as well */
 #define       V_500_DATA		2
 #define       V_500_SRC_ADDR_TC_L2	3 /* new for CIK */
-#define     S_500_DSL_SEL(x)		(((unsigned)(x) & 0x3) << 20)
+#define     S_500_DST_CACHE_POLICY(x)	(((unsigned)(x) & 0x3) << 25) /* CIK+ */
+#define     S_500_DST_SEL(x)		(((unsigned)(x) & 0x3) << 20)
 #define       V_500_DST_ADDR		0
 #define       V_500_GDS			1 /* program DAS to 1 as well */
 #define       V_500_NOWHERE		2 /* new for GFX9 */
 #define       V_500_DST_ADDR_TC_L2	3 /* new for CIK */
+#define     S_500_SRC_CACHE_POLICY(x)	(((unsigned)(x) & 0x3) << 13) /* CIK+ */
 #define     S_500_ENGINE(x)		((x) & 0x1)
 #define       V_500_ME			0
 #define       V_500_PFP			1
@@ -2417,6 +2437,9 @@
 #define   S_008F30_FILTER_MODE(x)                                     (((unsigned)(x) & 0x03) << 29)
 #define   G_008F30_FILTER_MODE(x)                                     (((x) >> 29) & 0x03)
 #define   C_008F30_FILTER_MODE                                        0x9FFFFFFF
+#define     V_008F30_SQ_IMG_FILTER_MODE_BLEND                       0x00
+#define     V_008F30_SQ_IMG_FILTER_MODE_MIN                         0x01
+#define     V_008F30_SQ_IMG_FILTER_MODE_MAX                         0x02
 /* VI */
 #define   S_008F30_COMPAT_MODE(x)                                     (((unsigned)(x) & 0x1) << 31)
 #define   G_008F30_COMPAT_MODE(x)                                     (((x) >> 31) & 0x1)
@@ -5282,6 +5305,22 @@
 #define   S_02820C_CLIP_RULE(x)                                       (((unsigned)(x) & 0xFFFF) << 0)
 #define   G_02820C_CLIP_RULE(x)                                       (((x) >> 0) & 0xFFFF)
 #define   C_02820C_CLIP_RULE                                          0xFFFF0000
+#define     V_02820C_OUT                                            0x0001
+#define     V_02820C_IN_0                                           0x0002
+#define     V_02820C_IN_1                                           0x0004
+#define     V_02820C_IN_10                                          0x0008
+#define     V_02820C_IN_2                                           0x0010
+#define     V_02820C_IN_20                                          0x0020
+#define     V_02820C_IN_21                                          0x0040
+#define     V_02820C_IN_210                                         0x0080
+#define     V_02820C_IN_3                                           0x0100
+#define     V_02820C_IN_30                                          0x0200
+#define     V_02820C_IN_31                                          0x0400
+#define     V_02820C_IN_310                                         0x0800
+#define     V_02820C_IN_32                                          0x1000
+#define     V_02820C_IN_320                                         0x2000
+#define     V_02820C_IN_321                                         0x4000
+#define     V_02820C_IN_3210                                        0x8000
 #define R_028210_PA_SC_CLIPRECT_0_TL                                    0x028210
 #define   S_028210_TL_X(x)                                            (((unsigned)(x) & 0x7FFF) << 0)
 #define   G_028210_TL_X(x)                                            (((x) >> 0) & 0x7FFF)
@@ -6892,34 +6931,22 @@
 #define   S_028808_ROP3(x)                                            (((unsigned)(x) & 0xFF) << 16)
 #define   G_028808_ROP3(x)                                            (((x) >> 16) & 0xFF)
 #define   C_028808_ROP3                                               0xFF00FFFF
-#define     V_028808_X_0X00                                         0x00
-#define     V_028808_X_0X05                                         0x05
-#define     V_028808_X_0X0A                                         0x0A
-#define     V_028808_X_0X0F                                         0x0F
-#define     V_028808_X_0X11                                         0x11
-#define     V_028808_X_0X22                                         0x22
-#define     V_028808_X_0X33                                         0x33
-#define     V_028808_X_0X44                                         0x44
-#define     V_028808_X_0X50                                         0x50
-#define     V_028808_X_0X55                                         0x55
-#define     V_028808_X_0X5A                                         0x5A
-#define     V_028808_X_0X5F                                         0x5F
-#define     V_028808_X_0X66                                         0x66
-#define     V_028808_X_0X77                                         0x77
-#define     V_028808_X_0X88                                         0x88
-#define     V_028808_X_0X99                                         0x99
-#define     V_028808_X_0XA0                                         0xA0
-#define     V_028808_X_0XA5                                         0xA5
-#define     V_028808_X_0XAA                                         0xAA
-#define     V_028808_X_0XAF                                         0xAF
-#define     V_028808_X_0XBB                                         0xBB
-#define     V_028808_X_0XCC                                         0xCC
-#define     V_028808_X_0XDD                                         0xDD
-#define     V_028808_X_0XEE                                         0xEE
-#define     V_028808_X_0XF0                                         0xF0
-#define     V_028808_X_0XF5                                         0xF5
-#define     V_028808_X_0XFA                                         0xFA
-#define     V_028808_X_0XFF                                         0xFF
+#define     V_028808_ROP3_CLEAR                                     0x00
+#define     V_028808_ROP3_NOR                                       0x11
+#define     V_028808_ROP3_AND_INVERTED                              0x22
+#define     V_028808_ROP3_COPY_INVERTED                             0x33
+#define     V_028808_ROP3_AND_REVERSE                               0x44
+#define     V_028808_ROP3_INVERT                                    0x55
+#define     V_028808_ROP3_XOR                                       0x66
+#define     V_028808_ROP3_NAND                                      0x77
+#define     V_028808_ROP3_AND                                       0x88
+#define     V_028808_ROP3_EQUIVALENT                                0x99
+#define     V_028808_ROP3_NO_OP                                     0xaa
+#define     V_028808_ROP3_OR_INVERTED                               0xbb
+#define     V_028808_ROP3_COPY                                      0xcc
+#define     V_028808_ROP3_OR_REVERSE                                0xdd
+#define     V_028808_ROP3_OR                                        0xee
+#define     V_028808_ROP3_SET                                       0xff
 #define R_02880C_DB_SHADER_CONTROL                                      0x02880C
 #define   S_02880C_Z_EXPORT_ENABLE(x)                                 (((unsigned)(x) & 0x1) << 0)
 #define   G_02880C_Z_EXPORT_ENABLE(x)                                 (((x) >> 0) & 0x1)
@@ -9134,8 +9161,14 @@
 #define    CIK_SDMA_PACKET_TRAP                    0x6
 #define    CIK_SDMA_PACKET_SEMAPHORE               0x7
 #define    CIK_SDMA_PACKET_CONSTANT_FILL           0xb
+#define    CIK_SDMA_OPCODE_TIMESTAMP               0xd
+#define        SDMA_TS_SUB_OPCODE_SET_LOCAL_TIMESTAMP     0x0
+#define        SDMA_TS_SUB_OPCODE_GET_LOCAL_TIMESTAMP     0x1
+#define        SDMA_TS_SUB_OPCODE_GET_GLOBAL_TIMESTAMP    0x2
 #define    CIK_SDMA_PACKET_SRBM_WRITE              0xe
-#define    CIK_SDMA_COPY_MAX_SIZE                  0x3fffe0
+/* There is apparently an undocumented HW "feature" that
+   prevents the HW from copying past 256 bytes of (1 << 22) */
+#define    CIK_SDMA_COPY_MAX_SIZE                  0x3fff00
 
 enum amd_cmp_class_flags {
 	S_NAN = 1 << 0,        // Signaling NaN

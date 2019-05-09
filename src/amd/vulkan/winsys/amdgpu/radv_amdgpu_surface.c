@@ -29,7 +29,6 @@
 #include <errno.h>
 
 #include "radv_private.h"
-#include "addrlib/addrinterface.h"
 #include "util/bitset.h"
 #include "radv_amdgpu_winsys.h"
 #include "radv_amdgpu_surface.h"
@@ -97,14 +96,7 @@ static int radv_amdgpu_winsys_surface_init(struct radeon_winsys *_ws,
 	return ac_compute_surface(ws->addrlib, &ws->info, &config, mode, surf);
 }
 
-static int radv_amdgpu_winsys_surface_best(struct radeon_winsys *rws,
-					   struct radeon_surf *surf)
-{
-	return 0;
-}
-
 void radv_amdgpu_surface_init_functions(struct radv_amdgpu_winsys *ws)
 {
 	ws->base.surface_init = radv_amdgpu_winsys_surface_init;
-	ws->base.surface_best = radv_amdgpu_winsys_surface_best;
 }

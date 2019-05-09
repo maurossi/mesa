@@ -38,7 +38,7 @@
 /* Using the GNU statement expression extension */
 #define SET_FIELD(value, field)                                         \
    ({                                                                   \
-      uint32_t fieldval = (value) << field ## _SHIFT;                   \
+      uint32_t fieldval = (uint32_t)(value) << field ## _SHIFT;         \
       assert((fieldval & ~ field ## _MASK) == 0);                       \
       fieldval & field ## _MASK;                                        \
    })
@@ -1646,6 +1646,8 @@ enum brw_pixel_shader_coverage_mask_mode {
 # define GEN8_L3CNTLREG_DC_ALLOC_MASK      INTEL_MASK(24, 18)
 # define GEN8_L3CNTLREG_ALL_ALLOC_SHIFT    25
 # define GEN8_L3CNTLREG_ALL_ALLOC_MASK     INTEL_MASK(31, 25)
+# define GEN8_L3CNTLREG_EDBC_NO_HANG       (1 << 9)
+# define GEN11_L3CNTLREG_USE_FULL_WAYS     (1 << 10)
 
 #define GEN10_CACHE_MODE_SS            0x0e420
 #define GEN10_FLOAT_BLEND_OPTIMIZATION_ENABLE (1 << 4)
@@ -1656,9 +1658,34 @@ enum brw_pixel_shader_coverage_mask_mode {
 #define CS_DEBUG_MODE2                     0x20d8 /* Gen9+ */
 # define CSDBG2_CONSTANT_BUFFER_ADDRESS_OFFSET_DISABLE (1 << 4)
 
+#define GEN7_RPSTAT1                       0xA01C
+#define  GEN7_RPSTAT1_CURR_GT_FREQ_SHIFT   7
+#define  GEN7_RPSTAT1_CURR_GT_FREQ_MASK    INTEL_MASK(13, 7)
+#define  GEN7_RPSTAT1_PREV_GT_FREQ_SHIFT   0
+#define  GEN7_RPSTAT1_PREV_GT_FREQ_MASK    INTEL_MASK(6, 0)
+
+#define GEN9_RPSTAT0                       0xA01C
+#define  GEN9_RPSTAT0_CURR_GT_FREQ_SHIFT   23
+#define  GEN9_RPSTAT0_CURR_GT_FREQ_MASK    INTEL_MASK(31, 23)
+#define  GEN9_RPSTAT0_PREV_GT_FREQ_SHIFT   0
+#define  GEN9_RPSTAT0_PREV_GT_FREQ_MASK    INTEL_MASK(8, 0)
+
 #define SLICE_COMMON_ECO_CHICKEN1          0x731c /* Gen9+ */
 # define GLK_SCEC_BARRIER_MODE_GPGPU       (0 << 7)
 # define GLK_SCEC_BARRIER_MODE_3D_HULL     (1 << 7)
 # define GLK_SCEC_BARRIER_MODE_MASK        REG_MASK(1 << 7)
+
+#define HALF_SLICE_CHICKEN7                0xE194
+# define TEXEL_OFFSET_FIX_ENABLE           (1 << 1)
+# define TEXEL_OFFSET_FIX_MASK             REG_MASK(1 << 1)
+
+#define GEN11_SAMPLER_MODE                                  0xE18C
+# define HEADERLESS_MESSAGE_FOR_PREEMPTABLE_CONTEXTS        (1 << 5)
+# define HEADERLESS_MESSAGE_FOR_PREEMPTABLE_CONTEXTS_MASK   REG_MASK(1 << 5)
+
+#define CS_CHICKEN1                        0x2580 /* Gen9+ */
+# define GEN9_REPLAY_MODE_MIDBUFFER             (0 << 0)
+# define GEN9_REPLAY_MODE_MIDOBJECT             (1 << 0)
+# define GEN9_REPLAY_MODE_MASK                  REG_MASK(1 << 0)
 
 #endif

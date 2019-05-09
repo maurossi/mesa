@@ -119,7 +119,7 @@ dri2_create_fence_fd(__DRIcontext *_ctx, int fd)
       stapi->flush(stapi, ST_FLUSH_FENCE_FD, &fence->pipe_fence);
    } else {
       /* importing a foreign fence fd: */
-      ctx->create_fence_fd(ctx, &fence->pipe_fence, fd);
+      ctx->create_fence_fd(ctx, &fence->pipe_fence, fd, PIPE_FD_TYPE_NATIVE_SYNC);
    }
    if (!fence->pipe_fence) {
       FREE(fence);
@@ -214,6 +214,12 @@ dri2_server_wait_sync(__DRIcontext *_ctx, void *_fence, unsigned flags)
    struct pipe_context *ctx = dri_context(_ctx)->st->pipe;
    struct dri2_fence *fence = (struct dri2_fence*)_fence;
 
+   /* We might be called here with a NULL fence as a result of WaitSyncKHR
+    * on a EGL_KHR_reusable_sync fence. Nothing to do here in such case.
+    */
+   if (!fence)
+      return;
+
    if (ctx->fence_server_sync)
       ctx->fence_server_sync(ctx, fence->pipe_fence);
 }
@@ -289,12 +295,6 @@ dri2_create_image_from_renderbuffer2(__DRIcontext *context,
 
    img->dri_format = driGLFormatToImageFormat(rb->Format);
    img->loader_private = loaderPrivate;
-
-   if (img->dri_format == __DRI_IMAGE_FORMAT_NONE) {
-      *error = __DRI_IMAGE_ERROR_BAD_PARAMETER;
-      free(img);
-      return NULL;
-   }
 
    pipe_resource_reference(&img->texture, tex);
 
@@ -372,12 +372,6 @@ dri2_create_from_texture(__DRIcontext *context, int target, unsigned texture,
    img->dri_format = driGLFormatToImageFormat(obj->Image[face][level]->TexFormat);
 
    img->loader_private = loaderPrivate;
-
-   if (img->dri_format == __DRI_IMAGE_FORMAT_NONE) {
-      *error = __DRI_IMAGE_ERROR_BAD_PARAMETER;
-      free(img);
-      return NULL;
-   }
 
    pipe_resource_reference(&img->texture, tex);
 

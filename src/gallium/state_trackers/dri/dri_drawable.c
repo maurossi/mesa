@@ -263,6 +263,9 @@ dri_set_tex_buffer2(__DRIcontext *pDRICtx, GLint target,
          case PIPE_FORMAT_B10G10R10A2_UNORM:
             internal_format = PIPE_FORMAT_B10G10R10X2_UNORM;
             break;
+         case PIPE_FORMAT_R10G10B10A2_UNORM:
+            internal_format = PIPE_FORMAT_R10G10B10X2_UNORM;
+            break;
          case PIPE_FORMAT_BGRA8888_UNORM:
             internal_format = PIPE_FORMAT_BGRX8888_UNORM;
             break;
@@ -521,13 +524,6 @@ dri_flush(__DRIcontext *cPriv,
 
       dri_postprocessing(ctx, drawable, ST_ATTACHMENT_BACK_LEFT);
 
-      if (ctx->hud) {
-         hud_run(ctx->hud, ctx->st->cso_context,
-                 drawable->textures[ST_ATTACHMENT_BACK_LEFT]);
-      }
-
-      pipe->flush_resource(pipe, drawable->textures[ST_ATTACHMENT_BACK_LEFT]);
-
       if (pipe->invalidate_resource &&
           (flags & __DRI2_FLUSH_INVALIDATE_ANCILLARY)) {
          if (drawable->textures[ST_ATTACHMENT_DEPTH_STENCIL])
@@ -535,6 +531,13 @@ dri_flush(__DRIcontext *cPriv,
          if (drawable->msaa_textures[ST_ATTACHMENT_DEPTH_STENCIL])
             pipe->invalidate_resource(pipe, drawable->msaa_textures[ST_ATTACHMENT_DEPTH_STENCIL]);
       }
+
+      if (ctx->hud) {
+         hud_run(ctx->hud, ctx->st->cso_context,
+                 drawable->textures[ST_ATTACHMENT_BACK_LEFT]);
+      }
+
+      pipe->flush_resource(pipe, drawable->textures[ST_ATTACHMENT_BACK_LEFT]);
    }
 
    flush_flags = 0;

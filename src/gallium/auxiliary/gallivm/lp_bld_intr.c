@@ -126,7 +126,6 @@ static LLVMAttribute lp_attr_to_llvm_attr(enum lp_func_attr attr)
 {
    switch (attr) {
    case LP_FUNC_ATTR_ALWAYSINLINE: return LLVMAlwaysInlineAttribute;
-   case LP_FUNC_ATTR_BYVAL: return LLVMByValAttribute;
    case LP_FUNC_ATTR_INREG: return LLVMInRegAttribute;
    case LP_FUNC_ATTR_NOALIAS: return LLVMNoAliasAttribute;
    case LP_FUNC_ATTR_NOUNWIND: return LLVMNoUnwindAttribute;
@@ -144,7 +143,6 @@ static const char *attr_to_str(enum lp_func_attr attr)
 {
    switch (attr) {
    case LP_FUNC_ATTR_ALWAYSINLINE: return "alwaysinline";
-   case LP_FUNC_ATTR_BYVAL: return "byval";
    case LP_FUNC_ATTR_INREG: return "inreg";
    case LP_FUNC_ATTR_NOALIAS: return "noalias";
    case LP_FUNC_ATTR_NOUNWIND: return "nounwind";
@@ -242,6 +240,16 @@ lp_build_intrinsic(LLVMBuilderRef builder,
       }
 
       function = lp_declare_intrinsic(module, name, ret_type, arg_types, num_args);
+
+      /*
+       * If llvm removes an intrinsic we use, we'll hit this abort (rather
+       * than a call to address zero in the jited code).
+       */
+      if (LLVMGetIntrinsicID(function) == 0) {
+         _debug_printf("llvm (version 0x%x) found no intrinsic for %s, going to crash...\n",
+                HAVE_LLVM, name);
+         abort();
+      }
 
       if (!set_callsite_attrs)
          lp_add_func_attributes(function, attr_mask);

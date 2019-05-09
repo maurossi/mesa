@@ -24,20 +24,27 @@
 #include "compiler/blob.h"
 #include "util/hash_table.h"
 #include "util/debug.h"
+#include "util/disk_cache.h"
+#include "util/mesa-sha1.h"
+#include "nir/nir_serialize.h"
 #include "anv_private.h"
+#include "nir/nir_xfb_info.h"
 
 struct anv_shader_bin *
 anv_shader_bin_create(struct anv_device *device,
                       const void *key_data, uint32_t key_size,
                       const void *kernel_data, uint32_t kernel_size,
+                      const void *constant_data, uint32_t constant_data_size,
                       const struct brw_stage_prog_data *prog_data_in,
                       uint32_t prog_data_size, const void *prog_data_param_in,
+                      const nir_xfb_info *xfb_info_in,
                       const struct anv_pipeline_bind_map *bind_map)
 {
    struct anv_shader_bin *shader;
    struct anv_shader_bin_key *key;
    struct brw_stage_prog_data *prog_data;
    uint32_t *prog_data_param;
+   nir_xfb_info *xfb_info;
    struct anv_pipeline_binding *surface_to_descriptor, *sampler_to_descriptor;
 
    ANV_MULTIALLOC(ma);
@@ -45,6 +52,10 @@ anv_shader_bin_create(struct anv_device *device,
    anv_multialloc_add_size(&ma, &key, sizeof(*key) + key_size);
    anv_multialloc_add_size(&ma, &prog_data, prog_data_size);
    anv_multialloc_add(&ma, &prog_data_param, prog_data_in->nr_params);
+   if (xfb_info_in) {
+      uint32_t xfb_info_size = nir_xfb_info_size(xfb_info_in->output_count);
+      anv_multialloc_add_size(&ma, &xfb_info, xfb_info_size);
+   }
    anv_multialloc_add(&ma, &surface_to_descriptor,
                            bind_map->surface_count);
    anv_multialloc_add(&ma, &sampler_to_descriptor,
@@ -65,12 +76,31 @@ anv_shader_bin_create(struct anv_device *device,
    memcpy(shader->kernel.map, kernel_data, kernel_size);
    shader->kernel_size = kernel_size;
 
+   if (constant_data_size) {
+      shader->constant_data =
+         anv_state_pool_alloc(&device->dynamic_state_pool,
+                              constant_data_size, 32);
+      memcpy(shader->constant_data.map, constant_data, constant_data_size);
+   } else {
+      shader->constant_data = ANV_STATE_NULL;
+   }
+   shader->constant_data_size = constant_data_size;
+
    memcpy(prog_data, prog_data_in, prog_data_size);
    memcpy(prog_data_param, prog_data_param_in,
           prog_data->nr_params * sizeof(*prog_data_param));
    prog_data->param = prog_data_param;
    shader->prog_data = prog_data;
    shader->prog_data_size = prog_data_size;
+
+   if (xfb_info_in) {
+      *xfb_info = *xfb_info_in;
+      typed_memcpy(xfb_info->outputs, xfb_info_in->outputs,
+                   xfb_info_in->output_count);
+      shader->xfb_info = xfb_info;
+   } else {
+      shader->xfb_info = NULL;
+   }
 
    shader->bind_map = *bind_map;
    typed_memcpy(surface_to_descriptor, bind_map->surface_to_descriptor,
@@ -89,6 +119,7 @@ anv_shader_bin_destroy(struct anv_device *device,
 {
    assert(shader->ref_cnt == 0);
    anv_state_pool_free(&device->instruction_state_pool, shader->kernel);
+   anv_state_pool_free(&device->dynamic_state_pool, shader->constant_data);
    vk_free(&device->alloc, shader);
 }
 
@@ -104,11 +135,24 @@ anv_shader_bin_write_to_blob(const struct anv_shader_bin *shader,
    ok = blob_write_uint32(blob, shader->kernel_size);
    ok = blob_write_bytes(blob, shader->kernel.map, shader->kernel_size);
 
+   ok = blob_write_uint32(blob, shader->constant_data_size);
+   ok = blob_write_bytes(blob, shader->constant_data.map,
+                         shader->constant_data_size);
+
    ok = blob_write_uint32(blob, shader->prog_data_size);
    ok = blob_write_bytes(blob, shader->prog_data, shader->prog_data_size);
    ok = blob_write_bytes(blob, shader->prog_data->param,
                                shader->prog_data->nr_params *
                                sizeof(*shader->prog_data->param));
+
+   if (shader->xfb_info) {
+      uint32_t xfb_info_size =
+         nir_xfb_info_size(shader->xfb_info->output_count);
+      ok = blob_write_uint32(blob, xfb_info_size);
+      ok = blob_write_bytes(blob, shader->xfb_info, xfb_info_size);
+   } else {
+      ok = blob_write_uint32(blob, 0);
+   }
 
    ok = blob_write_uint32(blob, shader->bind_map.surface_count);
    ok = blob_write_uint32(blob, shader->bind_map.sampler_count);
@@ -133,6 +177,9 @@ anv_shader_bin_create_from_blob(struct anv_device *device,
    uint32_t kernel_size = blob_read_uint32(blob);
    const void *kernel_data = blob_read_bytes(blob, kernel_size);
 
+   uint32_t constant_data_size = blob_read_uint32(blob);
+   const void *constant_data = blob_read_bytes(blob, constant_data_size);
+
    uint32_t prog_data_size = blob_read_uint32(blob);
    const struct brw_stage_prog_data *prog_data =
       blob_read_bytes(blob, prog_data_size);
@@ -140,6 +187,11 @@ anv_shader_bin_create_from_blob(struct anv_device *device,
       return NULL;
    const void *prog_data_param =
       blob_read_bytes(blob, prog_data->nr_params * sizeof(*prog_data->param));
+
+   const nir_xfb_info *xfb_info = NULL;
+   uint32_t xfb_size = blob_read_uint32(blob);
+   if (xfb_size)
+      xfb_info = blob_read_bytes(blob, xfb_size);
 
    struct anv_pipeline_bind_map bind_map;
    bind_map.surface_count = blob_read_uint32(blob);
@@ -158,8 +210,9 @@ anv_shader_bin_create_from_blob(struct anv_device *device,
    return anv_shader_bin_create(device,
                                 key_data, key_size,
                                 kernel_data, kernel_size,
+                                constant_data, constant_data_size,
                                 prog_data, prog_data_size, prog_data_param,
-                                &bind_map);
+                                xfb_info, &bind_map);
 }
 
 /* Remaining work:
@@ -189,6 +242,18 @@ shader_bin_key_compare_func(const void *void_a, const void *void_b)
    return memcmp(a->data, b->data, a->size) == 0;
 }
 
+static uint32_t
+sha1_hash_func(const void *sha1)
+{
+   return _mesa_hash_data(sha1, 20);
+}
+
+static bool
+sha1_compare_func(const void *sha1_a, const void *sha1_b)
+{
+   return memcmp(sha1_a, sha1_b, 20) == 0;
+}
+
 void
 anv_pipeline_cache_init(struct anv_pipeline_cache *cache,
                         struct anv_device *device,
@@ -200,8 +265,11 @@ anv_pipeline_cache_init(struct anv_pipeline_cache *cache,
    if (cache_enabled) {
       cache->cache = _mesa_hash_table_create(NULL, shader_bin_key_hash_func,
                                              shader_bin_key_compare_func);
+      cache->nir_cache = _mesa_hash_table_create(NULL, sha1_hash_func,
+                                                 sha1_compare_func);
    } else {
       cache->cache = NULL;
+      cache->nir_cache = NULL;
    }
 }
 
@@ -215,11 +283,17 @@ anv_pipeline_cache_finish(struct anv_pipeline_cache *cache)
        * going away, the shader cache has to hold a reference to all shader
        * binaries it contains.  We unref them when we destroy the cache.
        */
-      struct hash_entry *entry;
       hash_table_foreach(cache->cache, entry)
          anv_shader_bin_unref(cache->device, entry->data);
 
       _mesa_hash_table_destroy(cache->cache, NULL);
+   }
+
+   if (cache->nir_cache) {
+      hash_table_foreach(cache->nir_cache, entry)
+         ralloc_free(entry->data);
+
+      _mesa_hash_table_destroy(cache->nir_cache, NULL);
    }
 }
 
@@ -260,14 +334,37 @@ anv_pipeline_cache_search(struct anv_pipeline_cache *cache,
    return shader;
 }
 
+static void
+anv_pipeline_cache_add_shader_bin(struct anv_pipeline_cache *cache,
+                                  struct anv_shader_bin *bin)
+{
+   if (!cache->cache)
+      return;
+
+   pthread_mutex_lock(&cache->mutex);
+
+   struct hash_entry *entry = _mesa_hash_table_search(cache->cache, bin->key);
+   if (entry == NULL) {
+      /* Take a reference for the cache */
+      anv_shader_bin_ref(bin);
+      _mesa_hash_table_insert(cache->cache, bin->key, bin);
+   }
+
+   pthread_mutex_unlock(&cache->mutex);
+}
+
 static struct anv_shader_bin *
-anv_pipeline_cache_add_shader(struct anv_pipeline_cache *cache,
-                              const void *key_data, uint32_t key_size,
-                              const void *kernel_data, uint32_t kernel_size,
-                              const struct brw_stage_prog_data *prog_data,
-                              uint32_t prog_data_size,
-                              const void *prog_data_param,
-                              const struct anv_pipeline_bind_map *bind_map)
+anv_pipeline_cache_add_shader_locked(struct anv_pipeline_cache *cache,
+                                     const void *key_data, uint32_t key_size,
+                                     const void *kernel_data,
+                                     uint32_t kernel_size,
+                                     const void *constant_data,
+                                     uint32_t constant_data_size,
+                                     const struct brw_stage_prog_data *prog_data,
+                                     uint32_t prog_data_size,
+                                     const void *prog_data_param,
+                                     const nir_xfb_info *xfb_info,
+                                     const struct anv_pipeline_bind_map *bind_map)
 {
    struct anv_shader_bin *shader =
       anv_pipeline_cache_search_locked(cache, key_data, key_size);
@@ -277,8 +374,9 @@ anv_pipeline_cache_add_shader(struct anv_pipeline_cache *cache,
    struct anv_shader_bin *bin =
       anv_shader_bin_create(cache->device, key_data, key_size,
                             kernel_data, kernel_size,
+                            constant_data, constant_data_size,
                             prog_data, prog_data_size, prog_data_param,
-                            bind_map);
+                            xfb_info, bind_map);
    if (!bin)
       return NULL;
 
@@ -291,18 +389,23 @@ struct anv_shader_bin *
 anv_pipeline_cache_upload_kernel(struct anv_pipeline_cache *cache,
                                  const void *key_data, uint32_t key_size,
                                  const void *kernel_data, uint32_t kernel_size,
+                                 const void *constant_data,
+                                 uint32_t constant_data_size,
                                  const struct brw_stage_prog_data *prog_data,
                                  uint32_t prog_data_size,
+                                 const nir_xfb_info *xfb_info,
                                  const struct anv_pipeline_bind_map *bind_map)
 {
    if (cache->cache) {
       pthread_mutex_lock(&cache->mutex);
 
       struct anv_shader_bin *bin =
-         anv_pipeline_cache_add_shader(cache, key_data, key_size,
-                                       kernel_data, kernel_size,
-                                       prog_data, prog_data_size,
-                                       prog_data->param, bind_map);
+         anv_pipeline_cache_add_shader_locked(cache, key_data, key_size,
+                                              kernel_data, kernel_size,
+                                              constant_data, constant_data_size,
+                                              prog_data, prog_data_size,
+                                              prog_data->param,
+                                              xfb_info, bind_map);
 
       pthread_mutex_unlock(&cache->mutex);
 
@@ -315,8 +418,10 @@ anv_pipeline_cache_upload_kernel(struct anv_pipeline_cache *cache,
       /* In this case, we're not caching it so the caller owns it entirely */
       return anv_shader_bin_create(cache->device, key_data, key_size,
                                    kernel_data, kernel_size,
+                                   constant_data, constant_data_size,
                                    prog_data, prog_data_size,
-                                   prog_data->param, bind_map);
+                                   prog_data->param,
+                                   xfb_info, bind_map);
    }
 }
 
@@ -367,15 +472,6 @@ anv_pipeline_cache_load(struct anv_pipeline_cache *cache,
    }
 }
 
-static bool
-pipeline_cache_enabled()
-{
-   static int enabled = -1;
-   if (enabled < 0)
-      enabled = env_var_as_boolean("ANV_ENABLE_PIPELINE_CACHE", true);
-   return enabled;
-}
-
 VkResult anv_CreatePipelineCache(
     VkDevice                                    _device,
     const VkPipelineCacheCreateInfo*            pCreateInfo,
@@ -394,7 +490,8 @@ VkResult anv_CreatePipelineCache(
    if (cache == NULL)
       return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   anv_pipeline_cache_init(cache, device, pipeline_cache_enabled());
+   anv_pipeline_cache_init(cache, device,
+                           device->instance->pipeline_cache_enabled);
 
    if (pCreateInfo->initialDataSize > 0)
       anv_pipeline_cache_load(cache,
@@ -458,7 +555,6 @@ VkResult anv_GetPipelineCacheData(
 
    VkResult result = VK_SUCCESS;
    if (cache->cache) {
-      struct hash_entry *entry;
       hash_table_foreach(cache->cache, entry) {
          struct anv_shader_bin *shader = entry->data;
 
@@ -499,7 +595,6 @@ VkResult anv_MergePipelineCaches(
       if (!src->cache)
          continue;
 
-      struct hash_entry *entry;
       hash_table_foreach(src->cache, entry) {
          struct anv_shader_bin *bin = entry->data;
          assert(bin);
@@ -513,4 +608,180 @@ VkResult anv_MergePipelineCaches(
    }
 
    return VK_SUCCESS;
+}
+
+struct anv_shader_bin *
+anv_device_search_for_kernel(struct anv_device *device,
+                             struct anv_pipeline_cache *cache,
+                             const void *key_data, uint32_t key_size)
+{
+   struct anv_shader_bin *bin;
+
+   if (cache) {
+      bin = anv_pipeline_cache_search(cache, key_data, key_size);
+      if (bin)
+         return bin;
+   }
+
+#ifdef ENABLE_SHADER_CACHE
+   struct disk_cache *disk_cache = device->instance->physicalDevice.disk_cache;
+   if (disk_cache && device->instance->pipeline_cache_enabled) {
+      cache_key cache_key;
+      disk_cache_compute_key(disk_cache, key_data, key_size, cache_key);
+
+      size_t buffer_size;
+      uint8_t *buffer = disk_cache_get(disk_cache, cache_key, &buffer_size);
+      if (buffer) {
+         struct blob_reader blob;
+         blob_reader_init(&blob, buffer, buffer_size);
+         bin = anv_shader_bin_create_from_blob(device, &blob);
+         free(buffer);
+
+         if (bin) {
+            if (cache)
+               anv_pipeline_cache_add_shader_bin(cache, bin);
+            return bin;
+         }
+      }
+   }
+#endif
+
+   return NULL;
+}
+
+struct anv_shader_bin *
+anv_device_upload_kernel(struct anv_device *device,
+                         struct anv_pipeline_cache *cache,
+                         const void *key_data, uint32_t key_size,
+                         const void *kernel_data, uint32_t kernel_size,
+                         const void *constant_data,
+                         uint32_t constant_data_size,
+                         const struct brw_stage_prog_data *prog_data,
+                         uint32_t prog_data_size,
+                         const nir_xfb_info *xfb_info,
+                         const struct anv_pipeline_bind_map *bind_map)
+{
+   struct anv_shader_bin *bin;
+   if (cache) {
+      bin = anv_pipeline_cache_upload_kernel(cache, key_data, key_size,
+                                             kernel_data, kernel_size,
+                                             constant_data, constant_data_size,
+                                             prog_data, prog_data_size,
+                                             xfb_info, bind_map);
+   } else {
+      bin = anv_shader_bin_create(device, key_data, key_size,
+                                  kernel_data, kernel_size,
+                                  constant_data, constant_data_size,
+                                  prog_data, prog_data_size,
+                                  prog_data->param,
+                                  xfb_info, bind_map);
+   }
+
+   if (bin == NULL)
+      return NULL;
+
+#ifdef ENABLE_SHADER_CACHE
+   struct disk_cache *disk_cache = device->instance->physicalDevice.disk_cache;
+   if (disk_cache) {
+      struct blob binary;
+      blob_init(&binary);
+      anv_shader_bin_write_to_blob(bin, &binary);
+
+      if (!binary.out_of_memory) {
+         cache_key cache_key;
+         disk_cache_compute_key(disk_cache, key_data, key_size, cache_key);
+
+         disk_cache_put(disk_cache, cache_key, binary.data, binary.size, NULL);
+      }
+
+      blob_finish(&binary);
+   }
+#endif
+
+   return bin;
+}
+
+struct serialized_nir {
+   unsigned char sha1_key[20];
+   size_t size;
+   char data[0];
+};
+
+struct nir_shader *
+anv_device_search_for_nir(struct anv_device *device,
+                          struct anv_pipeline_cache *cache,
+                          const nir_shader_compiler_options *nir_options,
+                          unsigned char sha1_key[20],
+                          void *mem_ctx)
+{
+   if (cache && cache->nir_cache) {
+      const struct serialized_nir *snir = NULL;
+
+      pthread_mutex_lock(&cache->mutex);
+      struct hash_entry *entry =
+         _mesa_hash_table_search(cache->nir_cache, sha1_key);
+      if (entry)
+         snir = entry->data;
+      pthread_mutex_unlock(&cache->mutex);
+
+      if (snir) {
+         struct blob_reader blob;
+         blob_reader_init(&blob, snir->data, snir->size);
+
+         nir_shader *nir = nir_deserialize(mem_ctx, nir_options, &blob);
+         if (blob.overrun) {
+            ralloc_free(nir);
+         } else {
+            return nir;
+         }
+      }
+   }
+
+   return NULL;
+}
+
+void
+anv_device_upload_nir(struct anv_device *device,
+                      struct anv_pipeline_cache *cache,
+                      const struct nir_shader *nir,
+                      unsigned char sha1_key[20])
+{
+   if (cache && cache->nir_cache) {
+      pthread_mutex_lock(&cache->mutex);
+      struct hash_entry *entry =
+         _mesa_hash_table_search(cache->nir_cache, sha1_key);
+      pthread_mutex_unlock(&cache->mutex);
+      if (entry)
+         return;
+
+      struct blob blob;
+      blob_init(&blob);
+
+      nir_serialize(&blob, nir);
+      if (blob.out_of_memory) {
+         blob_finish(&blob);
+         return;
+      }
+
+      pthread_mutex_lock(&cache->mutex);
+      /* Because ralloc isn't thread-safe, we have to do all this inside the
+       * lock.  We could unlock for the big memcpy but it's probably not worth
+       * the hassle.
+       */
+      entry = _mesa_hash_table_search(cache->nir_cache, sha1_key);
+      if (entry) {
+         pthread_mutex_unlock(&cache->mutex);
+         return;
+      }
+
+      struct serialized_nir *snir =
+         ralloc_size(cache->nir_cache, sizeof(*snir) + blob.size);
+      memcpy(snir->sha1_key, sha1_key, 20);
+      snir->size = blob.size;
+      memcpy(snir->data, blob.data, blob.size);
+
+      _mesa_hash_table_insert(cache->nir_cache, snir->sha1_key, snir);
+
+      pthread_mutex_unlock(&cache->mutex);
+   }
 }

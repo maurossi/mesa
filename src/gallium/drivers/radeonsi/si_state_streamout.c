@@ -1,5 +1,6 @@
 /*
  * Copyright 2013 Advanced Micro Devices, Inc.
+ * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -21,12 +22,10 @@
  * SOFTWARE.
  */
 
-#include "si_pipe.h"
-#include "si_state.h"
-#include "sid.h"
-#include "radeon/r600_cs.h"
+#include "si_build_pm4.h"
 
 #include "util/u_memory.h"
+#include "util/u_suballoc.h"
 
 static void si_set_streamout_enable(struct si_context *sctx, bool enable);
 
@@ -44,14 +43,14 @@ si_create_so_target(struct pipe_context *ctx,
 {
 	struct si_context *sctx = (struct si_context *)ctx;
 	struct si_streamout_target *t;
-	struct r600_resource *rbuffer = (struct r600_resource*)buffer;
+	struct si_resource *buf = si_resource(buffer);
 
 	t = CALLOC_STRUCT(si_streamout_target);
 	if (!t) {
 		return NULL;
 	}
 
-	u_suballocator_alloc(sctx->b.allocator_zeroed_memory, 4, 4,
+	u_suballocator_alloc(sctx->allocator_zeroed_memory, 4, 4,
 			     &t->buf_filled_size_offset,
 			     (struct pipe_resource**)&t->buf_filled_size);
 	if (!t->buf_filled_size) {
@@ -65,7 +64,7 @@ si_create_so_target(struct pipe_context *ctx,
 	t->b.buffer_offset = buffer_offset;
 	t->b.buffer_size = buffer_size;
 
-	util_range_add(&rbuffer->valid_buffer_range, buffer_offset,
+	util_range_add(&buf->valid_buffer_range, buffer_offset,
 		       buffer_offset + buffer_size);
 	return &t->b;
 }
@@ -75,7 +74,7 @@ static void si_so_target_destroy(struct pipe_context *ctx,
 {
 	struct si_streamout_target *t = (struct si_streamout_target*)target;
 	pipe_resource_reference(&t->b.buffer, NULL);
-	r600_resource_reference(&t->buf_filled_size, NULL);
+	si_resource_reference(&t->buf_filled_size, NULL);
 	FREE(t);
 }
 
@@ -84,7 +83,7 @@ void si_streamout_buffers_dirty(struct si_context *sctx)
 	if (!sctx->streamout.enabled_mask)
 		return;
 
-	si_mark_atom_dirty(sctx, &sctx->streamout.begin_atom);
+	si_mark_atom_dirty(sctx, &sctx->atoms.s.streamout_begin);
 	si_set_streamout_enable(sctx, true);
 }
 
@@ -94,10 +93,8 @@ static void si_set_streamout_targets(struct pipe_context *ctx,
 				     const unsigned *offsets)
 {
 	struct si_context *sctx = (struct si_context *)ctx;
-	struct si_buffer_resources *buffers = &sctx->rw_buffers;
-	struct si_descriptors *descs = &sctx->descriptors[SI_DESCS_RW_BUFFERS];
 	unsigned old_num_targets = sctx->streamout.num_targets;
-	unsigned i, bufidx;
+	unsigned i;
 
 	/* We are going to unbind the buffers. Mark which caches need to be flushed. */
 	if (sctx->streamout.num_targets && sctx->streamout.begin_emitted) {
@@ -112,19 +109,19 @@ static void si_set_streamout_targets(struct pipe_context *ctx,
 		 */
 		for (i = 0; i < sctx->streamout.num_targets; i++)
 			if (sctx->streamout.targets[i])
-				r600_resource(sctx->streamout.targets[i]->b.buffer)->TC_L2_dirty = true;
+				si_resource(sctx->streamout.targets[i]->b.buffer)->TC_L2_dirty = true;
 
 		/* Invalidate the scalar cache in case a streamout buffer is
 		 * going to be used as a constant buffer.
 		 *
-		 * Invalidate TC L1, because streamout bypasses it (done by
-		 * setting GLC=1 in the store instruction), but it can contain
-		 * outdated data of streamout buffers.
+		 * Invalidate vL1, because streamout bypasses it (done by
+		 * setting GLC=1 in the store instruction), but vL1 in other
+		 * CUs can contain outdated data of streamout buffers.
 		 *
 		 * VS_PARTIAL_FLUSH is required if the buffers are going to be
 		 * used as an input immediately.
 		 */
-		sctx->b.flags |= SI_CONTEXT_INV_SMEM_L1 |
+		sctx->flags |= SI_CONTEXT_INV_SMEM_L1 |
 				 SI_CONTEXT_INV_VMEM_L1 |
 				 SI_CONTEXT_VS_PARTIAL_FLUSH;
 	}
@@ -133,7 +130,7 @@ static void si_set_streamout_targets(struct pipe_context *ctx,
 	 * start writing to the targets.
 	 */
 	if (num_targets)
-		sctx->b.flags |= SI_CONTEXT_PS_PARTIAL_FLUSH |
+		sctx->flags |= SI_CONTEXT_PS_PARTIAL_FLUSH |
 		                 SI_CONTEXT_CS_PARTIAL_FLUSH;
 
 	/* Streamout buffers must be bound in 2 places:
@@ -152,7 +149,7 @@ static void si_set_streamout_targets(struct pipe_context *ctx,
 		if (!targets[i])
 			continue;
 
-		si_context_add_resource_size(ctx, targets[i]->buffer);
+		si_context_add_resource_size(sctx, targets[i]->buffer);
 		enabled_mask |= 1 << i;
 
 		if (offsets[i] == ((unsigned)-1))
@@ -170,72 +167,35 @@ static void si_set_streamout_targets(struct pipe_context *ctx,
 	if (num_targets) {
 		si_streamout_buffers_dirty(sctx);
 	} else {
-		si_set_atom_dirty(sctx, &sctx->streamout.begin_atom, false);
+		si_set_atom_dirty(sctx, &sctx->atoms.s.streamout_begin, false);
 		si_set_streamout_enable(sctx, false);
 	}
 
 	/* Set the shader resources.*/
 	for (i = 0; i < num_targets; i++) {
-		bufidx = SI_VS_STREAMOUT_BUF0 + i;
-
 		if (targets[i]) {
-			struct pipe_resource *buffer = targets[i]->buffer;
-			uint64_t va = r600_resource(buffer)->gpu_address;
-
-			/* Set the descriptor.
-			 *
-			 * On VI, the format must be non-INVALID, otherwise
-			 * the buffer will be considered not bound and store
-			 * instructions will be no-ops.
-			 */
-			uint32_t *desc = descs->list + bufidx*4;
-			desc[0] = va;
-			desc[1] = S_008F04_BASE_ADDRESS_HI(va >> 32);
-			desc[2] = 0xffffffff;
-			desc[3] = S_008F0C_DST_SEL_X(V_008F0C_SQ_SEL_X) |
-				  S_008F0C_DST_SEL_Y(V_008F0C_SQ_SEL_Y) |
-				  S_008F0C_DST_SEL_Z(V_008F0C_SQ_SEL_Z) |
-				  S_008F0C_DST_SEL_W(V_008F0C_SQ_SEL_W) |
-				  S_008F0C_DATA_FORMAT(V_008F0C_BUF_DATA_FORMAT_32);
-
-			/* Set the resource. */
-			pipe_resource_reference(&buffers->buffers[bufidx],
-						buffer);
-			radeon_add_to_buffer_list_check_mem(&sctx->b, &sctx->b.gfx,
-							    (struct r600_resource*)buffer,
-							    buffers->shader_usage,
-							    RADEON_PRIO_SHADER_RW_BUFFER,
-							    true);
-			r600_resource(buffer)->bind_history |= PIPE_BIND_STREAM_OUTPUT;
-
-			buffers->enabled_mask |= 1u << bufidx;
+			struct pipe_shader_buffer sbuf;
+			sbuf.buffer = targets[i]->buffer;
+			sbuf.buffer_offset = 0;
+			sbuf.buffer_size = targets[i]->buffer_offset +
+					   targets[i]->buffer_size;
+			si_set_rw_shader_buffer(sctx, SI_VS_STREAMOUT_BUF0 + i, &sbuf);
+			si_resource(targets[i]->buffer)->bind_history |= PIPE_BIND_STREAM_OUTPUT;
 		} else {
-			/* Clear the descriptor and unset the resource. */
-			memset(descs->list + bufidx*4, 0,
-			       sizeof(uint32_t) * 4);
-			pipe_resource_reference(&buffers->buffers[bufidx],
-						NULL);
-			buffers->enabled_mask &= ~(1u << bufidx);
+			si_set_rw_shader_buffer(sctx, SI_VS_STREAMOUT_BUF0 + i, NULL);
 		}
 	}
-	for (; i < old_num_targets; i++) {
-		bufidx = SI_VS_STREAMOUT_BUF0 + i;
-		/* Clear the descriptor and unset the resource. */
-		memset(descs->list + bufidx*4, 0, sizeof(uint32_t) * 4);
-		pipe_resource_reference(&buffers->buffers[bufidx], NULL);
-		buffers->enabled_mask &= ~(1u << bufidx);
-	}
-
-	sctx->descriptors_dirty |= 1u << SI_DESCS_RW_BUFFERS;
+	for (; i < old_num_targets; i++)
+		si_set_rw_shader_buffer(sctx, SI_VS_STREAMOUT_BUF0 + i, NULL);
 }
 
 static void si_flush_vgt_streamout(struct si_context *sctx)
 {
-	struct radeon_winsys_cs *cs = sctx->b.gfx.cs;
+	struct radeon_cmdbuf *cs = sctx->gfx_cs;
 	unsigned reg_strmout_cntl;
 
 	/* The register is at different places on different ASICs. */
-	if (sctx->b.chip_class >= CIK) {
+	if (sctx->chip_class >= CIK) {
 		reg_strmout_cntl = R_0300FC_CP_STRMOUT_CNTL;
 		radeon_set_uconfig_reg(cs, reg_strmout_cntl, 0);
 	} else {
@@ -255,10 +215,9 @@ static void si_flush_vgt_streamout(struct si_context *sctx)
 	radeon_emit(cs, 4); /* poll interval */
 }
 
-static void si_emit_streamout_begin(struct r600_common_context *rctx, struct r600_atom *atom)
+static void si_emit_streamout_begin(struct si_context *sctx)
 {
-	struct si_context *sctx = (struct si_context*)rctx;
-	struct radeon_winsys_cs *cs = sctx->b.gfx.cs;
+	struct radeon_cmdbuf *cs = sctx->gfx_cs;
 	struct si_streamout_target **t = sctx->streamout.targets;
 	uint16_t *stride_in_dw = sctx->streamout.stride_in_dw;
 	unsigned i;
@@ -292,7 +251,7 @@ static void si_emit_streamout_begin(struct r600_common_context *rctx, struct r60
 			radeon_emit(cs, va); /* src address lo */
 			radeon_emit(cs, va >> 32); /* src address hi */
 
-			radeon_add_to_buffer_list(&sctx->b,  &sctx->b.gfx,
+			radeon_add_to_buffer_list(sctx,  sctx->gfx_cs,
 						  t[i]->buf_filled_size,
 						  RADEON_USAGE_READ,
 						  RADEON_PRIO_SO_FILLED_SIZE);
@@ -313,7 +272,7 @@ static void si_emit_streamout_begin(struct r600_common_context *rctx, struct r60
 
 void si_emit_streamout_end(struct si_context *sctx)
 {
-	struct radeon_winsys_cs *cs = sctx->b.gfx.cs;
+	struct radeon_cmdbuf *cs = sctx->gfx_cs;
 	struct si_streamout_target **t = sctx->streamout.targets;
 	unsigned i;
 	uint64_t va;
@@ -334,7 +293,7 @@ void si_emit_streamout_end(struct si_context *sctx)
 		radeon_emit(cs, 0); /* unused */
 		radeon_emit(cs, 0); /* unused */
 
-		radeon_add_to_buffer_list(&sctx->b,  &sctx->b.gfx,
+		radeon_add_to_buffer_list(sctx,  sctx->gfx_cs,
 					  t[i]->buf_filled_size,
 					  RADEON_USAGE_WRITE,
 					  RADEON_PRIO_SO_FILLED_SIZE);
@@ -358,19 +317,16 @@ void si_emit_streamout_end(struct si_context *sctx)
  * are no buffers bound.
  */
 
-static void si_emit_streamout_enable(struct r600_common_context *rctx,
-				     struct r600_atom *atom)
+static void si_emit_streamout_enable(struct si_context *sctx)
 {
-	struct si_context *sctx = (struct si_context*)rctx;
-
-	radeon_set_context_reg_seq(sctx->b.gfx.cs, R_028B94_VGT_STRMOUT_CONFIG, 2);
-	radeon_emit(sctx->b.gfx.cs,
+	radeon_set_context_reg_seq(sctx->gfx_cs, R_028B94_VGT_STRMOUT_CONFIG, 2);
+	radeon_emit(sctx->gfx_cs,
 		    S_028B94_STREAMOUT_0_EN(si_get_strmout_en(sctx)) |
 		    S_028B94_RAST_STREAM(0) |
 		    S_028B94_STREAMOUT_1_EN(si_get_strmout_en(sctx)) |
 		    S_028B94_STREAMOUT_2_EN(si_get_strmout_en(sctx)) |
 		    S_028B94_STREAMOUT_3_EN(si_get_strmout_en(sctx)));
-	radeon_emit(sctx->b.gfx.cs,
+	radeon_emit(sctx->gfx_cs,
 		    sctx->streamout.hw_enabled_mask &
 		    sctx->streamout.enabled_stream_buffers_mask);
 }
@@ -389,7 +345,7 @@ static void si_set_streamout_enable(struct si_context *sctx, bool enable)
 
 	if ((old_strmout_en != si_get_strmout_en(sctx)) ||
             (old_hw_enabled_mask != sctx->streamout.hw_enabled_mask))
-		si_mark_atom_dirty(sctx, &sctx->streamout.enable_atom);
+		si_mark_atom_dirty(sctx, &sctx->atoms.s.streamout_enable);
 }
 
 void si_update_prims_generated_query_state(struct si_context *sctx,
@@ -405,15 +361,15 @@ void si_update_prims_generated_query_state(struct si_context *sctx,
 			sctx->streamout.num_prims_gen_queries != 0;
 
 		if (old_strmout_en != si_get_strmout_en(sctx))
-			si_mark_atom_dirty(sctx, &sctx->streamout.enable_atom);
+			si_mark_atom_dirty(sctx, &sctx->atoms.s.streamout_enable);
 	}
 }
 
 void si_init_streamout_functions(struct si_context *sctx)
 {
-	sctx->b.b.create_stream_output_target = si_create_so_target;
-	sctx->b.b.stream_output_target_destroy = si_so_target_destroy;
-	sctx->b.b.set_stream_output_targets = si_set_streamout_targets;
-	sctx->streamout.begin_atom.emit = si_emit_streamout_begin;
-	sctx->streamout.enable_atom.emit = si_emit_streamout_enable;
+	sctx->b.create_stream_output_target = si_create_so_target;
+	sctx->b.stream_output_target_destroy = si_so_target_destroy;
+	sctx->b.set_stream_output_targets = si_set_streamout_targets;
+	sctx->atoms.s.streamout_begin.emit = si_emit_streamout_begin;
+	sctx->atoms.s.streamout_enable.emit = si_emit_streamout_enable;
 }

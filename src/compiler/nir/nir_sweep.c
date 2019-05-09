@@ -63,6 +63,15 @@ sweep_block(nir_shader *nir, nir_block *block)
 {
    ralloc_steal(nir, block);
 
+   /* sweep_impl will mark all metadata invalid.  We can safely release all of
+    * this here.
+    */
+   ralloc_free(block->live_in);
+   block->live_in = NULL;
+
+   ralloc_free(block->live_out);
+   block->live_out = NULL;
+
    nir_foreach_instr(instr, block) {
       ralloc_steal(nir, instr);
 
@@ -118,10 +127,6 @@ sweep_impl(nir_shader *nir, nir_function_impl *impl)
 {
    ralloc_steal(nir, impl);
 
-   ralloc_steal(nir, impl->params);
-   for (unsigned i = 0; i < impl->num_params; i++)
-      ralloc_steal(nir, impl->params[i]);
-   ralloc_steal(nir, impl->return_var);
    steal_list(nir, nir_variable, &impl->locals);
    steal_list(nir, nir_register, &impl->registers);
 
@@ -170,6 +175,8 @@ nir_sweep(nir_shader *nir)
    foreach_list_typed(nir_function, func, node, &nir->functions) {
       sweep_function(nir, func);
    }
+
+   ralloc_steal(nir, nir->constant_data);
 
    /* Free everything we didn't steal back. */
    ralloc_free(rubbish);

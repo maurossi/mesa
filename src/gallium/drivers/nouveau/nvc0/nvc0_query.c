@@ -113,19 +113,18 @@ nvc0_render_condition(struct pipe_context *pipe,
       /* NOTE: comparison of 2 queries only works if both have completed */
       switch (q->type) {
       case PIPE_QUERY_SO_OVERFLOW_PREDICATE:
+      case PIPE_QUERY_SO_OVERFLOW_ANY_PREDICATE:
          cond = condition ? NVC0_3D_COND_MODE_EQUAL :
-                          NVC0_3D_COND_MODE_NOT_EQUAL;
+                            NVC0_3D_COND_MODE_NOT_EQUAL;
          wait = true;
          break;
       case PIPE_QUERY_OCCLUSION_COUNTER:
       case PIPE_QUERY_OCCLUSION_PREDICATE:
       case PIPE_QUERY_OCCLUSION_PREDICATE_CONSERVATIVE:
+         if (hq->state == NVC0_HW_QUERY_STATE_READY)
+            wait = true;
          if (likely(!condition)) {
-            if (unlikely(hq->nesting))
-               cond = wait ? NVC0_3D_COND_MODE_NOT_EQUAL :
-                             NVC0_3D_COND_MODE_ALWAYS;
-            else
-               cond = NVC0_3D_COND_MODE_RES_NON_ZERO;
+            cond = wait ? NVC0_3D_COND_MODE_NOT_EQUAL : NVC0_3D_COND_MODE_ALWAYS;
          } else {
             cond = wait ? NVC0_3D_COND_MODE_EQUAL : NVC0_3D_COND_MODE_ALWAYS;
          }
@@ -150,7 +149,7 @@ nvc0_render_condition(struct pipe_context *pipe,
       return;
    }
 
-   if (wait)
+   if (wait && hq->state != NVC0_HW_QUERY_STATE_READY)
       nvc0_hw_query_fifo_wait(nvc0, q);
 
    PUSH_SPACE(push, 10);

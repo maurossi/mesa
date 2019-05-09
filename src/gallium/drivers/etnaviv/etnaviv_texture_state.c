@@ -131,6 +131,17 @@ etna_create_sampler_view_state(struct pipe_context *pctx, struct pipe_resource *
       return NULL;
    }
 
+   if (res->addressing_mode == ETNA_ADDRESSING_MODE_LINEAR) {
+      sv->TE_SAMPLER_CONFIG0 |= VIVS_TE_SAMPLER_CONFIG0_ADDRESSING_MODE(TEXTURE_ADDRESSING_MODE_LINEAR);
+
+      for (int lod = 0; lod <= res->base.last_level; ++lod)
+         sv->TE_SAMPLER_LINEAR_STRIDE[lod] = res->levels[lod].stride;
+
+   } else {
+      sv->TE_SAMPLER_CONFIG0 |= VIVS_TE_SAMPLER_CONFIG0_ADDRESSING_MODE(TEXTURE_ADDRESSING_MODE_TILED);
+      memset(&sv->TE_SAMPLER_LINEAR_STRIDE, 0, sizeof(sv->TE_SAMPLER_LINEAR_STRIDE));
+   }
+
    sv->TE_SAMPLER_CONFIG1 = COND(ext, VIVS_TE_SAMPLER_CONFIG1_FORMAT_EXT(format)) |
                             COND(astc, VIVS_TE_SAMPLER_CONFIG1_FORMAT_EXT(TEXTURE_FORMAT_EXT_ASTC)) |
                             VIVS_TE_SAMPLER_CONFIG1_HALIGN(res->halign) | swiz;
@@ -158,7 +169,8 @@ etna_create_sampler_view_state(struct pipe_context *pctx, struct pipe_resource *
    /* Workaround for npot textures -- it appears that only CLAMP_TO_EDGE is
     * supported when the appropriate capability is not set. */
    if (!ctx->specs.npot_tex_any_wrap &&
-       (!util_is_power_of_two(res->base.width0) || !util_is_power_of_two(res->base.height0))) {
+       (!util_is_power_of_two_or_zero(res->base.width0) ||
+        !util_is_power_of_two_or_zero(res->base.height0))) {
       sv->TE_SAMPLER_CONFIG0_MASK = ~(VIVS_TE_SAMPLER_CONFIG0_UWRAP__MASK |
                                       VIVS_TE_SAMPLER_CONFIG0_VWRAP__MASK);
       sv->TE_SAMPLER_CONFIG0 |=
@@ -293,6 +305,16 @@ etna_emit_texture_state(struct etna_context *ctx)
          }
       }
    }
+   if (unlikely(dirty & (ETNA_DIRTY_SAMPLER_VIEWS))) {
+      for (int y = 0; y < VIVS_TE_SAMPLER_LINEAR_STRIDE__LEN; ++y) {
+         for (int x = 0; x < VIVS_TE_SAMPLER__LEN; ++x) {
+            if ((1 << x) & active_samplers) {
+               struct etna_sampler_view *sv = etna_sampler_view(ctx->sampler_view[x]);
+               /*02C00*/ EMIT_STATE(TE_SAMPLER_LINEAR_STRIDE(x, y), sv->TE_SAMPLER_LINEAR_STRIDE[y]);
+            }
+         }
+      }
+   }
    if (unlikely(ctx->specs.tex_astc && (dirty & (ETNA_DIRTY_SAMPLER_VIEWS)))) {
       for (int x = 0; x < VIVS_TE_SAMPLER__LEN; ++x) {
          if ((1 << x) & active_samplers) {
@@ -319,7 +341,7 @@ void
 etna_texture_state_init(struct pipe_context *pctx)
 {
    struct etna_context *ctx = etna_context(pctx);
-   DBG("etnaviv: Using state-based texturing\n");
+   DBG("etnaviv: Using state-based texturing");
    ctx->base.create_sampler_state = etna_create_sampler_state_state;
    ctx->base.delete_sampler_state = etna_delete_sampler_state_state;
    ctx->base.create_sampler_view = etna_create_sampler_view_state;

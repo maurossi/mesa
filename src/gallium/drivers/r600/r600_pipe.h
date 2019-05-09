@@ -63,6 +63,7 @@
 #define R600_CONTEXT_PS_PARTIAL_FLUSH		(R600_CONTEXT_PRIVATE_FLAG << 8)
 #define R600_CONTEXT_WAIT_3D_IDLE		(R600_CONTEXT_PRIVATE_FLAG << 9)
 #define R600_CONTEXT_WAIT_CP_DMA_IDLE		(R600_CONTEXT_PRIVATE_FLAG << 10)
+#define R600_CONTEXT_CS_PARTIAL_FLUSH           (R600_CONTEXT_PRIVATE_FLAG << 11)
 
 /* the number of CS dwords for flushing and drawing */
 #define R600_MAX_FLUSH_CS_DWORDS	18
@@ -151,7 +152,9 @@ struct r600_cb_misc_state {
 	unsigned cb_color_control; /* this comes from blend state */
 	unsigned blend_colormask; /* 8*4 bits for 8 RGBA colorbuffers */
 	unsigned nr_cbufs;
+	unsigned bound_cbufs_target_mask;
 	unsigned nr_ps_color_outputs;
+	unsigned ps_color_export_mask;
 	unsigned image_rat_enabled_mask;
 	unsigned buffer_rat_enabled_mask;
 	bool multiwrite;
@@ -443,8 +446,6 @@ struct r600_shader_state {
 };
 
 struct r600_atomic_buffer_state {
-	uint32_t enabled_mask;
-	uint32_t dirty_mask;
 	struct pipe_shader_buffer buffer[EG_MAX_ATOMIC_BUFFERS];
 };
 
@@ -473,6 +474,14 @@ struct r600_image_state {
 	uint32_t			compressed_colortex_mask;
 	boolean				dirty_buffer_constants;
 	struct r600_image_view views[R600_MAX_IMAGES];
+};
+
+/* Used to spill shader temps */
+struct r600_scratch_buffer {
+	struct r600_resource		*buffer;
+	boolean					dirty;
+	unsigned				size;
+	unsigned				item_size;
 };
 
 struct r600_context {
@@ -568,7 +577,7 @@ struct r600_context {
 	bool                            gs_tri_strip_adj_fix;
 	boolean				dual_src_blend;
 	unsigned			zwritemask;
-	int					ps_iter_samples;
+	unsigned			ps_iter_samples;
 
 	/* The list of all texture buffer objects in this context.
 	 * This list is walked when a buffer is invalidated/reallocated and
@@ -591,6 +600,8 @@ struct r600_context {
 	unsigned last_num_tcs_input_cp;
 	unsigned lds_alloc;
 
+	struct r600_scratch_buffer scratch_buffers[MAX2(R600_NUM_HW_STAGES, EG_NUM_HW_STAGES)];
+
 	/* Debug state. */
 	bool			is_debug;
 	struct radeon_saved_cs	last_gfx;
@@ -603,7 +614,7 @@ struct r600_context {
 	uint32_t append_fence_id;
 };
 
-static inline void r600_emit_command_buffer(struct radeon_winsys_cs *cs,
+static inline void r600_emit_command_buffer(struct radeon_cmdbuf *cs,
 					    struct r600_command_buffer *cb)
 {
 	assert(cs->current.cdw + cb->num_dw <= cs->current.max_dw);
@@ -693,6 +704,7 @@ boolean evergreen_is_format_supported(struct pipe_screen *screen,
 				      enum pipe_format format,
 				      enum pipe_texture_target target,
 				      unsigned sample_count,
+				      unsigned storage_sample_count,
 				      unsigned usage);
 void evergreen_init_color_surface(struct r600_context *rctx,
 				  struct r600_surface *surf);
@@ -700,7 +712,7 @@ void evergreen_init_color_surface_rat(struct r600_context *rctx,
 					struct r600_surface *surf);
 void evergreen_update_db_shader_control(struct r600_context * rctx);
 bool evergreen_adjust_gprs(struct r600_context *rctx);
-
+void evergreen_setup_scratch_buffers(struct r600_context *rctx);
 uint32_t evergreen_construct_rat_mask(struct r600_context *rctx, struct r600_cb_misc_state *a,
 				      unsigned nr_cbufs);
 /* r600_blit.c */
@@ -749,15 +761,17 @@ boolean r600_is_format_supported(struct pipe_screen *screen,
 				 enum pipe_format format,
 				 enum pipe_texture_target target,
 				 unsigned sample_count,
+				 unsigned storage_sample_count,
 				 unsigned usage);
 void r600_update_db_shader_control(struct r600_context * rctx);
+void r600_setup_scratch_buffers(struct r600_context *rctx);
 
 /* r600_hw_context.c */
 void r600_context_gfx_flush(void *context, unsigned flags,
 			    struct pipe_fence_handle **fence);
 void r600_begin_new_cs(struct r600_context *ctx);
 void r600_flush_emit(struct r600_context *ctx);
-void r600_need_cs_space(struct r600_context *ctx, unsigned num_dw, boolean count_draw_in);
+void r600_need_cs_space(struct r600_context *ctx, unsigned num_dw, boolean count_draw_in, unsigned num_atomics);
 void r600_emit_pfp_sync_me(struct r600_context *rctx);
 void r600_cp_dma_copy_buffer(struct r600_context *rctx,
 			     struct pipe_resource *dst, uint64_t dst_offset,
@@ -790,10 +804,10 @@ uint32_t evergreen_get_ls_hs_config(struct r600_context *rctx,
 				    const struct pipe_draw_info *info,
 				    unsigned num_patches);
 void evergreen_set_ls_hs_config(struct r600_context *rctx,
-				struct radeon_winsys_cs *cs,
+				struct radeon_cmdbuf *cs,
 				uint32_t ls_hs_config);
 void evergreen_set_lds_alloc(struct r600_context *rctx,
-			     struct radeon_winsys_cs *cs,
+			     struct radeon_cmdbuf *cs,
 			     uint32_t lds_alloc);
 
 /* r600_state_common.c */
@@ -816,6 +830,9 @@ void r600_sampler_states_dirty(struct r600_context *rctx,
 			       struct r600_sampler_states *state);
 void r600_constant_buffers_dirty(struct r600_context *rctx, struct r600_constbuf_state *state);
 void r600_set_sample_locations_constant_buffer(struct r600_context *rctx);
+void r600_setup_scratch_area_for_shader(struct r600_context *rctx,
+	struct r600_pipe_shader *shader, struct r600_scratch_buffer *scratch,
+	unsigned ring_base_reg, unsigned item_size_reg, unsigned ring_size_reg);
 uint32_t r600_translate_stencil_op(int s_op);
 uint32_t r600_translate_fill(uint32_t func);
 unsigned r600_tex_wrap(unsigned wrap);
@@ -963,14 +980,14 @@ static inline void eg_store_loop_const(struct r600_command_buffer *cb, unsigned 
 void r600_init_command_buffer(struct r600_command_buffer *cb, unsigned num_dw);
 void r600_release_command_buffer(struct r600_command_buffer *cb);
 
-static inline void radeon_compute_set_context_reg_seq(struct radeon_winsys_cs *cs, unsigned reg, unsigned num)
+static inline void radeon_compute_set_context_reg_seq(struct radeon_cmdbuf *cs, unsigned reg, unsigned num)
 {
 	radeon_set_context_reg_seq(cs, reg, num);
 	/* Set the compute bit on the packet header */
 	cs->current.buf[cs->current.cdw - 2] |= RADEON_CP_PACKET3_COMPUTE_MODE;
 }
 
-static inline void radeon_set_ctl_const_seq(struct radeon_winsys_cs *cs, unsigned reg, unsigned num)
+static inline void radeon_set_ctl_const_seq(struct radeon_cmdbuf *cs, unsigned reg, unsigned num)
 {
 	assert(reg >= R600_CTL_CONST_OFFSET);
 	assert(cs->current.cdw + 2 + num <= cs->current.max_dw);
@@ -978,13 +995,13 @@ static inline void radeon_set_ctl_const_seq(struct radeon_winsys_cs *cs, unsigne
 	radeon_emit(cs, (reg - R600_CTL_CONST_OFFSET) >> 2);
 }
 
-static inline void radeon_compute_set_context_reg(struct radeon_winsys_cs *cs, unsigned reg, unsigned value)
+static inline void radeon_compute_set_context_reg(struct radeon_cmdbuf *cs, unsigned reg, unsigned value)
 {
 	radeon_compute_set_context_reg_seq(cs, reg, 1);
 	radeon_emit(cs, value);
 }
 
-static inline void radeon_set_context_reg_flag(struct radeon_winsys_cs *cs, unsigned reg, unsigned value, unsigned flag)
+static inline void radeon_set_context_reg_flag(struct radeon_cmdbuf *cs, unsigned reg, unsigned value, unsigned flag)
 {
 	if (flag & RADEON_CP_PACKET3_COMPUTE_MODE) {
 		radeon_compute_set_context_reg(cs, reg, value);
@@ -993,7 +1010,7 @@ static inline void radeon_set_context_reg_flag(struct radeon_winsys_cs *cs, unsi
 	}
 }
 
-static inline void radeon_set_ctl_const(struct radeon_winsys_cs *cs, unsigned reg, unsigned value)
+static inline void radeon_set_ctl_const(struct radeon_cmdbuf *cs, unsigned reg, unsigned value)
 {
 	radeon_set_ctl_const_seq(cs, reg, 1);
 	radeon_emit(cs, value);
@@ -1048,10 +1065,14 @@ void r600_delete_shader_selector(struct pipe_context *ctx,
 				 struct r600_pipe_shader_selector *sel);
 
 struct r600_shader_atomic;
-bool evergreen_emit_atomic_buffer_setup(struct r600_context *rctx,
-					struct r600_pipe_shader *cs_shader,
+void evergreen_emit_atomic_buffer_setup_count(struct r600_context *rctx,
+					      struct r600_pipe_shader *cs_shader,
+					      struct r600_shader_atomic *combined_atomics,
+					      uint8_t *atomic_used_mask_p);
+void evergreen_emit_atomic_buffer_setup(struct r600_context *rctx,
+					bool is_compute,
 					struct r600_shader_atomic *combined_atomics,
-					uint8_t *atomic_used_mask_p);
+					uint8_t atomic_used_mask);
 void evergreen_emit_atomic_buffer_save(struct r600_context *rctx,
 				       bool is_compute,
 				       struct r600_shader_atomic *combined_atomics,

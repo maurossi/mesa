@@ -21,7 +21,6 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-#include "main/core.h"
 #include "glsl_symbol_table.h"
 #include "glsl_parser_extras.h"
 #include "ir.h"
@@ -29,6 +28,7 @@
 #include "util/set.h"
 #include "util/hash_table.h"
 #include "linker.h"
+#include "main/mtypes.h"
 
 static ir_function_signature *
 find_matching_signature(const char *name, const exec_list *actual_parameters,
@@ -47,8 +47,7 @@ public:
       this->success = true;
       this->linked = linked;
 
-      this->locals = _mesa_set_create(NULL, _mesa_hash_pointer,
-                                      _mesa_key_pointer_equal);
+      this->locals = _mesa_pointer_set_create(NULL);
    }
 
    ~call_link_visitor()
@@ -148,8 +147,7 @@ public:
        * replace signature stored in a function.  One could easily be added,
        * but this avoids the need.
        */
-      struct hash_table *ht = _mesa_hash_table_create(NULL, _mesa_hash_pointer,
-                                                      _mesa_key_pointer_equal);
+      struct hash_table *ht = _mesa_pointer_hash_table_create(NULL);
 
       exec_list formal_parameters;
       foreach_in_list(const ir_instruction, original, &sig->parameters) {

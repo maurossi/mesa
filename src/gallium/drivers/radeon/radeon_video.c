@@ -63,9 +63,8 @@ bool si_vid_create_buffer(struct pipe_screen *screen, struct rvid_buffer *buffer
 	 * able to move buffers around individually, so request a
 	 * non-sub-allocated buffer.
 	 */
-	buffer->res = (struct r600_resource *)
-		pipe_buffer_create(screen, PIPE_BIND_SHARED,
-				   usage, size);
+	buffer->res = si_resource(pipe_buffer_create(screen, PIPE_BIND_SHARED,
+						     usage, size));
 
 	return buffer->res != NULL;
 }
@@ -73,11 +72,11 @@ bool si_vid_create_buffer(struct pipe_screen *screen, struct rvid_buffer *buffer
 /* destroy a buffer */
 void si_vid_destroy_buffer(struct rvid_buffer *buffer)
 {
-	r600_resource_reference(&buffer->res, NULL);
+	si_resource_reference(&buffer->res, NULL);
 }
 
 /* reallocate a buffer, preserving its content */
-bool si_vid_resize_buffer(struct pipe_screen *screen, struct radeon_winsys_cs *cs,
+bool si_vid_resize_buffer(struct pipe_screen *screen, struct radeon_cmdbuf *cs,
 			  struct rvid_buffer *new_buf, unsigned new_size)
 {
 	struct si_screen *sscreen = (struct si_screen *)screen;
@@ -89,11 +88,13 @@ bool si_vid_resize_buffer(struct pipe_screen *screen, struct radeon_winsys_cs *c
 	if (!si_vid_create_buffer(screen, new_buf, new_size, new_buf->usage))
 		goto error;
 
-	src = ws->buffer_map(old_buf.res->buf, cs, PIPE_TRANSFER_READ);
+	src = ws->buffer_map(old_buf.res->buf, cs,
+			     PIPE_TRANSFER_READ | RADEON_TRANSFER_TEMPORARY);
 	if (!src)
 		goto error;
 
-	dst = ws->buffer_map(new_buf->res->buf, cs, PIPE_TRANSFER_WRITE);
+	dst = ws->buffer_map(new_buf->res->buf, cs,
+			     PIPE_TRANSFER_WRITE | RADEON_TRANSFER_TEMPORARY);
 	if (!dst)
 		goto error;
 
@@ -119,10 +120,9 @@ error:
 /* clear the buffer with zeros */
 void si_vid_clear_buffer(struct pipe_context *context, struct rvid_buffer* buffer)
 {
-	struct r600_common_context *rctx = (struct r600_common_context*)context;
+	struct si_context *sctx = (struct si_context*)context;
 
-	rctx->dma_clear_buffer(context, &buffer->res->b.b, 0,
-			       buffer->res->buf->size, 0);
+	si_sdma_clear_buffer(sctx, &buffer->res->b.b, 0, buffer->res->buf->size, 0);
 	context->flush(context, NULL, 0);
 }
 
@@ -130,17 +130,15 @@ void si_vid_clear_buffer(struct pipe_context *context, struct rvid_buffer* buffe
  * join surfaces into the same buffer with identical tiling params
  * sumup their sizes and replace the backend buffers with a single bo
  */
-void si_vid_join_surfaces(struct r600_common_context *rctx,
+void si_vid_join_surfaces(struct si_context *sctx,
 			  struct pb_buffer** buffers[VL_NUM_COMPONENTS],
 			  struct radeon_surf *surfaces[VL_NUM_COMPONENTS])
 {
-	struct radeon_winsys* ws;
+	struct radeon_winsys *ws = sctx->ws;;
 	unsigned best_tiling, best_wh, off;
 	unsigned size, alignment;
 	struct pb_buffer *pb;
 	unsigned i, j;
-
-	ws = rctx->ws;
 
 	for (i = 0, best_tiling = 0, best_wh = ~0; i < VL_NUM_COMPONENTS; ++i) {
 		unsigned wh;
@@ -148,7 +146,7 @@ void si_vid_join_surfaces(struct r600_common_context *rctx,
 		if (!surfaces[i])
 			continue;
 
-		if (rctx->chip_class < GFX9) {
+		if (sctx->chip_class < GFX9) {
 			/* choose the smallest bank w/h for now */
 			wh = surfaces[i]->u.legacy.bankw * surfaces[i]->u.legacy.bankh;
 			if (wh < best_wh) {
@@ -165,7 +163,7 @@ void si_vid_join_surfaces(struct r600_common_context *rctx,
 		/* adjust the texture layer offsets */
 		off = align(off, surfaces[i]->surf_alignment);
 
-		if (rctx->chip_class < GFX9) {
+		if (sctx->chip_class < GFX9) {
 			/* copy the tiling parameters */
 			surfaces[i]->u.legacy.bankw = surfaces[best_tiling]->u.legacy.bankw;
 			surfaces[i]->u.legacy.bankh = surfaces[best_tiling]->u.legacy.bankh;

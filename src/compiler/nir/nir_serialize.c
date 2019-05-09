@@ -124,7 +124,7 @@ read_constant(read_ctx *ctx, nir_variable *nvar)
 
    blob_copy_bytes(ctx->blob, (uint8_t *)c->values, sizeof(c->values));
    c->num_elements = blob_read_uint32(ctx->blob);
-   c->elements = ralloc_array(ctx->nir, nir_constant *, c->num_elements);
+   c->elements = ralloc_array(nvar, nir_constant *, c->num_elements);
    for (unsigned i = 0; i < c->num_elements; i++)
       c->elements[i] = read_constant(ctx, nvar);
 
@@ -137,7 +137,8 @@ write_variable(write_ctx *ctx, const nir_variable *var)
    write_add_object(ctx, var);
    encode_type_to_blob(ctx->blob, var->type);
    blob_write_uint32(ctx->blob, !!(var->name));
-   blob_write_string(ctx->blob, var->name);
+   if (var->name)
+      blob_write_string(ctx->blob, var->name);
    blob_write_bytes(ctx->blob, (uint8_t *) &var->data, sizeof(var->data));
    blob_write_uint32(ctx->blob, var->num_state_slots);
    blob_write_bytes(ctx->blob, (uint8_t *) var->state_slots,
@@ -148,6 +149,11 @@ write_variable(write_ctx *ctx, const nir_variable *var)
    blob_write_uint32(ctx->blob, !!(var->interface_type));
    if (var->interface_type)
       encode_type_to_blob(ctx->blob, var->interface_type);
+   blob_write_uint32(ctx->blob, var->num_members);
+   if (var->num_members > 0) {
+      blob_write_bytes(ctx->blob, (uint8_t *) var->members,
+                       var->num_members * sizeof(*var->members));
+   }
 }
 
 static nir_variable *
@@ -179,6 +185,13 @@ read_variable(read_ctx *ctx)
       var->interface_type = decode_type_from_blob(ctx->blob);
    else
       var->interface_type = NULL;
+   var->num_members = blob_read_uint32(ctx->blob);
+   if (var->num_members > 0) {
+      var->members = ralloc_array(var, struct nir_variable_data,
+                                  var->num_members);
+      blob_copy_bytes(ctx->blob, (uint8_t *) var->members,
+                      var->num_members * sizeof(*var->members));
+   }
 
    return var;
 }
@@ -357,81 +370,6 @@ read_dest(read_ctx *ctx, nir_dest *dst, nir_instr *instr)
 }
 
 static void
-write_deref_chain(write_ctx *ctx, const nir_deref_var *deref_var)
-{
-   write_object(ctx, deref_var->var);
-
-   uint32_t len = 0;
-   for (const nir_deref *d = deref_var->deref.child; d; d = d->child)
-      len++;
-   blob_write_uint32(ctx->blob, len);
-
-   for (const nir_deref *d = deref_var->deref.child; d; d = d->child) {
-      blob_write_uint32(ctx->blob, d->deref_type);
-      switch (d->deref_type) {
-      case nir_deref_type_array: {
-         const nir_deref_array *deref_array = nir_deref_as_array(d);
-         blob_write_uint32(ctx->blob, deref_array->deref_array_type);
-         blob_write_uint32(ctx->blob, deref_array->base_offset);
-         if (deref_array->deref_array_type == nir_deref_array_type_indirect)
-            write_src(ctx, &deref_array->indirect);
-         break;
-      }
-      case nir_deref_type_struct: {
-         const nir_deref_struct *deref_struct = nir_deref_as_struct(d);
-         blob_write_uint32(ctx->blob, deref_struct->index);
-         break;
-      }
-      case nir_deref_type_var:
-         unreachable("Invalid deref type");
-      }
-
-      encode_type_to_blob(ctx->blob, d->type);
-   }
-}
-
-static nir_deref_var *
-read_deref_chain(read_ctx *ctx, void *mem_ctx)
-{
-   nir_variable *var = read_object(ctx);
-   nir_deref_var *deref_var = nir_deref_var_create(mem_ctx, var);
-
-   uint32_t len = blob_read_uint32(ctx->blob);
-
-   nir_deref *tail = &deref_var->deref;
-   for (uint32_t i = 0; i < len; i++) {
-      nir_deref_type deref_type = blob_read_uint32(ctx->blob);
-      nir_deref *deref = NULL;
-      switch (deref_type) {
-      case nir_deref_type_array: {
-         nir_deref_array *deref_array = nir_deref_array_create(tail);
-         deref_array->deref_array_type = blob_read_uint32(ctx->blob);
-         deref_array->base_offset = blob_read_uint32(ctx->blob);
-         if (deref_array->deref_array_type == nir_deref_array_type_indirect)
-            read_src(ctx, &deref_array->indirect, mem_ctx);
-         deref = &deref_array->deref;
-         break;
-      }
-      case nir_deref_type_struct: {
-         uint32_t index = blob_read_uint32(ctx->blob);
-         nir_deref_struct *deref_struct = nir_deref_struct_create(tail, index);
-         deref = &deref_struct->deref;
-         break;
-      }
-      case nir_deref_type_var:
-         unreachable("Invalid deref type");
-      }
-
-      deref->type = decode_type_from_blob(ctx->blob);
-
-      tail->child = deref;
-      tail = deref;
-   }
-
-   return deref_var;
-}
-
-static void
 write_alu(write_ctx *ctx, const nir_alu_instr *alu)
 {
    blob_write_uint32(ctx->blob, alu->op);
@@ -478,11 +416,93 @@ read_alu(read_ctx *ctx)
 }
 
 static void
+write_deref(write_ctx *ctx, const nir_deref_instr *deref)
+{
+   blob_write_uint32(ctx->blob, deref->deref_type);
+
+   blob_write_uint32(ctx->blob, deref->mode);
+   encode_type_to_blob(ctx->blob, deref->type);
+
+   write_dest(ctx, &deref->dest);
+
+   if (deref->deref_type == nir_deref_type_var) {
+      write_object(ctx, deref->var);
+      return;
+   }
+
+   write_src(ctx, &deref->parent);
+
+   switch (deref->deref_type) {
+   case nir_deref_type_struct:
+      blob_write_uint32(ctx->blob, deref->strct.index);
+      break;
+
+   case nir_deref_type_array:
+   case nir_deref_type_ptr_as_array:
+      write_src(ctx, &deref->arr.index);
+      break;
+
+   case nir_deref_type_cast:
+      blob_write_uint32(ctx->blob, deref->cast.ptr_stride);
+      break;
+
+   case nir_deref_type_array_wildcard:
+      /* Nothing to do */
+      break;
+
+   default:
+      unreachable("Invalid deref type");
+   }
+}
+
+static nir_deref_instr *
+read_deref(read_ctx *ctx)
+{
+   nir_deref_type deref_type = blob_read_uint32(ctx->blob);
+   nir_deref_instr *deref = nir_deref_instr_create(ctx->nir, deref_type);
+
+   deref->mode = blob_read_uint32(ctx->blob);
+   deref->type = decode_type_from_blob(ctx->blob);
+
+   read_dest(ctx, &deref->dest, &deref->instr);
+
+   if (deref_type == nir_deref_type_var) {
+      deref->var = read_object(ctx);
+      return deref;
+   }
+
+   read_src(ctx, &deref->parent, &deref->instr);
+
+   switch (deref->deref_type) {
+   case nir_deref_type_struct:
+      deref->strct.index = blob_read_uint32(ctx->blob);
+      break;
+
+   case nir_deref_type_array:
+   case nir_deref_type_ptr_as_array:
+      read_src(ctx, &deref->arr.index, &deref->instr);
+      break;
+
+   case nir_deref_type_cast:
+      deref->cast.ptr_stride = blob_read_uint32(ctx->blob);
+      break;
+
+   case nir_deref_type_array_wildcard:
+      /* Nothing to do */
+      break;
+
+   default:
+      unreachable("Invalid deref type");
+   }
+
+   return deref;
+}
+
+static void
 write_intrinsic(write_ctx *ctx, const nir_intrinsic_instr *intrin)
 {
    blob_write_uint32(ctx->blob, intrin->intrinsic);
 
-   unsigned num_variables = nir_intrinsic_infos[intrin->intrinsic].num_variables;
    unsigned num_srcs = nir_intrinsic_infos[intrin->intrinsic].num_srcs;
    unsigned num_indices = nir_intrinsic_infos[intrin->intrinsic].num_indices;
 
@@ -490,9 +510,6 @@ write_intrinsic(write_ctx *ctx, const nir_intrinsic_instr *intrin)
 
    if (nir_intrinsic_infos[intrin->intrinsic].has_dest)
       write_dest(ctx, &intrin->dest);
-
-   for (unsigned i = 0; i < num_variables; i++)
-      write_deref_chain(ctx, intrin->variables[i]);
 
    for (unsigned i = 0; i < num_srcs; i++)
       write_src(ctx, &intrin->src[i]);
@@ -508,7 +525,6 @@ read_intrinsic(read_ctx *ctx)
 
    nir_intrinsic_instr *intrin = nir_intrinsic_instr_create(ctx->nir, op);
 
-   unsigned num_variables = nir_intrinsic_infos[op].num_variables;
    unsigned num_srcs = nir_intrinsic_infos[op].num_srcs;
    unsigned num_indices = nir_intrinsic_infos[op].num_indices;
 
@@ -516,9 +532,6 @@ read_intrinsic(read_ctx *ctx)
 
    if (nir_intrinsic_infos[op].has_dest)
       read_dest(ctx, &intrin->dest, &intrin->instr);
-
-   for (unsigned i = 0; i < num_variables; i++)
-      intrin->variables[i] = read_deref_chain(ctx, &intrin->instr);
 
    for (unsigned i = 0; i < num_srcs; i++)
       read_src(ctx, &intrin->src[i], &intrin->instr);
@@ -583,8 +596,6 @@ union packed_tex_data {
       unsigned is_shadow:1;
       unsigned is_new_style_shadow:1;
       unsigned component:2;
-      unsigned has_texture_deref:1;
-      unsigned has_sampler_deref:1;
       unsigned unused:10; /* Mark unused for valgrind. */
    } u;
 };
@@ -607,8 +618,6 @@ write_tex(write_ctx *ctx, const nir_tex_instr *tex)
       .u.is_shadow = tex->is_shadow,
       .u.is_new_style_shadow = tex->is_new_style_shadow,
       .u.component = tex->component,
-      .u.has_texture_deref = tex->texture != NULL,
-      .u.has_sampler_deref = tex->sampler != NULL,
    };
    blob_write_uint32(ctx->blob, packed.u32);
 
@@ -617,11 +626,6 @@ write_tex(write_ctx *ctx, const nir_tex_instr *tex)
       blob_write_uint32(ctx->blob, tex->src[i].src_type);
       write_src(ctx, &tex->src[i].src);
    }
-
-   if (tex->texture)
-      write_deref_chain(ctx, tex->texture);
-   if (tex->sampler)
-      write_deref_chain(ctx, tex->sampler);
 }
 
 static nir_tex_instr *
@@ -650,11 +654,6 @@ read_tex(read_ctx *ctx)
       tex->src[i].src_type = blob_read_uint32(ctx->blob);
       read_src(ctx, &tex->src[i].src, &tex->instr);
    }
-
-   tex->texture = packed.u.has_texture_deref ?
-                  read_deref_chain(ctx, &tex->instr) : NULL;
-   tex->sampler = packed.u.has_sampler_deref ?
-                  read_deref_chain(ctx, &tex->instr) : NULL;
 
    return tex;
 }
@@ -775,9 +774,7 @@ write_call(write_ctx *ctx, const nir_call_instr *call)
    blob_write_intptr(ctx->blob, write_lookup_object(ctx, call->callee));
 
    for (unsigned i = 0; i < call->num_params; i++)
-      write_deref_chain(ctx, call->params[i]);
-
-   write_deref_chain(ctx, call->return_deref);
+      write_src(ctx, &call->params[i]);
 }
 
 static nir_call_instr *
@@ -787,9 +784,7 @@ read_call(read_ctx *ctx)
    nir_call_instr *call = nir_call_instr_create(ctx->nir, callee);
 
    for (unsigned i = 0; i < call->num_params; i++)
-      call->params[i] = read_deref_chain(ctx, &call->instr);
-
-   call->return_deref = read_deref_chain(ctx, &call->instr);
+      read_src(ctx, &call->params[i], call);
 
    return call;
 }
@@ -801,6 +796,9 @@ write_instr(write_ctx *ctx, const nir_instr *instr)
    switch (instr->type) {
    case nir_instr_type_alu:
       write_alu(ctx, nir_instr_as_alu(instr));
+      break;
+   case nir_instr_type_deref:
+      write_deref(ctx, nir_instr_as_deref(instr));
       break;
    case nir_instr_type_intrinsic:
       write_intrinsic(ctx, nir_instr_as_intrinsic(instr));
@@ -838,6 +836,9 @@ read_instr(read_ctx *ctx, nir_block *block)
    switch (type) {
    case nir_instr_type_alu:
       instr = &read_alu(ctx)->instr;
+      break;
+   case nir_instr_type_deref:
+      instr = &read_deref(ctx)->instr;
       break;
    case nir_instr_type_intrinsic:
       instr = &read_intrinsic(ctx)->instr;
@@ -1008,15 +1009,6 @@ write_function_impl(write_ctx *ctx, const nir_function_impl *fi)
    write_reg_list(ctx, &fi->registers);
    blob_write_uint32(ctx->blob, fi->reg_alloc);
 
-   blob_write_uint32(ctx->blob, fi->num_params);
-   for (unsigned i = 0; i < fi->num_params; i++) {
-      write_variable(ctx, fi->params[i]);
-   }
-
-   blob_write_uint32(ctx->blob, !!(fi->return_var));
-   if (fi->return_var)
-      write_variable(ctx, fi->return_var);
-
    write_cf_list(ctx, &fi->body);
    write_fixup_phis(ctx);
 }
@@ -1030,17 +1022,6 @@ read_function_impl(read_ctx *ctx, nir_function *fxn)
    read_var_list(ctx, &fi->locals);
    read_reg_list(ctx, &fi->registers);
    fi->reg_alloc = blob_read_uint32(ctx->blob);
-
-   fi->num_params = blob_read_uint32(ctx->blob);
-   for (unsigned i = 0; i < fi->num_params; i++) {
-      fi->params[i] = read_variable(ctx);
-   }
-
-   bool has_return = blob_read_uint32(ctx->blob);
-   if (has_return)
-      fi->return_var = read_variable(ctx);
-   else
-      fi->return_var = NULL;
 
    read_cf_list(ctx, &fi->body);
    read_fixup_phis(ctx);
@@ -1061,11 +1042,13 @@ write_function(write_ctx *ctx, const nir_function *fxn)
 
    blob_write_uint32(ctx->blob, fxn->num_params);
    for (unsigned i = 0; i < fxn->num_params; i++) {
-      blob_write_uint32(ctx->blob, fxn->params[i].param_type);
-      encode_type_to_blob(ctx->blob, fxn->params[i].type);
+      uint32_t val =
+         ((uint32_t)fxn->params[i].num_components) |
+         ((uint32_t)fxn->params[i].bit_size) << 8;
+      blob_write_uint32(ctx->blob, val);
    }
 
-   encode_type_to_blob(ctx->blob, fxn->return_type);
+   blob_write_uint32(ctx->blob, fxn->is_entrypoint);
 
    /* At first glance, it looks like we should write the function_impl here.
     * However, call instructions need to be able to reference at least the
@@ -1085,20 +1068,21 @@ read_function(read_ctx *ctx)
    read_add_object(ctx, fxn);
 
    fxn->num_params = blob_read_uint32(ctx->blob);
+   fxn->params = ralloc_array(fxn, nir_parameter, fxn->num_params);
    for (unsigned i = 0; i < fxn->num_params; i++) {
-      fxn->params[i].param_type = blob_read_uint32(ctx->blob);
-      fxn->params[i].type = decode_type_from_blob(ctx->blob);
+      uint32_t val = blob_read_uint32(ctx->blob);
+      fxn->params[i].num_components = val & 0xff;
+      fxn->params[i].bit_size = (val >> 8) & 0xff;
    }
 
-   fxn->return_type = decode_type_from_blob(ctx->blob);
+   fxn->is_entrypoint = blob_read_uint32(ctx->blob);
 }
 
 void
 nir_serialize(struct blob *blob, const nir_shader *nir)
 {
    write_ctx ctx;
-   ctx.remap_table = _mesa_hash_table_create(NULL, _mesa_hash_pointer,
-                                             _mesa_key_pointer_equal);
+   ctx.remap_table = _mesa_pointer_hash_table_create(NULL);
    ctx.next_idx = 0;
    ctx.blob = blob;
    ctx.nir = nir;
@@ -1142,6 +1126,10 @@ nir_serialize(struct blob *blob, const nir_shader *nir)
    nir_foreach_function(fxn, nir) {
       write_function_impl(&ctx, fxn->impl);
    }
+
+   blob_write_uint32(blob, nir->constant_data_size);
+   if (nir->constant_data_size > 0)
+      blob_write_bytes(blob, nir->constant_data, nir->constant_data_size);
 
    *(uintptr_t *)(blob->data + idx_size_offset) = ctx.next_idx;
 
@@ -1195,6 +1183,14 @@ nir_deserialize(void *mem_ctx,
 
    nir_foreach_function(fxn, ctx.nir)
       fxn->impl = read_function_impl(&ctx, fxn);
+
+   ctx.nir->constant_data_size = blob_read_uint32(blob);
+   if (ctx.nir->constant_data_size > 0) {
+      ctx.nir->constant_data =
+         ralloc_size(ctx.nir, ctx.nir->constant_data_size);
+      blob_copy_bytes(blob, ctx.nir->constant_data,
+                      ctx.nir->constant_data_size);
+   }
 
    free(ctx.idx_table);
 

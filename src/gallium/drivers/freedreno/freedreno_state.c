@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2012 Rob Clark <robclark@freedesktop.org>
  *
@@ -103,12 +101,10 @@ fd_set_constant_buffer(struct pipe_context *pctx,
 	 */
 	if (unlikely(!cb)) {
 		so->enabled_mask &= ~(1 << index);
-		so->dirty_mask &= ~(1 << index);
 		return;
 	}
 
 	so->enabled_mask |= 1 << index;
-	so->dirty_mask |= 1 << index;
 	ctx->dirty_shader[shader] |= FD_DIRTY_SHADER_CONST;
 	ctx->dirty |= FD_DIRTY_CONST;
 }
@@ -157,7 +153,6 @@ fd_set_shader_buffers(struct pipe_context *pctx,
 		so->enabled_mask &= ~mask;
 	}
 
-	so->dirty_mask |= mask;
 	ctx->dirty_shader[shader] |= FD_DIRTY_SHADER_SSBO;
 }
 
@@ -204,7 +199,6 @@ fd_set_shader_images(struct pipe_context *pctx,
 		so->enabled_mask &= ~mask;
 	}
 
-	so->dirty_mask |= mask;
 	ctx->dirty_shader[shader] |= FD_DIRTY_SHADER_IMAGE;
 }
 
@@ -215,18 +209,28 @@ fd_set_framebuffer_state(struct pipe_context *pctx,
 	struct fd_context *ctx = fd_context(pctx);
 	struct pipe_framebuffer_state *cso;
 
+	DBG("%ux%u, %u layers, %u samples",
+		framebuffer->width, framebuffer->height,
+		framebuffer->layers, framebuffer->samples);
+
+	cso = &ctx->framebuffer;
+
+	if (util_framebuffer_state_equal(cso, framebuffer))
+		return;
+
+	util_copy_framebuffer_state(cso, framebuffer);
+
+	cso->samples = util_framebuffer_get_num_samples(cso);
+
 	if (ctx->screen->reorder) {
-		struct fd_batch *batch, *old_batch = NULL;
+		struct fd_batch *old_batch = NULL;
 
 		fd_batch_reference(&old_batch, ctx->batch);
 
 		if (likely(old_batch))
 			fd_batch_set_stage(old_batch, FD_STAGE_NULL);
 
-		batch = fd_batch_from_fb(&ctx->screen->batch_cache, ctx, framebuffer);
 		fd_batch_reference(&ctx->batch, NULL);
-		fd_reset_wfi(batch);
-		ctx->batch = batch;
 		fd_context_all_dirty(ctx);
 
 		if (old_batch && old_batch->blit && !old_batch->back_blit) {
@@ -243,11 +247,8 @@ fd_set_framebuffer_state(struct pipe_context *pctx,
 		DBG("%d: cbufs[0]=%p, zsbuf=%p", ctx->batch->needs_flush,
 				framebuffer->cbufs[0], framebuffer->zsbuf);
 		fd_batch_flush(ctx->batch, false, false);
+		util_copy_framebuffer_state(&ctx->batch->framebuffer, cso);
 	}
-
-	cso = &ctx->batch->framebuffer;
-
-	util_copy_framebuffer_state(cso, framebuffer);
 
 	ctx->dirty |= FD_DIRTY_FRAMEBUFFER;
 
@@ -287,7 +288,36 @@ fd_set_viewport_states(struct pipe_context *pctx,
 		const struct pipe_viewport_state *viewport)
 {
 	struct fd_context *ctx = fd_context(pctx);
+	struct pipe_scissor_state *scissor = &ctx->viewport_scissor;
+	float minx, miny, maxx, maxy;
+
 	ctx->viewport = *viewport;
+
+	/* see si_get_scissor_from_viewport(): */
+
+	/* Convert (-1, -1) and (1, 1) from clip space into window space. */
+	minx = -viewport->scale[0] + viewport->translate[0];
+	miny = -viewport->scale[1] + viewport->translate[1];
+	maxx = viewport->scale[0] + viewport->translate[0];
+	maxy = viewport->scale[1] + viewport->translate[1];
+
+	/* Handle inverted viewports. */
+	if (minx > maxx) {
+		swap(minx, maxx);
+	}
+	if (miny > maxy) {
+		swap(miny, maxy);
+	}
+
+	debug_assert(miny >= 0);
+	debug_assert(maxy >= 0);
+
+	/* Convert to integer and round up the max bounds. */
+	scissor->minx = minx;
+	scissor->miny = miny;
+	scissor->maxx = ceilf(maxx);
+	scissor->maxy = ceilf(maxy);
+
 	ctx->dirty |= FD_DIRTY_VIEWPORT;
 }
 
@@ -495,15 +525,53 @@ fd_set_compute_resources(struct pipe_context *pctx,
 	// TODO
 }
 
+/* used by clover to bind global objects, returning the bo address
+ * via handles[n]
+ */
 static void
 fd_set_global_binding(struct pipe_context *pctx,
 		unsigned first, unsigned count, struct pipe_resource **prscs,
 		uint32_t **handles)
 {
-	/* TODO only used by clover.. seems to need us to return the actual
-	 * gpuaddr of the buffer.. which isn't really exposed to mesa atm.
-	 * How is this used?
-	 */
+	struct fd_context *ctx = fd_context(pctx);
+	struct fd_global_bindings_stateobj *so = &ctx->global_bindings;
+	unsigned mask = 0;
+
+	if (prscs) {
+		for (unsigned i = 0; i < count; i++) {
+			unsigned n = i + first;
+
+			mask |= BIT(n);
+
+			pipe_resource_reference(&so->buf[n], prscs[i]);
+
+			if (so->buf[n]) {
+				struct fd_resource *rsc = fd_resource(so->buf[n]);
+				uint64_t iova = fd_bo_get_iova(rsc->bo);
+				// TODO need to scream if iova > 32b or fix gallium API..
+				*handles[i] += iova;
+			}
+
+			if (prscs[i])
+				so->enabled_mask |= BIT(n);
+			else
+				so->enabled_mask &= ~BIT(n);
+		}
+	} else {
+		mask = (BIT(count) - 1) << first;
+
+		for (unsigned i = 0; i < count; i++) {
+			unsigned n = i + first;
+			if (so->buf[n]) {
+				struct fd_resource *rsc = fd_resource(so->buf[n]);
+				fd_bo_put_iova(rsc->bo);
+			}
+			pipe_resource_reference(&so->buf[n], NULL);
+		}
+
+		so->enabled_mask &= ~mask;
+	}
+
 }
 
 void

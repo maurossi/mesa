@@ -28,14 +28,19 @@
 
 
 #include "main/glheader.h"
-#include "main/mtypes.h"
+#include "compiler/shader_enums.h"
 #include "program/ir_to_mesa.h"
+#include "util/macros.h"
 
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+struct gl_shader_program_data;
+struct gl_linked_shader;
+struct dd_function_table;
+struct gl_pipeline_object;
 
 /**
  * Internal functions
@@ -220,6 +225,9 @@ _mesa_shader_stage_to_subroutine(gl_shader_stage stage)
       return GL_TESS_EVALUATION_SUBROUTINE;
    case MESA_SHADER_NONE:
       break;
+   case MESA_SHADER_KERNEL:
+      unreachable("not reached");
+      break;
    }
    unreachable("not reached");
 }
@@ -241,6 +249,7 @@ _mesa_shader_stage_to_subroutine_uniform(gl_shader_stage stage)
    case MESA_SHADER_TESS_EVAL:
       return GL_TESS_EVALUATION_SUBROUTINE_UNIFORM;
    case MESA_SHADER_NONE:
+   case MESA_SHADER_KERNEL:
       break;
    }
    unreachable("not reached");

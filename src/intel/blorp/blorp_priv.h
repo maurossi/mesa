@@ -76,6 +76,9 @@ void
 blorp_surf_convert_to_single_slice(const struct isl_device *isl_dev,
                                    struct brw_blorp_surface_info *info);
 void
+surf_fake_rgb_with_red(const struct isl_device *isl_dev,
+                       struct brw_blorp_surface_info *info);
+void
 blorp_surf_convert_to_uncompressed(const struct isl_device *isl_dev,
                                    struct brw_blorp_surface_info *info,
                                    uint32_t *x, uint32_t *y,
@@ -190,12 +193,13 @@ struct blorp_params
    uint32_t depth_format;
    struct brw_blorp_surface_info src;
    struct brw_blorp_surface_info dst;
-   enum blorp_hiz_op hiz_op;
+   enum isl_aux_op hiz_op;
    bool full_surface_hiz_op;
-   enum blorp_fast_clear_op fast_clear_op;
+   enum isl_aux_op fast_clear_op;
    bool color_write_disable[4];
    struct brw_blorp_wm_inputs wm_inputs;
    struct blorp_vs_inputs vs_inputs;
+   bool dst_clear_color_as_input;
    unsigned num_samples;
    unsigned num_draw_buffers;
    unsigned num_layers;
@@ -242,8 +246,14 @@ struct brw_blorp_blit_prog_key
    /* Actual MSAA layout used by the source image. */
    enum isl_msaa_layout src_layout;
 
-   /* Number of bits per channel in the source image. */
-   uint8_t src_bpc;
+   /* The swizzle to apply to the source in the shader */
+   struct isl_swizzle src_swizzle;
+
+   /* The format of the source if format-specific workarounds are needed
+    * and 0 (ISL_FORMAT_R32G32B32A32_FLOAT) if the destination is natively
+    * renderable.
+    */
+   enum isl_format src_format;
 
    /* True if the source requires normalized coordinates */
    bool src_coords_normalized;
@@ -262,8 +272,17 @@ struct brw_blorp_blit_prog_key
    /* Actual MSAA layout used by the destination image. */
    enum isl_msaa_layout dst_layout;
 
-   /* Number of bits per channel in the destination image. */
-   uint8_t dst_bpc;
+   /* The swizzle to apply to the destination in the shader */
+   struct isl_swizzle dst_swizzle;
+
+   /* The format of the destination if format-specific workarounds are needed
+    * and 0 (ISL_FORMAT_R32G32B32A32_FLOAT) if the destination is natively
+    * renderable.
+    */
+   enum isl_format dst_format;
+
+   /* Whether or not the format workarounds are a bitcast operation */
+   bool format_bit_cast;
 
    /* Type of the data to be read from the texture (one of
     * nir_type_(int|uint|float)).
@@ -288,11 +307,7 @@ struct brw_blorp_blit_prog_key
     */
    bool dst_rgb;
 
-   /* True if all source samples should be blended together to produce each
-    * destination pixel.  If true, src_tiled_w must be false, tex_samples must
-    * equal src_samples, and tex_samples must be nonzero.
-    */
-   bool blend;
+   enum blorp_filter filter;
 
    /* True if the rectangle being sent through the rendering pipeline might be
     * larger than the destination rectangle, so the WM program should kill any
@@ -305,9 +320,6 @@ struct brw_blorp_blit_prog_key
     * than one sample per pixel.
     */
    bool persample_msaa_dispatch;
-
-   /* True for scaled blitting. */
-   bool blit_scaled;
 
    /* True if this blit operation may involve intratile offsets on the source.
     * In this case, we need to add the offset before texturing.
@@ -324,9 +336,6 @@ struct brw_blorp_blit_prog_key
     */
    float x_scale;
    float y_scale;
-
-   /* True for blits with filter = GL_LINEAR. */
-   bool bilinear_filter;
 };
 
 /**
@@ -351,7 +360,7 @@ blorp_compile_vs(struct blorp_context *blorp, void *mem_ctx,
                  struct brw_vs_prog_data *vs_prog_data);
 
 bool
-blorp_ensure_sf_program(struct blorp_context *blorp,
+blorp_ensure_sf_program(struct blorp_batch *batch,
                         struct blorp_params *params);
 
 /** \} */

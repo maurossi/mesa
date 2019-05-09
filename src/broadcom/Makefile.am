@@ -24,7 +24,10 @@ AM_CPPFLAGS = \
 	-I$(top_srcdir)/include \
 	-I$(top_builddir)/src \
 	-I$(top_srcdir)/src \
+	-I$(top_builddir)/src/compiler/nir \
+	-I$(top_srcdir)/src/compiler/nir \
 	-I$(top_srcdir)/src/broadcom/ \
+	-I$(top_srcdir)/src/broadcom/cle \
 	-I$(top_srcdir)/src/broadcom/include \
 	-I$(top_srcdir)/src/gallium/auxiliary \
 	-I$(top_srcdir)/src/gallium/include \
@@ -54,10 +57,10 @@ EXTRA_DIST = \
 	qpu/meson.build
 
 MKDIR_GEN = $(AM_V_at)$(MKDIR_P) $(@D)
-PYTHON_GEN = $(AM_V_GEN)$(PYTHON2) $(PYTHON_FLAGS)
+PYTHON_GEN = $(AM_V_GEN)$(PYTHON) $(PYTHON_FLAGS)
 
 include Makefile.genxml.am
 include Makefile.cle.am
-include Makefile.vc5.am
+include Makefile.v3d.am
 
 CLEANFILES += $(BUILT_SOURCES)

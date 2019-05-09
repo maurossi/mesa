@@ -21,6 +21,7 @@
 <li><a href="#overview">Overview</a>
 <li><a href="#schedule">Release schedule</a>
 <li><a href="#pickntest">Cherry-pick and test</a>
+<li><a href="#stagingbranch">Staging branch</a>
 <li><a href="#branch">Making a branchpoint</a>
 <li><a href="#prerelease">Pre-release announcement</a>
 <li><a href="#release">Making a new release</a>
@@ -54,10 +55,11 @@ For example:
 <h1 id="schedule">Release schedule</h1>
 
 <p>
-Releases should happen on Fridays. Delays can occur although those should be keep
-to a minimum.
+Releases should happen on Wednesdays. Delays can occur although those
+should be kept to a minimum.
 <br>
-See our <a href="release-calendar.html" target="_parent">calendar</a> for the
+See our <a href="release-calendar.html" target="_parent">calendar</a>
+for information about how the release schedule is planned, and the
 date and other details for individual releases.
 </p>
 
@@ -66,6 +68,9 @@ date and other details for individual releases.
 <li>Available approximately every three months.
 <li>Initial timeplan available 2-4 weeks before the planned branchpoint (rc1)
 on the mesa-announce@ mailing list.
+<li>Typically, the final release will happen after 4
+candidates. Additional ones may be needed in order to resolve blocking
+regressions, though.
 <li>A <a href="#prerelease">pre-release</a> announcement should be available
 approximately 24 hours before the final (non-rc) release.
 </ul>
@@ -83,6 +88,12 @@ Note: There is one or two releases overlap when changing branches. For example:
 <br>
 The final release from the 12.0 series Mesa 12.0.5 will be out around the same
 time (or shortly after) 13.0.1 is out.
+<br>
+This also involves that, as a final release may be delayed due to the
+need of additional candidates to solve some blocking regression(s),
+the release manager might have to update
+the <a href="release-calendar.html" target="_parent">calendar</a> with
+additional bug fix releases of the current stable branch.
 </p>
 
 
@@ -111,18 +122,21 @@ the autoconf and scons build.
 <p>Done continuously up-to the <a href="#prerelease">pre-release</a> announcement.</p>
 
 <p>
-As an exception, patches can be applied up-to the last ~1h before the actual
-release. This is made <strong>only</strong> with explicit permission/request,
-and the patch <strong>must</strong> be very well contained. Thus it cannot
-affect more than one driver/subsystem.
+Developers can request, <em>as an exception</em>, patches to be applied up-to
+the last one hour before the actual release. This is made <strong>only</strong>
+with explicit permission/request, and the patch <strong>must</strong> be very
+well contained. Thus it cannot affect more than one driver/subsystem.
 </p>
 
-<p>
-Currently Ilia Mirkin and AMD devs have requested "permanent" exception.
-</p>
-
+<p>Following developers have requested permanent exception</p>
 <ul>
-<li>make distcheck, scons and scons check must pass
+<li><em>Ilia Mirkin</em>
+<li><em>AMD team</em>
+</ul>
+
+<p>The following must pass:</p>
+<ul>
+<li>make distcheck, scons and scons check
 <li>Testing with different version of system components - LLVM and others is also
 performed where possible.
 <li>As a general rule, testing with various combinations of configure
@@ -130,9 +144,9 @@ switches, depending on the specific patchset.
 </ul>
 
 <p>
-Achieved by combination of local ad-hoc scripts, mingw-w64 cross
-compilation and AppVeyor plus Travis-CI, the latter as part of their
-Github integration.
+These are achieved by combination of <a href="basictesting">local testing</a>,
+which includes mingw-w64 cross compilation and AppVeyor plus Travis-CI, the
+latter two as part of their Github integration.
 </p>
 
 <p>
@@ -208,6 +222,25 @@ Installing the built driver from the pre-announced RC branch in the
 system and making some every day's use until the release may be a good
 idea too.
 </p>
+
+<h1 id="stagingbranch">Staging branch</h1>
+
+<p>
+A live branch, which contains the currently merge/rejected patches is available
+in the main repository under <code>staging/X.Y</code>. For example:
+</p>
+<pre>
+	staging/18.1 - WIP branch for the 18.1 series
+	staging/18.2 - WIP branch for the 18.2 series
+</pre>
+
+<p>
+Notes:
+</p>
+<ul>
+<li>People are encouraged to test the staging branch and report regressions.</li>
+<li>The branch history is not stable and it <strong>will</strong> be rebased,</li>
+</ul>
 
 
 <h1 id="branch">Making a branchpoint</h1>
@@ -425,7 +458,7 @@ Ensure the latest code is available - both in your local master and the
 relevant branch.
 </p>
 
-<h3>Perform basic testing</h3>
+<h3 id="basictesting">Perform basic testing</h3>
 
 <p>
 Most of the testing should already be done during the
@@ -492,10 +525,10 @@ Here is one solution that I've been using.
 	# Drop LLVM_CONFIG, if applicable:
 	# unset LLVM_CONFIG
 
-	__glxinfo_cmd='glxinfo 2>&amp;1 | egrep -o "Mesa.*|Gallium.*|.*dri\.so"'
-	__glxgears_cmd='glxgears 2>&amp;1 | grep -v "configuration file"'
-	__es2info_cmd='es2_info 2>&amp;1 | egrep "GL_VERSION|GL_RENDERER|.*dri\.so"'
-	__es2gears_cmd='es2gears_x11 2>&amp;1 | grep -v "configuration file"'
+	__glxinfo_cmd='glxinfo 2&gt;&amp;1 | egrep -o "Mesa.*|Gallium.*|.*dri\.so"'
+	__glxgears_cmd='glxgears 2&gt;&amp;1 | grep -v "configuration file"'
+	__es2info_cmd='es2_info 2&gt;&amp;1 | egrep "GL_VERSION|GL_RENDERER|.*dri\.so"'
+	__es2gears_cmd='es2gears_x11 2&gt;&amp;1 | grep -v "configuration file"'
 	test "x$LD_LIBRARY_PATH" != 'x' &amp;&amp; __old_ld="$LD_LIBRARY_PATH"
 	export LD_LIBRARY_PATH=`pwd`/test/usr/local/lib/:"${__old_ld}"
 	export LIBGL_DRIVERS_PATH=`pwd`/test/usr/local/lib/dri/

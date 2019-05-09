@@ -29,6 +29,7 @@
 #include "glsl_parser_extras.h"
 #include "main/macros.h"
 #include "util/hash_table.h"
+#include "util/u_string.h"
 
 class ir_builder_print_visitor : public ir_hierarchical_visitor {
 public:
@@ -140,8 +141,7 @@ _mesa_print_builder_for_ir(FILE *f, exec_list *instructions)
 ir_builder_print_visitor::ir_builder_print_visitor(FILE *f)
    : next_ir_index(1), f(f), indentation(0)
 {
-   index_map =
-      _mesa_hash_table_create(NULL, _mesa_hash_pointer, _mesa_key_pointer_equal);
+   index_map = _mesa_pointer_hash_table_create(NULL);
 }
 
 ir_builder_print_visitor::~ir_builder_print_visitor()
@@ -705,9 +705,9 @@ ir_builder_print_visitor::visit_leave(ir_call *ir)
       const struct hash_entry *const he =
          _mesa_hash_table_search(index_map, ir->return_deref);
 
-      snprintf(return_deref_string, sizeof(return_deref_string),
-               "operand(r%04X).val",
-               (unsigned)(uintptr_t) he->data);
+      util_snprintf(return_deref_string, sizeof(return_deref_string),
+                    "operand(r%04X).val",
+                    (unsigned)(uintptr_t) he->data);
    } else {
       strcpy(return_deref_string, "NULL");
    }
