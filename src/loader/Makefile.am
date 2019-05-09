@@ -28,8 +28,10 @@ noinst_LTLIBRARIES = libloader.la
 AM_CPPFLAGS = \
 	-I$(top_builddir)/src/util/ \
 	-DUSE_DRICONF \
+	-DDEFAULT_DRIVER_DIR=\"$(DRI_DRIVER_SEARCH_DIR)\" \
 	$(DEFINES) \
 	-I$(top_srcdir)/include \
+	-I$(top_srcdir)/include/drm-uapi \
 	-I$(top_srcdir)/src \
 	$(VISIBILITY_CFLAGS) \
 	$(XCB_DRI3_CFLAGS) \

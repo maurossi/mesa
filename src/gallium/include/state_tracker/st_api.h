@@ -190,6 +190,8 @@ struct st_egl_image
  */
 struct st_visual
 {
+   bool no_config;
+
    /**
     * Available buffers.  Bitfield of ST_ATTACHMENT_*_MASK bits.
     */
@@ -218,15 +220,17 @@ struct st_config_options
 {
    boolean disable_blend_func_extended;
    boolean disable_glsl_line_continuations;
-   boolean disable_shader_bit_encoding;
    boolean force_glsl_extensions_warn;
    unsigned force_glsl_version;
    boolean allow_glsl_extension_directive_midshader;
+   boolean allow_glsl_builtin_const_expression;
+   boolean allow_glsl_relaxed_es;
    boolean allow_glsl_builtin_variable_redeclaration;
    boolean allow_higher_compat_version;
    boolean glsl_zero_init;
    boolean force_glsl_abs_sqrt;
    boolean allow_glsl_cross_stage_interpolation_mismatch;
+   boolean allow_glsl_layout_qualifier_on_function_parameters;
    unsigned char config_options_sha1[20];
 };
 

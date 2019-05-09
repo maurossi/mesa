@@ -34,6 +34,7 @@
 #include "ir_optimization.h"
 #include "ir_builder.h"
 #include "compiler/glsl_types.h"
+#include "main/mtypes.h"
 
 using namespace ir_builder;
 
@@ -706,6 +707,12 @@ ir_algebraic_visitor::handle_expression(ir_expression *ir)
 
          ir_constant *zero = op_const[1 - add_pos];
          if (!is_vec_zero(zero))
+            continue;
+
+         /* We are allowed to add scalars with a vector or matrix. In that
+          * case lets just exit early.
+          */
+         if (add->operands[0]->type != add->operands[1]->type)
             continue;
 
          /* Depending of the zero position we want to optimize

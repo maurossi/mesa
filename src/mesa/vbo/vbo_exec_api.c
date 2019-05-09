@@ -40,12 +40,12 @@ USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "main/state.h"
 #include "main/light.h"
 #include "main/api_arrayelt.h"
-#include "main/api_validate.h"
+#include "main/draw_validate.h"
 #include "main/dispatch.h"
 #include "util/bitscan.h"
 
-#include "vbo_context.h"
 #include "vbo_noop.h"
+#include "vbo_private.h"
 
 
 /** ID/name for immediate-mode VBO */
@@ -174,7 +174,7 @@ vbo_exec_copy_to_current(struct vbo_exec_context *exec)
       /* Note: the exec->vtx.current[i] pointers point into the
        * ctx->Current.Attrib and ctx->Light.Material.Attrib arrays.
        */
-      GLfloat *current = (GLfloat *)vbo->currval[i].Ptr;
+      GLfloat *current = (GLfloat *)vbo->current[i].Ptr;
       fi_type tmp[8]; /* space for doubles */
       int dmul = 1;
 
@@ -195,7 +195,7 @@ vbo_exec_copy_to_current(struct vbo_exec_context *exec)
                                      exec->vtx.attrtype[i]);
       }
 
-      if (exec->vtx.attrtype[i] != vbo->currval[i].Type ||
+      if (exec->vtx.attrtype[i] != vbo->current[i].Format.Type ||
           memcmp(current, tmp, 4 * sizeof(GLfloat) * dmul) != 0) {
          memcpy(current, tmp, 4 * sizeof(GLfloat) * dmul);
 
@@ -205,14 +205,9 @@ vbo_exec_copy_to_current(struct vbo_exec_context *exec)
           * directly.
           */
          /* Size here is in components - not bytes */
-         vbo->currval[i].Size = exec->vtx.attrsz[i] / dmul;
-         vbo->currval[i]._ElementSize =
-            vbo->currval[i].Size * sizeof(GLfloat) * dmul;
-         vbo->currval[i].Type = exec->vtx.attrtype[i];
-         vbo->currval[i].Integer =
-            vbo_attrtype_to_integer_flag(exec->vtx.attrtype[i]);
-         vbo->currval[i].Doubles =
-            vbo_attrtype_to_double_flag(exec->vtx.attrtype[i]);
+         vbo_set_vertex_format(&vbo->current[i].Format,
+                               exec->vtx.attrsz[i] / dmul,
+                               exec->vtx.attrtype[i]);
 
          /* This triggers rather too much recalculation of Mesa state
           * that doesn't get used (eg light positions).
@@ -248,10 +243,10 @@ vbo_exec_copy_from_current(struct vbo_exec_context *exec)
    for (i = VBO_ATTRIB_POS + 1; i < VBO_ATTRIB_MAX; i++) {
       if (exec->vtx.attrtype[i] == GL_DOUBLE ||
           exec->vtx.attrtype[i] == GL_UNSIGNED_INT64_ARB) {
-         memcpy(exec->vtx.attrptr[i], vbo->currval[i].Ptr,
+         memcpy(exec->vtx.attrptr[i], vbo->current[i].Ptr,
                 exec->vtx.attrsz[i] * sizeof(GLfloat));
       } else {
-         const fi_type *current = (fi_type *) vbo->currval[i].Ptr;
+         const fi_type *current = (fi_type *) vbo->current[i].Ptr;
          switch (exec->vtx.attrsz[i]) {
          case 4: exec->vtx.attrptr[i][3] = current[3];
          case 3: exec->vtx.attrptr[i][2] = current[2];
@@ -379,7 +374,7 @@ vbo_exec_wrap_upgrade_vertex(struct vbo_exec_context *exec,
                                               exec->vtx.attrtype[j]);
                   COPY_SZ_4V(dest + new_offset, newSize, tmp);
                } else {
-                  fi_type *current = (fi_type *)vbo->currval[j].Ptr;
+                  fi_type *current = (fi_type *)vbo->current[j].Ptr;
                   COPY_SZ_4V(dest + new_offset, sz, current);
                }
             }
@@ -758,7 +753,8 @@ static void GLAPIENTRY
 vbo_exec_Begin(GLenum mode)
 {
    GET_CURRENT_CONTEXT(ctx);
-   struct vbo_exec_context *exec = &vbo_context(ctx)->exec;
+   struct vbo_context *vbo = vbo_context(ctx);
+   struct vbo_exec_context *exec = &vbo->exec;
    int i;
 
    if (_mesa_inside_begin_end(ctx)) {
@@ -769,8 +765,6 @@ vbo_exec_Begin(GLenum mode)
    if (!_mesa_valid_prim_mode(ctx, mode, "glBegin")) {
       return;
    }
-
-   vbo_draw_method(vbo_context(ctx), DRAW_BEGIN_END);
 
    if (ctx->NewState) {
       _mesa_update_state(ctx);
@@ -794,7 +788,6 @@ vbo_exec_Begin(GLenum mode)
    exec->vtx.prim[i].begin = 1;
    exec->vtx.prim[i].end = 0;
    exec->vtx.prim[i].indexed = 0;
-   exec->vtx.prim[i].weak = 0;
    exec->vtx.prim[i].pad = 0;
    exec->vtx.prim[i].start = exec->vtx.vert_count;
    exec->vtx.prim[i].count = 0;
@@ -805,11 +798,14 @@ vbo_exec_Begin(GLenum mode)
    ctx->Driver.CurrentExecPrimitive = mode;
 
    ctx->Exec = ctx->BeginEnd;
+
    /* We may have been called from a display list, in which case we should
     * leave dlist.c's dispatch table in place.
     */
-   if (ctx->CurrentClientDispatch == ctx->OutsideBeginEnd) {
-      ctx->CurrentClientDispatch = ctx->BeginEnd;
+   if (ctx->CurrentClientDispatch == ctx->MarshalExec) {
+      ctx->CurrentServerDispatch = ctx->Exec;
+   } else if (ctx->CurrentClientDispatch == ctx->OutsideBeginEnd) {
+      ctx->CurrentClientDispatch = ctx->Exec;
       _glapi_set_dispatch(ctx->CurrentClientDispatch);
    } else {
       assert(ctx->CurrentClientDispatch == ctx->Save);
@@ -860,8 +856,11 @@ vbo_exec_End(void)
    }
 
    ctx->Exec = ctx->OutsideBeginEnd;
-   if (ctx->CurrentClientDispatch == ctx->BeginEnd) {
-      ctx->CurrentClientDispatch = ctx->OutsideBeginEnd;
+
+   if (ctx->CurrentClientDispatch == ctx->MarshalExec) {
+      ctx->CurrentServerDispatch = ctx->Exec;
+   } else if (ctx->CurrentClientDispatch == ctx->BeginEnd) {
+      ctx->CurrentClientDispatch = ctx->Exec;
       _glapi_set_dispatch(ctx->CurrentClientDispatch);
    }
 
@@ -1162,7 +1161,6 @@ void
 vbo_exec_vtx_init(struct vbo_exec_context *exec)
 {
    struct gl_context *ctx = exec->ctx;
-   struct vbo_context *vbo = vbo_context(ctx);
    GLuint i;
 
    /* Allocate a buffer object.  Will just reuse this object
@@ -1189,38 +1187,6 @@ vbo_exec_vtx_init(struct vbo_exec_context *exec)
       assert(i < ARRAY_SIZE(exec->vtx.active_sz));
       exec->vtx.active_sz[i] = 0;
    }
-   for (i = 0 ; i < VERT_ATTRIB_MAX; i++) {
-      assert(i < ARRAY_SIZE(exec->vtx.inputs));
-      assert(i < ARRAY_SIZE(exec->vtx.arrays));
-      exec->vtx.inputs[i] = &exec->vtx.arrays[i];
-   }
-
-   {
-      struct gl_vertex_array *arrays = exec->vtx.arrays;
-      unsigned i;
-
-      memcpy(arrays, &vbo->currval[VBO_ATTRIB_POS],
-             VERT_ATTRIB_FF_MAX * sizeof(arrays[0]));
-      for (i = 0; i < VERT_ATTRIB_FF_MAX; ++i) {
-         struct gl_vertex_array *array;
-         array = &arrays[VERT_ATTRIB_FF(i)];
-         array->BufferObj = NULL;
-         _mesa_reference_buffer_object(ctx, &array->BufferObj,
-                                       vbo->currval[VBO_ATTRIB_POS+i].BufferObj);
-      }
-
-      memcpy(arrays + VERT_ATTRIB_GENERIC(0),
-             &vbo->currval[VBO_ATTRIB_GENERIC0],
-             VERT_ATTRIB_GENERIC_MAX * sizeof(arrays[0]));
-
-      for (i = 0; i < VERT_ATTRIB_GENERIC_MAX; ++i) {
-         struct gl_vertex_array *array;
-         array = &arrays[VERT_ATTRIB_GENERIC(i)];
-         array->BufferObj = NULL;
-         _mesa_reference_buffer_object(ctx, &array->BufferObj,
-                           vbo->currval[VBO_ATTRIB_GENERIC0+i].BufferObj);
-      }
-   }
 
    exec->vtx.vertex_size = 0;
 
@@ -1233,7 +1199,6 @@ vbo_exec_vtx_destroy(struct vbo_exec_context *exec)
 {
    /* using a real VBO for vertex data */
    struct gl_context *ctx = exec->ctx;
-   unsigned i;
 
    /* True VBOs should already be unmapped
     */
@@ -1245,14 +1210,6 @@ vbo_exec_vtx_destroy(struct vbo_exec_context *exec)
          exec->vtx.buffer_map = NULL;
          exec->vtx.buffer_ptr = NULL;
       }
-   }
-
-   /* Drop any outstanding reference to the vertex buffer
-    */
-   for (i = 0; i < ARRAY_SIZE(exec->vtx.arrays); i++) {
-      _mesa_reference_buffer_object(ctx,
-                                    &exec->vtx.arrays[i].BufferObj,
-                                    NULL);
    }
 
    /* Free the vertex buffer.  Unmap first if needed.

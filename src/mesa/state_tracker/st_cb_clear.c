@@ -33,6 +33,7 @@
   *   Michel Dänzer
   */
 
+#include "main/errors.h"
 #include "main/glheader.h"
 #include "main/accum.h"
 #include "main/formats.h"
@@ -70,7 +71,8 @@ st_init_clear(struct st_context *st)
 
    st->clear.raster.half_pixel_center = 1;
    st->clear.raster.bottom_edge_rule = 1;
-   st->clear.raster.depth_clip = 1;
+   st->clear.raster.depth_clip_near = 1;
+   st->clear.raster.depth_clip_far = 1;
 }
 
 
@@ -226,14 +228,7 @@ clear_with_quad(struct gl_context *ctx, unsigned clear_buffers)
             if (!(clear_buffers & (PIPE_CLEAR_COLOR0 << i)))
                continue;
 
-            if (ctx->Color.ColorMask[i][0])
-               blend.rt[i].colormask |= PIPE_MASK_R;
-            if (ctx->Color.ColorMask[i][1])
-               blend.rt[i].colormask |= PIPE_MASK_G;
-            if (ctx->Color.ColorMask[i][2])
-               blend.rt[i].colormask |= PIPE_MASK_B;
-            if (ctx->Color.ColorMask[i][3])
-               blend.rt[i].colormask |= PIPE_MASK_A;
+            blend.rt[i].colormask = GET_COLORMASK(ctx->Color.ColorMask, i);
          }
 
          if (ctx->Color.DitherFlag)
@@ -338,32 +333,6 @@ is_window_rectangle_enabled(struct gl_context *ctx)
 
 
 /**
- * Return if all of the color channels are masked.
- */
-static inline GLboolean
-is_color_disabled(struct gl_context *ctx, int i)
-{
-   return !ctx->Color.ColorMask[i][0] &&
-          !ctx->Color.ColorMask[i][1] &&
-          !ctx->Color.ColorMask[i][2] &&
-          !ctx->Color.ColorMask[i][3];
-}
-
-
-/**
- * Return if any of the color channels are masked.
- */
-static inline GLboolean
-is_color_masked(struct gl_context *ctx, int i)
-{
-   return !ctx->Color.ColorMask[i][0] ||
-          !ctx->Color.ColorMask[i][1] ||
-          !ctx->Color.ColorMask[i][2] ||
-          !ctx->Color.ColorMask[i][3];
-}
-
-
-/**
  * Return if all of the stencil bits are masked.
  */
 static inline GLboolean
@@ -423,12 +392,18 @@ st_Clear(struct gl_context *ctx, GLbitfield mask)
             if (!strb || !strb->surface)
                continue;
 
-            if (is_color_disabled(ctx, colormask_index))
+            unsigned colormask =
+               GET_COLORMASK(ctx->Color.ColorMask, colormask_index);
+
+            if (!colormask)
                continue;
+
+            unsigned surf_colormask =
+               util_format_colormask(util_format_description(strb->surface->format));
 
             if (is_scissor_enabled(ctx, rb) ||
                 is_window_rectangle_enabled(ctx) ||
-                is_color_masked(ctx, colormask_index))
+                ((colormask & surf_colormask) != surf_colormask))
                quad_buffers |= PIPE_CLEAR_COLOR0 << i;
             else
                clear_buffers |= PIPE_CLEAR_COLOR0 << i;
@@ -473,9 +448,6 @@ st_Clear(struct gl_context *ctx, GLbitfield mask)
     * use pipe->clear. We want to always use pipe->clear for the other
     * renderbuffers, because it's likely to be faster.
     */
-   if (quad_buffers) {
-      clear_with_quad(ctx, quad_buffers);
-   }
    if (clear_buffers) {
       /* We can't translate the clear color to the colorbuffer format,
        * because different colorbuffers may have different formats.
@@ -483,6 +455,9 @@ st_Clear(struct gl_context *ctx, GLbitfield mask)
       st->pipe->clear(st->pipe, clear_buffers,
                       (union pipe_color_union*)&ctx->Color.ClearColor,
                       ctx->Depth.Clear, ctx->Stencil.Clear);
+   }
+   if (quad_buffers) {
+      clear_with_quad(ctx, quad_buffers);
    }
    if (mask & BUFFER_BIT_ACCUM)
       _mesa_clear_accum_buffer(ctx);

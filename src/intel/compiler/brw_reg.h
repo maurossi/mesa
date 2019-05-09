@@ -221,15 +221,15 @@ struct brw_reg {
          unsigned negate:1;             /* source only */
          unsigned abs:1;                /* source only */
          unsigned address_mode:1;       /* relative addressing, hopefully! */
-         unsigned pad0:1;
+         unsigned pad0:17;
          unsigned subnr:5;              /* :1 in align16 */
-         unsigned nr:16;
       };
       uint32_t bits;
    };
 
    union {
       struct {
+         unsigned nr;
          unsigned swizzle:8;      /* src only, align16 only */
          unsigned writemask:4;    /* dest only, align16 only */
          int  indirect_offset:10; /* relative addressing offset */
@@ -251,8 +251,57 @@ struct brw_reg {
 static inline bool
 brw_regs_equal(const struct brw_reg *a, const struct brw_reg *b)
 {
-   const bool df = a->type == BRW_REGISTER_TYPE_DF && a->file == IMM;
-   return a->bits == b->bits && (df ? a->u64 == b->u64 : a->ud == b->ud);
+   return a->bits == b->bits && a->u64 == b->u64;
+}
+
+static inline bool
+brw_regs_negative_equal(const struct brw_reg *a, const struct brw_reg *b)
+{
+   if (a->file == IMM) {
+      if (a->bits != b->bits)
+         return false;
+
+      switch ((enum brw_reg_type) a->type) {
+      case BRW_REGISTER_TYPE_UQ:
+      case BRW_REGISTER_TYPE_Q:
+         return a->d64 == -b->d64;
+      case BRW_REGISTER_TYPE_DF:
+         return a->df == -b->df;
+      case BRW_REGISTER_TYPE_UD:
+      case BRW_REGISTER_TYPE_D:
+         return a->d == -b->d;
+      case BRW_REGISTER_TYPE_F:
+         return a->f == -b->f;
+      case BRW_REGISTER_TYPE_VF:
+         /* It is tempting to treat 0 as a negation of 0 (and -0 as a negation
+          * of -0).  There are occasions where 0 or -0 is used and the exact
+          * bit pattern is desired.  At the very least, changing this to allow
+          * 0 as a negation of 0 causes some fp64 tests to fail on IVB.
+          */
+         return a->ud == (b->ud ^ 0x80808080);
+      case BRW_REGISTER_TYPE_UW:
+      case BRW_REGISTER_TYPE_W:
+      case BRW_REGISTER_TYPE_UV:
+      case BRW_REGISTER_TYPE_V:
+      case BRW_REGISTER_TYPE_HF:
+         /* FINISHME: Implement support for these types once there is
+          * something in the compiler that can generate them.  Until then,
+          * they cannot be tested.
+          */
+         return false;
+      case BRW_REGISTER_TYPE_UB:
+      case BRW_REGISTER_TYPE_B:
+      case BRW_REGISTER_TYPE_NF:
+      default:
+         unreachable("not reached");
+      }
+   } else {
+      struct brw_reg tmp = *a;
+
+      tmp.negate = !tmp.negate;
+
+      return brw_regs_equal(&tmp, b);
+   }
 }
 
 struct brw_indirect {
@@ -324,6 +373,15 @@ brw_int_type(unsigned sz, bool is_signed)
    default:
       unreachable("Not reached.");
    }
+}
+
+static inline bool
+type_is_unsigned_int(enum brw_reg_type tp)
+{
+   return tp == BRW_REGISTER_TYPE_UB ||
+          tp == BRW_REGISTER_TYPE_UW ||
+          tp == BRW_REGISTER_TYPE_UD ||
+          tp == BRW_REGISTER_TYPE_UQ;
 }
 
 /**
@@ -590,6 +648,14 @@ brw_imm_df(double df)
 }
 
 static inline struct brw_reg
+brw_imm_u64(uint64_t u64)
+{
+   struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_UQ);
+   imm.u64 = u64;
+   return imm;
+}
+
+static inline struct brw_reg
 brw_imm_f(float f)
 {
    struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_F);
@@ -647,7 +713,7 @@ static inline struct brw_reg
 brw_imm_w(int16_t w)
 {
    struct brw_reg imm = brw_imm_reg(BRW_REGISTER_TYPE_W);
-   imm.d = w | (w << 16);
+   imm.ud = (uint16_t)w | (uint32_t)(uint16_t)w << 16;
    return imm;
 }
 
@@ -840,6 +906,13 @@ brw_flag_reg(int reg, int subreg)
 {
    return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE,
                       BRW_ARF_FLAG + reg, subreg);
+}
+
+static inline struct brw_reg
+brw_flag_subreg(unsigned subreg)
+{
+   return brw_uw1_reg(BRW_ARCHITECTURE_REGISTER_FILE,
+                      BRW_ARF_FLAG + subreg / 2, subreg % 2);
 }
 
 /**

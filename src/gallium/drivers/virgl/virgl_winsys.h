@@ -31,7 +31,7 @@ struct pipe_fence_handle;
 struct winsys_handle;
 struct virgl_hw_res;
 
-#define VIRGL_MAX_CMDBUF_DWORDS (16*1024)
+#define VIRGL_MAX_CMDBUF_DWORDS (64 * 1024)
 
 struct virgl_drm_caps {
    union virgl_caps caps;
@@ -40,10 +40,13 @@ struct virgl_drm_caps {
 struct virgl_cmd_buf {
    unsigned cdw;
    uint32_t *buf;
+   int in_fence_fd;
+   bool needs_out_fence_fd;
 };
 
 struct virgl_winsys {
    unsigned pci_id;
+   int supports_fences; /* In/Out fences are supported */
 
    void (*destroy)(struct virgl_winsys *vws);
 
@@ -83,7 +86,8 @@ struct virgl_winsys {
    void (*cmd_buf_destroy)(struct virgl_cmd_buf *buf);
 
    void (*emit_res)(struct virgl_winsys *vws, struct virgl_cmd_buf *buf, struct virgl_hw_res *res, boolean write_buffer);
-   int (*submit_cmd)(struct virgl_winsys *vws, struct virgl_cmd_buf *buf);
+   int (*submit_cmd)(struct virgl_winsys *vws, struct virgl_cmd_buf *buf,
+                     int32_t in_fence_fd, int32_t *out_fence_fd);
 
    boolean (*res_is_referenced)(struct virgl_winsys *vws,
                                 struct virgl_cmd_buf *buf,
@@ -92,7 +96,7 @@ struct virgl_winsys {
    int (*get_caps)(struct virgl_winsys *vws, struct virgl_drm_caps *caps);
 
    /* fence */
-   struct pipe_fence_handle *(*cs_create_fence)(struct virgl_winsys *vws);
+   struct pipe_fence_handle *(*cs_create_fence)(struct virgl_winsys *vws, int fd);
    bool (*fence_wait)(struct virgl_winsys *vws,
                       struct pipe_fence_handle *fence,
                       uint64_t timeout);
@@ -107,7 +111,44 @@ struct virgl_winsys {
                              unsigned level, unsigned layer,
                              void *winsys_drawable_handle,
                              struct pipe_box *sub_box);
+   void (*fence_server_sync)(struct virgl_winsys *vws,
+                             struct virgl_cmd_buf *cbuf,
+                             struct pipe_fence_handle *fence);
+
+   int (*fence_get_fd)(struct virgl_winsys *vws,
+                       struct pipe_fence_handle *fence);
 };
 
-
+/* this defaults all newer caps,
+ * the kernel will overwrite these if newer version is available.
+ */
+static inline void virgl_ws_fill_new_caps_defaults(struct virgl_drm_caps *caps)
+{
+   caps->caps.v2.min_aliased_point_size = 1.f;
+   caps->caps.v2.max_aliased_point_size = 255.f;
+   caps->caps.v2.min_smooth_point_size = 1.f;
+   caps->caps.v2.max_smooth_point_size = 190.f;
+   caps->caps.v2.min_aliased_line_width = 1.f;
+   caps->caps.v2.max_aliased_line_width = 10.f;
+   caps->caps.v2.min_smooth_line_width = 0.f;
+   caps->caps.v2.max_smooth_line_width = 10.f;
+   caps->caps.v2.max_texture_lod_bias = 15.0f;
+   caps->caps.v2.max_geom_output_vertices = 256;
+   caps->caps.v2.max_geom_total_output_components = 1024;
+   caps->caps.v2.max_vertex_outputs = 32;
+   caps->caps.v2.max_vertex_attribs = 16;
+   caps->caps.v2.max_shader_patch_varyings = 30;
+   caps->caps.v2.min_texel_offset = -8;
+   caps->caps.v2.max_texel_offset = 7;
+   caps->caps.v2.min_texture_gather_offset = -8;
+   caps->caps.v2.max_texture_gather_offset = 7;
+   caps->caps.v2.texture_buffer_offset_alignment = 0;
+   caps->caps.v2.uniform_buffer_offset_alignment = 256;
+   caps->caps.v2.shader_buffer_offset_alignment = 32;
+   caps->caps.v2.capability_bits = 0;
+   caps->caps.v2.max_vertex_attrib_stride = 0;
+   caps->caps.v2.max_image_samples = 0;
+   caps->caps.v2.max_compute_work_group_invocations = 0;
+   caps->caps.v2.max_compute_shared_memory_size = 0;
+}
 #endif

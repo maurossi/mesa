@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2012 Rob Clark <robclark@freedesktop.org>
  *
@@ -43,7 +41,7 @@
  * programmed with the start address of each mipmap level, and hw
  * derives the layer offset within the level.
  *
- * Texture Layout on a4xx:
+ * Texture Layout on a4xx+:
  *
  * For cubemap and 2d array, each layer contains all of it's mipmap
  * levels (layer_first layout).
@@ -74,6 +72,7 @@ struct fd_resource {
 	/* buffer range that has been initialized */
 	struct util_range valid_buffer_range;
 	bool valid;
+	struct renderonly_scanout *scanout;
 
 	/* reference to the resource holding stencil data for a z32_s8 texture */
 	/* TODO rename to secondary or auxiliary? */
@@ -97,8 +96,10 @@ struct fd_resource {
 	 */
 	uint32_t bc_batch_mask;
 
+	/* Sequence # incremented each time bo changes: */
+	uint16_t seqno;
+
 	unsigned tile_mode : 2;
-	unsigned preferred_tile_mode : 2;
 
 	/*
 	 * LRZ
@@ -175,6 +176,15 @@ fd_resource_level_linear(struct pipe_resource *prsc, int level)
 	if (w < 16)
 		return true;
 	return false;
+}
+
+/* access # of samples, with 0 normalized to 1 (which is what we care about
+ * most of the time)
+ */
+static inline unsigned
+fd_resource_nr_samples(struct pipe_resource *prsc)
+{
+	return MAX2(1, prsc->nr_samples);
 }
 
 void fd_blitter_pipe_begin(struct fd_context *ctx, bool render_cond, bool discard,

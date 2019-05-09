@@ -176,10 +176,20 @@ setup_miptree(struct etna_resource *rsc, unsigned paddingX, unsigned paddingY,
    return size;
 }
 
+/* Is rs alignment needed? */
+static bool is_rs_align(struct etna_screen *screen,
+                        const struct pipe_resource *tmpl)
+{
+   return screen->specs.use_blt ? false : (
+      VIV_FEATURE(screen, chipMinorFeatures1, TEXTURE_HALIGN) ||
+      !etna_resource_sampler_only(tmpl));
+}
+
 /* Create a new resource object, using the given template info */
 struct pipe_resource *
 etna_resource_alloc(struct pipe_screen *pscreen, unsigned layout,
-                    uint64_t modifier, const struct pipe_resource *templat)
+                    enum etna_resource_addressing_mode mode, uint64_t modifier,
+                    const struct pipe_resource *templat)
 {
    struct etna_screen *screen = etna_screen(pscreen);
    struct etna_resource *rsc;
@@ -217,11 +227,9 @@ etna_resource_alloc(struct pipe_screen *pscreen, unsigned layout,
        * resolve engine's width.  If not, we must not align resources used
        * only for textures. If this GPU uses the BLT engine, never do RS align.
        */
-      bool rs_align = screen->specs.use_blt ? false : (
-                         VIV_FEATURE(screen, chipMinorFeatures1, TEXTURE_HALIGN) ||
-                         !etna_resource_sampler_only(templat));
-      etna_layout_multiple(layout, screen->specs.pixel_pipes, rs_align, &paddingX,
-                           &paddingY, &halign);
+      etna_layout_multiple(layout, screen->specs.pixel_pipes,
+                           is_rs_align (screen, templat),
+                           &paddingX, &paddingY, &halign);
       assert(paddingX && paddingY);
    } else {
       /* Compressed textures are padded to their block size, but we don't have
@@ -250,11 +258,11 @@ etna_resource_alloc(struct pipe_screen *pscreen, unsigned layout,
       if (!scanout)
          return NULL;
 
-      assert(handle.type == DRM_API_HANDLE_TYPE_FD);
+      assert(handle.type == WINSYS_HANDLE_TYPE_FD);
       handle.modifier = modifier;
       rsc = etna_resource(pscreen->resource_from_handle(pscreen, templat,
                                                         &handle,
-                                                        PIPE_HANDLE_USAGE_WRITE));
+                                                        PIPE_HANDLE_USAGE_FRAMEBUFFER_WRITE));
       close(handle.handle);
       if (!rsc)
          return NULL;
@@ -273,6 +281,7 @@ etna_resource_alloc(struct pipe_screen *pscreen, unsigned layout,
    rsc->base.nr_samples = nr_samples;
    rsc->layout = layout;
    rsc->halign = halign;
+   rsc->addressing_mode = mode;
 
    pipe_reference_init(&rsc->base.reference, 1);
    list_inithead(&rsc->list);
@@ -309,12 +318,14 @@ etna_resource_create(struct pipe_screen *pscreen,
 {
    struct etna_screen *screen = etna_screen(pscreen);
 
-   /* Figure out what tiling to use -- for now, assume that texture cannot be linear.
-    * there is a capability LINEAR_TEXTURE_SUPPORT (supported on gc880 and
-    * gc2000 at least), but not sure how it works.
+   /* Figure out what tiling and address mode to use -- for now, assume that
+    * texture cannot be linear. there is a capability LINEAR_TEXTURE_SUPPORT
+    * (supported on gc880 and gc2000 at least), but not sure how it works.
     * Buffers always have LINEAR layout.
     */
    unsigned layout = ETNA_LAYOUT_LINEAR;
+   enum etna_resource_addressing_mode mode = ETNA_ADDRESSING_MODE_TILED;
+
    if (etna_resource_sampler_only(templat)) {
       /* The buffer is only used for texturing, so create something
        * directly compatible with the sampler.  Such a buffer can
@@ -357,7 +368,7 @@ etna_resource_create(struct pipe_screen *pscreen,
       layout = ETNA_LAYOUT_LINEAR;
 
    /* modifier is only used for scanout surfaces, so safe to use LINEAR here */
-   return etna_resource_alloc(pscreen, layout, DRM_FORMAT_MOD_LINEAR, templat);
+   return etna_resource_alloc(pscreen, layout, mode, DRM_FORMAT_MOD_LINEAR, templat);
 }
 
 enum modifier_priority {
@@ -438,7 +449,7 @@ etna_resource_create_modifiers(struct pipe_screen *pscreen,
    tmpl.bind |= PIPE_BIND_SCANOUT;
 
    return etna_resource_alloc(pscreen, modifier_to_layout(modifier),
-                              modifier, &tmpl);
+                              ETNA_ADDRESSING_MODE_TILED, modifier, &tmpl);
 }
 
 static void
@@ -511,6 +522,7 @@ etna_resource_from_handle(struct pipe_screen *pscreen,
    rsc->seqno = 1;
    rsc->layout = modifier_to_layout(handle->modifier);
    rsc->halign = TEXTURE_HALIGN_FOUR;
+   rsc->addressing_mode = ETNA_ADDRESSING_MODE_TILED;
 
 
    level->width = tmpl->width0;
@@ -519,7 +531,7 @@ etna_resource_from_handle(struct pipe_screen *pscreen,
    /* Determine padding of the imported resource. */
    unsigned paddingX = 0, paddingY = 0;
    etna_layout_multiple(rsc->layout, screen->specs.pixel_pipes,
-                        VIV_FEATURE(screen, chipMinorFeatures1, TEXTURE_HALIGN),
+                        is_rs_align(screen, tmpl),
                         &paddingX, &paddingY, &rsc->halign);
 
    if (!screen->specs.use_blt)
@@ -535,11 +547,15 @@ etna_resource_from_handle(struct pipe_screen *pscreen,
     * The stride of the BO must be greater or equal to our padded
     * stride. The size of the BO must accomodate the padded height. */
    if (level->stride < util_format_get_stride(tmpl->format, level->padded_width)) {
-      BUG("BO stride is too small for RS engine width padding");
+      BUG("BO stride %u is too small for RS engine width padding (%zu, format %s)",
+          level->stride, util_format_get_stride(tmpl->format, level->padded_width),
+          util_format_name(tmpl->format));
       goto fail;
    }
    if (etna_bo_size(rsc->bo) < level->stride * level->padded_height) {
-      BUG("BO size is too small for RS engine height padding");
+      BUG("BO size %u is too small for RS engine height padding (%u, format %s)",
+          etna_bo_size(rsc->bo), level->stride * level->padded_height,
+          util_format_name(tmpl->format));
       goto fail;
    }
 
@@ -596,16 +612,16 @@ etna_resource_get_handle(struct pipe_screen *pscreen,
    handle->stride = rsc->levels[0].stride;
    handle->modifier = layout_to_modifier(rsc->layout);
 
-   if (handle->type == DRM_API_HANDLE_TYPE_SHARED) {
+   if (handle->type == WINSYS_HANDLE_TYPE_SHARED) {
       return etna_bo_get_name(rsc->bo, &handle->handle) == 0;
-   } else if (handle->type == DRM_API_HANDLE_TYPE_KMS) {
+   } else if (handle->type == WINSYS_HANDLE_TYPE_KMS) {
       if (renderonly_get_handle(scanout, handle)) {
          return TRUE;
       } else {
          handle->handle = etna_bo_handle(rsc->bo);
          return TRUE;
       }
-   } else if (handle->type == DRM_API_HANDLE_TYPE_FD) {
+   } else if (handle->type == WINSYS_HANDLE_TYPE_FD) {
       handle->handle = etna_bo_dmabuf(rsc->bo);
       return TRUE;
    } else {

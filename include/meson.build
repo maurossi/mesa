@@ -22,6 +22,7 @@ inc_drm_uapi = include_directories('drm-uapi')
 inc_vulkan = include_directories('vulkan')
 inc_d3d9 = include_directories('D3D9')
 inc_gl_internal = include_directories('GL/internal')
+inc_haikugl = include_directories('HaikuGL')
 
 if with_gles1
   install_headers(
@@ -42,7 +43,7 @@ if with_gles2
   )
 endif
 
-if with_gles1 or with_gles2 or with_egl
+if with_gles1 or with_gles2 or with_opengl or with_egl
   install_headers('KHR/khrplatform.h', subdir : 'KHR')
 endif
 
@@ -77,6 +78,13 @@ if with_gallium_st_nine
   install_headers(
     'd3dadapter/d3dadapter9.h', 'd3dadapter/drm.h', 'd3dadapter/present.h',
     subdir : 'd3dadapter',
+  )
+endif
+
+if with_platform_haiku
+  install_headers(
+    'HaikuGL/GLRenderer.h', 'HaikuGL/GLView.h', 'HaikuGL/OpenGLKit.h',
+    subdir : 'opengl',
   )
 endif
 

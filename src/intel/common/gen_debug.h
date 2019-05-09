@@ -84,9 +84,21 @@ extern uint64_t INTEL_DEBUG;
 #define DEBUG_COLOR               (1ull << 40)
 #define DEBUG_REEMIT              (1ull << 41)
 
+/* These flags are not compatible with the disk shader cache */
+#define DEBUG_DISK_CACHE_DISABLE_MASK DEBUG_SHADER_TIME
+
+/* These flags may affect program generation */
+#define DEBUG_DISK_CACHE_MASK \
+   (DEBUG_NO16 | DEBUG_NO_DUAL_OBJECT_GS | DEBUG_NO8 |  DEBUG_SPILL_FS | \
+   DEBUG_SPILL_VEC4 | DEBUG_NO_COMPACTION | DEBUG_DO32)
+
 #ifdef HAVE_ANDROID_PLATFORM
 #define LOG_TAG "INTEL-MESA"
+#if ANDROID_API_LEVEL >= 26
+#include <log/log.h>
+#else
 #include <cutils/log.h>
+#endif /* use log/log.h start from android 8 major version */
 #ifndef ALOGW
 #define ALOGW LOGW
 #endif

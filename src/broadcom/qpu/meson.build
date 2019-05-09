@@ -33,11 +33,14 @@ libbroadcom_qpu = static_library(
   build_by_default : false,
 )
 
+v3d_libs += libbroadcom_qpu
+
 test(
   'qpu_disasm',
   executable(
     'qpu_disasm', 'tests/qpu_disasm.c',
     link_with: [libbroadcom_qpu, libmesa_util],
     include_directories: inc_common
-  )
+  ),
+  suite : ['broadcom'],
 )

@@ -21,12 +21,8 @@
 vulkan_wsi_args = []
 vulkan_wsi_deps = []
 
-files_vulkan_wsi = files(
-  'wsi_common.c',
-  'wsi_common.h',
-  'wsi_common_private.h',
-  'wsi_common_queue.h',
-)
+files_vulkan_wsi = files('wsi_common.c')
+
 if with_platform_x11
   vulkan_wsi_args += ['-DVK_USE_PLATFORM_XCB_KHR', '-DVK_USE_PLATFORM_XLIB_KHR']
   vulkan_wsi_deps += [
@@ -38,29 +34,35 @@ if with_platform_x11
     dep_xcb_sync,
     dep_xshmfence,
   ]
-  files_vulkan_wsi += files(
-    'wsi_common_x11.c',
-    'wsi_common_x11.h',
-  )
+  files_vulkan_wsi += files('wsi_common_x11.c')
 endif
 
 if with_platform_wayland
   vulkan_wsi_deps += dep_wayland_client
   vulkan_wsi_args += ['-DVK_USE_PLATFORM_WAYLAND_KHR']
-  files_vulkan_wsi += files(
-    'wsi_common_wayland.c',
-    'wsi_common_wayland.h',
-  )
+  files_vulkan_wsi += files('wsi_common_wayland.c')
   files_vulkan_wsi += [
     wayland_drm_client_protocol_h,
     wayland_drm_protocol_c,
+    linux_dmabuf_unstable_v1_client_protocol_h,
+    linux_dmabuf_unstable_v1_protocol_c,
   ]
+endif
+
+if with_platform_drm
+  vulkan_wsi_args += '-DVK_USE_PLATFORM_DISPLAY_KHR'
+  files_vulkan_wsi += files('wsi_common_display.c')
+endif
+
+if with_xlib_lease
+  vulkan_wsi_deps += [dep_xcb_xrandr, dep_xlib_xrandr]
+  vulkan_wsi_args += '-DVK_USE_PLATFORM_XLIB_XRANDR_EXT'
 endif
 
 libvulkan_wsi = static_library(
   'vulkan_wsi',
   files_vulkan_wsi,
-  include_directories : [inc_common, inc_vulkan_util],
+  include_directories : [inc_common, inc_vulkan_util, inc_drm_uapi],
   dependencies : [vulkan_wsi_deps, dep_libdrm],
   c_args : [c_vis_args, vulkan_wsi_args],
   build_by_default : false,

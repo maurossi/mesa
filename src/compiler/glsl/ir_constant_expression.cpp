@@ -34,12 +34,12 @@
  */
 
 #include <math.h>
-#include "main/core.h" /* for MAX2, MIN2, CLAMP */
 #include "util/rounding.h" /* for _mesa_roundeven */
 #include "util/half_float.h"
 #include "ir.h"
 #include "compiler/glsl_types.h"
 #include "util/hash_table.h"
+#include "util/u_math.h"
 
 static float
 dot_f(ir_constant *op0, ir_constant *op1)
@@ -826,7 +826,7 @@ ir_dereference_array::constant_expression_value(void *mem_ctx,
          const unsigned component = idx->value.u[0];
 
          return new(mem_ctx) ir_constant(array, component);
-      } else {
+      } else if (array->type->is_array()) {
          const unsigned index = idx->value.u[0];
          return array->get_array_element(index)->clone(mem_ctx, NULL);
       }
@@ -1024,8 +1024,7 @@ ir_function_signature::constant_expression_value(void *mem_ctx,
     * We expect the correctness of the number of parameters to have
     * been checked earlier.
     */
-   hash_table *deref_hash = _mesa_hash_table_create(NULL, _mesa_hash_pointer,
-                                                    _mesa_key_pointer_equal);
+   hash_table *deref_hash = _mesa_pointer_hash_table_create(NULL);
 
    /* If "origin" is non-NULL, then the function body is there.  So we
     * have to use the variable objects from the object with the body,

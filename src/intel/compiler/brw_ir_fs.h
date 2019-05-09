@@ -41,6 +41,7 @@ public:
    fs_reg(enum brw_reg_file file, int nr, enum brw_reg_type type);
 
    bool equals(const fs_reg &r) const;
+   bool negative_equals(const fs_reg &r) const;
    bool is_contiguous() const;
 
    /**
@@ -312,6 +313,13 @@ subscript(fs_reg reg, brw_reg_type type, unsigned i)
    return byte_offset(retype(reg, type), i * type_sz(type));
 }
 
+static inline fs_reg
+horiz_stride(fs_reg reg, unsigned s)
+{
+   reg.stride *= s;
+   return reg;
+}
+
 static const fs_reg reg_undef;
 
 class fs_inst : public backend_instruction {
@@ -339,15 +347,22 @@ public:
 
    void resize_sources(uint8_t num_sources);
 
-   bool equals(fs_inst *inst) const;
    bool is_send_from_grf() const;
    bool is_partial_write() const;
    bool is_copy_payload(const brw::simple_allocator &grf_alloc) const;
    unsigned components_read(unsigned i) const;
    unsigned size_read(int arg) const;
-   bool can_do_source_mods(const struct gen_device_info *devinfo);
+   bool can_do_source_mods(const struct gen_device_info *devinfo) const;
+   bool can_do_cmod();
    bool can_change_types() const;
    bool has_source_and_destination_hazard() const;
+
+   /**
+    * Return whether \p arg is a control source of a virtual instruction which
+    * shouldn't contribute to the execution type and usual regioning
+    * restriction calculations of arithmetic instructions.
+    */
+   bool is_control_source(unsigned arg) const;
 
    /**
     * Return the subset of flag registers read by the instruction as a bitset
@@ -366,6 +381,7 @@ public:
 
    uint8_t sources; /**< Number of fs_reg sources. */
 
+   bool last_rt:1;
    bool pi_noperspective:1;   /**< Pixel interpolator noperspective flag */
 };
 
@@ -452,7 +468,8 @@ get_exec_type(const fs_inst *inst)
    brw_reg_type exec_type = BRW_REGISTER_TYPE_B;
 
    for (int i = 0; i < inst->sources; i++) {
-      if (inst->src[i].file != BAD_FILE) {
+      if (inst->src[i].file != BAD_FILE &&
+          !inst->is_control_source(i)) {
          const brw_reg_type t = get_exec_type(inst->src[i].type);
          if (type_sz(t) > type_sz(exec_type))
             exec_type = t;
@@ -467,6 +484,27 @@ get_exec_type(const fs_inst *inst)
 
    assert(exec_type != BRW_REGISTER_TYPE_B);
 
+   /* Promotion of the execution type to 32-bit for conversions from or to
+    * half-float seems to be consistent with the following text from the
+    * Cherryview PRM Vol. 7, "Execution Data Type":
+    *
+    * "When single precision and half precision floats are mixed between
+    *  source operands or between source and destination operand [..] single
+    *  precision float is the execution datatype."
+    *
+    * and from "Register Region Restrictions":
+    *
+    * "Conversion between Integer and HF (Half Float) must be DWord aligned
+    *  and strided by a DWord on the destination."
+    */
+   if (type_sz(exec_type) == 2 &&
+       inst->dst.type != exec_type) {
+      if (exec_type == BRW_REGISTER_TYPE_HF)
+         exec_type = BRW_REGISTER_TYPE_F;
+      else if (inst->dst.type == BRW_REGISTER_TYPE_HF)
+         exec_type = BRW_REGISTER_TYPE_D;
+   }
+
    return exec_type;
 }
 
@@ -474,6 +512,44 @@ static inline unsigned
 get_exec_type_size(const fs_inst *inst)
 {
    return type_sz(get_exec_type(inst));
+}
+
+/**
+ * Return whether the instruction isn't an ALU instruction and cannot be
+ * assumed to complete in-order.
+ */
+static inline bool
+is_unordered(const fs_inst *inst)
+{
+   return inst->mlen || inst->is_send_from_grf() || inst->is_math();
+}
+
+/**
+ * Return whether the following regioning restriction applies to the specified
+ * instruction.  From the Cherryview PRM Vol 7. "Register Region
+ * Restrictions":
+ *
+ * "When source or destination datatype is 64b or operation is integer DWord
+ *  multiply, regioning in Align1 must follow these rules:
+ *
+ *  1. Source and Destination horizontal stride must be aligned to the same qword.
+ *  2. Regioning must ensure Src.Vstride = Src.Width * Src.Hstride.
+ *  3. Source and Destination offset must be the same, except the case of
+ *     scalar source."
+ */
+static inline bool
+has_dst_aligned_region_restriction(const gen_device_info *devinfo,
+                                   const fs_inst *inst)
+{
+   const brw_reg_type exec_type = get_exec_type(inst);
+   const bool is_int_multiply = !brw_reg_type_is_floating_point(exec_type) &&
+         (inst->opcode == BRW_OPCODE_MUL || inst->opcode == BRW_OPCODE_MAD);
+
+   if (type_sz(inst->dst.type) > 4 || type_sz(exec_type) > 4 ||
+       (type_sz(exec_type) == 4 && is_int_multiply))
+      return devinfo->is_cherryview || gen_device_info_is_9lp(devinfo);
+   else
+      return false;
 }
 
 #endif

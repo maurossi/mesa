@@ -44,16 +44,16 @@ fd5_context_destroy(struct pipe_context *pctx)
 {
 	struct fd5_context *fd5_ctx = fd5_context(fd_context(pctx));
 
-	fd_bo_del(fd5_ctx->vs_pvt_mem);
-	fd_bo_del(fd5_ctx->fs_pvt_mem);
+	u_upload_destroy(fd5_ctx->border_color_uploader);
+
+	fd_context_destroy(pctx);
+
 	fd_bo_del(fd5_ctx->vsc_size_mem);
 	fd_bo_del(fd5_ctx->blit_mem);
 
 	fd_context_cleanup_common_vbos(&fd5_ctx->base);
 
-	u_upload_destroy(fd5_ctx->border_color_uploader);
-
-	fd_context_destroy(pctx);
+	free(fd5_ctx);
 }
 
 static const uint8_t primtypes[] = {
@@ -101,17 +101,13 @@ fd5_context_create(struct pipe_screen *pscreen, void *priv, unsigned flags)
 	if (!pctx)
 		return NULL;
 
-	fd5_ctx->vs_pvt_mem = fd_bo_new(screen->dev, 0x2000,
-			DRM_FREEDRENO_GEM_TYPE_KMEM);
-
-	fd5_ctx->fs_pvt_mem = fd_bo_new(screen->dev, 0x2000,
-			DRM_FREEDRENO_GEM_TYPE_KMEM);
+	util_blitter_set_texture_multisample(fd5_ctx->base.blitter, true);
 
 	fd5_ctx->vsc_size_mem = fd_bo_new(screen->dev, 0x1000,
-			DRM_FREEDRENO_GEM_TYPE_KMEM);
+			DRM_FREEDRENO_GEM_TYPE_KMEM, "vsc_size");
 
 	fd5_ctx->blit_mem = fd_bo_new(screen->dev, 0x1000,
-			DRM_FREEDRENO_GEM_TYPE_KMEM);
+			DRM_FREEDRENO_GEM_TYPE_KMEM, "blit");
 
 	fd_context_setup_common_vbos(&fd5_ctx->base);
 

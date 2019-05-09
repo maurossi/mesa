@@ -18,7 +18,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-inc_gbm = include_directories('.', 'backends/dri')
+inc_gbm = include_directories('.', 'main', 'backends/dri')
 
 files_gbm = files(
   'main/backend.c',
@@ -32,20 +32,16 @@ args_gbm = []
 deps_gbm = []
 incs_gbm = [
   include_directories('main'), inc_include, inc_src, inc_loader,
-  inc_wayland_drm,
 ]
 
 if with_dri2
   files_gbm += files('backends/dri/gbm_dri.c', 'backends/dri/gbm_driint.h')
   deps_gbm += dep_libdrm # TODO: pthread-stubs
-  args_gbm += '-DDEFAULT_DRIVER_DIR="@0@"'.format(dri_search_path)
 endif
 if with_platform_wayland
   deps_gbm += dep_wayland_server
   incs_gbm += inc_wayland_drm
 endif
-
-# TODO: wayland support (requires egl)
 
 libgbm = shared_library(
   'gbm',
@@ -74,6 +70,8 @@ if with_tests
   test(
     'gbm-symbols-check',
     find_program('gbm-symbols-check'),
-    args : libgbm
+    env : env_test,
+    args : libgbm,
+    suite : ['gbm'],
   )
 endif

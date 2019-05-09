@@ -31,6 +31,7 @@
 #include "brw_dead_control_flow.h"
 #include "common/gen_debug.h"
 #include "program/prog_parameter.h"
+#include "util/u_math.h"
 
 #define MAX_INSTRUCTION (1 << 30)
 
@@ -41,7 +42,7 @@ namespace brw {
 void
 src_reg::init()
 {
-   memset(this, 0, sizeof(*this));
+   memset((void*)this, 0, sizeof(*this));
    this->file = BAD_FILE;
    this->type = BRW_REGISTER_TYPE_UD;
 }
@@ -83,7 +84,7 @@ src_reg::src_reg(const dst_reg &reg) :
 void
 dst_reg::init()
 {
-   memset(this, 0, sizeof(*this));
+   memset((void*)this, 0, sizeof(*this));
    this->file = BAD_FILE;
    this->type = BRW_REGISTER_TYPE_UD;
    this->writemask = WRITEMASK_XYZW;
@@ -257,6 +258,26 @@ vec4_instruction::can_do_source_mods(const struct gen_device_info *devinfo)
 }
 
 bool
+vec4_instruction::can_do_cmod()
+{
+   if (!backend_instruction::can_do_cmod())
+      return false;
+
+   /* The accumulator result appears to get used for the conditional modifier
+    * generation.  When negating a UD value, there is a 33rd bit generated for
+    * the sign in the accumulator value, so now you can't check, for example,
+    * equality with a 32-bit value.  See piglit fs-op-neg-uvec4.
+    */
+   for (unsigned i = 0; i < 3; i++) {
+      if (src[i].file != BAD_FILE &&
+          type_is_unsigned_int(src[i].type) && src[i].negate)
+         return false;
+   }
+
+   return true;
+}
+
+bool
 vec4_instruction::can_do_writemask(const struct gen_device_info *devinfo)
 {
    switch (opcode) {
@@ -376,12 +397,19 @@ src_reg::equals(const src_reg &r) const
 }
 
 bool
+src_reg::negative_equals(const src_reg &r) const
+{
+   return this->backend_reg::negative_equals(r) &&
+          !reladdr && !r.reladdr;
+}
+
+bool
 vec4_visitor::opt_vector_float()
 {
    bool progress = false;
 
    foreach_block(block, cfg) {
-      int last_reg = -1, last_offset = -1;
+      unsigned last_reg = ~0u, last_offset = ~0u;
       enum brw_reg_file last_reg_file = BAD_FILE;
 
       uint8_t imm[4] = { 0 };
@@ -414,7 +442,7 @@ vec4_visitor::opt_vector_float()
                need_type = BRW_REGISTER_TYPE_F;
             }
          } else {
-            last_reg = -1;
+            last_reg = ~0u;
          }
 
          /* If this wasn't a MOV, or the destination register doesn't match,
@@ -442,7 +470,7 @@ vec4_visitor::opt_vector_float()
             }
 
             inst_count = 0;
-            last_reg = -1;
+            last_reg = ~0u;;
             writemask = 0;
             dest_type = BRW_REGISTER_TYPE_F;
 
@@ -792,14 +820,31 @@ vec4_visitor::opt_algebraic()
             break;
 
          if (inst->saturate) {
-            if (inst->dst.type != inst->src[0].type)
+            /* Full mixed-type saturates don't happen.  However, we can end up
+             * with things like:
+             *
+             *    mov.sat(8) g21<1>DF       -1F
+             *
+             * Other mixed-size-but-same-base-type cases may also be possible.
+             */
+            if (inst->dst.type != inst->src[0].type &&
+                inst->dst.type != BRW_REGISTER_TYPE_DF &&
+                inst->src[0].type != BRW_REGISTER_TYPE_F)
                assert(!"unimplemented: saturate mixed types");
 
-            if (brw_saturate_immediate(inst->dst.type,
+            if (brw_saturate_immediate(inst->src[0].type,
                                        &inst->src[0].as_brw_reg())) {
                inst->saturate = false;
                progress = true;
             }
+         }
+         break;
+
+      case BRW_OPCODE_OR:
+         if (inst->src[1].is_zero()) {
+            inst->opcode = BRW_OPCODE_MOV;
+            inst->src[1] = src_reg();
+            progress = true;
          }
          break;
 
@@ -847,18 +892,6 @@ vec4_visitor::opt_algebraic()
             progress = true;
 	 }
 	 break;
-      case BRW_OPCODE_CMP:
-         if (inst->conditional_mod == BRW_CONDITIONAL_GE &&
-             inst->src[0].abs &&
-             inst->src[0].negate &&
-             inst->src[1].is_zero()) {
-            inst->src[0].abs = false;
-            inst->src[0].negate = false;
-            inst->conditional_mod = BRW_CONDITIONAL_Z;
-            progress = true;
-            break;
-         }
-         break;
       case SHADER_OPCODE_BROADCAST:
          if (is_uniform(inst->src[0]) ||
              inst->src[1].is_zero()) {
@@ -1127,6 +1160,12 @@ vec4_instruction::can_reswizzle(const struct gen_device_info *devinfo,
    if (devinfo->gen == 6 && is_math() && swizzle != BRW_SWIZZLE_XYZW)
       return false;
 
+   /* If we write to the flag register changing the swizzle would change
+    * what channels are written to the flag register.
+    */
+   if (writes_flag())
+      return false;
+
    /* We can't swizzle implicit accumulator access.  We'd have to
     * reswizzle the producer of the accumulator value in addition
     * to the consumer (i.e. both MUL and MACH).  Just skip this.
@@ -1278,6 +1317,15 @@ vec4_visitor::opt_register_coalesce()
                }
             }
 
+            /* VS_OPCODE_UNPACK_FLAGS_SIMD4X2 generates a bunch of mov(1)
+             * instructions, and this optimization pass is not capable of
+             * handling that.  Bail on these instructions and hope that some
+             * later optimization pass can do the right thing after they are
+             * expanded.
+             */
+            if (scan_inst->opcode == VS_OPCODE_UNPACK_FLAGS_SIMD4X2)
+               break;
+
             /* This doesn't handle saturation on the instruction we
              * want to coalesce away if the register types do not match.
              * But if scan_inst is a non type-converting 'mov', we can fix
@@ -1355,8 +1403,10 @@ vec4_visitor::opt_register_coalesce()
           * in the register instead.
           */
          if (to_mrf && scan_inst->mlen > 0) {
-            if (inst->dst.nr >= scan_inst->base_mrf &&
-                inst->dst.nr < scan_inst->base_mrf + scan_inst->mlen) {
+            unsigned start = scan_inst->base_mrf;
+            unsigned end = scan_inst->base_mrf + scan_inst->mlen;
+
+            if (inst->dst.nr >= start && inst->dst.nr < end) {
                break;
             }
          } else {
@@ -1545,9 +1595,10 @@ vec4_visitor::dump_instruction(backend_instruction *be_inst, FILE *file)
    vec4_instruction *inst = (vec4_instruction *)be_inst;
 
    if (inst->predicate) {
-      fprintf(file, "(%cf0.%d%s) ",
+      fprintf(file, "(%cf%d.%d%s) ",
               inst->predicate_inverse ? '-' : '+',
-              inst->flag_subreg,
+              inst->flag_subreg / 2,
+              inst->flag_subreg % 2,
               pred_ctrl_align16[inst->predicate]);
    }
 
@@ -1559,9 +1610,10 @@ vec4_visitor::dump_instruction(backend_instruction *be_inst, FILE *file)
       fprintf(file, "%s", conditional_modifier[inst->conditional_mod]);
       if (!inst->predicate &&
           (devinfo->gen < 5 || (inst->opcode != BRW_OPCODE_SEL &&
+                                inst->opcode != BRW_OPCODE_CSEL &&
                                 inst->opcode != BRW_OPCODE_IF &&
                                 inst->opcode != BRW_OPCODE_WHILE))) {
-         fprintf(file, ".f0.%d", inst->flag_subreg);
+         fprintf(file, ".f%d.%d", inst->flag_subreg / 2, inst->flag_subreg % 2);
       }
    }
    fprintf(file, " ");
@@ -2772,12 +2824,11 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
                void *mem_ctx,
                const struct brw_vs_prog_key *key,
                struct brw_vs_prog_data *prog_data,
-               const nir_shader *src_shader,
+               nir_shader *shader,
                int shader_time_index,
                char **error_str)
 {
    const bool is_scalar = compiler->scalar_stage[MESA_SHADER_VERTEX];
-   nir_shader *shader = nir_shader_clone(mem_ctx, src_shader);
    shader = brw_nir_apply_sampler_key(shader, compiler, &key->tex, is_scalar);
 
    const unsigned *assembly = NULL;
@@ -2798,10 +2849,10 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
    }
 
    prog_data->inputs_read = shader->info.inputs_read;
-   prog_data->double_inputs_read = shader->info.double_inputs_read;
+   prog_data->double_inputs_read = shader->info.vs.double_inputs;
 
    brw_nir_lower_vs_inputs(shader, key->gl_attrib_wa_flags);
-   brw_nir_lower_vue_outputs(shader, is_scalar);
+   brw_nir_lower_vue_outputs(shader);
    shader = brw_postprocess_nir(shader, compiler, is_scalar);
 
    prog_data->base.clip_distance_mask =
@@ -2810,22 +2861,33 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
       ((1 << shader->info.cull_distance_array_size) - 1) <<
       shader->info.clip_distance_array_size;
 
-   unsigned nr_attribute_slots = _mesa_bitcount_64(prog_data->inputs_read);
+   unsigned nr_attribute_slots = util_bitcount64(prog_data->inputs_read);
 
    /* gl_VertexID and gl_InstanceID are system values, but arrive via an
     * incoming vertex attribute.  So, add an extra slot.
     */
    if (shader->info.system_values_read &
-       (BITFIELD64_BIT(SYSTEM_VALUE_BASE_VERTEX) |
+       (BITFIELD64_BIT(SYSTEM_VALUE_FIRST_VERTEX) |
         BITFIELD64_BIT(SYSTEM_VALUE_BASE_INSTANCE) |
         BITFIELD64_BIT(SYSTEM_VALUE_VERTEX_ID_ZERO_BASE) |
         BITFIELD64_BIT(SYSTEM_VALUE_INSTANCE_ID))) {
       nr_attribute_slots++;
    }
 
+   /* gl_DrawID and IsIndexedDraw share its very own vec4 */
    if (shader->info.system_values_read &
-       BITFIELD64_BIT(SYSTEM_VALUE_BASE_VERTEX))
-      prog_data->uses_basevertex = true;
+       (BITFIELD64_BIT(SYSTEM_VALUE_DRAW_ID) |
+        BITFIELD64_BIT(SYSTEM_VALUE_IS_INDEXED_DRAW))) {
+      nr_attribute_slots++;
+   }
+
+   if (shader->info.system_values_read &
+       BITFIELD64_BIT(SYSTEM_VALUE_IS_INDEXED_DRAW))
+      prog_data->uses_is_indexed_draw = true;
+
+   if (shader->info.system_values_read &
+       BITFIELD64_BIT(SYSTEM_VALUE_FIRST_VERTEX))
+      prog_data->uses_firstvertex = true;
 
    if (shader->info.system_values_read &
        BITFIELD64_BIT(SYSTEM_VALUE_BASE_INSTANCE))
@@ -2839,12 +2901,9 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
        BITFIELD64_BIT(SYSTEM_VALUE_INSTANCE_ID))
       prog_data->uses_instanceid = true;
 
-   /* gl_DrawID has its very own vec4 */
    if (shader->info.system_values_read &
-       BITFIELD64_BIT(SYSTEM_VALUE_DRAW_ID)) {
-      prog_data->uses_drawid = true;
-      nr_attribute_slots++;
-   }
+       BITFIELD64_BIT(SYSTEM_VALUE_DRAW_ID))
+          prog_data->uses_drawid = true;
 
    /* The 3DSTATE_VS documentation lists the lower bound on "Vertex URB Entry
     * Read Length" as 1 in vec4 mode, and 0 in SIMD8 mode.  Empirically, in
@@ -2898,7 +2957,7 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
 
       prog_data->base.base.dispatch_grf_start_reg = v.payload.num_regs;
 
-      fs_generator g(compiler, log_data, mem_ctx, (void *) key,
+      fs_generator g(compiler, log_data, mem_ctx,
                      &prog_data->base.base, v.promoted_constants,
                      v.runtime_check_aads_emit, MESA_SHADER_VERTEX);
       if (INTEL_DEBUG & DEBUG_VS) {
@@ -2911,7 +2970,7 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
          g.enable_debug(debug_name);
       }
       g.generate_code(v.cfg, 8);
-      assembly = g.get_assembly(&prog_data->base.base.program_size);
+      assembly = g.get_assembly();
    }
 
    if (!assembly) {
@@ -2927,8 +2986,7 @@ brw_compile_vs(const struct brw_compiler *compiler, void *log_data,
       }
 
       assembly = brw_vec4_generate_assembly(compiler, log_data, mem_ctx,
-                                            shader, &prog_data->base, v.cfg,
-                                            &prog_data->base.base.program_size);
+                                            shader, &prog_data->base, v.cfg);
    }
 
    return assembly;

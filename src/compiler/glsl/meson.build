@@ -41,7 +41,7 @@ ir_expression_operation_constant_h = custom_target(
   'ir_expression_operation_constant.h',
   input : 'ir_expression_operation.py',
   output : 'ir_expression_operation_constant.h',
-  command : [prog_python2, '@INPUT@', 'constant'],
+  command : [prog_python, '@INPUT@', 'constant'],
   capture : true,
 )
 
@@ -49,8 +49,15 @@ ir_expression_operation_strings_h = custom_target(
   'ir_expression_operation_strings.h',
   input : 'ir_expression_operation.py',
   output : 'ir_expression_operation_strings.h',
-  command : [prog_python2, '@INPUT@', 'strings'],
+  command : [prog_python, '@INPUT@', 'strings'],
   capture : true,
+)
+
+float64_glsl_h = custom_target(
+  'float64_glsl.h',
+  input : ['xxd.py', 'float64.glsl'],
+  output : 'float64_glsl.h',
+  command : [prog_python, '@INPUT@', '@OUTPUT@', '-n', 'float64_source'],
 )
 
 files_libglsl = files(
@@ -66,6 +73,16 @@ files_libglsl = files(
   'builtin_types.cpp',
   'builtin_variables.cpp',
   'generate_ir.cpp',
+  'gl_nir_lower_atomics.c',
+  'gl_nir_lower_samplers.c',
+  'gl_nir_lower_samplers_as_deref.c',
+  'gl_nir_link_atomics.c',
+  'gl_nir_link_uniform_initializers.c',
+  'gl_nir_link_uniforms.c',
+  'gl_nir_link_xfb.c',
+  'gl_nir_linker.c',
+  'gl_nir_linker.h',
+  'gl_nir.h',
   'glsl_parser_extras.cpp',
   'glsl_parser_extras.h',
   'glsl_symbol_table.cpp',
@@ -108,6 +125,8 @@ files_libglsl = files(
   'ir_visitor.h',
   'linker.cpp',
   'linker.h',
+  'linker_util.h',
+  'linker_util.cpp',
   'link_atomics.cpp',
   'link_functions.cpp',
   'link_interface_blocks.cpp',
@@ -159,7 +178,6 @@ files_libglsl = files(
   'opt_constant_folding.cpp',
   'opt_constant_propagation.cpp',
   'opt_constant_variable.cpp',
-  'opt_copy_propagation.cpp',
   'opt_copy_propagation_elements.cpp',
   'opt_dead_builtin_variables.cpp',
   'opt_dead_builtin_varyings.cpp',
@@ -202,7 +220,8 @@ files_libglsl_standalone = files(
 libglsl = static_library(
   'glsl',
   [files_libglsl, glsl_parser, glsl_lexer_cpp, ir_expression_operation_h,
-   ir_expression_operation_strings_h, ir_expression_operation_constant_h],
+   ir_expression_operation_strings_h, ir_expression_operation_constant_h,
+   float64_glsl_h],
   c_args : [c_vis_args, c_msvc_compat_args, no_override_init_args],
   cpp_args : [cpp_vis_args, cpp_msvc_compat_args],
   link_with : libglcpp,
@@ -230,7 +249,8 @@ glsl_compiler = executable(
   dependencies : [dep_clock, dep_thread],
   include_directories : [inc_common],
   link_with : [libglsl_standalone],
-  build_by_default : false,
+  build_by_default : with_tools.contains('glsl'),
+  install : with_tools.contains('glsl'),
 )
 
 glsl_test = executable(
@@ -242,9 +262,10 @@ glsl_test = executable(
   include_directories : [inc_common],
   dependencies : [dep_clock, dep_thread],
   link_with : [libglsl, libglsl_standalone, libglsl_util],
-  build_by_default : false,
+  build_by_default : with_tools.contains('glsl'),
+  install : with_tools.contains('glsl'),
 )
 
-if with_tests
+if with_any_opengl and with_tests
   subdir('tests')
 endif

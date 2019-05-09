@@ -24,6 +24,7 @@
  */
 
 
+#include "errors.h"
 #include "imports.h"
 #include "formats.h"
 #include "macros.h"
@@ -627,6 +628,48 @@ _mesa_is_format_etc2(mesa_format format)
 
 
 /**
+ * Return TRUE if format is an ASTC 2D compressed format.
+ */
+bool
+_mesa_is_format_astc_2d(mesa_format format)
+{
+   switch (format) {
+   case MESA_FORMAT_RGBA_ASTC_4x4:
+   case MESA_FORMAT_RGBA_ASTC_5x4:
+   case MESA_FORMAT_RGBA_ASTC_5x5:
+   case MESA_FORMAT_RGBA_ASTC_6x5:
+   case MESA_FORMAT_RGBA_ASTC_6x6:
+   case MESA_FORMAT_RGBA_ASTC_8x5:
+   case MESA_FORMAT_RGBA_ASTC_8x6:
+   case MESA_FORMAT_RGBA_ASTC_8x8:
+   case MESA_FORMAT_RGBA_ASTC_10x5:
+   case MESA_FORMAT_RGBA_ASTC_10x6:
+   case MESA_FORMAT_RGBA_ASTC_10x8:
+   case MESA_FORMAT_RGBA_ASTC_10x10:
+   case MESA_FORMAT_RGBA_ASTC_12x10:
+   case MESA_FORMAT_RGBA_ASTC_12x12:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_4x4:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_5x4:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_5x5:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_6x5:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_6x6:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_8x5:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_8x6:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_8x8:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_10x5:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_10x6:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_10x8:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_10x10:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_12x10:
+   case MESA_FORMAT_SRGB8_ALPHA8_ASTC_12x12:
+      return true;
+   default:
+      return false;
+   }
+}
+
+
+/**
  * If the given format is a compressed format, return a corresponding
  * uncompressed format.
  */
@@ -1065,6 +1108,7 @@ _mesa_uncompressed_format_to_type_and_comps(mesa_format format,
       *comps = 4;
       return;
    case MESA_FORMAT_L_SRGB8:
+   case MESA_FORMAT_R_SRGB8:
       *datatype = GL_UNSIGNED_BYTE;
       *comps = 1;
       return;
@@ -1627,6 +1671,7 @@ _mesa_format_matches_format_and_type(mesa_format mesa_format,
               (type == GL_UNSIGNED_SHORT_8_8_REV_MESA && littleEndian != swapBytes));
 
    case MESA_FORMAT_R_UNORM8:
+   case MESA_FORMAT_R_SRGB8:
       return format == GL_RED && type == GL_UNSIGNED_BYTE;
    case MESA_FORMAT_R8G8_UNORM:
       return format == GL_RG && type == GL_UNSIGNED_BYTE && littleEndian;

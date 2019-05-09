@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2014 Rob Clark <robclark@freedesktop.org>
  *
@@ -156,6 +154,9 @@ emit_gmem2mem_surf(struct fd_batch *batch, bool stencil,
 	enum pipe_format pformat = psurf->format;
 	struct fd_resource_slice *slice;
 	uint32_t offset;
+
+	if (!rsc->valid)
+		return;
 
 	if (stencil) {
 		debug_assert(rsc->stencil);
@@ -581,7 +582,7 @@ update_vsc_pipe(struct fd_batch *batch)
 		struct fd_vsc_pipe *pipe = &ctx->vsc_pipe[i];
 		if (!pipe->bo) {
 			pipe->bo = fd_bo_new(ctx->dev, 0x40000,
-					DRM_FREEDRENO_GEM_TYPE_KMEM);
+					DRM_FREEDRENO_GEM_TYPE_KMEM, "vsc_pipe[%u]", i);
 		}
 		OUT_RELOCW(ring, pipe->bo, 0, 0, 0);       /* VSC_PIPE_DATA_ADDRESS[i] */
 	}

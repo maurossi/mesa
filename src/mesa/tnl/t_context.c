@@ -96,11 +96,11 @@ _tnl_CreateContext( struct gl_context *ctx )
       insert_at_tail( tnl->_ShineTabList, s );
    }
 
-   /* plug in the VBO drawing function */
-   vbo_set_draw_func(ctx, _tnl_draw_prims);
-
    _math_init_transformation();
    _math_init_translate();
+
+   /* Keep our list of tnl_vertex_array inputs */
+   _tnl_init_inputs(&tnl->draw_arrays);
 
    return GL_TRUE;
 }

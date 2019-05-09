@@ -44,7 +44,7 @@ endif
 if dri_drivers != []
   libmesa_dri_drivers = shared_library(
     'mesa_dri_drivers',
-    dummy_cpp,  # see meson #2180
+    [],
     link_whole : dri_drivers,
     link_with : [
       libmegadriver_stub, libdricommon, libxmlconfig, libglapi, libmesa_util,
@@ -53,10 +53,14 @@ if dri_drivers != []
     dependencies : [
       dep_selinux, dep_libdrm, dep_expat, dep_m, dep_thread, dep_dl, idep_nir,
     ],
-    link_args : ['-Wl,--build-id=sha1', ld_args_bsymbolic, ld_args_gc_sections],
+    link_args : [ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections],
+    # Will be deleted during installation, see install_megadrivers.py
+    install : true,
+    install_dir : dri_drivers_path,
   )
 
   meson.add_install_script(
+    prog_python.path(),
     join_paths(meson.source_root(), 'bin/install_megadrivers.py'),
     libmesa_dri_drivers.full_path(),
     dri_drivers_path,
@@ -69,7 +73,7 @@ endif
 if with_dri
   dri_req_private = []
   if dep_libdrm.found()
-    dri_req_private = ['libdrm >= 2.4.75']  # FIXME: don't hardcode this
+    dri_req_private = ['libdrm >= ' + dep_libdrm.version()]
   endif
 
   pkg.generate(
@@ -77,7 +81,7 @@ if with_dri
     filebase : 'dri',
     description : 'Direct Rendering Infrastructure',
     version : meson.project_version(),
-    variables : ['dridriverdir=${prefix}/' + dri_drivers_path],
+    variables : ['dridriverdir=' + dri_drivers_path],
     requires_private : dri_req_private,
   )
 endif

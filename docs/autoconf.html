@@ -26,6 +26,12 @@
   </ul>
 </ol>
 
+<h2>ATTENTION:</h2>
+<p>
+    The autotools build is being replaced by the <a href="meson.html">meson</a>
+    build system. If you haven't yet now is a good time to try using meson and
+    report any issues you run into.
+</p>
 
 <h2 id="basic">1. Basic Usage</h2>
 
@@ -92,6 +98,13 @@ tree.</p>
 files will be installed. The default is <code>${prefix}/etc</code>.
 Currently there's only one config file provided when dri drivers are
 enabled - it's <code>drirc</code>.</p>
+</dd>
+
+<dt><code>--datadir=DIR</code></dt>
+<dd><p>This option specifies the directory where the data files will
+be installed. The default is <code>${prefix}/share</code>.
+Currently when dri drivers are enabled, <code>drirc.d/</code> is at
+this place.</p>
 </dd>
 
 <dt><code>--enable-static, --disable-shared</code></dt>

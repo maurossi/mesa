@@ -103,6 +103,8 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.EXT_pixel_buffer_object = true;
    ctx->Extensions.EXT_point_parameters = true;
    ctx->Extensions.EXT_provoking_vertex = true;
+   ctx->Extensions.EXT_render_snorm = true;
+   ctx->Extensions.EXT_sRGB = true;
    ctx->Extensions.EXT_stencil_two_side = true;
    ctx->Extensions.EXT_texture_array = true;
    ctx->Extensions.EXT_texture_env_dot3 = true;
@@ -112,16 +114,18 @@ intelInitExtensions(struct gl_context *ctx)
    ctx->Extensions.EXT_texture_snorm = true;
    ctx->Extensions.EXT_texture_sRGB = true;
    ctx->Extensions.EXT_texture_sRGB_decode = true;
+   ctx->Extensions.EXT_texture_sRGB_R8 = true;
    ctx->Extensions.EXT_texture_swizzle = true;
    ctx->Extensions.EXT_texture_type_2_10_10_10_REV = true;
    ctx->Extensions.EXT_vertex_array_bgra = true;
    ctx->Extensions.KHR_robustness = true;
    ctx->Extensions.AMD_seamless_cubemap_per_texture = true;
    ctx->Extensions.APPLE_object_purgeable = true;
-   ctx->Extensions.ATI_separate_stencil = true;
    ctx->Extensions.ATI_texture_env_combine3 = true;
+   ctx->Extensions.MESA_framebuffer_flip_y = true;
    ctx->Extensions.MESA_pack_invert = true;
    ctx->Extensions.NV_conditional_render = true;
+   ctx->Extensions.NV_fog_distance = true;
    ctx->Extensions.NV_primitive_restart = true;
    ctx->Extensions.NV_texture_barrier = true;
    ctx->Extensions.NV_texture_env_combine4 = true;
@@ -147,13 +151,19 @@ intelInitExtensions(struct gl_context *ctx)
       ctx->Const.GLSLVersion = 330;
    else
       ctx->Const.GLSLVersion = 120;
+
+   if (devinfo->gen >= 6)
+      ctx->Const.GLSLVersionCompat = 130;
+   else
+      ctx->Const.GLSLVersionCompat = 120;
+
    _mesa_override_glsl_version(&ctx->Const);
 
    ctx->Extensions.EXT_shader_integer_mix = ctx->Const.GLSLVersion >= 130;
    ctx->Extensions.MESA_shader_integer_functions = ctx->Const.GLSLVersion >= 130;
 
    if (devinfo->is_g4x || devinfo->gen >= 5) {
-      ctx->Extensions.MESA_shader_framebuffer_fetch_non_coherent = true;
+      ctx->Extensions.EXT_shader_framebuffer_fetch_non_coherent = true;
       ctx->Extensions.KHR_blend_equation_advanced = true;
    }
 
@@ -172,13 +182,16 @@ intelInitExtensions(struct gl_context *ctx)
       ctx->Extensions.ARB_conditional_render_inverted = true;
       ctx->Extensions.ARB_cull_distance = true;
       ctx->Extensions.ARB_draw_buffers_blend = true;
-      ctx->Extensions.ARB_enhanced_layouts = true;
+      if (ctx->API != API_OPENGL_COMPAT ||
+          ctx->Const.AllowHigherCompatVersion)
+         ctx->Extensions.ARB_enhanced_layouts = true;
       ctx->Extensions.ARB_ES3_compatibility = true;
       ctx->Extensions.ARB_fragment_layer_viewport = true;
       ctx->Extensions.ARB_pipeline_statistics_query = true;
       ctx->Extensions.ARB_sample_shading = true;
       ctx->Extensions.ARB_shading_language_420pack = true;
-      if (ctx->API != API_OPENGL_COMPAT) {
+      if (ctx->API != API_OPENGL_COMPAT ||
+          ctx->Const.AllowHigherCompatVersion) {
          ctx->Extensions.ARB_texture_buffer_object = true;
          ctx->Extensions.ARB_texture_buffer_object_rgb32 = true;
          ctx->Extensions.ARB_texture_buffer_range = true;
@@ -188,7 +201,9 @@ intelInitExtensions(struct gl_context *ctx)
       ctx->Extensions.ARB_texture_multisample = true;
       ctx->Extensions.ARB_uniform_buffer_object = true;
 
-      ctx->Extensions.AMD_vertex_shader_layer = true;
+      if (ctx->API != API_OPENGL_COMPAT ||
+          ctx->Const.AllowHigherCompatVersion)
+         ctx->Extensions.AMD_vertex_shader_layer = true;
       ctx->Extensions.EXT_framebuffer_multisample = true;
       ctx->Extensions.EXT_framebuffer_multisample_blit_scaled = true;
       ctx->Extensions.EXT_transform_feedback = true;
@@ -216,8 +231,11 @@ intelInitExtensions(struct gl_context *ctx)
       ctx->Extensions.ARB_conservative_depth = true;
       ctx->Extensions.ARB_derivative_control = true;
       ctx->Extensions.ARB_framebuffer_no_attachments = true;
-      ctx->Extensions.ARB_gpu_shader5 = true;
-      ctx->Extensions.ARB_gpu_shader_fp64 = true;
+      if (ctx->API != API_OPENGL_COMPAT ||
+          ctx->Const.AllowHigherCompatVersion) {
+         ctx->Extensions.ARB_gpu_shader5 = true;
+         ctx->Extensions.ARB_gpu_shader_fp64 = true;
+      }
       ctx->Extensions.ARB_shader_atomic_counters = true;
       ctx->Extensions.ARB_shader_atomic_counter_ops = true;
       ctx->Extensions.ARB_shader_clock = true;
@@ -225,7 +243,9 @@ intelInitExtensions(struct gl_context *ctx)
       ctx->Extensions.ARB_shader_image_size = true;
       ctx->Extensions.ARB_shader_precision = true;
       ctx->Extensions.ARB_shader_texture_image_samples = true;
-      ctx->Extensions.ARB_tessellation_shader = true;
+      if (ctx->API != API_OPENGL_COMPAT ||
+          ctx->Const.AllowHigherCompatVersion)
+         ctx->Extensions.ARB_tessellation_shader = true;
       ctx->Extensions.ARB_texture_compression_bptc = true;
       ctx->Extensions.ARB_texture_view = true;
       ctx->Extensions.ARB_shader_storage_buffer_object = true;
@@ -273,26 +293,54 @@ intelInitExtensions(struct gl_context *ctx)
    if (devinfo->gen >= 8 || devinfo->is_baytrail) {
       /* For now, we only enable OES_copy_image on platforms that support
        * ETC2 natively in hardware.  We would need more hacks to support it
-       * elsewhere.
+       * elsewhere. Same with OES_texture_view.
        */
       ctx->Extensions.OES_copy_image = true;
+      ctx->Extensions.OES_texture_view = true;
    }
 
    if (devinfo->gen >= 8) {
       ctx->Extensions.ARB_gpu_shader_int64 = true;
-      ctx->Extensions.ARB_shader_ballot = true; /* requires ARB_gpu_shader_int64 */
+      /* requires ARB_gpu_shader_int64 */
+      ctx->Extensions.ARB_shader_ballot = true;
       ctx->Extensions.ARB_ES3_2_compatibility = true;
    }
 
    if (devinfo->gen >= 9) {
       ctx->Extensions.ANDROID_extension_pack_es31a = true;
+      ctx->Extensions.AMD_depth_clamp_separate = true;
+      ctx->Extensions.ARB_post_depth_coverage = true;
       ctx->Extensions.ARB_shader_stencil_export = true;
+      ctx->Extensions.EXT_shader_framebuffer_fetch = true;
+      ctx->Extensions.INTEL_conservative_rasterization = true;
+      ctx->Extensions.INTEL_shader_atomic_float_minmax = true;
       ctx->Extensions.KHR_blend_equation_advanced_coherent = true;
       ctx->Extensions.KHR_texture_compression_astc_ldr = true;
       ctx->Extensions.KHR_texture_compression_astc_sliced_3d = true;
-      ctx->Extensions.INTEL_conservative_rasterization = true;
-      ctx->Extensions.MESA_shader_framebuffer_fetch = true;
-      ctx->Extensions.ARB_post_depth_coverage = true;
+
+      /*
+       * From the Skylake PRM Vol. 7 (Memory Fence Message, page 221):
+       *  "A memory fence message issued by a thread causes further messages
+       *   issued by the thread to be blocked until all previous data port
+       *   messages have completed, or the results can be globally observed from
+       *   the point of view of other threads in the system."
+       *
+       * From the Haswell PRM Vol. 7 (Memory Fence, page 256):
+       *  "A memory fence message issued by a thread causes further messages
+       *   issued by the thread to be blocked until all previous messages issued
+       *   by the thread to that data port (data cache or render cache) have
+       *   been globally observed from the point of view of other threads in the
+       *   system."
+       *
+       * Summarized: For ARB_fragment_shader_interlock to work, we need to
+       * ensure memory access ordering for all messages to the dataport from
+       * all threads. Memory fence messages prior to SKL only provide memory
+       * access ordering for messages from the same thread, so we can only
+       * support the feature from Gen9 onwards.
+       *
+       */
+
+      ctx->Extensions.ARB_fragment_shader_interlock = true;
    }
 
    if (gen_device_info_is_9lp(devinfo))
@@ -301,7 +349,8 @@ intelInitExtensions(struct gl_context *ctx)
    if (devinfo->gen >= 6)
       ctx->Extensions.INTEL_performance_query = true;
 
-   if (ctx->API == API_OPENGL_CORE)
+   if (ctx->API != API_OPENGL_COMPAT ||
+       ctx->Const.AllowHigherCompatVersion)
       ctx->Extensions.ARB_base_instance = true;
    if (ctx->API != API_OPENGL_CORE)
       ctx->Extensions.ARB_color_buffer_float = true;

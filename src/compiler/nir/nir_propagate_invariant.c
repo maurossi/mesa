@@ -71,7 +71,7 @@ add_var(nir_variable *var, struct set *invariants)
 static bool
 var_is_invariant(nir_variable *var, struct set * invariants)
 {
-   return var->data.invariant || _mesa_set_search(invariants, var);
+   return var && (var->data.invariant || _mesa_set_search(invariants, var));
 }
 
 static void
@@ -98,20 +98,20 @@ propagate_invariant_instr(nir_instr *instr, struct set *invariants)
    case nir_instr_type_intrinsic: {
       nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
       switch (intrin->intrinsic) {
-      case nir_intrinsic_copy_var:
+      case nir_intrinsic_copy_deref:
          /* If the destination is invariant then so is the source */
-         if (var_is_invariant(intrin->variables[0]->var, invariants))
-            add_var(intrin->variables[1]->var, invariants);
+         if (var_is_invariant(nir_intrinsic_get_var(intrin, 0), invariants))
+            add_var(nir_intrinsic_get_var(intrin, 1), invariants);
          break;
 
-      case nir_intrinsic_load_var:
+      case nir_intrinsic_load_deref:
          if (dest_is_invariant(&intrin->dest, invariants))
-            add_var(intrin->variables[0]->var, invariants);
+            add_var(nir_intrinsic_get_var(intrin, 0), invariants);
          break;
 
-      case nir_intrinsic_store_var:
-         if (var_is_invariant(intrin->variables[0]->var, invariants))
-            add_src(&intrin->src[0], invariants);
+      case nir_intrinsic_store_deref:
+         if (var_is_invariant(nir_intrinsic_get_var(intrin, 0), invariants))
+            add_src(&intrin->src[1], invariants);
          break;
 
       default:
@@ -120,6 +120,7 @@ propagate_invariant_instr(nir_instr *instr, struct set *invariants)
       }
    }
 
+   case nir_instr_type_deref:
    case nir_instr_type_jump:
    case nir_instr_type_ssa_undef:
    case nir_instr_type_load_const:
@@ -181,8 +182,7 @@ bool
 nir_propagate_invariant(nir_shader *shader)
 {
    /* Hash set of invariant things */
-   struct set *invariants = _mesa_set_create(NULL, _mesa_hash_pointer,
-                                             _mesa_key_pointer_equal);
+   struct set *invariants = _mesa_pointer_set_create(NULL);
 
    bool progress = false;
    nir_foreach_function(function, shader) {
