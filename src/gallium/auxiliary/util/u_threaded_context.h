@@ -220,7 +220,7 @@ struct tc_unflushed_batch_token;
  * The idea is to have batches as small as possible but large enough so that
  * the queuing and mutex overhead is negligible.
  */
-#define TC_CALLS_PER_BATCH    192
+#define TC_CALLS_PER_BATCH    768
 
 /* Threshold for when to use the queue or sync. */
 #define TC_MAX_STRING_MARKER_BYTES  512
@@ -406,14 +406,6 @@ static inline struct threaded_transfer *
 threaded_transfer(struct pipe_transfer *transfer)
 {
    return (struct threaded_transfer*)transfer;
-}
-
-static inline struct pipe_context *
-threaded_context_unwrap_unsync(struct pipe_context *pipe)
-{
-   if (!pipe || !pipe->priv)
-      return pipe;
-   return (struct pipe_context*)pipe->priv;
 }
 
 static inline void

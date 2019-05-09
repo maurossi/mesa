@@ -55,4 +55,22 @@ glcpp = executable(
   build_by_default : false,
 )
 
-# TODO: figure out how to make all of these tests work.
+if with_any_opengl and with_tests
+  modes = ['unix', 'windows', 'oldmac', 'bizarro']
+  if dep_valgrind.found()
+    modes += ['valgrind']
+  endif
+
+  foreach m : modes
+    test(
+      'glcpp test (@0@)'.format(m),
+      prog_python,
+      args : [
+        join_paths(meson.current_source_dir(), 'tests/glcpp_test.py'),
+        glcpp, join_paths(meson.current_source_dir(), 'tests'),
+        '--@0@'.format(m),
+      ],
+      suite : ['compiler', 'glcpp'],
+    )
+  endforeach
+endif

@@ -4,12 +4,6 @@
 #include "sid.h"
 #include "radv_cs.h"
 
-/*
- * This is the point we switch from using CP to compute shader
- * for certain buffer operations.
- */
-#define RADV_BUFFER_OPS_CS_THRESHOLD 4096
-
 static nir_shader *
 build_buffer_fill_shader(struct radv_device *dev)
 {
@@ -21,8 +15,8 @@ build_buffer_fill_shader(struct radv_device *dev)
 	b.shader->info.cs.local_size[1] = 1;
 	b.shader->info.cs.local_size[2] = 1;
 
-	nir_ssa_def *invoc_id = nir_load_system_value(&b, nir_intrinsic_load_local_invocation_id, 0);
-	nir_ssa_def *wg_id = nir_load_system_value(&b, nir_intrinsic_load_work_group_id, 0);
+	nir_ssa_def *invoc_id = nir_load_local_invocation_id(&b);
+	nir_ssa_def *wg_id = nir_load_work_group_id(&b);
 	nir_ssa_def *block_size = nir_imm_ivec4(&b,
 						b.shader->info.cs.local_size[0],
 						b.shader->info.cs.local_size[1],
@@ -31,7 +25,7 @@ build_buffer_fill_shader(struct radv_device *dev)
 	nir_ssa_def *global_id = nir_iadd(&b, nir_imul(&b, wg_id, block_size), invoc_id);
 
 	nir_ssa_def *offset = nir_imul(&b, global_id, nir_imm_int(&b, 16));
-	offset = nir_swizzle(&b, offset, (unsigned[]) {0, 0, 0, 0}, 1, false);
+	offset = nir_channel(&b, offset, 0);
 
 	nir_intrinsic_instr *dst_buf = nir_intrinsic_instr_create(b.shader,
 	                                                          nir_intrinsic_vulkan_resource_index);
@@ -73,8 +67,8 @@ build_buffer_copy_shader(struct radv_device *dev)
 	b.shader->info.cs.local_size[1] = 1;
 	b.shader->info.cs.local_size[2] = 1;
 
-	nir_ssa_def *invoc_id = nir_load_system_value(&b, nir_intrinsic_load_local_invocation_id, 0);
-	nir_ssa_def *wg_id = nir_load_system_value(&b, nir_intrinsic_load_work_group_id, 0);
+	nir_ssa_def *invoc_id = nir_load_local_invocation_id(&b);
+	nir_ssa_def *wg_id = nir_load_work_group_id(&b);
 	nir_ssa_def *block_size = nir_imm_ivec4(&b,
 						b.shader->info.cs.local_size[0],
 						b.shader->info.cs.local_size[1],
@@ -83,7 +77,7 @@ build_buffer_copy_shader(struct radv_device *dev)
 	nir_ssa_def *global_id = nir_iadd(&b, nir_imul(&b, wg_id, block_size), invoc_id);
 
 	nir_ssa_def *offset = nir_imul(&b, global_id, nir_imm_int(&b, 16));
-	offset = nir_swizzle(&b, offset, (unsigned[]) {0, 0, 0, 0}, 1, false);
+	offset = nir_channel(&b, offset, 0);
 
 	nir_intrinsic_instr *dst_buf = nir_intrinsic_instr_create(b.shader,
 	                                                          nir_intrinsic_vulkan_resource_index);
@@ -421,7 +415,7 @@ uint32_t radv_fill_buffer(struct radv_cmd_buffer *cmd_buffer,
 	} else if (size) {
 		uint64_t va = radv_buffer_get_va(bo);
 		va += offset;
-		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, bo, 8);
+		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, bo);
 		si_cp_dma_clear_buffer(cmd_buffer, va, size, value);
 	}
 
@@ -444,8 +438,8 @@ void radv_copy_buffer(struct radv_cmd_buffer *cmd_buffer,
 		src_va += src_offset;
 		dst_va += dst_offset;
 
-		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, src_bo, 8);
-		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, dst_bo, 8);
+		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, src_bo);
+		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, dst_bo);
 
 		si_cp_dma_buffer_copy(cmd_buffer, src_va, dst_va, size);
 	}
@@ -478,6 +472,13 @@ void radv_CmdCopyBuffer(
 	RADV_FROM_HANDLE(radv_cmd_buffer, cmd_buffer, commandBuffer);
 	RADV_FROM_HANDLE(radv_buffer, src_buffer, srcBuffer);
 	RADV_FROM_HANDLE(radv_buffer, dest_buffer, destBuffer);
+	bool old_predicating;
+
+	/* VK_EXT_conditional_rendering says that copy commands should not be
+	 * affected by conditional rendering.
+	 */
+	old_predicating = cmd_buffer->state.predicating;
+	cmd_buffer->state.predicating = false;
 
 	for (unsigned r = 0; r < regionCount; r++) {
 		uint64_t src_offset = src_buffer->offset + pRegions[r].srcOffset;
@@ -487,6 +488,9 @@ void radv_CmdCopyBuffer(
 		radv_copy_buffer(cmd_buffer, src_buffer->bo, dest_buffer->bo,
 				 src_offset, dest_offset, copy_size);
 	}
+
+	/* Restore conditional rendering. */
+	cmd_buffer->state.predicating = old_predicating;
 }
 
 void radv_CmdUpdateBuffer(
@@ -509,16 +513,16 @@ void radv_CmdUpdateBuffer(
 	if (!dataSize)
 		return;
 
-	if (dataSize < RADV_BUFFER_OPS_CS_THRESHOLD) {
+	if (dataSize < RADV_BUFFER_UPDATE_THRESHOLD) {
 		si_emit_cache_flush(cmd_buffer);
 
-		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, dst_buffer->bo, 8);
+		radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, dst_buffer->bo);
 
 		radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, words + 4);
 
 		radeon_emit(cmd_buffer->cs, PKT3(PKT3_WRITE_DATA, 2 + words, 0));
 		radeon_emit(cmd_buffer->cs, S_370_DST_SEL(mec ?
-		                                V_370_MEM_ASYNC : V_370_MEMORY_SYNC) |
+		                                V_370_MEM : V_370_MEM_GRBM) |
 		                            S_370_WR_CONFIRM(1) |
 		                            S_370_ENGINE_SEL(V_370_ME));
 		radeon_emit(cmd_buffer->cs, va);

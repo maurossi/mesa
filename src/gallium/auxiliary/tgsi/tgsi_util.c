@@ -106,7 +106,7 @@ tgsi_util_set_src_register_swizzle(struct tgsi_src_register *reg,
 unsigned
 tgsi_util_get_full_src_register_sign_mode(
    const struct tgsi_full_src_register *reg,
-   unsigned component)
+   UNUSED unsigned component)
 {
    unsigned sign_mode;
 
@@ -385,6 +385,7 @@ tgsi_util_get_inst_usage_mask(const struct tgsi_full_instruction *inst,
    case TGSI_OPCODE_ATOMUMAX:
    case TGSI_OPCODE_ATOMIMIN:
    case TGSI_OPCODE_ATOMIMAX:
+   case TGSI_OPCODE_ATOMFADD:
       if (src_idx == 0) {
          read_mask = TGSI_WRITEMASK_XY; /* bindless handle possible */
       } else if (src_idx == 1) {

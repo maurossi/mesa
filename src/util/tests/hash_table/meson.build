@@ -20,7 +20,8 @@
 
 foreach t : ['clear', 'collision', 'delete_and_lookup', 'delete_management',
              'destroy_callback', 'insert_and_lookup', 'insert_many',
-             'null_destroy', 'random_entry', 'remove_null', 'replacement']
+             'null_destroy', 'random_entry', 'remove_key', 'remove_null',
+             'replacement']
   test(
     t,
     executable(
@@ -29,6 +30,7 @@ foreach t : ['clear', 'collision', 'delete_and_lookup', 'delete_management',
       dependencies : [dep_thread, dep_dl],
       include_directories : [inc_include, inc_util],
       link_with : libmesa_util,
-    )
+    ),
+    suite : ['util'],
   )
 endforeach

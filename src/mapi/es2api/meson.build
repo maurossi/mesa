@@ -20,10 +20,10 @@
 
 es2_glapi_mapi_tmp_h = custom_target(
   'es2_glapi_mapi_tmp.h',
-  input : [mapi_abi_py, gl_and_es_api_files],
+  input : [glapi_gen_mapi_py, glapi_gen_gl_xml],
   output : 'glapi_mapi_tmp.h',
-  command : [prog_python2, '@INPUT0@', '--printer', 'es2api', '@INPUT1@'],
-  depend_files : api_xml_files,
+  command : [prog_python, '@INPUT0@', 'glesv2', '@INPUT1@'],
+  depend_files : glapi_gen_mapi_deps,
   capture : true,
 )
 
@@ -48,13 +48,15 @@ pkg.generate(
   description : 'Mesa OpenGL ES 2.0 library',
   version : meson.project_version(),
   libraries : libgles2,
-  libraries_private : '-lm -ldl -lpthread -pthread',
+  libraries_private : gl_priv_libs,
 )
 
 if with_tests
   test(
     'es2-ABI-check',
     find_program('ABI-check'),
-    args : libgles2
+    env : env_test,
+    args : libgles2,
+    suite : ['mapi'],
   )
 endif

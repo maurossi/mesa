@@ -45,25 +45,152 @@
 #include "util/u_vector.h"
 #include "eglglobals.h"
 
+#include <wayland-egl-backend.h>
 #include <wayland-client.h>
 #include "wayland-drm-client-protocol.h"
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 
-#ifndef DRM_FORMAT_MOD_INVALID
-#define DRM_FORMAT_MOD_INVALID ((1ULL << 56) - 1)
-#endif
-
-#ifndef DRM_FORMAT_MOD_LINEAR
-#define DRM_FORMAT_MOD_LINEAR 0
-#endif
-
-enum wl_drm_format_flags {
-   HAS_ARGB8888 = 1,
-   HAS_XRGB8888 = 2,
-   HAS_RGB565 = 4,
-   HAS_ARGB2101010 = 8,
-   HAS_XRGB2101010 = 16,
+/*
+ * The index of entries in this table is used as a bitmask in
+ * dri2_dpy->formats, which tracks the formats supported by our server.
+ */
+static const struct dri2_wl_visual {
+   const char *format_name;
+   uint32_t wl_drm_format;
+   uint32_t wl_shm_format;
+   int dri_image_format;
+   /* alt_dri_image_format is a substitute wl_buffer format to use for a
+    * wl-server unsupported dri_image_format, ie. some other dri_image_format in
+    * the table, of the same precision but with different channel ordering, or
+    * __DRI_IMAGE_FORMAT_NONE if an alternate format is not needed or supported.
+    * The code checks if alt_dri_image_format can be used as a fallback for a
+    * dri_image_format for a given wl-server implementation.
+    */
+   int alt_dri_image_format;
+   int bpp;
+   unsigned int rgba_masks[4];
+} dri2_wl_visuals[] = {
+   {
+     "XRGB2101010",
+     WL_DRM_FORMAT_XRGB2101010, WL_SHM_FORMAT_XRGB2101010,
+     __DRI_IMAGE_FORMAT_XRGB2101010, __DRI_IMAGE_FORMAT_XBGR2101010, 32,
+     { 0x3ff00000, 0x000ffc00, 0x000003ff, 0x00000000 }
+   },
+   {
+     "ARGB2101010",
+     WL_DRM_FORMAT_ARGB2101010, WL_SHM_FORMAT_ARGB2101010,
+     __DRI_IMAGE_FORMAT_ARGB2101010, __DRI_IMAGE_FORMAT_ABGR2101010, 32,
+     { 0x3ff00000, 0x000ffc00, 0x000003ff, 0xc0000000 }
+   },
+   {
+     "XBGR2101010",
+     WL_DRM_FORMAT_XBGR2101010, WL_SHM_FORMAT_XBGR2101010,
+     __DRI_IMAGE_FORMAT_XBGR2101010, __DRI_IMAGE_FORMAT_XRGB2101010, 32,
+     { 0x000003ff, 0x000ffc00, 0x3ff00000, 0x00000000 }
+   },
+   {
+     "ABGR2101010",
+     WL_DRM_FORMAT_ABGR2101010, WL_SHM_FORMAT_ABGR2101010,
+     __DRI_IMAGE_FORMAT_ABGR2101010, __DRI_IMAGE_FORMAT_ARGB2101010, 32,
+     { 0x000003ff, 0x000ffc00, 0x3ff00000, 0xc0000000 }
+   },
+   {
+     "XRGB8888",
+     WL_DRM_FORMAT_XRGB8888, WL_SHM_FORMAT_XRGB8888,
+     __DRI_IMAGE_FORMAT_XRGB8888, __DRI_IMAGE_FORMAT_NONE, 32,
+     { 0x00ff0000, 0x0000ff00, 0x000000ff, 0x00000000 }
+   },
+   {
+     "ARGB8888",
+     WL_DRM_FORMAT_ARGB8888, WL_SHM_FORMAT_ARGB8888,
+     __DRI_IMAGE_FORMAT_ARGB8888, __DRI_IMAGE_FORMAT_NONE, 32,
+     { 0x00ff0000, 0x0000ff00, 0x000000ff, 0xff000000 }
+   },
+   {
+     "RGB565",
+     WL_DRM_FORMAT_RGB565, WL_SHM_FORMAT_RGB565,
+     __DRI_IMAGE_FORMAT_RGB565, __DRI_IMAGE_FORMAT_NONE, 16,
+     { 0xf800, 0x07e0, 0x001f, 0x0000 }
+   },
 };
+
+static int
+dri2_wl_visual_idx_from_config(struct dri2_egl_display *dri2_dpy,
+                               const __DRIconfig *config)
+{
+   unsigned int red, green, blue, alpha;
+
+   dri2_dpy->core->getConfigAttrib(config, __DRI_ATTRIB_RED_MASK, &red);
+   dri2_dpy->core->getConfigAttrib(config, __DRI_ATTRIB_GREEN_MASK, &green);
+   dri2_dpy->core->getConfigAttrib(config, __DRI_ATTRIB_BLUE_MASK, &blue);
+   dri2_dpy->core->getConfigAttrib(config, __DRI_ATTRIB_ALPHA_MASK, &alpha);
+
+   for (unsigned int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
+      const struct dri2_wl_visual *wl_visual = &dri2_wl_visuals[i];
+
+      if (red == wl_visual->rgba_masks[0] &&
+          green == wl_visual->rgba_masks[1] &&
+          blue == wl_visual->rgba_masks[2] &&
+          alpha == wl_visual->rgba_masks[3]) {
+         return i;
+      }
+   }
+
+   return -1;
+}
+
+static int
+dri2_wl_visual_idx_from_fourcc(uint32_t fourcc)
+{
+   for (int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
+      /* wl_drm format codes overlap with DRIImage FourCC codes for all formats
+       * we support. */
+      if (dri2_wl_visuals[i].wl_drm_format == fourcc)
+         return i;
+   }
+
+   return -1;
+}
+
+static int
+dri2_wl_visual_idx_from_dri_image_format(uint32_t dri_image_format)
+{
+   for (int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
+      if (dri2_wl_visuals[i].dri_image_format == dri_image_format)
+         return i;
+   }
+
+   return -1;
+}
+
+static int
+dri2_wl_visual_idx_from_shm_format(uint32_t shm_format)
+{
+   for (int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
+      if (dri2_wl_visuals[i].wl_shm_format == shm_format)
+         return i;
+   }
+
+   return -1;
+}
+
+bool
+dri2_wl_is_format_supported(void* user_data, uint32_t format)
+{
+   _EGLDisplay *disp = (_EGLDisplay *) user_data;
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+   int j = dri2_wl_visual_idx_from_fourcc(format);
+
+   if (j == -1)
+      return false;
+
+   for (int i = 0; dri2_dpy->driver_configs[i]; i++)
+      if (j == dri2_wl_visual_idx_from_config(dri2_dpy,
+                                              dri2_dpy->driver_configs[i]))
+         return true;
+
+   return false;
+}
 
 static int
 roundtrip(struct dri2_egl_display *dri2_dpy)
@@ -81,9 +208,12 @@ wl_buffer_release(void *data, struct wl_buffer *buffer)
       if (dri2_surf->color_buffers[i].wl_buffer == buffer)
          break;
 
-   if (i == ARRAY_SIZE(dri2_surf->color_buffers)) {
+   assert (i < ARRAY_SIZE(dri2_surf->color_buffers));
+
+   if (dri2_surf->color_buffers[i].wl_release) {
       wl_buffer_destroy(buffer);
-      return;
+      dri2_surf->color_buffers[i].wl_release = false;
+      dri2_surf->color_buffers[i].wl_buffer = NULL;
    }
 
    dri2_surf->color_buffers[i].locked = false;
@@ -100,6 +230,17 @@ resize_callback(struct wl_egl_window *wl_win, void *data)
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
 
+   /* Update the surface size as soon as native window is resized; from user
+    * pov, this makes the effect that resize is done immediately after native
+    * window resize, without requiring to wait until the first draw.
+    *
+    * A more detailed and lengthy explanation can be found at
+    * https://lists.freedesktop.org/archives/mesa-dev/2018-June/196474.html
+    */
+   if (!dri2_surf->back) {
+      dri2_surf->base.Width = wl_win->width;
+      dri2_surf->base.Height = wl_win->height;
+   }
    dri2_dpy->flush->invalidate(dri2_surf->dri_drawable);
 }
 
@@ -115,7 +256,7 @@ get_wl_surface_proxy(struct wl_egl_window *window)
 {
     /* Version 3 of wl_egl_window introduced a version field at the same
      * location where a pointer to wl_surface was stored. Thus, if
-     * window->version is dereferencable, we've been given an older version of
+     * window->version is dereferenceable, we've been given an older version of
      * wl_egl_window, and window->version points to wl_surface */
    if (_eglPointerIsDereferencable((void *)(window->version))) {
       return wl_proxy_create_wrapper((void *)(window->version));
@@ -136,6 +277,7 @@ dri2_wl_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
    struct dri2_egl_config *dri2_conf = dri2_egl_config(conf);
    struct wl_egl_window *window = native_window;
    struct dri2_egl_surface *dri2_surf;
+   int visual_idx;
    const __DRIconfig *config;
 
    dri2_surf = calloc(1, sizeof *dri2_surf);
@@ -144,32 +286,29 @@ dri2_wl_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
       return NULL;
    }
 
-   if (!dri2_init_surface(&dri2_surf->base, disp, EGL_WINDOW_BIT, conf, attrib_list, false))
+   if (!dri2_init_surface(&dri2_surf->base, disp, EGL_WINDOW_BIT, conf,
+                          attrib_list, false))
       goto cleanup_surf;
 
+   config = dri2_get_dri_config(dri2_conf, EGL_WINDOW_BIT,
+                                dri2_surf->base.GLColorspace);
+
+   if (!config) {
+      _eglError(EGL_BAD_MATCH, "Unsupported surfacetype/colorspace configuration");
+      goto cleanup_surf;
+   }
+
+   dri2_surf->base.Width = window->width;
+   dri2_surf->base.Height = window->height;
+
+   visual_idx = dri2_wl_visual_idx_from_config(dri2_dpy, config);
+   assert(visual_idx != -1);
+
    if (dri2_dpy->wl_dmabuf || dri2_dpy->wl_drm) {
-      if (conf->RedSize == 5)
-         dri2_surf->format = WL_DRM_FORMAT_RGB565;
-      else if (conf->RedSize == 8 && conf->AlphaSize == 0)
-         dri2_surf->format = WL_DRM_FORMAT_XRGB8888;
-      else if (conf->RedSize == 8)
-         dri2_surf->format = WL_DRM_FORMAT_ARGB8888;
-      else if (conf->RedSize == 10 && conf->AlphaSize == 0)
-         dri2_surf->format = WL_DRM_FORMAT_XRGB2101010;
-      else if (conf->RedSize == 10)
-         dri2_surf->format = WL_DRM_FORMAT_ARGB2101010;
+      dri2_surf->format = dri2_wl_visuals[visual_idx].wl_drm_format;
    } else {
       assert(dri2_dpy->wl_shm);
-      if (conf->RedSize == 5)
-         dri2_surf->format = WL_SHM_FORMAT_RGB565;
-      else if (conf->RedSize == 8 && conf->AlphaSize == 0)
-         dri2_surf->format = WL_SHM_FORMAT_XRGB8888;
-      else if (conf->RedSize == 8)
-         dri2_surf->format = WL_SHM_FORMAT_ARGB8888;
-      else if (conf->RedSize == 10 && conf->AlphaSize == 0)
-         dri2_surf->format = WL_SHM_FORMAT_XRGB2101010;
-      else if (conf->RedSize == 10)
-         dri2_surf->format = WL_SHM_FORMAT_ARGB2101010;
+      dri2_surf->format = dri2_wl_visuals[visual_idx].wl_shm_format;
    }
 
    dri2_surf->wl_queue = wl_display_create_queue(dri2_dpy->wl_dpy);
@@ -205,13 +344,10 @@ dri2_wl_create_window_surface(_EGLDriver *drv, _EGLDisplay *disp,
                       dri2_surf->wl_queue);
 
    dri2_surf->wl_win = window;
-   dri2_surf->wl_win->private = dri2_surf;
+   dri2_surf->wl_win->driver_private = dri2_surf;
    dri2_surf->wl_win->destroy_window_callback = destroy_window_callback;
    if (dri2_dpy->flush)
       dri2_surf->wl_win->resize_callback = resize_callback;
-
-   config = dri2_get_dri_config(dri2_conf, EGL_WINDOW_BIT,
-                                dri2_surf->base.GLColorspace);
 
    if (dri2_dpy->image_driver)
       createNewDrawable = dri2_dpy->image_driver->createNewDrawable;
@@ -294,7 +430,7 @@ dri2_wl_destroy_surface(_EGLDriver *drv, _EGLDisplay *disp, _EGLSurface *surf)
       wl_callback_destroy(dri2_surf->throttle_callback);
 
    if (dri2_surf->wl_win) {
-      dri2_surf->wl_win->private = NULL;
+      dri2_surf->wl_win->driver_private = NULL;
       dri2_surf->wl_win->resize_callback = NULL;
       dri2_surf->wl_win->destroy_window_callback = NULL;
    }
@@ -318,9 +454,14 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
       dri2_egl_display(dri2_surf->base.Resource.Display);
 
    for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-      if (dri2_surf->color_buffers[i].wl_buffer &&
-          !dri2_surf->color_buffers[i].locked)
-         wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
+      if (dri2_surf->color_buffers[i].wl_buffer) {
+         if (dri2_surf->color_buffers[i].locked) {
+            dri2_surf->color_buffers[i].wl_release = true;
+         } else {
+            wl_buffer_destroy(dri2_surf->color_buffers[i].wl_buffer);
+            dri2_surf->color_buffers[i].wl_buffer = NULL;
+         }
+      }
       if (dri2_surf->color_buffers[i].dri_image)
          dri2_dpy->image->destroyImage(dri2_surf->color_buffers[i].dri_image);
       if (dri2_surf->color_buffers[i].linear_copy)
@@ -329,11 +470,9 @@ dri2_wl_release_buffers(struct dri2_egl_surface *dri2_surf)
          munmap(dri2_surf->color_buffers[i].data,
                 dri2_surf->color_buffers[i].data_size);
 
-      dri2_surf->color_buffers[i].wl_buffer = NULL;
       dri2_surf->color_buffers[i].dri_image = NULL;
       dri2_surf->color_buffers[i].linear_copy = NULL;
       dri2_surf->color_buffers[i].data = NULL;
-      dri2_surf->color_buffers[i].locked = false;
    }
 
    if (dri2_dpy->dri2)
@@ -346,52 +485,37 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
    struct dri2_egl_display *dri2_dpy =
       dri2_egl_display(dri2_surf->base.Resource.Display);
    int use_flags;
+   int visual_idx;
    unsigned int dri_image_format;
+   unsigned int linear_dri_image_format;
    uint64_t *modifiers;
    int num_modifiers;
 
-   /* currently supports five WL DRM formats,
-    * WL_DRM_FORMAT_ARGB2101010, WL_DRM_FORMAT_XRGB2101010,
-    * WL_DRM_FORMAT_ARGB8888, WL_DRM_FORMAT_XRGB8888,
-    * and WL_DRM_FORMAT_RGB565
+   visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
+   assert(visual_idx != -1);
+   dri_image_format = dri2_wl_visuals[visual_idx].dri_image_format;
+   linear_dri_image_format = dri_image_format;
+   modifiers = u_vector_tail(&dri2_dpy->wl_modifiers[visual_idx]);
+   num_modifiers = u_vector_length(&dri2_dpy->wl_modifiers[visual_idx]);
+
+   /* Substitute dri image format if server does not support original format */
+   if (!(dri2_dpy->formats & (1 << visual_idx)))
+      linear_dri_image_format = dri2_wl_visuals[visual_idx].alt_dri_image_format;
+
+   /* These asserts hold, as long as dri2_wl_visuals[] is self-consistent and
+    * the PRIME substitution logic in dri2_wl_add_configs_for_visuals() is free
+    * of bugs.
     */
-   switch (dri2_surf->format) {
-   case WL_DRM_FORMAT_ARGB2101010:
-      dri_image_format = __DRI_IMAGE_FORMAT_ARGB2101010;
-      modifiers = u_vector_tail(&dri2_dpy->wl_modifiers.argb2101010);
-      num_modifiers = u_vector_length(&dri2_dpy->wl_modifiers.argb2101010);
-      break;
-   case WL_DRM_FORMAT_XRGB2101010:
-      dri_image_format = __DRI_IMAGE_FORMAT_XRGB2101010;
-      modifiers = u_vector_tail(&dri2_dpy->wl_modifiers.xrgb2101010);
-      num_modifiers = u_vector_length(&dri2_dpy->wl_modifiers.xrgb2101010);
-      break;
-   case WL_DRM_FORMAT_ARGB8888:
-      dri_image_format = __DRI_IMAGE_FORMAT_ARGB8888;
-      modifiers = u_vector_tail(&dri2_dpy->wl_modifiers.argb8888);
-      num_modifiers = u_vector_length(&dri2_dpy->wl_modifiers.argb8888);
-      break;
-   case WL_DRM_FORMAT_XRGB8888:
-      dri_image_format = __DRI_IMAGE_FORMAT_XRGB8888;
-      modifiers = u_vector_tail(&dri2_dpy->wl_modifiers.xrgb8888);
-      num_modifiers = u_vector_length(&dri2_dpy->wl_modifiers.xrgb8888);
-      break;
-   case WL_DRM_FORMAT_RGB565:
-      dri_image_format = __DRI_IMAGE_FORMAT_RGB565;
-      modifiers = u_vector_tail(&dri2_dpy->wl_modifiers.rgb565);
-      num_modifiers = u_vector_length(&dri2_dpy->wl_modifiers.rgb565);
-      break;
-   default:
-      /* format is not supported */
-      return -1;
-   }
+   assert(linear_dri_image_format != __DRI_IMAGE_FORMAT_NONE);
+   assert(dri2_dpy->formats &
+          (1 << dri2_wl_visual_idx_from_dri_image_format(linear_dri_image_format)));
 
    /* There might be a buffer release already queued that wasn't processed */
    wl_display_dispatch_queue_pending(dri2_dpy->wl_dpy, dri2_surf->wl_queue);
 
    while (dri2_surf->back == NULL) {
       for (int i = 0; i < ARRAY_SIZE(dri2_surf->color_buffers); i++) {
-         /* Get an unlocked buffer, preferrably one with a dri_buffer
+         /* Get an unlocked buffer, preferably one with a dri_buffer
           * already allocated. */
          if (dri2_surf->color_buffers[i].locked)
             continue;
@@ -432,7 +556,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
             dri2_dpy->image->createImageWithModifiers(dri2_dpy->dri_screen,
                                                       dri2_surf->base.Width,
                                                       dri2_surf->base.Height,
-                                                      dri_image_format,
+                                                      linear_dri_image_format,
                                                       &linear_mod,
                                                       1,
                                                       NULL);
@@ -441,7 +565,7 @@ get_back_bo(struct dri2_egl_surface *dri2_surf)
             dri2_dpy->image->createImage(dri2_dpy->dri_screen,
                                          dri2_surf->base.Width,
                                          dri2_surf->base.Height,
-                                         dri_image_format,
+                                         linear_dri_image_format,
                                          use_flags |
                                          __DRI_IMAGE_USE_LINEAR,
                                          NULL);
@@ -516,12 +640,15 @@ update_buffers(struct dri2_egl_surface *dri2_surf)
    if (dri2_surf->base.Width != dri2_surf->wl_win->width ||
        dri2_surf->base.Height != dri2_surf->wl_win->height) {
 
-      dri2_wl_release_buffers(dri2_surf);
-
       dri2_surf->base.Width  = dri2_surf->wl_win->width;
       dri2_surf->base.Height = dri2_surf->wl_win->height;
       dri2_surf->dx = dri2_surf->wl_win->dx;
       dri2_surf->dy = dri2_surf->wl_win->dy;
+   }
+
+   if (dri2_surf->base.Width != dri2_surf->wl_win->attached_width ||
+       dri2_surf->base.Height != dri2_surf->wl_win->attached_height) {
+      dri2_wl_release_buffers(dri2_surf);
    }
 
    if (get_back_bo(dri2_surf) < 0) {
@@ -599,22 +726,10 @@ dri2_wl_get_buffers(__DRIdrawable * driDrawable,
    struct dri2_egl_surface *dri2_surf = loaderPrivate;
    unsigned int *attachments_with_format;
    __DRIbuffer *buffer;
-   unsigned int bpp;
+   int visual_idx = dri2_wl_visual_idx_from_fourcc(dri2_surf->format);
 
-   switch (dri2_surf->format) {
-   case WL_DRM_FORMAT_ARGB2101010:
-   case WL_DRM_FORMAT_XRGB2101010:
-   case WL_DRM_FORMAT_ARGB8888:
-   case WL_DRM_FORMAT_XRGB8888:
-      bpp = 32;
-      break;
-   case WL_DRM_FORMAT_RGB565:
-      bpp = 16;
-      break;
-   default:
-      /* format is not supported */
+   if (visual_idx == -1)
       return NULL;
-   }
 
    attachments_with_format = calloc(count, 2 * sizeof(unsigned int));
    if (!attachments_with_format) {
@@ -624,7 +739,7 @@ dri2_wl_get_buffers(__DRIdrawable * driDrawable,
 
    for (int i = 0; i < count; ++i) {
       attachments_with_format[2*i] = attachments[i];
-      attachments_with_format[2*i + 1] = bpp;
+      attachments_with_format[2*i + 1] = dri2_wl_visuals[visual_idx].bpp;
    }
 
    buffer =
@@ -700,6 +815,7 @@ get_fourcc(struct dri2_egl_display *dri2_dpy,
 {
    EGLBoolean query;
    int dri_format;
+   int visual_idx;
 
    query = dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FOURCC,
                                        fourcc);
@@ -711,16 +827,12 @@ get_fourcc(struct dri2_egl_display *dri2_dpy,
    if (!query)
       return false;
 
-   switch (dri_format) {
-   case __DRI_IMAGE_FORMAT_ARGB8888:
-      *fourcc = __DRI_IMAGE_FOURCC_ARGB8888;
-      return true;
-   case __DRI_IMAGE_FORMAT_XRGB8888:
-      *fourcc = __DRI_IMAGE_FOURCC_XRGB8888;
-      return true;
-   default:
+   visual_idx = dri2_wl_visual_idx_from_dri_image_format(dri_format);
+   if (visual_idx == -1)
       return false;
-   }
+
+   *fourcc = dri2_wl_visuals[visual_idx].wl_drm_format;
+   return true;
 }
 
 static struct wl_buffer *
@@ -755,8 +867,7 @@ create_wl_buffer(struct dri2_egl_display *dri2_dpy,
                                            __DRI_IMAGE_ATTRIB_MODIFIER_LOWER,
                                            &mod_lo);
       if (query) {
-         modifier = (uint64_t) mod_hi << 32;
-         modifier |= (uint64_t) (mod_lo & 0xffffffff);
+         modifier = combine_u32_into_u64(mod_hi, mod_lo);
       }
    }
 
@@ -776,13 +887,10 @@ create_wl_buffer(struct dri2_egl_display *dri2_dpy,
          int stride, offset;
          int fd = -1;
 
-         if (i == 0)
-            p_image = image;
-         else
-            p_image = dri2_dpy->image->fromPlanar(image, i, NULL);
+         p_image = dri2_dpy->image->fromPlanar(image, i, NULL);
          if (!p_image) {
-            zwp_linux_buffer_params_v1_destroy(params);
-            return NULL;
+            assert(i == 0);
+            p_image = image;
          }
 
          query = dri2_dpy->image->queryImage(p_image,
@@ -909,6 +1017,8 @@ dri2_wl_swap_buffers_with_damage(_EGLDriver *drv,
       dri2_surf->current->wl_buffer =
          create_wl_buffer(dri2_dpy, dri2_surf, image);
 
+      dri2_surf->current->wl_release = false;
+
       wl_buffer_add_listener(dri2_surf->current->wl_buffer,
                              &wl_buffer_listener, dri2_surf);
    }
@@ -991,29 +1101,16 @@ dri2_wl_create_wayland_buffer_from_image(_EGLDriver *drv,
    struct dri2_egl_image *dri2_img = dri2_egl_image(img);
    __DRIimage *image = dri2_img->dri_image;
    struct wl_buffer *buffer;
-   int format;
+   int format, visual_idx;
 
+   /* Check the upstream display supports this buffer's format. */
    dri2_dpy->image->queryImage(image, __DRI_IMAGE_ATTRIB_FORMAT, &format);
-   switch (format) {
-   case __DRI_IMAGE_FORMAT_ARGB2101010:
-      if (!(dri2_dpy->formats & HAS_ARGB2101010))
-         goto bad_format;
-      break;
-   case __DRI_IMAGE_FORMAT_XRGB2101010:
-      if (!(dri2_dpy->formats & HAS_XRGB2101010))
-         goto bad_format;
-      break;
-   case __DRI_IMAGE_FORMAT_ARGB8888:
-      if (!(dri2_dpy->formats & HAS_ARGB8888))
-         goto bad_format;
-      break;
-   case __DRI_IMAGE_FORMAT_XRGB8888:
-      if (!(dri2_dpy->formats & HAS_XRGB8888))
-         goto bad_format;
-      break;
-   default:
+   visual_idx = dri2_wl_visual_idx_from_dri_image_format(format);
+   if (visual_idx == -1)
       goto bad_format;
-   }
+
+   if (!(dri2_dpy->formats & (1u << visual_idx)))
+      goto bad_format;
 
    buffer = create_wl_buffer(dri2_dpy, NULL, image);
 
@@ -1073,13 +1170,22 @@ drm_handle_device(void *data, struct wl_drm *drm, const char *device)
    if (dri2_dpy->fd == -1) {
       _eglLog(_EGL_WARNING, "wayland-egl: could not open %s (%s)",
               dri2_dpy->device_name, strerror(errno));
+      free(dri2_dpy->device_name);
+      dri2_dpy->device_name = NULL;
       return;
    }
 
    if (drmGetNodeTypeFromFd(dri2_dpy->fd) == DRM_NODE_RENDER) {
       dri2_dpy->authenticated = true;
    } else {
-      drmGetMagic(dri2_dpy->fd, &magic);
+      if (drmGetMagic(dri2_dpy->fd, &magic)) {
+         close(dri2_dpy->fd);
+         dri2_dpy->fd = -1;
+         free(dri2_dpy->device_name);
+         dri2_dpy->device_name = NULL;
+         _eglLog(_EGL_WARNING, "wayland-egl: drmGetMagic failed");
+         return;
+      }
       wl_drm_authenticate(dri2_dpy->wl_drm, magic);
    }
 }
@@ -1088,24 +1194,12 @@ static void
 drm_handle_format(void *data, struct wl_drm *drm, uint32_t format)
 {
    struct dri2_egl_display *dri2_dpy = data;
+   int visual_idx = dri2_wl_visual_idx_from_fourcc(format);
 
-   switch (format) {
-   case WL_DRM_FORMAT_ARGB2101010:
-      dri2_dpy->formats |= HAS_ARGB2101010;
-      break;
-   case WL_DRM_FORMAT_XRGB2101010:
-      dri2_dpy->formats |= HAS_XRGB2101010;
-      break;
-   case WL_DRM_FORMAT_ARGB8888:
-      dri2_dpy->formats |= HAS_ARGB8888;
-      break;
-   case WL_DRM_FORMAT_XRGB8888:
-      dri2_dpy->formats |= HAS_XRGB8888;
-      break;
-   case WL_DRM_FORMAT_RGB565:
-      dri2_dpy->formats |= HAS_RGB565;
-      break;
-   }
+   if (visual_idx == -1)
+      return;
+
+   dri2_dpy->formats |= (1u << visual_idx);
 }
 
 static void
@@ -1144,42 +1238,20 @@ dmabuf_handle_modifier(void *data, struct zwp_linux_dmabuf_v1 *dmabuf,
                        uint32_t modifier_lo)
 {
    struct dri2_egl_display *dri2_dpy = data;
-   uint64_t *mod = NULL;
+   int visual_idx = dri2_wl_visual_idx_from_fourcc(format);
+   uint64_t *mod;
+
+   if (visual_idx == -1)
+      return;
 
    if (modifier_hi == (DRM_FORMAT_MOD_INVALID >> 32) &&
        modifier_lo == (DRM_FORMAT_MOD_INVALID & 0xffffffff))
       return;
 
-   switch (format) {
-   case WL_DRM_FORMAT_ARGB2101010:
-      mod = u_vector_add(&dri2_dpy->wl_modifiers.argb2101010);
-      dri2_dpy->formats |= HAS_ARGB2101010;
-      break;
-   case WL_DRM_FORMAT_XRGB2101010:
-      mod = u_vector_add(&dri2_dpy->wl_modifiers.xrgb2101010);
-      dri2_dpy->formats |= HAS_XRGB2101010;
-      break;
-   case WL_DRM_FORMAT_ARGB8888:
-      mod = u_vector_add(&dri2_dpy->wl_modifiers.argb8888);
-      dri2_dpy->formats |= HAS_ARGB8888;
-      break;
-   case WL_DRM_FORMAT_XRGB8888:
-      mod = u_vector_add(&dri2_dpy->wl_modifiers.xrgb8888);
-      dri2_dpy->formats |= HAS_XRGB8888;
-      break;
-   case WL_DRM_FORMAT_RGB565:
-      mod = u_vector_add(&dri2_dpy->wl_modifiers.rgb565);
-      dri2_dpy->formats |= HAS_RGB565;
-      break;
-   default:
-      break;
-   }
+   dri2_dpy->formats |= (1u << visual_idx);
 
-   if (!mod)
-      return;
-
-   *mod = (uint64_t) modifier_hi << 32;
-   *mod |= (uint64_t) (modifier_lo & 0xffffffff);
+   mod = u_vector_add(&dri2_dpy->wl_modifiers[visual_idx]);
+   *mod = combine_u32_into_u64(modifier_hi, modifier_lo);
 }
 
 static const struct zwp_linux_dmabuf_v1_listener dmabuf_listener = {
@@ -1267,33 +1339,62 @@ static EGLBoolean
 dri2_wl_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
-   static const struct {
-      const char *format_name;
-      int has_format;
-      unsigned int rgba_masks[4];
-   } visuals[] = {
-      { "XRGB2101010", HAS_XRGB2101010, { 0x3ff00000, 0xffc00, 0x3ff, 0 } },
-      { "ARGB2101010", HAS_ARGB2101010, { 0x3ff00000, 0xffc00, 0x3ff, 0xc0000000 } },
-      { "XRGB8888", HAS_XRGB8888, { 0xff0000, 0xff00, 0x00ff, 0 } },
-      { "ARGB8888", HAS_ARGB8888, { 0xff0000, 0xff00, 0x00ff, 0xff000000 } },
-      { "RGB565",   HAS_RGB565,   { 0x00f800, 0x07e0, 0x001f, 0 } },
-   };
-   unsigned int format_count[ARRAY_SIZE(visuals)] = { 0 };
+   unsigned int format_count[ARRAY_SIZE(dri2_wl_visuals)] = { 0 };
    unsigned int count = 0;
+   bool assigned;
 
    for (unsigned i = 0; dri2_dpy->driver_configs[i]; i++) {
-      for (unsigned j = 0; j < ARRAY_SIZE(visuals); j++) {
+      assigned = false;
+
+      for (unsigned j = 0; j < ARRAY_SIZE(dri2_wl_visuals); j++) {
          struct dri2_egl_config *dri2_conf;
 
-         if (!(dri2_dpy->formats & visuals[j].has_format))
+         if (!(dri2_dpy->formats & (1u << j)))
             continue;
 
          dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
-               count + 1, EGL_WINDOW_BIT, NULL, visuals[j].rgba_masks);
+               count + 1, EGL_WINDOW_BIT, NULL, dri2_wl_visuals[j].rgba_masks);
          if (dri2_conf) {
             if (dri2_conf->base.ConfigID == count + 1)
                count++;
             format_count[j]++;
+            assigned = true;
+         }
+      }
+
+      if (!assigned && dri2_dpy->is_different_gpu) {
+         struct dri2_egl_config *dri2_conf;
+         int alt_dri_image_format, c, s;
+
+         /* No match for config. Try if we can blitImage convert to a visual */
+         c = dri2_wl_visual_idx_from_config(dri2_dpy,
+                                            dri2_dpy->driver_configs[i]);
+
+         if (c == -1)
+            continue;
+
+         /* Find optimal target visual for blitImage conversion, if any. */
+         alt_dri_image_format = dri2_wl_visuals[c].alt_dri_image_format;
+         s = dri2_wl_visual_idx_from_dri_image_format(alt_dri_image_format);
+
+         if (s == -1 || !(dri2_dpy->formats & (1 << s)))
+            continue;
+
+         /* Visual s works for the Wayland server, and c can be converted into s
+          * by our client gpu during PRIME blitImage conversion to a linear
+          * wl_buffer, so add visual c as supported by the client renderer.
+          */
+         dri2_conf = dri2_add_config(disp, dri2_dpy->driver_configs[i],
+                                     count + 1, EGL_WINDOW_BIT, NULL,
+                                     dri2_wl_visuals[c].rgba_masks);
+         if (dri2_conf) {
+            if (dri2_conf->base.ConfigID == count + 1)
+               count++;
+            format_count[c]++;
+            if (format_count[c] == 1)
+               _eglLog(_EGL_DEBUG, "Client format %s to server format %s via "
+                       "PRIME blitImage.", dri2_wl_visuals[c].format_name,
+                       dri2_wl_visuals[s].format_name);
          }
       }
    }
@@ -1301,7 +1402,7 @@ dri2_wl_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
    for (unsigned i = 0; i < ARRAY_SIZE(format_count); i++) {
       if (!format_count[i]) {
          _eglLog(_EGL_DEBUG, "No DRI config supports native format %s",
-                 visuals[i].format_name);
+                 dri2_wl_visuals[i].format_name);
       }
    }
 
@@ -1311,9 +1412,8 @@ dri2_wl_add_configs_for_visuals(_EGLDriver *drv, _EGLDisplay *disp)
 static EGLBoolean
 dri2_initialize_wayland_drm(_EGLDriver *drv, _EGLDisplay *disp)
 {
+   _EGLDevice *dev;
    struct dri2_egl_display *dri2_dpy;
-
-   loader_set_logger(_eglLog);
 
    dri2_dpy = calloc(1, sizeof *dri2_dpy);
    if (!dri2_dpy)
@@ -1330,12 +1430,13 @@ dri2_initialize_wayland_drm(_EGLDriver *drv, _EGLDisplay *disp)
       dri2_dpy->wl_dpy = disp->PlatformDisplay;
    }
 
-   if (!u_vector_init(&dri2_dpy->wl_modifiers.xrgb2101010, sizeof(uint64_t), 32) ||
-       !u_vector_init(&dri2_dpy->wl_modifiers.argb2101010, sizeof(uint64_t), 32) ||
-       !u_vector_init(&dri2_dpy->wl_modifiers.xrgb8888, sizeof(uint64_t), 32) ||
-       !u_vector_init(&dri2_dpy->wl_modifiers.argb8888, sizeof(uint64_t), 32) ||
-       !u_vector_init(&dri2_dpy->wl_modifiers.rgb565, sizeof(uint64_t), 32)) {
+   dri2_dpy->wl_modifiers =
+      calloc(ARRAY_SIZE(dri2_wl_visuals), sizeof(*dri2_dpy->wl_modifiers));
+   if (!dri2_dpy->wl_modifiers)
       goto cleanup;
+   for (int i = 0; i < ARRAY_SIZE(dri2_wl_visuals); i++) {
+      if (!u_vector_init(&dri2_dpy->wl_modifiers[i], sizeof(uint64_t), 32))
+         goto cleanup;
    }
 
    dri2_dpy->wl_queue = wl_display_create_queue(dri2_dpy->wl_dpy);
@@ -1364,6 +1465,14 @@ dri2_initialize_wayland_drm(_EGLDriver *drv, _EGLDisplay *disp)
 
    dri2_dpy->fd = loader_get_user_preferred_fd(dri2_dpy->fd,
                                                &dri2_dpy->is_different_gpu);
+   dev = _eglAddDevice(dri2_dpy->fd, false);
+   if (!dev) {
+      _eglError(EGL_NOT_INITIALIZED, "DRI2: failed to find EGLDevice");
+      goto cleanup;
+   }
+
+   disp->Device = dev;
+
    if (dri2_dpy->is_different_gpu) {
       free(dri2_dpy->device_name);
       dri2_dpy->device_name = loader_get_device_name_for_fd(dri2_dpy->fd);
@@ -1471,10 +1580,11 @@ dri2_initialize_wayland_drm(_EGLDriver *drv, _EGLDisplay *disp)
 static int
 dri2_wl_swrast_get_stride_for_format(int format, int w)
 {
-   if (format == WL_SHM_FORMAT_RGB565)
-      return 2 * w;
-   else /* ARGB8888 || XRGB8888 || ARGB2101010 || XRGB2101010 */
-      return 4 * w;
+   int visual_idx = dri2_wl_visual_idx_from_shm_format(format);
+
+   assume(visual_idx != -1);
+
+   return w * (dri2_wl_visuals[visual_idx].bpp / 8);
 }
 
 /*
@@ -1550,7 +1660,7 @@ create_tmpfile_cloexec(char *tmpname)
  *
  * If the C library implements posix_fallocate(), it is used to
  * guarantee that disk space is available for the file at the
- * given size. If disk space is insufficent, errno is set to ENOSPC.
+ * given size. If disk space is insufficient, errno is set to ENOSPC.
  * If posix_fallocate() is not supported, program may receive
  * SIGBUS on accessing mmap()'ed file contents instead.
  */
@@ -1608,7 +1718,7 @@ dri2_wl_swrast_allocate_buffer(struct dri2_egl_surface *dri2_surf,
    stride = dri2_wl_swrast_get_stride_for_format(format, w);
    size_map = h * stride;
 
-   /* Create a sharable buffer */
+   /* Create a shareable buffer */
    fd = os_create_anonymous_file(size_map);
    if (fd < 0)
       return EGL_FALSE;
@@ -1896,24 +2006,12 @@ static void
 shm_handle_format(void *data, struct wl_shm *shm, uint32_t format)
 {
    struct dri2_egl_display *dri2_dpy = data;
+   int visual_idx = dri2_wl_visual_idx_from_shm_format(format);
 
-   switch (format) {
-   case WL_SHM_FORMAT_ARGB2101010:
-      dri2_dpy->formats |= HAS_ARGB2101010;
-      break;
-   case WL_SHM_FORMAT_XRGB2101010:
-      dri2_dpy->formats |= HAS_XRGB2101010;
-      break;
-   case WL_SHM_FORMAT_ARGB8888:
-      dri2_dpy->formats |= HAS_ARGB8888;
-      break;
-   case WL_SHM_FORMAT_XRGB8888:
-      dri2_dpy->formats |= HAS_XRGB8888;
-      break;
-   case WL_SHM_FORMAT_RGB565:
-      dri2_dpy->formats |= HAS_RGB565;
-      break;
-   }
+   if (visual_idx == -1)
+      return;
+
+   dri2_dpy->formats |= (1u << visual_idx);
 }
 
 static const struct wl_shm_listener shm_listener = {
@@ -1975,9 +2073,8 @@ static const __DRIextension *swrast_loader_extensions[] = {
 static EGLBoolean
 dri2_initialize_wayland_swrast(_EGLDriver *drv, _EGLDisplay *disp)
 {
+   _EGLDevice *dev;
    struct dri2_egl_display *dri2_dpy;
-
-   loader_set_logger(_eglLog);
 
    dri2_dpy = calloc(1, sizeof *dri2_dpy);
    if (!dri2_dpy)
@@ -1993,6 +2090,14 @@ dri2_initialize_wayland_swrast(_EGLDriver *drv, _EGLDisplay *disp)
    } else {
       dri2_dpy->wl_dpy = disp->PlatformDisplay;
    }
+
+   dev = _eglAddDevice(dri2_dpy->fd, true);
+   if (!dev) {
+      _eglError(EGL_NOT_INITIALIZED, "DRI2: failed to find EGLDevice");
+      goto cleanup;
+   }
+
+   disp->Device = dev;
 
    dri2_dpy->wl_queue = wl_display_create_queue(dri2_dpy->wl_dpy);
 
@@ -2079,11 +2184,11 @@ dri2_teardown_wayland(struct dri2_egl_display *dri2_dpy)
       wl_event_queue_destroy(dri2_dpy->wl_queue);
    if (dri2_dpy->wl_dpy_wrapper)
       wl_proxy_wrapper_destroy(dri2_dpy->wl_dpy_wrapper);
-   u_vector_finish(&dri2_dpy->wl_modifiers.argb2101010);
-   u_vector_finish(&dri2_dpy->wl_modifiers.xrgb2101010);
-   u_vector_finish(&dri2_dpy->wl_modifiers.argb8888);
-   u_vector_finish(&dri2_dpy->wl_modifiers.xrgb8888);
-   u_vector_finish(&dri2_dpy->wl_modifiers.rgb565);
+
+   for (int i = 0; dri2_dpy->wl_modifiers && i < ARRAY_SIZE(dri2_wl_visuals); i++)
+      u_vector_finish(&dri2_dpy->wl_modifiers[i]);
+   free(dri2_dpy->wl_modifiers);
+
    if (dri2_dpy->own_device)
       wl_display_disconnect(dri2_dpy->wl_dpy);
 }

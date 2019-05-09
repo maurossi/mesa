@@ -33,16 +33,26 @@
 extern "C" {
 #endif
 
+struct __DRIextensionRec;
+
 /* Helpers to figure out driver and device name, eg. from pci-id, etc. */
 
 int
 loader_open_device(const char *);
 
 int
+loader_open_render_node(const char *name);
+
+int
 loader_get_pci_id_for_fd(int fd, int *vendor_id, int *chip_id);
 
 char *
 loader_get_driver_for_fd(int fd);
+
+const struct __DRIextensionRec **
+loader_open_driver(const char *driver_name,
+                   void **out_driver_handle,
+                   const char **search_path_vars);
 
 char *
 loader_get_device_name_for_fd(int fd);
@@ -64,8 +74,9 @@ loader_get_user_preferred_fd(int default_fd, bool *different_device);
 #define _LOADER_INFO    2   /* just useful info */
 #define _LOADER_DEBUG   3   /* useful info for debugging */
 
+typedef void loader_logger(int level, const char *fmt, ...);
 void
-loader_set_logger(void (*logger)(int level, const char *fmt, ...));
+loader_set_logger(loader_logger *logger);
 
 char *
 loader_get_extensions_name(const char *driver_name);

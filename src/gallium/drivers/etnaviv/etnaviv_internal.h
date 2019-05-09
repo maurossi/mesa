@@ -87,7 +87,7 @@ struct etna_specs {
    /* has BLT engine instead of RS */
    unsigned use_blt : 1;
    /* can use any kind of wrapping mode on npot textures */
-   unsigned npot_tex_any_wrap;
+   unsigned npot_tex_any_wrap : 1;
    /* number of bits per TS tile */
    unsigned bits_per_tile;
    /* clear value for TS (dependent on bits_per_tile) */
@@ -182,7 +182,6 @@ struct compiled_viewport_state {
 
 /* Compiled pipe_framebuffer_state */
 struct compiled_framebuffer_state {
-   struct pipe_surface *cbuf, *zsbuf; /* keep reference to surfaces */
    uint32_t GL_MULTI_SAMPLE_CONFIG;
    uint32_t PE_COLOR_FORMAT;
    uint32_t PE_DEPTH_CONFIG;

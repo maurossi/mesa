@@ -315,6 +315,16 @@ can_take_stride(fs_inst *inst, unsigned arg, unsigned stride,
    if (stride > 4)
       return false;
 
+   /* Bail if the channels of the source need to be aligned to the byte offset
+    * of the corresponding channel of the destination, and the provided stride
+    * would break this restriction.
+    */
+   if (has_dst_aligned_region_restriction(devinfo, inst) &&
+       !(type_sz(inst->src[arg].type) * stride ==
+           type_sz(inst->dst.type) * inst->dst.stride ||
+         stride == 0))
+      return false;
+
    /* 3-source instructions can only be Align16, which restricts what strides
     * they can take. They can only take a stride of 1 (the usual case), or 0
     * with a special "repctrl" bit. But the repctrl bit doesn't work for
@@ -361,6 +371,20 @@ can_take_stride(fs_inst *inst, unsigned arg, unsigned stride,
    return true;
 }
 
+static bool
+instruction_requires_packed_data(fs_inst *inst)
+{
+   switch (inst->opcode) {
+   case FS_OPCODE_DDX_FINE:
+   case FS_OPCODE_DDX_COARSE:
+   case FS_OPCODE_DDY_FINE:
+   case FS_OPCODE_DDY_COARSE:
+      return true;
+   default:
+      return false;
+   }
+}
+
 bool
 fs_visitor::try_copy_propagate(fs_inst *inst, int arg, acp_entry *entry)
 {
@@ -405,6 +429,13 @@ fs_visitor::try_copy_propagate(fs_inst *inst, int arg, acp_entry *entry)
 
    if (has_source_modifiers &&
        inst->opcode == SHADER_OPCODE_GEN4_SCRATCH_WRITE)
+      return false;
+
+   /* Some instructions implemented in the generator backend, such as
+    * derivatives, assume that their operands are packed so we can't
+    * generally propagate strided regions to them.
+    */
+   if (instruction_requires_packed_data(inst) && entry->src.stride > 1)
       return false;
 
    /* Bail if the result of composing both strides would exceed the
@@ -679,6 +710,7 @@ fs_visitor::try_constant_propagate(fs_inst *inst, acp_entry *entry)
          break;
 
       case SHADER_OPCODE_UNTYPED_ATOMIC:
+      case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT:
       case SHADER_OPCODE_UNTYPED_SURFACE_READ:
       case SHADER_OPCODE_UNTYPED_SURFACE_WRITE:
       case SHADER_OPCODE_TYPED_ATOMIC:
@@ -720,6 +752,7 @@ fs_visitor::try_constant_propagate(fs_inst *inst, acp_entry *entry)
       case SHADER_OPCODE_TG4_LOGICAL:
       case SHADER_OPCODE_TG4_OFFSET_LOGICAL:
       case SHADER_OPCODE_UNTYPED_ATOMIC_LOGICAL:
+      case SHADER_OPCODE_UNTYPED_ATOMIC_FLOAT_LOGICAL:
       case SHADER_OPCODE_UNTYPED_SURFACE_READ_LOGICAL:
       case SHADER_OPCODE_UNTYPED_SURFACE_WRITE_LOGICAL:
       case SHADER_OPCODE_TYPED_ATOMIC_LOGICAL:

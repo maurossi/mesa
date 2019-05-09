@@ -548,6 +548,9 @@ fs_visitor::assign_regs(bool allow_spilling, bool spill_all)
    int first_mrf_hack_node = node_count;
    if (devinfo->gen >= 7)
       node_count += BRW_MAX_GRF - GEN7_MRF_HACK_START;
+   int grf127_send_hack_node = node_count;
+   if (devinfo->gen >= 8)
+      node_count ++;
    struct ra_graph *g =
       ra_alloc_interference_graph(compiler->fs_reg_sets[rsi].regs, node_count);
 
@@ -614,7 +617,9 @@ fs_visitor::assign_regs(bool allow_spilling, bool spill_all)
           * highest register that works.
           */
          if (inst->eot) {
-            int size = alloc.sizes[inst->src[0].nr];
+            const int vgrf = inst->opcode == SHADER_OPCODE_SEND ?
+                             inst->src[2].nr : inst->src[0].nr;
+            int size = alloc.sizes[vgrf];
             int reg = compiler->fs_reg_sets[rsi].class_to_ra_reg_range[size] - 1;
 
             /* If something happened to spill, we want to push the EOT send
@@ -623,31 +628,94 @@ fs_visitor::assign_regs(bool allow_spilling, bool spill_all)
              */
             reg -= BRW_MAX_MRF(devinfo->gen) - first_used_mrf;
 
-            ra_set_node_reg(g, inst->src[0].nr, reg);
+            ra_set_node_reg(g, vgrf, reg);
             break;
          }
       }
    }
 
-   if (dispatch_width > 8) {
-      /* In 16-wide dispatch we have an issue where a compressed
-       * instruction is actually two instructions executed simultaneiously.
-       * It's actually ok to have the source and destination registers be
-       * the same.  In this case, each instruction over-writes its own
-       * source and there's no problem.  The real problem here is if the
-       * source and destination registers are off by one.  Then you can end
-       * up in a scenario where the first instruction over-writes the
-       * source of the second instruction.  Since the compiler doesn't know
-       * about this level of granularity, we simply make the source and
-       * destination interfere.
-       */
-      foreach_block_and_inst(block, fs_inst, inst, cfg) {
-         if (inst->dst.file != VGRF)
-            continue;
+   /* In 16-wide instructions we have an issue where a compressed
+    * instruction is actually two instructions executed simultaneously.
+    * It's actually ok to have the source and destination registers be
+    * the same.  In this case, each instruction over-writes its own
+    * source and there's no problem.  The real problem here is if the
+    * source and destination registers are off by one.  Then you can end
+    * up in a scenario where the first instruction over-writes the
+    * source of the second instruction.  Since the compiler doesn't know
+    * about this level of granularity, we simply make the source and
+    * destination interfere.
+    */
+   foreach_block_and_inst(block, fs_inst, inst, cfg) {
+      if (inst->exec_size < 16 || inst->dst.file != VGRF)
+         continue;
 
-         for (int i = 0; i < inst->sources; ++i) {
-            if (inst->src[i].file == VGRF) {
-               ra_add_node_interference(g, inst->dst.nr, inst->src[i].nr);
+      for (int i = 0; i < inst->sources; ++i) {
+         if (inst->src[i].file == VGRF) {
+            ra_add_node_interference(g, inst->dst.nr, inst->src[i].nr);
+         }
+      }
+   }
+
+   if (devinfo->gen >= 8) {
+      /* At Intel Broadwell PRM, vol 07, section "Instruction Set Reference",
+       * subsection "EUISA Instructions", Send Message (page 990):
+       *
+       * "r127 must not be used for return address when there is a src and
+       * dest overlap in send instruction."
+       *
+       * We are avoiding using grf127 as part of the destination of send
+       * messages adding a node interference to the grf127_send_hack_node.
+       * This node has a fixed asignment to grf127.
+       *
+       * We don't apply it to SIMD16 instructions because previous code avoids
+       * any register overlap between sources and destination.
+       */
+      ra_set_node_reg(g, grf127_send_hack_node, 127);
+      foreach_block_and_inst(block, fs_inst, inst, cfg) {
+         if (inst->exec_size < 16 && inst->is_send_from_grf() &&
+             inst->dst.file == VGRF)
+            ra_add_node_interference(g, inst->dst.nr, grf127_send_hack_node);
+      }
+
+      if (spilled_any_registers) {
+         foreach_block_and_inst(block, fs_inst, inst, cfg) {
+            /* Spilling instruction are genereated as SEND messages from MRF
+             * but as Gen7+ supports sending from GRF the driver will maps
+             * assingn these MRF registers to a GRF. Implementations reuses
+             * the dest of the send message as source. So as we will have an
+             * overlap for sure, we create an interference between destination
+             * and grf127.
+             */
+            if ((inst->opcode == SHADER_OPCODE_GEN7_SCRATCH_READ ||
+                 inst->opcode == SHADER_OPCODE_GEN4_SCRATCH_READ) &&
+                inst->dst.file == VGRF)
+               ra_add_node_interference(g, inst->dst.nr, grf127_send_hack_node);
+         }
+      }
+   }
+
+   /* From the Skylake PRM Vol. 2a docs for sends:
+    *
+    *    "It is required that the second block of GRFs does not overlap with
+    *    the first block."
+    *
+    * Normally, this is taken care of by fixup_sends_duplicate_payload() but
+    * in the case where one of the registers is an undefined value, the
+    * register allocator may decide that they don't interfere even though
+    * they're used as sources in the same instruction.  We also need to add
+    * interference here.
+    */
+   if (devinfo->gen >= 9) {
+      foreach_block_and_inst(block, fs_inst, inst, cfg) {
+         if (inst->opcode == SHADER_OPCODE_SEND && inst->ex_mlen > 0 &&
+             inst->src[2].file == VGRF &&
+             inst->src[3].file == VGRF &&
+             inst->src[2].nr != inst->src[3].nr) {
+            for (unsigned i = 0; i < inst->mlen; i++) {
+               for (unsigned j = 0; j < inst->ex_mlen; j++) {
+                  ra_add_node_interference(g, inst->src[2].nr + i,
+                                           inst->src[3].nr + j);
+               }
             }
          }
       }
@@ -872,7 +940,7 @@ fs_visitor::choose_spill_reg(struct ra_graph *g)
 }
 
 void
-fs_visitor::spill_reg(int spill_reg)
+fs_visitor::spill_reg(unsigned spill_reg)
 {
    int size = alloc.sizes[spill_reg];
    unsigned int spill_offset = last_scratch;

@@ -707,10 +707,13 @@ resolve_parallel_copy(nir_parallel_copy_instr *pcopy,
       nir_register *reg = nir_local_reg_create(state->builder.impl);
       reg->name = "copy_temp";
       reg->num_array_elems = 0;
-      if (values[b].is_ssa)
+      if (values[b].is_ssa) {
          reg->num_components = values[b].ssa->num_components;
-      else
+         reg->bit_size = values[b].ssa->bit_size;
+      } else {
          reg->num_components = values[b].reg.reg->num_components;
+         reg->bit_size = values[b].reg.reg->bit_size;
+      }
       values[num_vals].is_ssa = false;
       values[num_vals].reg.reg = reg;
 
@@ -765,8 +768,7 @@ nir_convert_from_ssa_impl(nir_function_impl *impl, bool phi_webs_only)
    nir_builder_init(&state.builder, impl);
    state.dead_ctx = ralloc_context(NULL);
    state.phi_webs_only = phi_webs_only;
-   state.merge_node_table = _mesa_hash_table_create(NULL, _mesa_hash_pointer,
-                                                    _mesa_key_pointer_equal);
+   state.merge_node_table = _mesa_pointer_hash_table_create(NULL);
    state.progress = false;
 
    nir_foreach_block(block, impl) {
@@ -830,7 +832,6 @@ place_phi_read(nir_shader *shader, nir_register *reg,
    if (block != def->parent_instr->block) {
       /* Try to go up the single-successor tree */
       bool all_single_successors = true;
-      struct set_entry *entry;
       set_foreach(block->predecessors, entry) {
          nir_block *pred = (nir_block *)entry->key;
          if (pred->successors[0] && pred->successors[1]) {
@@ -901,6 +902,8 @@ nir_lower_phis_to_regs_block(nir_block *block)
 
       nir_foreach_phi_src(src, phi) {
          assert(src->src.is_ssa);
+         /* We don't want derefs ending up in phi sources */
+         assert(!nir_src_as_deref(src->src));
          place_phi_read(shader, reg, src->src.ssa, src->pred);
       }
 
@@ -974,6 +977,12 @@ nir_lower_ssa_defs_to_regs_block(nir_block *block)
          mov->dest.dest = nir_dest_for_reg(reg);
          mov->dest.write_mask = (1 << reg->num_components) - 1;
          nir_instr_insert(nir_after_instr(&load->instr), &mov->instr);
+      } else if (instr->type == nir_instr_type_deref) {
+         /* Derefs should always be SSA values, don't rewrite them. */
+         nir_deref_instr *deref = nir_instr_as_deref(instr);
+         nir_foreach_use_safe(use, &deref->dest.ssa)
+            assert(use->parent_instr->block == block);
+         assert(list_empty(&deref->dest.ssa.if_uses));
       } else {
          nir_foreach_dest(instr, dest_replace_ssa_with_reg, &state);
       }

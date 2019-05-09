@@ -18,6 +18,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+inc_glx = include_directories('.')
+
+subdir('apple')
 if with_dri_platform == 'windows'
   subdir('windows')
 endif
@@ -100,6 +103,7 @@ endif
 
 if with_dri_platform == 'apple'
   files_libglx += files('applegl_glx.c')
+  extra_libs_libglx += libappleglx
 elif with_dri_platform == 'windows'
   files_libglx += files('driwindows_glx.c')
   extra_libs_libglx += [
@@ -130,12 +134,7 @@ endif
 
 gl_lib_cargs = [
   '-D_REENTRANT',
-  '-DDEFAULT_DRIVER_DIR="@0@"'.format(dri_search_path),
 ]
-
-if dep_xxf86vm != [] and dep_xxf86vm.found()
-  gl_lib_cargs += '-DHAVE_XF86VIDMODE'
-endif
 
 libglx = static_library(
   'glx',
@@ -150,33 +149,22 @@ libglx = static_library(
     extra_libs_libglx,
   ],
   dependencies : [dep_libdrm, dep_dri2proto, dep_glproto, dep_x11, dep_glvnd],
-  build_by_default : false,
 )
 
-# workaround for bug #2180
-dummy_c = custom_target(
-  'dummy_c',
-  output : 'dummy.c',
-  command : [prog_touch, '@OUTPUT@'],
+libgl = shared_library(
+  gl_lib_name,
+  [],
+  link_with : [libglapi_static, libglapi],
+  link_whole : libglx,
+  link_args : [ld_args_bsymbolic, ld_args_gc_sections, extra_ld_args_libgl],
+  dependencies : [
+    dep_libdrm, dep_dl, dep_m, dep_thread, dep_x11, dep_xcb_glx, dep_xcb,
+    dep_x11_xcb, dep_xcb_dri2, dep_xext, dep_xfixes, dep_xdamage, dep_xxf86vm,
+    extra_deps_libgl,
+  ],
+  version : gl_lib_version,
+  install : true,
 )
-
-if with_glx == 'dri'
-  libgl = shared_library(
-    gl_lib_name,
-    dummy_c,  # workaround for bug #2180
-    include_directories : [inc_common, inc_glapi, inc_loader, inc_gl_internal],
-    link_with : [libglapi_static, libglapi],
-    link_whole : libglx,
-    link_args : [ld_args_bsymbolic, ld_args_gc_sections, extra_ld_args_libgl],
-    dependencies : [
-      dep_libdrm, dep_dl, dep_m, dep_thread, dep_x11, dep_xcb_glx, dep_xcb,
-      dep_x11_xcb, dep_xcb_dri2, dep_xext, dep_xfixes, dep_xdamage,
-      extra_deps_libgl,
-    ],
-    version : gl_lib_version,
-    install : true,
-  )
-endif
 
 if with_tests
   subdir('tests')

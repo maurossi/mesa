@@ -25,7 +25,7 @@
 #include "ast.h"
 #include "compiler/glsl_types.h"
 #include "ir.h"
-#include "main/core.h" /* for MIN2 */
+#include "main/mtypes.h"
 #include "main/shaderobj.h"
 #include "builtin_functions.h"
 
@@ -348,6 +348,47 @@ verify_parameter_modes(_mesa_glsl_parse_state *state,
    return true;
 }
 
+struct copy_index_deref_data {
+   void *mem_ctx;
+   exec_list *before_instructions;
+};
+
+static void
+copy_index_derefs_to_temps(ir_instruction *ir, void *data)
+{
+   struct copy_index_deref_data *d = (struct copy_index_deref_data *)data;
+
+   if (ir->ir_type == ir_type_dereference_array) {
+      ir_dereference_array *a = (ir_dereference_array *) ir;
+      ir = a->array->as_dereference();
+
+      ir_rvalue *idx = a->array_index;
+      ir_variable *var = idx->variable_referenced();
+
+      /* If the index is read only it cannot change so there is no need
+       * to copy it.
+       */
+      if (!var || var->data.read_only || var->data.memory_read_only)
+         return;
+
+      ir_variable *tmp = new(d->mem_ctx) ir_variable(idx->type, "idx_tmp",
+                                                      ir_var_temporary);
+      d->before_instructions->push_tail(tmp);
+
+      ir_dereference_variable *const deref_tmp_1 =
+         new(d->mem_ctx) ir_dereference_variable(tmp);
+      ir_assignment *const assignment =
+         new(d->mem_ctx) ir_assignment(deref_tmp_1,
+                                       idx->clone(d->mem_ctx, NULL));
+      d->before_instructions->push_tail(assignment);
+
+      /* Replace the array index with a dereference of the new temporary */
+      ir_dereference_variable *const deref_tmp_2 =
+         new(d->mem_ctx) ir_dereference_variable(tmp);
+      a->array_index = deref_tmp_2;
+   }
+}
+
 static void
 fix_parameter(void *mem_ctx, ir_rvalue *actual, const glsl_type *formal_type,
               exec_list *before_instructions, exec_list *after_instructions,
@@ -359,8 +400,20 @@ fix_parameter(void *mem_ctx, ir_rvalue *actual, const glsl_type *formal_type,
     * nothing needs to be done to fix the parameter.
     */
    if (formal_type == actual->type
-       && (expr == NULL || expr->operation != ir_binop_vector_extract))
+       && (expr == NULL || expr->operation != ir_binop_vector_extract)
+       && actual->as_dereference_variable())
       return;
+
+   /* An array index could also be an out variable so we need to make a copy
+    * of them before the function is called.
+    */
+   if (!actual->as_dereference_variable()) {
+      struct copy_index_deref_data data;
+      data.mem_ctx = mem_ctx;
+      data.before_instructions = before_instructions;
+
+      visit_tree(actual, copy_index_derefs_to_temps, &data);
+   }
 
    /* To convert an out parameter, we need to create a temporary variable to
     * hold the value before conversion, and then perform the conversion after
@@ -402,7 +455,7 @@ fix_parameter(void *mem_ctx, ir_rvalue *actual, const glsl_type *formal_type,
       ir_dereference_variable *const deref_tmp_1 =
          new(mem_ctx) ir_dereference_variable(tmp);
       ir_assignment *const assignment =
-         new(mem_ctx) ir_assignment(deref_tmp_1, actual);
+         new(mem_ctx) ir_assignment(deref_tmp_1, actual->clone(mem_ctx, NULL));
       before_instructions->push_tail(assignment);
    }
 
@@ -529,7 +582,8 @@ generate_call(exec_list *instructions, ir_function_signature *sig,
     * If the function call is a constant expression, don't generate any
     * instructions; just generate an ir_constant.
     */
-   if (state->is_version(120, 100)) {
+   if (state->is_version(120, 100) ||
+       state->ctx->Const.AllowGLSLBuiltinConstantExpression) {
       ir_constant *value = sig->constant_expression_value(ctx,
                                                           actual_parameters,
                                                           NULL);
@@ -612,7 +666,12 @@ match_function_by_name(const char *name,
    /* Local shader has no exact candidates; check the built-ins. */
    _mesa_glsl_initialize_builtin_functions();
    sig = _mesa_glsl_find_builtin_function(state, name, actual_parameters);
-   return sig;
+
+   /* if _mesa_glsl_find_builtin_function failed, fall back to the result
+    * of choose_best_inexact_overload() instead. This should only affect
+    * GLES.
+    */
+   return sig ? sig : local_sig;
 }
 
 static ir_function_signature *

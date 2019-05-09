@@ -49,8 +49,11 @@ typedef struct {
    /* If this is of type basic_induction */
    struct nir_basic_induction_var *ind;
 
-   /* True if variable is in an if branch or a nested loop */
-   bool in_control_flow;
+   /* True if variable is in an if branch */
+   bool in_if_branch;
+
+   /* True if variable is in a nested loop */
+   bool in_nested_loop;
 
 } nir_loop_variable;
 
@@ -83,7 +86,8 @@ get_loop_var(nir_ssa_def *value, loop_info_state *state)
 
 typedef struct {
    loop_info_state *state;
-   bool in_control_flow;
+   bool in_if_branch;
+   bool in_nested_loop;
 } init_loop_state;
 
 static bool
@@ -92,8 +96,10 @@ init_loop_def(nir_ssa_def *def, void *void_init_loop_state)
    init_loop_state *loop_init_state = void_init_loop_state;
    nir_loop_variable *var = get_loop_var(def, loop_init_state->state);
 
-   if (loop_init_state->in_control_flow) {
-      var->in_control_flow = true;
+   if (loop_init_state->in_nested_loop) {
+      var->in_nested_loop = true;
+   } else if (loop_init_state->in_if_branch) {
+      var->in_if_branch = true;
    } else {
       /* Add to the tail of the list. That way we start at the beginning of
        * the defs in the loop instead of the end when walking the list. This
@@ -110,9 +116,10 @@ init_loop_def(nir_ssa_def *def, void *void_init_loop_state)
 
 static bool
 init_loop_block(nir_block *block, loop_info_state *state,
-                bool in_control_flow)
+                bool in_if_branch, bool in_nested_loop)
 {
-   init_loop_state init_state = {.in_control_flow = in_control_flow,
+   init_loop_state init_state = {.in_if_branch = in_if_branch,
+                                 .in_nested_loop = in_nested_loop,
                                  .state = state };
 
    nir_foreach_instr(instr, block) {
@@ -198,7 +205,7 @@ compute_invariance_information(loop_info_state *state)
     */
    list_for_each_entry_safe(nir_loop_variable, var, &state->process_list,
                             process_link) {
-      assert(!var->in_control_flow);
+      assert(!var->in_if_branch && !var->in_nested_loop);
 
       if (mark_invariant(var->def, state))
          list_del(&var->process_link);
@@ -216,7 +223,8 @@ compute_induction_information(loop_info_state *state)
        * things in nested loops or conditionals should have been removed from
        * the list by compute_invariance_information().
        */
-      assert(!var->in_control_flow && var->type != invariant);
+      assert(!var->in_if_branch && !var->in_nested_loop &&
+             var->type != invariant);
 
       /* We are only interested in checking phis for the basic induction
        * variable case as its simple to detect. All basic induction variables
@@ -231,11 +239,47 @@ compute_induction_information(loop_info_state *state)
       nir_foreach_phi_src(src, phi) {
          nir_loop_variable *src_var = get_loop_var(src->src.ssa, state);
 
-         /* If one of the sources is in a conditional or nested block then
-          * panic.
+         /* If one of the sources is in an if branch or nested loop then don't
+          * attempt to go any further.
           */
-         if (src_var->in_control_flow)
+         if (src_var->in_if_branch || src_var->in_nested_loop)
             break;
+
+         /* Detect inductions variables that are incremented in both branches
+          * of an unnested if rather than in a loop block.
+          */
+         if (is_var_phi(src_var)) {
+            nir_phi_instr *src_phi =
+               nir_instr_as_phi(src_var->def->parent_instr);
+
+            nir_op alu_op = nir_num_opcodes; /* avoid uninitialized warning */
+            nir_ssa_def *alu_srcs[2] = {0};
+            nir_foreach_phi_src(src2, src_phi) {
+               nir_loop_variable *src_var2 =
+                  get_loop_var(src2->src.ssa, state);
+
+               if (!src_var2->in_if_branch || !is_var_alu(src_var2))
+                  break;
+
+               nir_alu_instr *alu =
+                  nir_instr_as_alu(src_var2->def->parent_instr);
+               if (nir_op_infos[alu->op].num_inputs != 2)
+                  break;
+
+               if (alu->src[0].src.ssa == alu_srcs[0] &&
+                   alu->src[1].src.ssa == alu_srcs[1] &&
+                   alu->op == alu_op) {
+                  /* Both branches perform the same calculation so we can use
+                   * one of them to find the induction variable.
+                   */
+                  src_var = src_var2;
+               } else {
+                  alu_srcs[0] = alu->src[0].src.ssa;
+                  alu_srcs[1] = alu->src[1].src.ssa;
+                  alu_op = alu->op;
+               }
+            }
+         }
 
          if (!src_var->in_loop) {
             biv->def_outside_loop = src_var;
@@ -290,17 +334,6 @@ initialize_ssa_def(nir_ssa_def *def, void *void_state)
    return true;
 }
 
-static inline bool
-ends_in_break(nir_block *block)
-{
-   if (exec_list_is_empty(&block->instr_list))
-      return false;
-
-   nir_instr *instr = nir_block_last_instr(block);
-   return instr->type == nir_instr_type_jump &&
-      nir_instr_as_jump(instr)->type == nir_jump_break;
-}
-
 static bool
 find_loop_terminators(loop_info_state *state)
 {
@@ -315,11 +348,11 @@ find_loop_terminators(loop_info_state *state)
 
          nir_block *last_then = nir_if_last_then_block(nif);
          nir_block *last_else = nir_if_last_else_block(nif);
-         if (ends_in_break(last_then)) {
+         if (nir_block_ends_in_break(last_then)) {
             break_blk = last_then;
             continue_from_blk = last_else;
             continue_from_then = false;
-         } else if (ends_in_break(last_else)) {
+         } else if (nir_block_ends_in_break(last_else)) {
             break_blk = last_else;
             continue_from_blk = last_then;
          }
@@ -328,21 +361,25 @@ find_loop_terminators(loop_info_state *state)
           * not find a loop terminator, but there is a break-statement then
           * we should return false so that we do not try to find trip-count
           */
-         if (!nir_is_trivial_loop_if(nif, break_blk))
+         if (!nir_is_trivial_loop_if(nif, break_blk)) {
+            state->loop->info->complex_loop = true;
             return false;
+         }
 
          /* Continue if the if contained no jumps at all */
          if (!break_blk)
             continue;
 
-         if (nif->condition.ssa->parent_instr->type == nir_instr_type_phi)
+         if (nif->condition.ssa->parent_instr->type == nir_instr_type_phi) {
+            state->loop->info->complex_loop = true;
             return false;
+         }
 
          nir_loop_terminator *terminator =
             rzalloc(state->loop->info, nir_loop_terminator);
 
-         list_add(&terminator->loop_terminator_link,
-                  &state->loop->info->loop_terminator_list);
+         list_addtail(&terminator->loop_terminator_link,
+                      &state->loop->info->loop_terminator_list);
 
          terminator->nif = nif;
          terminator->break_block = break_blk;
@@ -355,6 +392,38 @@ find_loop_terminators(loop_info_state *state)
    }
 
    return success;
+}
+
+/* This function looks for an array access within a loop that uses an
+ * induction variable for the array index. If found it returns the size of the
+ * array, otherwise 0 is returned. If we find an induction var we pass it back
+ * to the caller via array_index_out.
+ */
+static unsigned
+find_array_access_via_induction(loop_info_state *state,
+                                nir_deref_instr *deref,
+                                nir_loop_variable **array_index_out)
+{
+   for (nir_deref_instr *d = deref; d; d = nir_deref_instr_parent(d)) {
+      if (d->deref_type != nir_deref_type_array)
+         continue;
+
+      assert(d->arr.index.is_ssa);
+      nir_loop_variable *array_index = get_loop_var(d->arr.index.ssa, state);
+
+      if (array_index->type != basic_induction)
+         continue;
+
+      if (array_index_out)
+         *array_index_out = array_index;
+
+      nir_deref_instr *parent = nir_deref_instr_parent(d);
+      assert(glsl_type_is_array_or_matrix(parent->type));
+
+      return glsl_get_length(parent->type);
+   }
+
+   return 0;
 }
 
 static int32_t
@@ -534,7 +603,7 @@ find_trip_count(loop_info_state *state)
 {
    bool trip_count_known = true;
    nir_loop_terminator *limiting_terminator = NULL;
-   int min_trip_count = -1;
+   int max_trip_count = -1;
 
    list_for_each_entry(nir_loop_terminator, terminator,
                        &state->loop->info->loop_terminator_list,
@@ -613,8 +682,8 @@ find_trip_count(loop_info_state *state)
           * iterations than previously (we have identified a more limiting
           * terminator) set the trip count and limiting terminator.
           */
-         if (min_trip_count == -1 || iterations < min_trip_count) {
-            min_trip_count = iterations;
+         if (max_trip_count == -1 || iterations < max_trip_count) {
+            max_trip_count = iterations;
             limiting_terminator = terminator;
          }
          break;
@@ -624,60 +693,29 @@ find_trip_count(loop_info_state *state)
       }
    }
 
-   state->loop->info->is_trip_count_known = trip_count_known;
-   if (min_trip_count > -1)
-      state->loop->info->trip_count = min_trip_count;
+   state->loop->info->exact_trip_count_known = trip_count_known;
+   if (max_trip_count > -1)
+      state->loop->info->max_trip_count = max_trip_count;
    state->loop->info->limiting_terminator = limiting_terminator;
 }
 
-/* Checks if we should force the loop to be unrolled regardless of size
- * due to array access heuristics.
- */
 static bool
-force_unroll_array_access(loop_info_state *state, nir_shader *ns,
-                          nir_deref_var *variable)
+force_unroll_array_access(loop_info_state *state, nir_deref_instr *deref)
 {
-   nir_deref *tail = &variable->deref;
+   unsigned array_size = find_array_access_via_induction(state, deref, NULL);
+   if (array_size) {
+      if (array_size == state->loop->info->max_trip_count)
+         return true;
 
-   while (tail->child != NULL) {
-      tail = tail->child;
-
-      if (tail->deref_type == nir_deref_type_array) {
-
-         nir_deref_array *deref_array = nir_deref_as_array(tail);
-         if (deref_array->deref_array_type != nir_deref_array_type_indirect)
-            continue;
-
-         nir_loop_variable *array_index =
-            get_loop_var(deref_array->indirect.ssa, state);
-
-         if (array_index->type != basic_induction)
-            continue;
-
-         /* If an array is indexed by a loop induction variable, and the
-          * array size is exactly the number of loop iterations, this is
-          * probably a simple for-loop trying to access each element in
-          * turn; the application may expect it to be unrolled.
-          */
-         if (glsl_get_length(variable->deref.type) ==
-             state->loop->info->trip_count) {
-            state->loop->info->force_unroll = true;
-            return state->loop->info->force_unroll;
-         }
-
-         if (variable->var->data.mode & state->indirect_mask) {
-            state->loop->info->force_unroll = true;
-            return state->loop->info->force_unroll;
-         }
-      }
+      if (deref->mode & state->indirect_mask)
+         return true;
    }
 
    return false;
 }
 
 static bool
-force_unroll_heuristics(loop_info_state *state, nir_shader *ns,
-                        nir_block *block)
+force_unroll_heuristics(loop_info_state *state, nir_block *block)
 {
    nir_foreach_instr(instr, block) {
       if (instr->type != nir_instr_type_intrinsic)
@@ -688,15 +726,17 @@ force_unroll_heuristics(loop_info_state *state, nir_shader *ns,
       /* Check for arrays variably-indexed by a loop induction variable.
        * Unrolling the loop may convert that access into constant-indexing.
        */
-      if (intrin->intrinsic == nir_intrinsic_load_var ||
-          intrin->intrinsic == nir_intrinsic_store_var ||
-          intrin->intrinsic == nir_intrinsic_copy_var) {
-         unsigned num_vars =
-            nir_intrinsic_infos[intrin->intrinsic].num_variables;
-         for (unsigned i = 0; i < num_vars; i++) {
-            if (force_unroll_array_access(state, ns, intrin->variables[i]))
-               return true;
-         }
+      if (intrin->intrinsic == nir_intrinsic_load_deref ||
+          intrin->intrinsic == nir_intrinsic_store_deref ||
+          intrin->intrinsic == nir_intrinsic_copy_deref) {
+         if (force_unroll_array_access(state,
+                                       nir_src_as_deref(intrin->src[0])))
+            return true;
+
+         if (intrin->intrinsic == nir_intrinsic_copy_deref &&
+             force_unroll_array_access(state,
+                                       nir_src_as_deref(intrin->src[1])))
+            return true;
       }
    }
 
@@ -721,17 +761,17 @@ get_loop_info(loop_info_state *state, nir_function_impl *impl)
       switch (node->type) {
 
       case nir_cf_node_block:
-         init_loop_block(nir_cf_node_as_block(node), state, false);
+         init_loop_block(nir_cf_node_as_block(node), state, false, false);
          break;
 
       case nir_cf_node_if:
          nir_foreach_block_in_cf_node(block, node)
-            init_loop_block(block, state, true);
+            init_loop_block(block, state, true, false);
          break;
 
       case nir_cf_node_loop:
          nir_foreach_block_in_cf_node(block, node) {
-            init_loop_block(block, state, true);
+            init_loop_block(block, state, false, true);
          }
          break;
 
@@ -739,13 +779,6 @@ get_loop_info(loop_info_state *state, nir_function_impl *impl)
          break;
       }
    }
-
-   /* Induction analysis needs invariance information so get that first */
-   compute_invariance_information(state);
-
-   /* We have invariance information so try to find induction variables */
-   if (!compute_induction_information(state))
-      return;
 
    /* Try to find all simple terminators of the loop. If we can't find any,
     * or we find possible terminators that have side effects then bail.
@@ -760,19 +793,20 @@ get_loop_info(loop_info_state *state, nir_function_impl *impl)
       return;
    }
 
+   /* Induction analysis needs invariance information so get that first */
+   compute_invariance_information(state);
+
+   /* We have invariance information so try to find induction variables */
+   if (!compute_induction_information(state))
+      return;
+
    /* Run through each of the terminators and try to compute a trip-count */
    find_trip_count(state);
 
-   nir_shader *ns = impl->function->shader;
-   foreach_list_typed_safe(nir_cf_node, node, node, &state->loop->body) {
-      if (node->type == nir_cf_node_block) {
-         if (force_unroll_heuristics(state, ns, nir_cf_node_as_block(node)))
-            break;
-      } else {
-         nir_foreach_block_in_cf_node(block, node) {
-            if (force_unroll_heuristics(state, ns, block))
-               break;
-         }
+   nir_foreach_block_in_cf_node(block, &state->loop->cf_node) {
+      if (force_unroll_heuristics(state, block)) {
+         state->loop->info->force_unroll = true;
+         break;
       }
    }
 }

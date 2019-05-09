@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2012 Rob Clark <robclark@freedesktop.org>
  *
@@ -74,18 +72,49 @@ fd_draw(struct fd_batch *batch, struct fd_ringbuffer *ring,
 		OUT_RING(ring, 0);
 	}
 
-	OUT_PKT3(ring, CP_DRAW_INDX, idx_buffer ? 5 : 3);
-	OUT_RING(ring, 0x00000000);        /* viz query info. */
-	if (vismode == USE_VISIBILITY) {
-		/* leave vis mode blank for now, it will be patched up when
-		 * we know if we are binning or not
+	if (is_a20x(batch->ctx->screen)) {
+		/* a20x has a different draw command for drawing with binning data
+		 * note: if we do patching we will have to insert a NOP
+		 *
+		 * binning data is is 1 byte/vertex (8x8x4 bin position of vertex)
+		 * base ptr set by the CP_SET_DRAW_INIT_FLAGS command
+		 *
+		 * TODO: investigate the faceness_cull_select parameter to see how
+		 * it is used with hw binning to use "faceness" bits
 		 */
-		OUT_RINGP(ring, DRAW(primtype, src_sel, idx_type, 0, instances),
-				&batch->draw_patches);
+		uint32_t size = 2;
+		if (vismode)
+			size += 2;
+		if (idx_buffer)
+			size += 2;
+
+		BEGIN_RING(ring, size+1);
+		if (vismode)
+			util_dynarray_append(&batch->draw_patches, uint32_t*, ring->cur);
+
+		OUT_PKT3(ring, vismode ? CP_DRAW_INDX_BIN : CP_DRAW_INDX, size);
+		OUT_RING(ring, 0x00000000);
+		OUT_RING(ring, DRAW_A20X(primtype, DI_FACE_CULL_NONE, src_sel,
+								 idx_type, vismode, vismode, count));
+		if (vismode == USE_VISIBILITY) {
+			OUT_RING(ring, batch->num_vertices);
+			OUT_RING(ring, count);
+		}
 	} else {
-		OUT_RING(ring, DRAW(primtype, src_sel, idx_type, vismode, instances));
+		OUT_PKT3(ring, CP_DRAW_INDX, idx_buffer ? 5 : 3);
+		OUT_RING(ring, 0x00000000);        /* viz query info. */
+		if (vismode == USE_VISIBILITY) {
+			/* leave vis mode blank for now, it will be patched up when
+			 * we know if we are binning or not
+			 */
+			OUT_RINGP(ring, DRAW(primtype, src_sel, idx_type, 0, instances),
+					&batch->draw_patches);
+		} else {
+			OUT_RING(ring, DRAW(primtype, src_sel, idx_type, vismode, instances));
+		}
+		OUT_RING(ring, count);             /* NumIndices */
 	}
-	OUT_RING(ring, count);             /* NumIndices */
+
 	if (idx_buffer) {
 		OUT_RELOC(ring, fd_resource(idx_buffer)->bo, idx_offset, 0, 0);
 		OUT_RING (ring, idx_size);

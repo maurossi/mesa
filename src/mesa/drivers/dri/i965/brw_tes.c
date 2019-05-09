@@ -70,7 +70,6 @@ brw_codegen_tes_prog(struct brw_context *brw,
    const struct brw_compiler *compiler = brw->screen->compiler;
    const struct gen_device_info *devinfo = &brw->screen->devinfo;
    struct brw_stage_state *stage_state = &brw->tes.base;
-   nir_shader *nir = tep->program.nir;
    struct brw_tes_prog_data prog_data;
    bool start_busy = false;
    double start_time = 0;
@@ -79,13 +78,15 @@ brw_codegen_tes_prog(struct brw_context *brw,
 
    void *mem_ctx = ralloc_context(NULL);
 
+   nir_shader *nir = nir_shader_clone(mem_ctx, tep->program.nir);
+
    brw_assign_common_binding_table_offsets(devinfo, &tep->program,
                                            &prog_data.base.base, 0);
 
    brw_nir_setup_glsl_uniforms(mem_ctx, nir, &tep->program,
                                &prog_data.base.base,
                                compiler->scalar_stage[MESA_SHADER_TESS_EVAL]);
-   brw_nir_analyze_ubo_ranges(compiler, tep->program.nir,
+   brw_nir_analyze_ubo_ranges(compiler, nir, NULL,
                               prog_data.base.base.ubo_ranges);
 
    int st_index = -1;
@@ -106,7 +107,7 @@ brw_codegen_tes_prog(struct brw_context *brw,
       brw_compile_tes(compiler, brw, mem_ctx, key, &input_vue_map, &prog_data,
                       nir, &tep->program, st_index, &error_str);
    if (program == NULL) {
-      tep->program.sh.data->LinkStatus = linking_failure;
+      tep->program.sh.data->LinkStatus = LINKING_FAILURE;
       ralloc_strcat(&tep->program.sh.data->InfoLog, error_str);
 
       _mesa_problem(NULL, "Failed to compile tessellation evaluation shader: "
@@ -195,10 +196,9 @@ brw_upload_tes_prog(struct brw_context *brw)
 
    brw_tes_populate_key(brw, &key);
 
-   if (brw_search_cache(&brw->cache, BRW_CACHE_TES_PROG,
-                        &key, sizeof(key),
-                        &stage_state->prog_offset,
-                        &brw->tes.base.prog_data))
+   if (brw_search_cache(&brw->cache, BRW_CACHE_TES_PROG, &key, sizeof(key),
+                        &stage_state->prog_offset, &brw->tes.base.prog_data,
+                        true))
       return;
 
    if (brw_disk_cache_upload_program(brw, MESA_SHADER_TESS_EVAL))
@@ -211,6 +211,30 @@ brw_upload_tes_prog(struct brw_context *brw)
    assert(success);
 }
 
+void
+brw_tes_populate_default_key(const struct gen_device_info *devinfo,
+                             struct brw_tes_prog_key *key,
+                             struct gl_shader_program *sh_prog,
+                             struct gl_program *prog)
+{
+   struct brw_program *btep = brw_program(prog);
+
+   memset(key, 0, sizeof(*key));
+
+   key->program_string_id = btep->id;
+   key->inputs_read = prog->nir->info.inputs_read;
+   key->patch_inputs_read = prog->nir->info.patch_inputs_read;
+
+   if (sh_prog->_LinkedShaders[MESA_SHADER_TESS_CTRL]) {
+      struct gl_program *tcp =
+         sh_prog->_LinkedShaders[MESA_SHADER_TESS_CTRL]->Program;
+      key->inputs_read |= tcp->nir->info.outputs_written &
+         ~(VARYING_BIT_TESS_LEVEL_INNER | VARYING_BIT_TESS_LEVEL_OUTER);
+      key->patch_inputs_read |= tcp->nir->info.patch_outputs_written;
+   }
+
+   brw_setup_tex_for_precompile(devinfo, &key->tex, prog);
+}
 
 bool
 brw_tes_precompile(struct gl_context *ctx,
@@ -225,21 +249,7 @@ brw_tes_precompile(struct gl_context *ctx,
 
    struct brw_program *btep = brw_program(prog);
 
-   memset(&key, 0, sizeof(key));
-
-   key.program_string_id = btep->id;
-   key.inputs_read = prog->nir->info.inputs_read;
-   key.patch_inputs_read = prog->nir->info.patch_inputs_read;
-
-   if (shader_prog->_LinkedShaders[MESA_SHADER_TESS_CTRL]) {
-      struct gl_program *tcp =
-         shader_prog->_LinkedShaders[MESA_SHADER_TESS_CTRL]->Program;
-      key.inputs_read |= tcp->nir->info.outputs_written &
-         ~(VARYING_BIT_TESS_LEVEL_INNER | VARYING_BIT_TESS_LEVEL_OUTER);
-      key.patch_inputs_read |= tcp->nir->info.patch_outputs_written;
-   }
-
-   brw_setup_tex_for_precompile(brw, &key.tex, prog);
+   brw_tes_populate_default_key(&brw->screen->devinfo, &key, shader_prog, prog);
 
    success = brw_codegen_tes_prog(brw, btep, &key);
 

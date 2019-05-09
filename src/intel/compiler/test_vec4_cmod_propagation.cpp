@@ -57,7 +57,7 @@ public:
 
 protected:
    /* Dummy implementation for pure virtual methods */
-   virtual dst_reg *make_reg_for_system_value(int location)
+   virtual dst_reg *make_reg_for_system_value(int /* location */)
    {
       unreachable("Not reached");
    }
@@ -82,12 +82,12 @@ protected:
       unreachable("Not reached");
    }
 
-   virtual void emit_urb_write_header(int mrf)
+   virtual void emit_urb_write_header(int /* mrf */)
    {
       unreachable("Not reached");
    }
 
-   virtual vec4_instruction *emit_urb_write_opcode(bool complete)
+   virtual vec4_instruction *emit_urb_write_opcode(bool /* complete */)
    {
       unreachable("Not reached");
    }
@@ -820,4 +820,76 @@ TEST_F(cmod_propagation_test, mul_cmp_different_channels_vec4)
    EXPECT_EQ(BRW_CONDITIONAL_NONE, instruction(block0, 0)->conditional_mod);
    EXPECT_EQ(BRW_OPCODE_CMP, instruction(block0, 1)->opcode);
    EXPECT_EQ(BRW_CONDITIONAL_NZ, instruction(block0, 1)->conditional_mod);
+}
+
+TEST_F(cmod_propagation_test, add_cmp_same_dst_writemask)
+{
+   const vec4_builder bld = vec4_builder(v).at_end();
+   dst_reg dest = dst_reg(v, glsl_type::vec4_type);
+   src_reg src0 = src_reg(v, glsl_type::vec4_type);
+   src_reg src1 = src_reg(v, glsl_type::vec4_type);
+   dst_reg dest_null = bld.null_reg_f();
+
+   bld.ADD(dest, src0, src1);
+   vec4_instruction *inst = bld.CMP(dest_null, src0, src1, BRW_CONDITIONAL_GE);
+   inst->src[1].negate = true;
+
+   /* = Before =
+    *
+    * 0: add        dest.xyzw  src0  src1
+    * 1: cmp.ge.f0  null.xyzw  src0  -src1
+    *
+    * = After =
+    * 0: add.ge.f0  dest.xyzw  src0  src1
+    */
+
+   v->calculate_cfg();
+   bblock_t *block0 = v->cfg->blocks[0];
+
+   EXPECT_EQ(0, block0->start_ip);
+   EXPECT_EQ(1, block0->end_ip);
+
+   EXPECT_TRUE(cmod_propagation(v));
+
+   ASSERT_EQ(0, block0->start_ip);
+   ASSERT_EQ(0, block0->end_ip);
+   EXPECT_EQ(BRW_OPCODE_ADD, instruction(block0, 0)->opcode);
+   EXPECT_EQ(BRW_CONDITIONAL_GE, instruction(block0, 0)->conditional_mod);
+}
+
+TEST_F(cmod_propagation_test, add_cmp_different_dst_writemask)
+{
+   const vec4_builder bld = vec4_builder(v).at_end();
+   dst_reg dest = dst_reg(v, glsl_type::float_type);
+   src_reg src0 = src_reg(v, glsl_type::vec4_type);
+   src_reg src1 = src_reg(v, glsl_type::vec4_type);
+   dst_reg dest_null = bld.null_reg_f();
+
+   bld.ADD(dest, src0, src1);
+   vec4_instruction *inst = bld.CMP(dest_null, src0, src1, BRW_CONDITIONAL_GE);
+   inst->src[1].negate = true;
+
+   /* = Before =
+    *
+    * 0: add        dest.x     src0  src1
+    * 1: cmp.ge.f0  null.xyzw  src0  -src1
+    *
+    * = After =
+    * (no changes)
+    */
+
+   v->calculate_cfg();
+   bblock_t *block0 = v->cfg->blocks[0];
+
+   EXPECT_EQ(0, block0->start_ip);
+   EXPECT_EQ(1, block0->end_ip);
+
+   EXPECT_FALSE(cmod_propagation(v));
+
+   ASSERT_EQ(0, block0->start_ip);
+   ASSERT_EQ(1, block0->end_ip);
+   EXPECT_EQ(BRW_OPCODE_ADD, instruction(block0, 0)->opcode);
+   EXPECT_EQ(BRW_CONDITIONAL_NONE, instruction(block0, 0)->conditional_mod);
+   EXPECT_EQ(BRW_OPCODE_CMP, instruction(block0, 1)->opcode);
+   EXPECT_EQ(BRW_CONDITIONAL_GE, instruction(block0, 1)->conditional_mod);
 }

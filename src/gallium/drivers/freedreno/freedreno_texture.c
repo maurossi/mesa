@@ -1,5 +1,3 @@
-/* -*- mode: C; c-file-style: "k&r"; tab-width 4; indent-tabs-mode: t; -*- */
-
 /*
  * Copyright (C) 2012 Rob Clark <robclark@freedesktop.org>
  *
@@ -33,6 +31,7 @@
 
 #include "freedreno_texture.h"
 #include "freedreno_context.h"
+#include "freedreno_resource.h"
 #include "freedreno_util.h"
 
 static void
@@ -70,6 +69,7 @@ static void set_sampler_views(struct fd_texture_stateobj *tex,
 		unsigned start, unsigned nr, struct pipe_sampler_view **views)
 {
 	unsigned i;
+	unsigned samplers = 0;
 
 	for (i = 0; i < nr; i++) {
 		struct pipe_sampler_view *view = views ? views[i] : NULL;
@@ -82,6 +82,13 @@ static void set_sampler_views(struct fd_texture_stateobj *tex,
 	}
 
 	tex->num_textures = util_last_bit(tex->valid_textures);
+
+	for (i = 0; i < tex->num_textures; i++) {
+		uint nr_samples = fd_resource_nr_samples(tex->textures[i]->texture);
+		samplers |= (nr_samples >> 1) << (i * 2);
+	}
+
+	tex->samples = samplers;
 }
 
 void
@@ -111,9 +118,10 @@ fd_set_sampler_views(struct pipe_context *pctx, enum pipe_shader_type shader,
 void
 fd_texture_init(struct pipe_context *pctx)
 {
-	pctx->delete_sampler_state = fd_sampler_state_delete;
-
-	pctx->sampler_view_destroy = fd_sampler_view_destroy;
+	if (!pctx->delete_sampler_state)
+		pctx->delete_sampler_state = fd_sampler_state_delete;
+	if (!pctx->sampler_view_destroy)
+		pctx->sampler_view_destroy = fd_sampler_view_destroy;
 }
 
 /* helper for setting up border-color buffer for a3xx/a4xx: */

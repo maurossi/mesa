@@ -26,6 +26,7 @@
 
 #include "util/macros.h"
 #include "main/macros.h"
+#include "compiler/shader_enums.h"
 
 #include "gen_l3_config.h"
 
@@ -194,8 +195,14 @@ gen_get_urb_config(const struct gen_device_info *devinfo,
    }
 
    /* Lay out the URB in pipeline order: push constants, VS, HS, DS, GS. */
-   start[0] = push_constant_chunks;
-   for (int i = MESA_SHADER_TESS_CTRL; i <= MESA_SHADER_GEOMETRY; i++) {
-      start[i] = start[i - 1] + chunks[i - 1];
+   int next = push_constant_chunks;
+   for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
+      if (entries[i]) {
+         start[i] = next;
+         next += chunks[i];
+      } else {
+         /* Just put disabled stages at the beginning. */
+         start[i] = 0;
+      }
    }
 }

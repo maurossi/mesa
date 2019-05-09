@@ -31,6 +31,9 @@
 #include "util/macros.h"
 #include "util/mesa-sha1.h"
 
+#include "compiler/brw_eu.h"
+#include "common/gen_debug.h"
+
 #include "brw_context.h"
 #include "brw_program.h"
 #include "brw_cs.h"
@@ -39,9 +42,19 @@
 #include "brw_vs.h"
 #include "brw_wm.h"
 
+static bool
+debug_enabled_for_stage(gl_shader_stage stage)
+{
+   static const uint64_t stage_debug_flags[] = {
+      DEBUG_VS, DEBUG_TCS, DEBUG_TES, DEBUG_GS, DEBUG_WM, DEBUG_CS,
+   };
+   assert((int)stage >= 0 && stage < ARRAY_SIZE(stage_debug_flags));
+   return (INTEL_DEBUG & stage_debug_flags[stage]) != 0;
+}
+
 static void
-gen_shader_sha1(struct brw_context *brw, struct gl_program *prog,
-                gl_shader_stage stage, void *key, unsigned char *out_sha1)
+gen_shader_sha1(struct gl_program *prog, gl_shader_stage stage,
+                void *key, unsigned char *out_sha1)
 {
    char sha1_buf[41];
    unsigned char sha1[20];
@@ -60,51 +73,14 @@ gen_shader_sha1(struct brw_context *brw, struct gl_program *prog,
    _mesa_sha1_compute(manifest, strlen(manifest), out_sha1);
 }
 
-static void
-write_blob_program_data(struct blob *binary, gl_shader_stage stage,
-                        const void *program,
-                        struct brw_stage_prog_data *prog_data)
-{
-   /* Write prog_data to blob. */
-   blob_write_bytes(binary, prog_data, brw_prog_data_size(stage));
-
-   /* Write program to blob. */
-   blob_write_bytes(binary, program, prog_data->program_size);
-
-   /* Write push params */
-   blob_write_bytes(binary, prog_data->param,
-                    sizeof(uint32_t) * prog_data->nr_params);
-
-   /* Write pull params */
-   blob_write_bytes(binary, prog_data->pull_param,
-                    sizeof(uint32_t) * prog_data->nr_pull_params);
-}
-
 static bool
 read_blob_program_data(struct blob_reader *binary, struct gl_program *prog,
                        gl_shader_stage stage, const uint8_t **program,
                        struct brw_stage_prog_data *prog_data)
 {
-   /* Read shader prog_data from blob. */
-   blob_copy_bytes(binary, prog_data, brw_prog_data_size(stage));
-   if (binary->overrun)
-      return false;
-
-   /* Read shader program from blob. */
-   *program = blob_read_bytes(binary, prog_data->program_size);
-
-   /* Read push params */
-   prog_data->param = rzalloc_array(NULL, uint32_t, prog_data->nr_params);
-   blob_copy_bytes(binary, prog_data->param,
-                   sizeof(uint32_t) * prog_data->nr_params);
-
-   /* Read pull params */
-   prog_data->pull_param = rzalloc_array(NULL, uint32_t,
-                                         prog_data->nr_pull_params);
-   blob_copy_bytes(binary, prog_data->pull_param,
-                   sizeof(uint32_t) * prog_data->nr_pull_params);
-
-   return (binary->current == binary->end && !binary->overrun);
+   return
+      brw_read_blob_program_data(binary, prog, stage, program, prog_data) &&
+      (binary->current == binary->end);
 }
 
 static bool
@@ -118,37 +94,33 @@ read_and_upload(struct brw_context *brw, struct disk_cache *cache,
    switch (stage) {
    case MESA_SHADER_VERTEX:
       brw_vs_populate_key(brw, &prog_key.vs);
-      /* We don't care what instance of the program it is for the disk cache
-       * hash lookup, so set the id to 0 for the sha1 hashing.
-       * program_string_id will be set below.
-       */
-      prog_key.vs.program_string_id = 0;
       break;
    case MESA_SHADER_TESS_CTRL:
       brw_tcs_populate_key(brw, &prog_key.tcs);
-      prog_key.tcs.program_string_id = 0;
       break;
    case MESA_SHADER_TESS_EVAL:
       brw_tes_populate_key(brw, &prog_key.tes);
-      prog_key.tes.program_string_id = 0;
       break;
    case MESA_SHADER_GEOMETRY:
       brw_gs_populate_key(brw, &prog_key.gs);
-      prog_key.gs.program_string_id = 0;
       break;
    case MESA_SHADER_FRAGMENT:
       brw_wm_populate_key(brw, &prog_key.wm);
-      prog_key.wm.program_string_id = 0;
       break;
    case MESA_SHADER_COMPUTE:
       brw_cs_populate_key(brw, &prog_key.cs);
-      prog_key.cs.program_string_id = 0;
       break;
    default:
       unreachable("Unsupported stage!");
    }
 
-   gen_shader_sha1(brw, prog, stage, &prog_key, binary_sha1);
+   /* We don't care what instance of the program it is for the disk cache hash
+    * lookup, so set the id to 0 for the sha1 hashing. program_string_id will
+    * be set below.
+    */
+   brw_prog_key_set_id(&prog_key, stage, 0);
+
+   gen_shader_sha1(prog, stage, &prog_key, binary_sha1);
 
    size_t buffer_size;
    uint8_t *buffer = disk_cache_get(cache, binary_sha1, &buffer_size);
@@ -195,32 +167,26 @@ read_and_upload(struct brw_context *brw, struct disk_cache *cache,
 
    switch (stage) {
    case MESA_SHADER_VERTEX:
-      prog_key.vs.program_string_id = brw_program(prog)->id;
       cache_id = BRW_CACHE_VS_PROG;
       stage_state = &brw->vs.base;
       break;
    case MESA_SHADER_TESS_CTRL:
-      prog_key.tcs.program_string_id = brw_program(prog)->id;
       cache_id = BRW_CACHE_TCS_PROG;
       stage_state = &brw->tcs.base;
       break;
    case MESA_SHADER_TESS_EVAL:
-      prog_key.tes.program_string_id = brw_program(prog)->id;
       cache_id = BRW_CACHE_TES_PROG;
       stage_state = &brw->tes.base;
       break;
    case MESA_SHADER_GEOMETRY:
-      prog_key.gs.program_string_id = brw_program(prog)->id;
       cache_id = BRW_CACHE_GS_PROG;
       stage_state = &brw->gs.base;
       break;
    case MESA_SHADER_FRAGMENT:
-      prog_key.wm.program_string_id = brw_program(prog)->id;
       cache_id = BRW_CACHE_FS_PROG;
       stage_state = &brw->wm.base;
       break;
    case MESA_SHADER_COMPUTE:
-      prog_key.cs.program_string_id = brw_program(prog)->id;
       cache_id = BRW_CACHE_CS_PROG;
       stage_state = &brw->cs.base;
       break;
@@ -228,7 +194,22 @@ read_and_upload(struct brw_context *brw, struct disk_cache *cache,
       unreachable("Unsupported stage!");
    }
 
+   brw_prog_key_set_id(&prog_key, stage, brw_program(prog)->id);
+
    brw_alloc_stage_scratch(brw, stage_state, prog_data->total_scratch);
+
+   if (unlikely(debug_enabled_for_stage(stage))) {
+      fprintf(stderr, "NIR for %s program %d loaded from disk shader cache:\n",
+              _mesa_shader_stage_to_abbrev(stage), brw_program(prog)->id);
+      brw_program_deserialize_driver_blob(&brw->ctx, prog, stage);
+      nir_shader *nir = prog->nir;
+      nir_print_shader(nir, stderr);
+      fprintf(stderr, "Native code for %s %s shader %s from disk cache:\n",
+              nir->info.label ? nir->info.label : "unnamed",
+              _mesa_shader_stage_to_string(nir->info.stage), nir->info.name);
+      brw_disassemble(&brw->screen->devinfo, program, 0,
+                      prog_data->program_size, stderr);
+   }
 
    brw_upload_cache(&brw->cache, cache_id, &prog_key, brw_prog_key_size(stage),
                     program, prog_data->program_size, prog_data,
@@ -254,18 +235,7 @@ brw_disk_cache_upload_program(struct brw_context *brw, gl_shader_stage stage)
    if (prog == NULL)
       return false;
 
-   /* FIXME: For now we don't read from the cache if transform feedback is
-    * enabled via the API. However the shader cache does support transform
-    * feedback when enabled via in shader xfb qualifiers.
-    */
-   if (prog->sh.LinkedTransformFeedback &&
-       prog->sh.LinkedTransformFeedback->api_enabled)
-      return false;
-
    if (brw->ctx._Shader->Flags & GLSL_CACHE_FALLBACK)
-      goto fail;
-
-   if (prog->sh.data->LinkStatus != linking_skipped)
       goto fail;
 
    if (!read_and_upload(brw, cache, prog, stage))
@@ -284,7 +254,7 @@ fail:
               _mesa_shader_stage_to_abbrev(prog->info.stage));
    }
 
-   brw_program_deserialize_nir(&brw->ctx, prog, stage);
+   brw_program_deserialize_driver_blob(&brw->ctx, prog, stage);
 
    return false;
 }
@@ -303,11 +273,11 @@ write_program_data(struct brw_context *brw, struct gl_program *prog,
     * generation time when the program is in normal memory accessible with
     * cache to the CPU. Another easier change would be to use
     * _mesa_streaming_load_memcpy to read from the program mapped memory. */
-   write_blob_program_data(&binary, stage, program_map, prog_data);
+   brw_write_blob_program_data(&binary, stage, program_map, prog_data);
 
    unsigned char sha1[20];
    char buf[41];
-   gen_shader_sha1(brw, prog, stage, key, sha1);
+   gen_shader_sha1(prog, stage, key, sha1);
    _mesa_sha1_format(buf, sha1);
    if (brw->ctx._Shader->Flags & GLSL_CACHE_INFO) {
       fprintf(stderr, "putting binary in cache: %s\n", buf);
@@ -404,16 +374,17 @@ brw_disk_cache_write_compute_program(struct brw_context *brw)
 }
 
 void
-brw_disk_cache_init(struct brw_context *brw)
+brw_disk_cache_init(struct intel_screen *screen)
 {
 #ifdef ENABLE_SHADER_CACHE
-   if (env_var_as_boolean("MESA_GLSL_CACHE_DISABLE", true))
+   if (INTEL_DEBUG & DEBUG_DISK_CACHE_DISABLE_MASK)
       return;
 
-   char renderer[10];
+   /* array length: print length + null char + 1 extra to verify it is unused */
+   char renderer[11];
    MAYBE_UNUSED int len = snprintf(renderer, sizeof(renderer), "i965_%04x",
-                                   brw->screen->deviceID);
-   assert(len == sizeof(renderer) - 1);
+                                   screen->deviceID);
+   assert(len == sizeof(renderer) - 2);
 
    const struct build_id_note *note =
       build_id_find_nhdr_for_addr(brw_disk_cache_init);
@@ -425,6 +396,8 @@ brw_disk_cache_init(struct brw_context *brw)
    char timestamp[41];
    _mesa_sha1_format(timestamp, id_sha1);
 
-   brw->ctx.Cache = disk_cache_create(renderer, timestamp, 0);
+   const uint64_t driver_flags =
+      brw_get_compiler_config_value(screen->compiler);
+   screen->disk_cache = disk_cache_create(renderer, timestamp, driver_flags);
 #endif
 }

@@ -41,6 +41,7 @@
 #include "util/os_time.h"
 #include "util/u_math.h"
 #include "util/u_memory.h"
+#include "util/u_screen.h"
 #include "util/u_string.h"
 
 #include "state_tracker/drm_driver.h"
@@ -49,6 +50,7 @@
 
 #define ETNA_DRM_VERSION(major, minor) ((major) << 16 | (minor))
 #define ETNA_DRM_VERSION_FENCE_FD      ETNA_DRM_VERSION(1, 1)
+#define ETNA_DRM_VERSION_PERFMON       ETNA_DRM_VERSION(1, 2)
 
 static const struct debug_named_value debug_options[] = {
    {"dbg_msgs",       ETNA_DBG_MSGS, "Print debug messages"},
@@ -61,13 +63,14 @@ static const struct debug_named_value debug_options[] = {
    {"no_autodisable", ETNA_DBG_NO_AUTODISABLE, "Disable autodisable"},
    {"no_supertile",   ETNA_DBG_NO_SUPERTILE, "Disable supertiles"},
    {"no_early_z",     ETNA_DBG_NO_EARLY_Z, "Disable early z"},
-   {"cflush_all",     ETNA_DBG_CFLUSH_ALL, "Flush every cash before state update"},
+   {"cflush_all",     ETNA_DBG_CFLUSH_ALL, "Flush every cache before state update"},
    {"msaa2x",         ETNA_DBG_MSAA_2X, "Force 2x msaa"},
    {"msaa4x",         ETNA_DBG_MSAA_4X, "Force 4x msaa"},
    {"flush_all",      ETNA_DBG_FLUSH_ALL, "Flush after every rendered primitive"},
    {"zero",           ETNA_DBG_ZERO, "Zero all resources after allocation"},
    {"draw_stall",     ETNA_DBG_DRAW_STALL, "Stall FE/PE after each rendered primitive"},
    {"shaderdb",       ETNA_DBG_SHADERDB, "Enable shaderdb output"},
+   {"no_singlebuffer",ETNA_DBG_NO_SINGLEBUF, "Disable single buffer feature"},
    DEBUG_NAMED_VALUE_END
 };
 
@@ -78,6 +81,9 @@ static void
 etna_screen_destroy(struct pipe_screen *pscreen)
 {
    struct etna_screen *screen = etna_screen(pscreen);
+
+   if (screen->perfmon)
+      etna_perfmon_del(screen->perfmon);
 
    if (screen->pipe)
       etna_pipe_del(screen->pipe);
@@ -138,6 +144,7 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_VERTEX_ELEMENT_SRC_OFFSET_4BYTE_ALIGNED_ONLY:
    case PIPE_CAP_TGSI_TEXCOORD:
    case PIPE_CAP_VERTEX_COLOR_UNCLAMPED:
+   case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
       return 1;
    case PIPE_CAP_NATIVE_FENCE_FD:
       return screen->drm_version >= ETNA_DRM_VERSION_FENCE_FD;
@@ -148,6 +155,7 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MIN_MAP_BUFFER_ALIGNMENT:
       return 4; /* XXX could easily be supported */
    case PIPE_CAP_GLSL_FEATURE_LEVEL:
+   case PIPE_CAP_GLSL_FEATURE_LEVEL_COMPATIBILITY:
       return 120;
 
    case PIPE_CAP_NPOT_TEXTURES:
@@ -174,9 +182,11 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MAX_DUAL_SOURCE_RENDER_TARGETS: /* no dual-source supported */
    case PIPE_CAP_TEXTURE_MULTISAMPLE: /* no texture multisample */
    case PIPE_CAP_TEXTURE_MIRROR_CLAMP: /* only mirrored repeat */
+   case PIPE_CAP_TEXTURE_MIRROR_CLAMP_TO_EDGE: /* only mirrored repeat */
    case PIPE_CAP_INDEP_BLEND_ENABLE:
    case PIPE_CAP_INDEP_BLEND_FUNC:
    case PIPE_CAP_DEPTH_CLIP_DISABLE:
+   case PIPE_CAP_DEPTH_CLIP_DISABLE_SEPARATE:
    case PIPE_CAP_SEAMLESS_CUBE_MAP_PER_TEXTURE:
    case PIPE_CAP_TGSI_FS_COORD_ORIGIN_LOWER_LEFT:
    case PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_INTEGER:
@@ -237,7 +247,6 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MAX_WINDOW_RECTANGLES:
    case PIPE_CAP_POLYGON_OFFSET_UNITS_UNSCALED:
    case PIPE_CAP_VIEWPORT_SUBPIXEL_BITS:
-   case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
    case PIPE_CAP_TGSI_ARRAY_COMPONENTS:
    case PIPE_CAP_STREAM_OUTPUT_INTERLEAVE_BUFFERS:
    case PIPE_CAP_TGSI_CAN_READ_OUTPUTS:
@@ -264,9 +273,27 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_TGSI_ANY_REG_AS_ADDRESS:
    case PIPE_CAP_TILE_RASTER_ORDER:
    case PIPE_CAP_MAX_COMBINED_SHADER_OUTPUT_RESOURCES:
+   case PIPE_CAP_FRAMEBUFFER_MSAA_CONSTRAINTS:
    case PIPE_CAP_SIGNED_VERTEX_BUFFER_OFFSET:
    case PIPE_CAP_CONTEXT_PRIORITY_MASK:
+   case PIPE_CAP_FENCE_SIGNAL:
+   case PIPE_CAP_CONSTBUF0_FLAGS:
+   case PIPE_CAP_CONSERVATIVE_RASTER_POST_SNAP_TRIANGLES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_POST_SNAP_POINTS_LINES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_PRE_SNAP_TRIANGLES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_PRE_SNAP_POINTS_LINES:
+   case PIPE_CAP_CONSERVATIVE_RASTER_POST_DEPTH_COVERAGE:
+   case PIPE_CAP_MAX_CONSERVATIVE_RASTER_SUBPIXEL_PRECISION_BIAS:
+   case PIPE_CAP_PACKED_UNIFORMS:
+   case PIPE_CAP_PROGRAMMABLE_SAMPLE_LOCATIONS:
+   case PIPE_CAP_MAX_TEXTURE_UPLOAD_MEMORY_BUDGET:
       return 0;
+
+   case PIPE_CAP_MAX_GS_INVOCATIONS:
+      return 32;
+
+   case PIPE_CAP_MAX_SHADER_BUFFER_SIZE:
+      return 1 << 27;
 
    /* Stream output. */
    case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
@@ -283,6 +310,8 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 
    case PIPE_CAP_MAX_VERTEX_ATTRIB_STRIDE:
       return 128;
+   case PIPE_CAP_MAX_VERTEX_ELEMENT_SRC_OFFSET:
+      return 255;
 
    /* Texturing. */
    case PIPE_CAP_MAX_TEXTURE_2D_LEVELS:
@@ -331,6 +360,9 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_PREFER_BLIT_BASED_TEXTURE_TRANSFER:
       return 0;
 
+   case PIPE_CAP_MAX_VARYINGS:
+      return screen->specs.max_varyings;
+
    case PIPE_CAP_PCI_GROUP:
    case PIPE_CAP_PCI_BUS:
    case PIPE_CAP_PCI_DEVICE:
@@ -345,10 +377,9 @@ etna_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0;
    case PIPE_CAP_UMA:
       return 1;
+   default:
+      return u_pipe_screen_get_param_defaults(pscreen, param);
    }
-
-   debug_printf("unknown param %d", param);
-   return 0;
 }
 
 static float
@@ -366,10 +397,9 @@ etna_screen_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
       return 16.0f;
    case PIPE_CAPF_MAX_TEXTURE_LOD_BIAS:
       return util_last_bit(screen->specs.max_texture_size);
-   case PIPE_CAPF_GUARD_BAND_LEFT:
-   case PIPE_CAPF_GUARD_BAND_TOP:
-   case PIPE_CAPF_GUARD_BAND_RIGHT:
-   case PIPE_CAPF_GUARD_BAND_BOTTOM:
+   case PIPE_CAPF_MIN_CONSERVATIVE_RASTER_DILATE:
+   case PIPE_CAPF_MAX_CONSERVATIVE_RASTER_DILATE:
+   case PIPE_CAPF_CONSERVATIVE_RASTER_DILATE_GRANULARITY:
       return 0.0f;
    }
 
@@ -459,6 +489,7 @@ etna_screen_get_shader_param(struct pipe_screen *pscreen,
    case PIPE_SHADER_CAP_TGSI_SKIP_MERGE_REGISTERS:
    case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTERS:
    case PIPE_SHADER_CAP_MAX_HW_ATOMIC_COUNTER_BUFFERS:
+   case PIPE_SHADER_CAP_SCALAR_ISA:
       return 0;
    }
 
@@ -517,7 +548,9 @@ static boolean
 etna_screen_is_format_supported(struct pipe_screen *pscreen,
                                 enum pipe_format format,
                                 enum pipe_texture_target target,
-                                unsigned sample_count, unsigned usage)
+                                unsigned sample_count,
+                                unsigned storage_sample_count,
+                                unsigned usage)
 {
    struct etna_screen *screen = etna_screen(pscreen);
    unsigned allowed = 0;
@@ -529,6 +562,9 @@ etna_screen_is_format_supported(struct pipe_screen *pscreen,
        target != PIPE_TEXTURE_CUBE &&
        target != PIPE_TEXTURE_RECT)
       return FALSE;
+
+   if (MAX2(1, sample_count) != MAX2(1, storage_sample_count))
+      return false;
 
    if (usage & PIPE_BIND_RENDER_TARGET) {
       /* if render target, must be RS-supported format */
@@ -622,7 +658,7 @@ etna_screen_query_dmabuf_modifiers(struct pipe_screen *pscreen,
       if (modifiers)
          modifiers[num_modifiers] = supported_modifiers[i];
       if (external_only)
-         external_only[num_modifiers] = 0;
+         external_only[num_modifiers] = util_format_is_yuv(format) ? 1 : 0;
       num_modifiers++;
    }
 
@@ -705,9 +741,9 @@ etna_get_specs(struct etna_screen *screen)
    else
       screen->specs.halti = -1; /* GC7000nanolite / pre-GC2000 except GC880 */
    if (screen->specs.halti >= 0)
-      DBG("etnaviv: GPU arch: HALTI%d\n", screen->specs.halti);
+      DBG("etnaviv: GPU arch: HALTI%d", screen->specs.halti);
    else
-      DBG("etnaviv: GPU arch: pre-HALTI\n");
+      DBG("etnaviv: GPU arch: pre-HALTI");
 
    screen->specs.can_supertile =
       VIV_FEATURE(screen, chipMinorFeatures0, SUPER_TILED);
@@ -823,7 +859,7 @@ etna_get_specs(struct etna_screen *screen)
 
    screen->specs.single_buffer = VIV_FEATURE(screen, chipMinorFeatures4, SINGLE_BUFFER);
    if (screen->specs.single_buffer)
-      DBG("etnaviv: Single buffer mode enabled with %d pixel pipes\n", screen->specs.pixel_pipes);
+      DBG("etnaviv: Single buffer mode enabled with %d pixel pipes", screen->specs.pixel_pipes);
 
    screen->specs.tex_astc = VIV_FEATURE(screen, chipMinorFeatures4, TEXTURE_ASTC);
 
@@ -842,9 +878,9 @@ etna_screen_bo_from_handle(struct pipe_screen *pscreen,
    struct etna_screen *screen = etna_screen(pscreen);
    struct etna_bo *bo;
 
-   if (whandle->type == DRM_API_HANDLE_TYPE_SHARED) {
+   if (whandle->type == WINSYS_HANDLE_TYPE_SHARED) {
       bo = etna_bo_from_name(screen->dev, whandle->handle);
-   } else if (whandle->type == DRM_API_HANDLE_TYPE_FD) {
+   } else if (whandle->type == WINSYS_HANDLE_TYPE_FD) {
       bo = etna_bo_from_dmabuf(screen->dev, whandle->handle);
    } else {
       DBG("Attempt to import unsupported handle type %d", whandle->type);
@@ -966,6 +1002,8 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
       screen->features[viv_chipMinorFeatures1] &= ~chipMinorFeatures1_AUTO_DISABLE;
    if (DBG_ENABLED(ETNA_DBG_NO_SUPERTILE))
       screen->specs.can_supertile = 0;
+   if (DBG_ENABLED(ETNA_DBG_NO_SINGLEBUF))
+      screen->specs.single_buffer = 0;
 
    pscreen->destroy = etna_screen_destroy;
    pscreen->get_param = etna_screen_get_param;
@@ -985,7 +1023,11 @@ etna_screen_create(struct etna_device *dev, struct etna_gpu *gpu,
    etna_query_screen_init(pscreen);
    etna_resource_screen_init(pscreen);
 
+   util_dynarray_init(&screen->supported_pm_queries, NULL);
    slab_create_parent(&screen->transfer_pool, sizeof(struct etna_transfer), 16);
+
+   if (screen->drm_version >= ETNA_DRM_VERSION_PERFMON)
+      etna_pm_query_setup(screen);
 
    return pscreen;
 
