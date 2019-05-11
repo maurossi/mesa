@@ -810,6 +810,8 @@
     <enum name="RG8_EXT"                                  value="0x822B"/>
 </category>
 
+<xi:include href="EXT_multisampled_render_to_texture.xml" xmlns:xi="http://www.w3.org/2001/XInclude"/>
+
 <!-- 111. GL_ANGLE_texture_compression_dxt -->
 <category name="GL_ANGLE_texture_compression_dxt" number="111">
     <enum name="COMPRESSED_RGBA_S3TC_DXT3_ANGLE"        value="0x83F2"/>
@@ -840,11 +842,6 @@
         <param name="offset" type="GLintptr"/>
         <param name="length" type="GLsizeiptr"/>
     </function>
-</category>
-
-<!-- 122. GL_EXT_shader_framebuffer_fetch -->
-<category name="GL_EXT_shader_framebuffer_fetch" number="122">
-    <enum name="FRAGMENT_SHADER_DISCARDS_SAMPLES_EXT" value="0x8A52"/>
 </category>
 
 <!-- 150. GL_EXT_disjoint_timer_query -->
@@ -1448,6 +1445,34 @@
         <param name="index" type="GLuint"/>
         <param name="data" type="GLfloat *"/>
     </function>
+</category>
+
+<!-- 218. GL_OES_texture_view -->
+
+<category name="GL_OES_texture_view" number="218">
+    <function name="TextureViewOES" es2="3.1" alias="TextureView">
+        <param name="texture" type="GLuint"/>
+        <param name="target" type="GLenum"/>
+        <param name="origtexture" type="GLuint"/>
+        <param name="internalformat" type="GLenum"/>
+        <param name="minlevel" type="GLuint"/>
+        <param name="numlevels" type="GLuint"/>
+        <param name="minlayer" type="GLuint"/>
+        <param name="numlayers" type="GLuint"/>
+   </function>
+</category>
+
+<category name="GL_EXT_texture_view" number="185">
+    <function name="TextureViewEXT" es2="3.1" alias="TextureView">
+        <param name="texture" type="GLuint"/>
+        <param name="target" type="GLenum"/>
+        <param name="origtexture" type="GLuint"/>
+        <param name="internalformat" type="GLenum"/>
+        <param name="minlevel" type="GLuint"/>
+        <param name="numlevels" type="GLuint"/>
+        <param name="minlayer" type="GLuint"/>
+        <param name="numlayers" type="GLuint"/>
+   </function>
 </category>
 
 </OpenGLAPI>

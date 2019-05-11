@@ -41,6 +41,7 @@ struct nir_spirv_specialization {
       uint32_t data32;
       uint64_t data64;
    };
+   bool defined_on_module;
 };
 
 enum nir_spirv_debug_level {
@@ -58,7 +59,17 @@ struct spirv_to_nir_options {
     */
    bool lower_workgroup_access_to_offsets;
 
+   /* Whether or not to lower all UBO/SSBO access to offsets up-front. */
+   bool lower_ubo_ssbo_access_to_offsets;
+
    struct spirv_supported_capabilities caps;
+
+   /* Storage types for various kinds of pointers. */
+   const struct glsl_type *ubo_ptr_type;
+   const struct glsl_type *ssbo_ptr_type;
+   const struct glsl_type *phys_ssbo_ptr_type;
+   const struct glsl_type *push_const_ptr_type;
+   const struct glsl_type *shared_ptr_type;
 
    struct {
       void (*func)(void *private_data,
@@ -68,6 +79,10 @@ struct spirv_to_nir_options {
       void *private_data;
    } debug;
 };
+
+bool gl_spirv_validation(const uint32_t *words, size_t word_count,
+                         struct nir_spirv_specialization *spec, unsigned num_spec,
+                         gl_shader_stage stage, const char *entry_point_name);
 
 nir_function *spirv_to_nir(const uint32_t *words, size_t word_count,
                            struct nir_spirv_specialization *specializations,

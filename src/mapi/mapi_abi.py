@@ -24,12 +24,15 @@
 # Authors:
 #    Chia-I Wu <olv@lunarg.com>
 
+from __future__ import print_function
+
 import sys
 # make it possible to import glapi
 import os
-GLAPI = os.path.join(".", os.path.dirname(sys.argv[0]), "glapi/gen")
-sys.path.append(GLAPI)
+GLAPI = os.path.join(".", os.path.dirname(__file__), "glapi", "gen")
+sys.path.insert(0, GLAPI)
 
+from operator import attrgetter
 import re
 from optparse import OptionParser
 import gl_XML
@@ -119,19 +122,18 @@ class ABIEntry(object):
     def __str__(self):
         return self.c_prototype()
 
-    def __cmp__(self, other):
+    def __lt__(self, other):
         # compare slot, alias, and then name
-        res = cmp(self.slot, other.slot)
-        if not res:
+        if self.slot == other.slot:
             if not self.alias:
-                res = -1
+                return True
             elif not other.alias:
-                res = 1
+                return False
 
-            if not res:
-                res = cmp(self.name, other.name)
+            return self.name < other.name
 
-        return res
+        return self.slot < other.slot
+
 
 def abi_parse_xml(xml):
     """Parse a GLAPI XML file for ABI entries."""
@@ -166,7 +168,7 @@ def abi_parse_xml(xml):
             else:
                 attrs['handcode'] = None
 
-            if entry_dict.has_key(name):
+            if name in entry_dict:
                 raise Exception('%s is duplicated' % (name))
 
             cols = []
@@ -178,78 +180,7 @@ def abi_parse_xml(xml):
             ent = ABIEntry(cols, attrs, func)
             entry_dict[ent.name] = ent
 
-    entries = entry_dict.values()
-    entries.sort()
-
-    return entries
-
-def abi_parse_line(line):
-    cols = [col.strip() for col in line.split(',')]
-
-    attrs = {
-            'slot': -1,
-            'hidden': False,
-            'alias': None,
-            'handcode': None,
-    }
-
-    # extract attributes from the first column
-    vals = cols[0].split(':')
-    while len(vals) > 1:
-        val = vals.pop(0)
-        if val.startswith('slot='):
-            attrs['slot'] = int(val[5:])
-        elif val == 'hidden':
-            attrs['hidden'] = True
-        elif val.startswith('alias='):
-            attrs['alias'] = val[6:]
-        elif val.startswith('handcode='):
-            attrs['handcode'] = val[9:]
-        elif not val:
-            pass
-        else:
-            raise Exception('unknown attribute %s' % val)
-    cols[0] = vals[0]
-
-    return (attrs, cols)
-
-def abi_parse(filename):
-    """Parse a CSV file for ABI entries."""
-    fp = open(filename) if filename != '-' else sys.stdin
-    lines = [line.strip() for line in fp.readlines()
-            if not line.startswith('#') and line.strip()]
-
-    entry_dict = {}
-    next_slot = 0
-    for line in lines:
-        attrs, cols = abi_parse_line(line)
-
-        # post-process attributes
-        if attrs['alias']:
-            try:
-                alias = entry_dict[attrs['alias']]
-            except KeyError:
-                raise Exception('failed to alias %s' % attrs['alias'])
-            if alias.alias:
-                raise Exception('recursive alias %s' % ent.name)
-            slot = alias.slot
-            attrs['alias'] = alias
-        else:
-            slot = next_slot
-            next_slot += 1
-
-        if attrs['slot'] < 0:
-            attrs['slot'] = slot
-        elif attrs['slot'] != slot:
-            raise Exception('invalid slot in %s' % (line))
-
-        ent = ABIEntry(cols, attrs)
-        if entry_dict.has_key(ent.name):
-            raise Exception('%s is duplicated' % (ent.name))
-        entry_dict[ent.name] = ent
-
-    entries = entry_dict.values()
-    entries.sort()
+    entries = sorted(entry_dict.values())
 
     return entries
 
@@ -260,7 +191,7 @@ def abi_sanity_check(entries):
     all_names = []
     last_slot = entries[-1].slot
     i = 0
-    for slot in xrange(last_slot + 1):
+    for slot in range(last_slot + 1):
         if entries[i].slot != slot:
             raise Exception('entries are not ordered by slots')
         if entries[i].alias:
@@ -291,8 +222,7 @@ class ABIPrinter(object):
         self.entries = entries
 
         # sort entries by their names
-        self.entries_sorted_by_names = self.entries[:]
-        self.entries_sorted_by_names.sort(lambda x, y: cmp(x.name, y.name))
+        self.entries_sorted_by_names = sorted(self.entries, key=attrgetter('name'))
 
         self.indent = ' ' * 3
         self.noop_warn = 'noop_warn'
@@ -335,7 +265,8 @@ class ABIPrinter(object):
             if not self.need_entry_point(ent):
                 continue
             export = self.api_call if not ent.hidden else ''
-            decls.append(self._c_decl(ent, prefix, True, export) + ';')
+            if not ent.hidden or not self.lib_need_non_hidden_entries:
+                decls.append(self._c_decl(ent, prefix, True, export) + ';')
 
         return "\n".join(decls)
 
@@ -441,8 +372,7 @@ class ABIPrinter(object):
     def c_stub_string_pool(self):
         """Return the string pool for use by stubs."""
         # sort entries by their names
-        sorted_entries = self.entries[:]
-        sorted_entries.sort(lambda x, y: cmp(x.name, y.name))
+        sorted_entries = sorted(self.entries, key=attrgetter('name'))
 
         pool = []
         offsets = {}
@@ -541,79 +471,79 @@ class ABIPrinter(object):
         return "\n".join(asm)
 
     def output_for_lib(self):
-        print self.c_notice()
+        print(self.c_notice())
 
         if self.c_header:
-            print
-            print self.c_header
+            print()
+            print(self.c_header)
 
-        print
-        print '#ifdef MAPI_TMP_DEFINES'
-        print self.c_public_includes()
-        print
-        print self.c_public_declarations(self.prefix_lib)
-        print '#undef MAPI_TMP_DEFINES'
-        print '#endif /* MAPI_TMP_DEFINES */'
+        print()
+        print('#ifdef MAPI_TMP_DEFINES')
+        print(self.c_public_includes())
+        print()
+        print(self.c_public_declarations(self.prefix_lib))
+        print('#undef MAPI_TMP_DEFINES')
+        print('#endif /* MAPI_TMP_DEFINES */')
 
         if self.lib_need_table_size:
-            print
-            print '#ifdef MAPI_TMP_TABLE'
-            print self.c_mapi_table()
-            print '#undef MAPI_TMP_TABLE'
-            print '#endif /* MAPI_TMP_TABLE */'
+            print()
+            print('#ifdef MAPI_TMP_TABLE')
+            print(self.c_mapi_table())
+            print('#undef MAPI_TMP_TABLE')
+            print('#endif /* MAPI_TMP_TABLE */')
 
         if self.lib_need_noop_array:
-            print
-            print '#ifdef MAPI_TMP_NOOP_ARRAY'
-            print '#ifdef DEBUG'
-            print
-            print self.c_noop_functions(self.prefix_noop, self.prefix_warn)
-            print
-            print 'const mapi_func table_%s_array[] = {' % (self.prefix_noop)
-            print self.c_noop_initializer(self.prefix_noop, False)
-            print '};'
-            print
-            print '#else /* DEBUG */'
-            print
-            print 'const mapi_func table_%s_array[] = {' % (self.prefix_noop)
-            print self.c_noop_initializer(self.prefix_noop, True)
-            print '};'
-            print
-            print '#endif /* DEBUG */'
-            print '#undef MAPI_TMP_NOOP_ARRAY'
-            print '#endif /* MAPI_TMP_NOOP_ARRAY */'
+            print()
+            print('#ifdef MAPI_TMP_NOOP_ARRAY')
+            print('#ifdef DEBUG')
+            print()
+            print(self.c_noop_functions(self.prefix_noop, self.prefix_warn))
+            print()
+            print('const mapi_func table_%s_array[] = {' % (self.prefix_noop))
+            print(self.c_noop_initializer(self.prefix_noop, False))
+            print('};')
+            print()
+            print('#else /* DEBUG */')
+            print()
+            print('const mapi_func table_%s_array[] = {' % (self.prefix_noop))
+            print(self.c_noop_initializer(self.prefix_noop, True))
+            print('};')
+            print()
+            print('#endif /* DEBUG */')
+            print('#undef MAPI_TMP_NOOP_ARRAY')
+            print('#endif /* MAPI_TMP_NOOP_ARRAY */')
 
         if self.lib_need_stubs:
             pool, pool_offsets = self.c_stub_string_pool()
-            print
-            print '#ifdef MAPI_TMP_PUBLIC_STUBS'
-            print 'static const char public_string_pool[] ='
-            print pool
-            print
-            print 'static const struct mapi_stub public_stubs[] = {'
-            print self.c_stub_initializer(self.prefix_lib, pool_offsets)
-            print '};'
-            print '#undef MAPI_TMP_PUBLIC_STUBS'
-            print '#endif /* MAPI_TMP_PUBLIC_STUBS */'
+            print()
+            print('#ifdef MAPI_TMP_PUBLIC_STUBS')
+            print('static const char public_string_pool[] =')
+            print(pool)
+            print()
+            print('static const struct mapi_stub public_stubs[] = {')
+            print(self.c_stub_initializer(self.prefix_lib, pool_offsets))
+            print('};')
+            print('#undef MAPI_TMP_PUBLIC_STUBS')
+            print('#endif /* MAPI_TMP_PUBLIC_STUBS */')
 
         if self.lib_need_all_entries:
-            print
-            print '#ifdef MAPI_TMP_PUBLIC_ENTRIES'
-            print self.c_public_dispatches(self.prefix_lib, False)
-            print
-            print 'static const mapi_func public_entries[] = {'
-            print self.c_public_initializer(self.prefix_lib)
-            print '};'
-            print '#undef MAPI_TMP_PUBLIC_ENTRIES'
-            print '#endif /* MAPI_TMP_PUBLIC_ENTRIES */'
+            print()
+            print('#ifdef MAPI_TMP_PUBLIC_ENTRIES')
+            print(self.c_public_dispatches(self.prefix_lib, False))
+            print()
+            print('static const mapi_func public_entries[] = {')
+            print(self.c_public_initializer(self.prefix_lib))
+            print('};')
+            print('#undef MAPI_TMP_PUBLIC_ENTRIES')
+            print('#endif /* MAPI_TMP_PUBLIC_ENTRIES */')
 
-            print
-            print '#ifdef MAPI_TMP_STUB_ASM_GCC'
-            print '__asm__('
-            print self.c_asm_gcc(self.prefix_lib, False)
-            print ');'
-            print '#undef MAPI_TMP_STUB_ASM_GCC'
-            print '#endif /* MAPI_TMP_STUB_ASM_GCC */'
+            print()
+            print('#ifdef MAPI_TMP_STUB_ASM_GCC')
+            print('__asm__(')
+            print(self.c_asm_gcc(self.prefix_lib, False))
+            print(');')
+            print('#undef MAPI_TMP_STUB_ASM_GCC')
+            print('#endif /* MAPI_TMP_STUB_ASM_GCC */')
 
         if self.lib_need_non_hidden_entries:
             all_hidden = True
@@ -622,21 +552,21 @@ class ABIPrinter(object):
                     all_hidden = False
                     break
             if not all_hidden:
-                print
-                print '#ifdef MAPI_TMP_PUBLIC_ENTRIES_NO_HIDDEN'
-                print self.c_public_dispatches(self.prefix_lib, True)
-                print
-                print '/* does not need public_entries */'
-                print '#undef MAPI_TMP_PUBLIC_ENTRIES_NO_HIDDEN'
-                print '#endif /* MAPI_TMP_PUBLIC_ENTRIES_NO_HIDDEN */'
+                print()
+                print('#ifdef MAPI_TMP_PUBLIC_ENTRIES_NO_HIDDEN')
+                print(self.c_public_dispatches(self.prefix_lib, True))
+                print()
+                print('/* does not need public_entries */')
+                print('#undef MAPI_TMP_PUBLIC_ENTRIES_NO_HIDDEN')
+                print('#endif /* MAPI_TMP_PUBLIC_ENTRIES_NO_HIDDEN */')
 
-                print
-                print '#ifdef MAPI_TMP_STUB_ASM_GCC_NO_HIDDEN'
-                print '__asm__('
-                print self.c_asm_gcc(self.prefix_lib, True)
-                print ');'
-                print '#undef MAPI_TMP_STUB_ASM_GCC_NO_HIDDEN'
-                print '#endif /* MAPI_TMP_STUB_ASM_GCC_NO_HIDDEN */'
+                print()
+                print('#ifdef MAPI_TMP_STUB_ASM_GCC_NO_HIDDEN')
+                print('__asm__(')
+                print(self.c_asm_gcc(self.prefix_lib, True))
+                print(');')
+                print('#undef MAPI_TMP_STUB_ASM_GCC_NO_HIDDEN')
+                print('#endif /* MAPI_TMP_STUB_ASM_GCC_NO_HIDDEN */')
 
 class GLAPIPrinter(ABIPrinter):
     """OpenGL API Printer"""
@@ -686,62 +616,6 @@ typedef int GLclampx;
 
         return header
 
-class ES1APIPrinter(GLAPIPrinter):
-    """OpenGL ES 1.x API Printer"""
-
-    def __init__(self, entries):
-        super(ES1APIPrinter, self).__init__(entries)
-        self.prefix_lib = 'gl'
-        self.prefix_warn = 'gl'
-
-    def _override_for_api(self, ent):
-        if ent.xml_data is None:
-            raise Exception('ES2 API printer requires XML input')
-        ent.hidden = (ent.name not in \
-            ent.xml_data.entry_points_for_api_version('es1')) \
-            or ent.hidden
-        ent.handcode = False
-
-    def _get_c_header(self):
-        header = """#ifndef _GLAPI_TMP_H_
-#define _GLAPI_TMP_H_
-typedef int GLclampx;
-#endif /* _GLAPI_TMP_H_ */"""
-
-        return header
-
-class ES2APIPrinter(GLAPIPrinter):
-    """OpenGL ES 2.x API Printer"""
-
-    def __init__(self, entries):
-        super(ES2APIPrinter, self).__init__(entries)
-        self.prefix_lib = 'gl'
-        self.prefix_warn = 'gl'
-
-    def _override_for_api(self, ent):
-        if ent.xml_data is None:
-            raise Exception('ES2 API printer requires XML input')
-        ent.hidden = (ent.name not in \
-            ent.xml_data.entry_points_for_api_version('es2')) \
-            or ent.hidden
-
-        # This is hella ugly.  The same-named function in desktop OpenGL is
-        # hidden, but it needs to be exposed by libGLESv2 for OpenGL ES 3.0.
-        # There's no way to express in the XML that a function should be be
-        # hidden in one API but exposed in another.
-        if ent.name == 'GetInternalformativ':
-            ent.hidden = False
-
-        ent.handcode = False
-
-    def _get_c_header(self):
-        header = """#ifndef _GLAPI_TMP_H_
-#define _GLAPI_TMP_H_
-typedef int GLclampx;
-#endif /* _GLAPI_TMP_H_ */"""
-
-        return header
-
 class SharedGLAPIPrinter(GLAPIPrinter):
     """Shared GLAPI API Printer"""
 
@@ -772,7 +646,7 @@ typedef int GLclampx;
 def parse_args():
     printers = ['glapi', 'es1api', 'es2api', 'shared-glapi']
 
-    parser = OptionParser(usage='usage: %prog [options] <filename>')
+    parser = OptionParser(usage='usage: %prog [options] <xml_file>')
     parser.add_option('-p', '--printer', dest='printer',
             help='printer to use: %s' % (", ".join(printers)))
 
@@ -781,22 +655,21 @@ def parse_args():
         parser.print_help()
         sys.exit(1)
 
+    if not args[0].endswith('.xml'):
+        parser.print_help()
+        sys.exit(1)
+
     return (args[0], options)
 
 def main():
     printers = {
         'glapi': GLAPIPrinter,
-        'es1api': ES1APIPrinter,
-        'es2api': ES2APIPrinter,
         'shared-glapi': SharedGLAPIPrinter,
     }
 
     filename, options = parse_args()
 
-    if filename.endswith('.xml'):
-        entries = abi_parse_xml(filename)
-    else:
-        entries = abi_parse(filename)
+    entries = abi_parse_xml(filename)
     abi_sanity_check(entries)
 
     printer = printers[options.printer](entries)

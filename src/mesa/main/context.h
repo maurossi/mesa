@@ -49,6 +49,7 @@
 #define CONTEXT_H
 
 
+#include "errors.h"
 #include "imports.h"
 #include "extensions.h"
 #include "mtypes.h"
@@ -206,7 +207,7 @@ _mesa_inside_dlist_begin_end(const struct gl_context *ctx)
 #define FLUSH_VERTICES(ctx, newstate)				\
 do {								\
    if (MESA_VERBOSE & VERBOSE_STATE)				\
-      _mesa_debug(ctx, "FLUSH_VERTICES in %s\n", MESA_FUNCTION);\
+      _mesa_debug(ctx, "FLUSH_VERTICES in %s\n", __func__);	\
    if (ctx->Driver.NeedFlush & FLUSH_STORED_VERTICES)		\
       vbo_exec_FlushVertices(ctx, FLUSH_STORED_VERTICES);	\
    ctx->NewState |= newstate;					\
@@ -225,10 +226,26 @@ do {								\
 #define FLUSH_CURRENT(ctx, newstate)				\
 do {								\
    if (MESA_VERBOSE & VERBOSE_STATE)				\
-      _mesa_debug(ctx, "FLUSH_CURRENT in %s\n", MESA_FUNCTION);	\
+      _mesa_debug(ctx, "FLUSH_CURRENT in %s\n", __func__);	\
    if (ctx->Driver.NeedFlush & FLUSH_UPDATE_CURRENT)		\
       vbo_exec_FlushVertices(ctx, FLUSH_UPDATE_CURRENT);	\
    ctx->NewState |= newstate;					\
+} while (0)
+
+/**
+ * Flush vertices.
+ *
+ * \param ctx GL context.
+ *
+ * Checks if dd_function_table::NeedFlush is marked to flush stored vertices
+ * or current state and calls dd_function_table::FlushVertices if so.
+ */
+#define FLUSH_FOR_DRAW(ctx)                                     \
+do {                                                            \
+   if (MESA_VERBOSE & VERBOSE_STATE)                            \
+      _mesa_debug(ctx, "FLUSH_FOR_DRAW in %s\n", __func__);     \
+   if (ctx->Driver.NeedFlush)                                   \
+      vbo_exec_FlushVertices(ctx, ctx->Driver.NeedFlush);       \
 } while (0)
 
 /**
@@ -320,6 +337,64 @@ _mesa_is_no_error_enabled(const struct gl_context *ctx)
 }
 
 
+static inline bool
+_mesa_has_integer_textures(const struct gl_context *ctx)
+{
+   return _mesa_has_EXT_texture_integer(ctx) || _mesa_is_gles3(ctx);
+}
+
+static inline bool
+_mesa_has_half_float_textures(const struct gl_context *ctx)
+{
+   return _mesa_has_ARB_texture_float(ctx) ||
+          _mesa_has_OES_texture_half_float(ctx) || _mesa_is_gles3(ctx);
+}
+
+static inline bool
+_mesa_has_float_textures(const struct gl_context *ctx)
+{
+   return _mesa_has_ARB_texture_float(ctx) ||
+          _mesa_has_OES_texture_float(ctx) || _mesa_is_gles3(ctx);
+ }
+
+static inline bool
+_mesa_has_texture_rgb10_a2ui(const struct gl_context *ctx)
+{
+   return _mesa_has_ARB_texture_rgb10_a2ui(ctx) || _mesa_is_gles3(ctx);
+}
+
+static inline bool
+_mesa_has_float_depth_buffer(const struct gl_context *ctx)
+{
+   return _mesa_has_ARB_depth_buffer_float(ctx) || _mesa_is_gles3(ctx);
+}
+
+static inline bool
+_mesa_has_packed_float(const struct gl_context *ctx)
+{
+   return _mesa_has_EXT_packed_float(ctx) || _mesa_is_gles3(ctx);
+}
+
+static inline bool
+_mesa_has_rg_textures(const struct gl_context *ctx)
+{
+   return _mesa_has_ARB_texture_rg(ctx) || _mesa_has_EXT_texture_rg(ctx) ||
+          _mesa_is_gles3(ctx);
+}
+
+static inline bool
+_mesa_has_texture_shared_exponent(const struct gl_context *ctx)
+{
+   return _mesa_has_EXT_texture_shared_exponent(ctx) || _mesa_is_gles3(ctx);
+}
+
+static inline bool
+_mesa_has_texture_type_2_10_10_10_REV(const struct gl_context *ctx)
+{
+   return _mesa_is_desktop_gl(ctx) ||
+          _mesa_has_EXT_texture_type_2_10_10_10_REV(ctx);
+}
+
 /**
  * Checks if the context supports geometry shaders.
  */
@@ -344,7 +419,7 @@ _mesa_has_compute_shaders(const struct gl_context *ctx)
 /**
  * Checks if the context supports tessellation.
  */
-static inline GLboolean
+static inline bool
 _mesa_has_tessellation(const struct gl_context *ctx)
 {
    /* _mesa_has_EXT_tessellation_shader(ctx) is redundant with the OES
@@ -359,6 +434,13 @@ _mesa_has_texture_cube_map_array(const struct gl_context *ctx)
 {
    return _mesa_has_ARB_texture_cube_map_array(ctx) ||
           _mesa_has_OES_texture_cube_map_array(ctx);
+}
+
+static inline bool
+_mesa_has_texture_view(const struct gl_context *ctx)
+{
+   return _mesa_has_ARB_texture_view(ctx) ||
+          _mesa_has_OES_texture_view(ctx);
 }
 
 #ifdef __cplusplus

@@ -89,15 +89,17 @@ brw_codegen_gs_prog(struct brw_context *brw,
 
    void *mem_ctx = ralloc_context(NULL);
 
+   nir_shader *nir = nir_shader_clone(mem_ctx, gp->program.nir);
+
    assign_gs_binding_table_offsets(devinfo, &gp->program, &prog_data);
 
-   brw_nir_setup_glsl_uniforms(mem_ctx, gp->program.nir, &gp->program,
+   brw_nir_setup_glsl_uniforms(mem_ctx, nir, &gp->program,
                                &prog_data.base.base,
                                compiler->scalar_stage[MESA_SHADER_GEOMETRY]);
-   brw_nir_analyze_ubo_ranges(compiler, gp->program.nir,
+   brw_nir_analyze_ubo_ranges(compiler, nir, NULL,
                               prog_data.base.base.ubo_ranges);
 
-   uint64_t outputs_written = gp->program.nir->info.outputs_written;
+   uint64_t outputs_written = nir->info.outputs_written;
 
    brw_compute_vue_map(devinfo,
                        &prog_data.base.vue_map, outputs_written,
@@ -115,8 +117,7 @@ brw_codegen_gs_prog(struct brw_context *brw,
    char *error_str;
    const unsigned *program =
       brw_compile_gs(brw->screen->compiler, brw, mem_ctx, key,
-                     &prog_data, gp->program.nir, &gp->program,
-                     st_index, &error_str);
+                     &prog_data, nir, &gp->program, st_index, &error_str);
    if (program == NULL) {
       ralloc_strcat(&gp->program.sh.data->InfoLog, error_str);
       _mesa_problem(NULL, "Failed to compile geometry shader: %s\n", error_str);
@@ -192,10 +193,9 @@ brw_upload_gs_prog(struct brw_context *brw)
 
    brw_gs_populate_key(brw, &key);
 
-   if (brw_search_cache(&brw->cache, BRW_CACHE_GS_PROG,
-                        &key, sizeof(key),
-                        &stage_state->prog_offset,
-                        &brw->gs.base.prog_data))
+   if (brw_search_cache(&brw->cache, BRW_CACHE_GS_PROG, &key, sizeof(key),
+                        &stage_state->prog_offset, &brw->gs.base.prog_data,
+                        true))
       return;
 
    if (brw_disk_cache_upload_program(brw, MESA_SHADER_GEOMETRY))
@@ -206,6 +206,17 @@ brw_upload_gs_prog(struct brw_context *brw)
 
    MAYBE_UNUSED bool success = brw_codegen_gs_prog(brw, gp, &key);
    assert(success);
+}
+
+void
+brw_gs_populate_default_key(const struct gen_device_info *devinfo,
+                            struct brw_gs_prog_key *key,
+                            struct gl_program *prog)
+{
+   memset(key, 0, sizeof(*key));
+
+   brw_setup_tex_for_precompile(devinfo, &key->tex, prog);
+   key->program_string_id = brw_program(prog)->id;
 }
 
 bool
@@ -219,10 +230,7 @@ brw_gs_precompile(struct gl_context *ctx, struct gl_program *prog)
 
    struct brw_program *bgp = brw_program(prog);
 
-   memset(&key, 0, sizeof(key));
-
-   brw_setup_tex_for_precompile(brw, &key.tex, prog);
-   key.program_string_id = bgp->id;
+   brw_gs_populate_default_key(&brw->screen->devinfo, &key, prog);
 
    success = brw_codegen_gs_prog(brw, bgp, &key);
 

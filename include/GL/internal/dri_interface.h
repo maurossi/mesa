@@ -82,7 +82,7 @@ typedef struct __DRI2flushExtensionRec	__DRI2flushExtension;
 typedef struct __DRI2throttleExtensionRec	__DRI2throttleExtension;
 typedef struct __DRI2fenceExtensionRec          __DRI2fenceExtension;
 typedef struct __DRI2interopExtensionRec	__DRI2interopExtension;
-
+typedef struct __DRI2blobExtensionRec           __DRI2blobExtension;
 
 typedef struct __DRIimageLoaderExtensionRec     __DRIimageLoaderExtension;
 typedef struct __DRIimageDriverExtensionRec     __DRIimageDriverExtension;
@@ -336,6 +336,30 @@ struct __DRI2throttleExtensionRec {
 		    enum __DRI2throttleReason reason);
 };
 
+/**
+ * Extension for EGL_ANDROID_blob_cache
+ */
+
+#define __DRI2_BLOB "DRI2_Blob"
+#define __DRI2_BLOB_VERSION 1
+
+typedef void
+(*__DRIblobCacheSet) (const void *key, signed long keySize,
+                      const void *value, signed long valueSize);
+
+typedef signed long
+(*__DRIblobCacheGet) (const void *key, signed long keySize,
+                      void *value, signed long valueSize);
+
+struct __DRI2blobExtensionRec {
+   __DRIextension base;
+
+   /**
+    * Set cache functions for setting and getting cache entries.
+    */
+   void (*set_cache_funcs) (__DRIscreen *screen,
+                            __DRIblobCacheSet set, __DRIblobCacheGet get);
+};
 
 /**
  * Extension for fences / synchronization objects.
@@ -565,7 +589,7 @@ struct __DRIdamageExtensionRec {
  * SWRast Loader extension.
  */
 #define __DRI_SWRAST_LOADER "DRI_SWRastLoader"
-#define __DRI_SWRAST_LOADER_VERSION 3
+#define __DRI_SWRAST_LOADER_VERSION 5
 struct __DRIswrastLoaderExtensionRec {
     __DRIextension base;
 
@@ -607,6 +631,41 @@ struct __DRIswrastLoaderExtensionRec {
    void (*getImage2)(__DRIdrawable *readable,
 		     int x, int y, int width, int height, int stride,
 		     char *data, void *loaderPrivate);
+
+    /**
+     * Put shm image to drawable
+     *
+     * \since 4
+     */
+    void (*putImageShm)(__DRIdrawable *drawable, int op,
+                        int x, int y, int width, int height, int stride,
+                        int shmid, char *shmaddr, unsigned offset,
+                        void *loaderPrivate);
+    /**
+     * Get shm image from readable
+     *
+     * \since 4
+     */
+    void (*getImageShm)(__DRIdrawable *readable,
+                        int x, int y, int width, int height,
+                        int shmid, void *loaderPrivate);
+
+   /**
+     * Put shm image to drawable (v2)
+     *
+     * The original version fixes srcx/y to 0, and expected
+     * the offset to be adjusted. This version allows src x,y
+     * to not be included in the offset. This is needed to
+     * avoid certain overflow checks in the X server, that
+     * result in lost rendering.
+     *
+     * \since 5
+     */
+    void (*putImageShm2)(__DRIdrawable *drawable, int op,
+                         int x, int y,
+                         int width, int height, int stride,
+                         int shmid, char *shmaddr, unsigned offset,
+                         void *loaderPrivate);
 };
 
 /**
@@ -704,7 +763,8 @@ struct __DRIuseInvalidateExtensionRec {
 #define __DRI_ATTRIB_BIND_TO_TEXTURE_TARGETS	46
 #define __DRI_ATTRIB_YINVERTED			47
 #define __DRI_ATTRIB_FRAMEBUFFER_SRGB_CAPABLE	48
-#define __DRI_ATTRIB_MAX			(__DRI_ATTRIB_FRAMEBUFFER_SRGB_CAPABLE + 1)
+#define __DRI_ATTRIB_MUTABLE_RENDER_BUFFER	49 /* EGL_MUTABLE_RENDER_BUFFER_BIT_KHR */
+#define __DRI_ATTRIB_MAX			50
 
 /* __DRI_ATTRIB_RENDER_TYPE */
 #define __DRI_ATTRIB_RGBA_BIT			0x01	
@@ -1227,6 +1287,9 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_FORMAT_R16          0x100d
 #define __DRI_IMAGE_FORMAT_GR1616       0x100e
 #define __DRI_IMAGE_FORMAT_YUYV         0x100f
+#define __DRI_IMAGE_FORMAT_XBGR2101010  0x1010
+#define __DRI_IMAGE_FORMAT_ABGR2101010  0x1011
+#define __DRI_IMAGE_FORMAT_SABGR8       0x1012
 
 #define __DRI_IMAGE_USE_SHARE		0x0001
 #define __DRI_IMAGE_USE_SCANOUT		0x0002
@@ -1263,6 +1326,7 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_FOURCC_ABGR8888	0x34324241
 #define __DRI_IMAGE_FOURCC_XBGR8888	0x34324258
 #define __DRI_IMAGE_FOURCC_SARGB8888	0x83324258
+#define __DRI_IMAGE_FOURCC_SABGR8888	0x84324258
 #define __DRI_IMAGE_FOURCC_ARGB2101010	0x30335241
 #define __DRI_IMAGE_FOURCC_XRGB2101010	0x30335258
 #define __DRI_IMAGE_FOURCC_ABGR2101010	0x30334241
@@ -1280,6 +1344,7 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_FOURCC_NV16		0x3631564e
 #define __DRI_IMAGE_FOURCC_YUYV		0x56595559
 #define __DRI_IMAGE_FOURCC_UYVY		0x59565955
+#define __DRI_IMAGE_FOURCC_AYUV		0x56555941
 
 #define __DRI_IMAGE_FOURCC_YVU410	0x39555659
 #define __DRI_IMAGE_FOURCC_YVU411	0x31315659
@@ -1306,6 +1371,7 @@ struct __DRIdri2ExtensionRec {
 #define __DRI_IMAGE_COMPONENTS_Y_UV	0x3004
 #define __DRI_IMAGE_COMPONENTS_Y_XUXV	0x3005
 #define __DRI_IMAGE_COMPONENTS_Y_UXVX	0x3008
+#define __DRI_IMAGE_COMPONENTS_AYUV	0x3009
 #define __DRI_IMAGE_COMPONENTS_R	0x3006
 #define __DRI_IMAGE_COMPONENTS_RG	0x3007
 
@@ -1842,9 +1908,57 @@ struct __DRI2rendererQueryExtensionRec {
  * Image Loader extension. Drivers use this to allocate color buffers
  */
 
+/**
+ * See __DRIimageLoaderExtensionRec::getBuffers::buffer_mask.
+ */
 enum __DRIimageBufferMask {
    __DRI_IMAGE_BUFFER_BACK = (1 << 0),
-   __DRI_IMAGE_BUFFER_FRONT = (1 << 1)
+   __DRI_IMAGE_BUFFER_FRONT = (1 << 1),
+
+   /**
+    * A buffer shared between application and compositor. The buffer may be
+    * simultaneously accessed by each.
+    *
+    * A shared buffer is equivalent to an EGLSurface whose EGLConfig contains
+    * EGL_MUTABLE_RENDER_BUFFER_BIT_KHR and whose active EGL_RENDER_BUFFER (as
+    * opposed to any pending, requested change to EGL_RENDER_BUFFER) is
+    * EGL_SINGLE_BUFFER.
+    *
+    * If buffer_mask contains __DRI_IMAGE_BUFFER_SHARED, then must contains no
+    * other bits. As a corollary, a __DRIdrawable that has a "shared" buffer
+    * has no front nor back buffer.
+    *
+    * The loader returns __DRI_IMAGE_BUFFER_SHARED in buffer_mask if and only
+    * if:
+    *     - The loader supports __DRI_MUTABLE_RENDER_BUFFER_LOADER.
+    *     - The driver supports __DRI_MUTABLE_RENDER_BUFFER_DRIVER.
+    *     - The EGLConfig of the drawable EGLSurface contains
+    *       EGL_MUTABLE_RENDER_BUFFER_BIT_KHR.
+    *     - The EGLContext's EGL_RENDER_BUFFER is EGL_SINGLE_BUFFER.
+    *       Equivalently, the EGLSurface's active EGL_RENDER_BUFFER (as
+    *       opposed to any pending, requested change to EGL_RENDER_BUFFER) is
+    *       EGL_SINGLE_BUFFER. (See the EGL 1.5 and
+    *       EGL_KHR_mutable_render_buffer spec for details about "pending" vs
+    *       "active" EGL_RENDER_BUFFER state).
+    *
+    * A shared buffer is similar to a front buffer in that all rendering to the
+    * buffer should appear promptly on the screen. It is different from
+    * a front buffer in that its behavior is independent from the
+    * GL_DRAW_BUFFER state. Specifically, if GL_DRAW_FRAMEBUFFER is 0 and the
+    * __DRIdrawable's buffer_mask is __DRI_IMAGE_BUFFER_SHARED, then all
+    * rendering should appear promptly on the screen if GL_DRAW_BUFFER is not
+    * GL_NONE.
+    *
+    * The difference between a shared buffer and a front buffer is motivated
+    * by the constraints of Android and OpenGL ES. OpenGL ES does not support
+    * front-buffer rendering. Android's SurfaceFlinger protocol provides the
+    * EGL driver only a back buffer and no front buffer. The shared buffer
+    * mode introduced by EGL_KHR_mutable_render_buffer is a backdoor though
+    * EGL that allows Android OpenGL ES applications to render to what is
+    * effectively the front buffer, a backdoor that required no change to the
+    * OpenGL ES API and little change to the SurfaceFlinger API.
+    */
+   __DRI_IMAGE_BUFFER_SHARED = (1 << 2),
 };
 
 struct __DRIimageList {
@@ -1869,7 +1983,8 @@ struct __DRIimageLoaderExtensionRec {
     * \param stamp              Address of variable to be updated when
     *                           getBuffers must be called again
     * \param loaderPrivate      The loaderPrivate for driDrawable
-    * \param buffer_mask        Set of buffers to allocate
+    * \param buffer_mask        Set of buffers to allocate. A bitmask of
+    *                           __DRIimageBufferMask.
     * \param buffers            Returned buffers
     */
    int (*getBuffers)(__DRIdrawable *driDrawable,
@@ -1981,6 +2096,87 @@ struct __DRIbackgroundCallableExtensionRec {
     * which context any callbacks are associated with.
     */
    GLboolean (*isThreadSafe)(void *loaderPrivate);
+};
+
+/**
+ * The driver portion of EGL_KHR_mutable_render_buffer.
+ *
+ * If the driver creates a __DRIconfig with
+ * __DRI_ATTRIB_MUTABLE_RENDER_BUFFER, then it must support this extension.
+ *
+ * To support this extension:
+ *
+ *    - The driver should create at least one __DRIconfig with
+ *      __DRI_ATTRIB_MUTABLE_RENDER_BUFFER. This is strongly recommended but
+ *      not required.
+ *
+ *    - The driver must be able to handle __DRI_IMAGE_BUFFER_SHARED if
+ *      returned by __DRIimageLoaderExtension:getBuffers().
+ *
+ *    - When rendering to __DRI_IMAGE_BUFFER_SHARED, it must call
+ *      __DRImutableRenderBufferLoaderExtension::displaySharedBuffer() in
+ *      response to glFlush and glFinish.  (This requirement is not documented
+ *      in EGL_KHR_mutable_render_buffer, but is a de-facto requirement in the
+ *      Android ecosystem. Android applications expect that glFlush will
+ *      immediately display the buffer when in shared buffer mode, and Android
+ *      drivers comply with this expectation).  It :may: call
+ *      displaySharedBuffer() more often than required.
+ *
+ *    - When rendering to __DRI_IMAGE_BUFFER_SHARED, it must ensure that the
+ *      buffer is always in a format compatible for display because the
+ *      display engine (usually SurfaceFlinger or hwcomposer) may display the
+ *      image at any time, even concurrently with 3D rendering. For example,
+ *      display hardware and the GL hardware may be able to access the buffer
+ *      simultaneously. In particular, if the buffer is compressed then take
+ *      care that SurfaceFlinger and hwcomposer can consume the compression
+ *      format.
+ *
+ * \see __DRI_IMAGE_BUFFER_SHARED
+ * \see __DRI_ATTRIB_MUTABLE_RENDER_BUFFER
+ * \see __DRI_MUTABLE_RENDER_BUFFER_LOADER
+ */
+#define __DRI_MUTABLE_RENDER_BUFFER_DRIVER "DRI_MutableRenderBufferDriver"
+#define __DRI_MUTABLE_RENDER_BUFFER_DRIVER_VERSION 1
+
+typedef struct __DRImutableRenderBufferDriverExtensionRec __DRImutableRenderBufferDriverExtension;
+struct __DRImutableRenderBufferDriverExtensionRec {
+   __DRIextension base;
+};
+
+/**
+ * The loader portion of EGL_KHR_mutable_render_buffer.
+ *
+ * Requires loader extension DRI_IMAGE_LOADER, through which the loader sends
+ * __DRI_IMAGE_BUFFER_SHARED to the driver.
+ *
+ * \see __DRI_MUTABLE_RENDER_BUFFER_DRIVER
+ */
+#define __DRI_MUTABLE_RENDER_BUFFER_LOADER "DRI_MutableRenderBufferLoader"
+#define __DRI_MUTABLE_RENDER_BUFFER_LOADER_VERSION 1
+
+typedef struct __DRImutableRenderBufferLoaderExtensionRec __DRImutableRenderBufferLoaderExtension;
+struct __DRImutableRenderBufferLoaderExtensionRec {
+   __DRIextension base;
+
+   /**
+    * Inform the display engine (that is, SurfaceFlinger and/or hwcomposer)
+    * that the __DRIdrawable has new content.
+    *
+    * The display engine may ignore this call, for example, if it continually
+    * refreshes and displays the buffer on every frame, as in
+    * EGL_ANDROID_front_buffer_auto_refresh. On the other extreme, the display
+    * engine may refresh and display the buffer only in frames in which the
+    * driver calls this.
+    *
+    * If the fence_fd is not -1, then the display engine will display the
+    * buffer only after the fence signals.
+    *
+    * The drawable's current __DRIimageBufferMask, as returned by
+    * __DRIimageLoaderExtension::getBuffers(), must be
+    * __DRI_IMAGE_BUFFER_SHARED.
+    */
+   void (*displaySharedBuffer)(__DRIdrawable *drawable, int fence_fd,
+                               void *loaderPrivate);
 };
 
 #endif

@@ -968,6 +968,7 @@ static nv50_ir::operation translateOpcode(uint opcode)
    NV50_IR_OPCODE_CASE(ATOMUMAX, ATOM);
    NV50_IR_OPCODE_CASE(ATOMIMIN, ATOM);
    NV50_IR_OPCODE_CASE(ATOMIMAX, ATOM);
+   NV50_IR_OPCODE_CASE(ATOMFADD, ATOM);
 
    NV50_IR_OPCODE_CASE(TEX2, TEX);
    NV50_IR_OPCODE_CASE(TXB2, TXB);
@@ -1010,6 +1011,7 @@ static uint16_t opcodeToSubOp(uint opcode)
    case TGSI_OPCODE_ATOMIMIN: return NV50_IR_SUBOP_ATOM_MIN;
    case TGSI_OPCODE_ATOMUMAX: return NV50_IR_SUBOP_ATOM_MAX;
    case TGSI_OPCODE_ATOMIMAX: return NV50_IR_SUBOP_ATOM_MAX;
+   case TGSI_OPCODE_ATOMFADD: return NV50_IR_SUBOP_ATOM_ADD;
    case TGSI_OPCODE_IMUL_HI:
    case TGSI_OPCODE_UMUL_HI:
       return NV50_IR_SUBOP_MUL_HIGH;
@@ -1085,6 +1087,8 @@ public:
    };
    std::vector<MemoryFile> memoryFiles;
 
+   std::vector<bool> bufferAtomics;
+
 private:
    int inferSysValDirection(unsigned sn) const;
    bool scanDeclaration(const struct tgsi_full_declaration *);
@@ -1135,6 +1139,7 @@ bool Source::scanSource()
    //resources.resize(scan.file_max[TGSI_FILE_RESOURCE] + 1);
    tempArrayId.resize(scan.file_max[TGSI_FILE_TEMPORARY] + 1);
    memoryFiles.resize(scan.file_max[TGSI_FILE_MEMORY] + 1);
+   bufferAtomics.resize(scan.file_max[TGSI_FILE_BUFFER] + 1);
 
    info->immd.bufSize = 0;
 
@@ -1481,11 +1486,14 @@ bool Source::scanDeclaration(const struct tgsi_full_declaration *decl)
          tempArrayInfo.insert(std::make_pair(arrayId, std::make_pair(
                                                    first, last - first + 1)));
       break;
+   case TGSI_FILE_BUFFER:
+      for (i = first; i <= last; ++i)
+         bufferAtomics[i] = decl->Declaration.Atomic;
+      break;
    case TGSI_FILE_ADDRESS:
    case TGSI_FILE_CONSTANT:
    case TGSI_FILE_IMMEDIATE:
    case TGSI_FILE_SAMPLER:
-   case TGSI_FILE_BUFFER:
    case TGSI_FILE_IMAGE:
       break;
    default:
@@ -1519,6 +1527,10 @@ void Source::scanInstructionSrc(const Instruction& insn,
       } else {
          info->out[src.getIndex(0)].oread = 1;
       }
+   }
+   if (src.getFile() == TGSI_FILE_SYSTEM_VALUE) {
+      if (info->sv[src.getIndex(0)].sn == TGSI_SEMANTIC_SAMPLEPOS)
+         info->prop.fp.readsSampleLocations = true;
    }
    if (src.getFile() != TGSI_FILE_INPUT)
       return;
@@ -1560,8 +1572,16 @@ bool Source::scanInstruction(const struct tgsi_full_instruction *inst)
    if (insn.getOpcode() == TGSI_OPCODE_FBFETCH)
       info->prop.fp.readsFramebuffer = true;
 
+   if (insn.getOpcode() == TGSI_OPCODE_INTERP_SAMPLE)
+      info->prop.fp.readsSampleLocations = true;
+
    if (insn.dstCount()) {
       Instruction::DstRegister dst = insn.getDst(0);
+
+      if (insn.getOpcode() == TGSI_OPCODE_STORE &&
+          dst.getFile() != TGSI_FILE_MEMORY) {
+         info->io.globalAccess |= 0x2;
+      }
 
       if (dst.getFile() == TGSI_FILE_OUTPUT) {
          if (dst.isIndirect(0))
@@ -1579,10 +1599,6 @@ bool Source::scanInstruction(const struct tgsi_full_instruction *inst)
 
          if (isEdgeFlagPassthrough(insn))
             info->io.edgeFlagIn = insn.getSrc(0).getIndex(0);
-      } else
-      if (dst.getFile() != TGSI_FILE_MEMORY &&
-          insn.getOpcode() == TGSI_OPCODE_STORE) {
-         info->io.globalAccess |= 0x2;
       } else
       if (dst.getFile() == TGSI_FILE_TEMPORARY) {
          if (dst.isIndirect(0))
@@ -1611,6 +1627,7 @@ bool Source::scanInstruction(const struct tgsi_full_instruction *inst)
       case TGSI_OPCODE_ATOMIMIN:
       case TGSI_OPCODE_ATOMUMAX:
       case TGSI_OPCODE_ATOMIMAX:
+      case TGSI_OPCODE_ATOMFADD:
       case TGSI_OPCODE_LOAD:
          info->io.globalAccess |= (insn.getOpcode() == TGSI_OPCODE_LOAD) ?
             0x1 : 0x2;
@@ -2632,7 +2649,7 @@ Converter::getResourceCoords(std::vector<Value *> &coords, int r, int s)
       coords[0] = mkOp1v(OP_MOV, TYPE_U32, getScratch(4, FILE_ADDRESS),
                          coords[0]);
 }
-*/
+
 static inline int
 partitionLoadStore(uint8_t comp[2], uint8_t size[2], uint8_t mask)
 {
@@ -2657,7 +2674,7 @@ partitionLoadStore(uint8_t comp[2], uint8_t size[2], uint8_t mask)
    }
    return n + 1;
 }
-
+*/
 void
 Converter::getImageCoords(std::vector<Value *> &coords, int s)
 {
@@ -2709,7 +2726,11 @@ Converter::handleLOAD(Value *dst0[4])
          }
 
          Instruction *ld = mkLoad(TYPE_U32, dst0[c], sym, off);
-         ld->cache = tgsi.getCacheMode();
+         if (tgsi.getSrc(0).getFile() == TGSI_FILE_BUFFER &&
+             code->bufferAtomics[r])
+            ld->cache = nv50_ir::CACHE_CG;
+         else
+            ld->cache = tgsi.getCacheMode();
          if (ind)
             ld->setIndirect(0, 1, ind);
       }
@@ -3083,10 +3104,11 @@ Converter::handleINTERP(Value *dst[4])
          assert(sym[c]);
          op = insn->op;
          mode = insn->ipa;
+         ptr = insn->getIndirect(0, 0);
       }
    } else {
       if (src.isIndirect(0))
-         ptr = fetchSrc(src.getIndirect(0), 0, NULL);
+         ptr = shiftAddress(fetchSrc(src.getIndirect(0), 0, NULL));
 
       // We can assume that the fixed index will point to an input of the same
       // interpolation type in case of an indirect.
@@ -3144,10 +3166,10 @@ Converter::handleINTERP(Value *dst[4])
       insn = mkOp1(op, TYPE_F32, dst[c], sym[c] ? sym[c] : srcToSym(src, c));
       if (op == OP_PINTERP)
          insn->setSrc(1, w);
-      if (ptr)
-         insn->setIndirect(0, 0, ptr);
       if (offset)
          insn->setSrc(op == OP_PINTERP ? 2 : 1, offset);
+      if (ptr)
+         insn->setIndirect(0, 0, ptr);
 
       insn->setInterpolate(mode);
    }
@@ -3604,6 +3626,9 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
                                   info->out[info->io.viewportId].slot[0] * 4);
          mkStore(OP_EXPORT, TYPE_U32, vpSym, NULL, viewport);
       }
+      /* handle user clip planes for each emitted vertex */
+      if (info->io.genUserClip > 0)
+         handleUserClipPlanes();
       /* fallthrough */
    case TGSI_OPCODE_ENDPRIM:
    {
@@ -3778,7 +3803,9 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
       setPosition(epilogue, true);
       if (prog->getType() == Program::TYPE_FRAGMENT)
          exportOutputs();
-      if (info->io.genUserClip > 0)
+      if ((prog->getType() == Program::TYPE_VERTEX ||
+           prog->getType() == Program::TYPE_TESSELLATION_EVAL
+          ) && info->io.genUserClip > 0)
          handleUserClipPlanes();
       mkOp(OP_EXIT, TYPE_NONE, NULL)->terminator = 1;
    }
@@ -3820,6 +3847,7 @@ Converter::handleInstruction(const struct tgsi_full_instruction *insn)
    case TGSI_OPCODE_ATOMIMIN:
    case TGSI_OPCODE_ATOMUMAX:
    case TGSI_OPCODE_ATOMIMAX:
+   case TGSI_OPCODE_ATOMFADD:
       handleATOM(dst0, dstTy, tgsi::opcodeToSubOp(tgsi.getOpcode()));
       break;
    case TGSI_OPCODE_RESQ:

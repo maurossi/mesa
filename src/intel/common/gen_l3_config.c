@@ -133,6 +133,21 @@ static const struct gen_l3_config cnl_l3_configs[] = {
 };
 
 /**
+ * ICL validated L3 configurations.  \sa icl_l3_configs.
+ * Zeroth entry in below table has been commented out intentionally
+ * due to known issues with this configuration. Many other entries
+ * suggested by h/w specification aren't added here because they
+ * do under allocation of L3 cache with below partitioning.
+ */
+static const struct gen_l3_config icl_l3_configs[] = {
+   /* SLM URB ALL DC  RO  IS   C   T */
+   /*{{  0, 16, 80,  0,  0,  0,  0,  0 }},*/
+   {{  0, 32, 64,  0,  0,  0,  0,  0 }},
+   {{  0 }}
+};
+
+
+/**
  * Return a zero-terminated array of validated L3 configurations for the
  * specified device.
  */
@@ -153,6 +168,9 @@ get_l3_configs(const struct gen_device_info *devinfo)
 
    case 10:
       return cnl_l3_configs;
+
+   case 11:
+      return icl_l3_configs;
 
    default:
       unreachable("Not implemented");
@@ -232,7 +250,7 @@ gen_get_default_l3_weights(const struct gen_device_info *devinfo,
 {
    struct gen_l3_weights w = {{ 0 }};
 
-   w.w[GEN_L3P_SLM] = needs_slm;
+   w.w[GEN_L3P_SLM] = devinfo->gen < 11 && needs_slm;
    w.w[GEN_L3P_URB] = 1.0;
 
    if (devinfo->gen >= 8) {
@@ -291,7 +309,8 @@ static unsigned
 get_l3_way_size(const struct gen_device_info *devinfo)
 {
    const unsigned way_size_per_bank =
-      devinfo->gen >= 9 && devinfo->l3_banks == 1 ? 4 : 2;
+      (devinfo->gen >= 9 && devinfo->l3_banks == 1) || devinfo->gen == 11 ?
+      4 : 2;
 
    assert(devinfo->l3_banks);
    return way_size_per_bank * devinfo->l3_banks;

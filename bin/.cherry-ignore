@@ -1,41 +1,17 @@
-# fixes: The following commits were applied without the "cherry-picked from" tag
-50265cd9ee4caffee853700bdcd75b92eedc0e7b automake: anv: ship anv_extensions_gen.py in the tarball
-ac4437b20b87c7285b89466f05b51518ae616873 automake: small cleanup after the meson.build inclusion
+# Both of these were already merged with different shas
+da48cba61ef6fefb799bf96e6364b70dbf4ec712
+c812c740e60c14060eb89db66039111881a0f42f
 
-# stable: The KHX extension is disabled all together in the stable branches.
-2ffe395cba0f7b3c1f1c41062f4376eae3a188b5 radv: Don't expose VK_KHX_multiview on android.
+# The commit these fix was reverted from 19.0, but fixed for 19.1 due
+# to the number of fixes required to make that commit work
+8d8f80af3a17354508f2ec9d6559c915d5be351d
+0c0c69729b6d72a5297122856c8fe48510e90764
+0881e90c09965818b02e359474a6f7446b41d647
+b031c643491a92a5574c7a4bd659df33f2d89bb6
 
-# stable: There is a specific version for this patch for stable branches, but
-#         it is causing regressions.
-85d0bec9616bc1ffa8e4ab5e7c5d12ff4e414872 anv: Be more careful about fast-clear colors
+# These were manually rebased by Jason, thanks!
+8ab95b849e66f3221d80a67eef2ec6e3730901a8
+5c30fffeec1732c21d600c036f95f8cdb1bb5487
 
-# fixes: The commit fixes earlier commit 1c57a6da5e3 which did not land in
-#        branch.
-3401b028df1074a06a7fbc3fb1cda949646ef75d ac/shader: fix vertex input with components.
-
-# fixes: The commit requires earlier commits 639c4f2b54a6 and 2cfba40eea4c
-#        which did not land in branch.
-8f052a3e257a61240cb311032497d016278117a8 radv: handle exporting view index to fragment shader. (v1.1)
-
-# fixes: The commit fixes earlier commits 83d4a5d5aea5a8a05be2,
-#        b2f2236dc565dd1460f0 and c62cf1f165919bc74296 which did not land in
-#        branch.
-880c1718b6d14b33fe5ba918af70fea5be890c6b omx: always define ENABLE_ST_OMX_{BELLAGIO,TIZONIA}
-
-# stable: There is a specific port for this patch for stable branch.
-d15fb766aa3c98ffbe16d050b2af4804e4b12c57 radeonsi/gfx9: fix a hang with an empty first IB
-
-# stable: Explicit 18.1 only nominations
-0e945fdf23bac5a62c15edfcbfd9d6ac4eee592f nir: Do not use progress for unreachable code in return lowering.
-84fef802fb16cef68ec358cbfed1cac9c3bfa410 ac/nir: add missing round_slice for 1D arrays
-d136a5fad9c7e67c1362453388914ecc60420883 ac: fix the number of coordinates for ac_image_get_lod and arrays
-
-# stable: There is a specific port for this patch for stable branch.
-fedd0a4215bcd387525000d76b77993ca38916ae radv/winsys: allow to submit up to 4 IBs for chips without chaining
-
-# stable: Explicit 18.1 only nominations
-413c5ca3727898fdb4fa1d2849d0c2defdd77b48 travis: update libva required version
-a6fbefa67b5b0ed1ee42a9034ee74dfaed1c389a radv: fix DCC enablement since partial MSAA implementation
-d7ffe3b384f4d1c15a9364768cf405d416522e60 radv: set ac_surf_info::num_channels correctly
-d38425ce872c4a00cfb691ae9dceca6a07afc516 ac: fix texture query LOD for 1D textures on GFX9
-4d449c94e450c33d7b2b09c1c263322042503893 autotools, meson: bump up required VA version
+# This doesn't actually appliy to 19.0
+29179f58c6ba8099859ea25900214dbbd3814a92

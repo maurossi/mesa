@@ -69,6 +69,7 @@ struct radv_descriptor_set_layout {
    uint16_t dynamic_offset_count;
 
    bool has_immutable_samplers;
+   bool has_variable_descriptors;
 
    /* Bindings in this descriptor set */
    struct radv_descriptor_set_binding_layout binding[0];
@@ -84,6 +85,7 @@ struct radv_pipeline_layout {
    uint32_t num_sets;
    uint32_t push_constant_size;
    uint32_t dynamic_offset_count;
+   uint16_t dynamic_shader_stages;
 
    unsigned char sha1[20];
 };

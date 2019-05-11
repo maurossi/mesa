@@ -1198,7 +1198,7 @@ swr_update_derived(struct pipe_context *pipe,
       if (zb && swr_resource(zb->texture)->has_depth)
          rastState->depthFormat = swr_resource(zb->texture)->swr.format;
 
-      rastState->depthClipEnable = rasterizer->depth_clip;
+      rastState->depthClipEnable = rasterizer->depth_clip_near;
       rastState->clipHalfZ = rasterizer->clip_halfz;
 
       ctx->api.pfnSwrSetRastState(ctx->swrContext, rastState);
@@ -1325,7 +1325,7 @@ swr_update_derived(struct pipe_context *pipe,
          swrVertexBuffers[i] = {0};
          swrVertexBuffers[i].index = i;
          swrVertexBuffers[i].pitch = pitch;
-         swrVertexBuffers[i].pData = p_data;
+         swrVertexBuffers[i].xpData = (gfxptr_t) p_data;
          swrVertexBuffers[i].size = size;
          swrVertexBuffers[i].minVertex = min_vertex_index;
          swrVertexBuffers[i].maxVertex = elems;
@@ -1375,7 +1375,7 @@ swr_update_derived(struct pipe_context *pipe,
 
          SWR_INDEX_BUFFER_STATE swrIndexBuffer;
          swrIndexBuffer.format = swr_convert_index_type(info.index_size);
-         swrIndexBuffer.pIndices = p_data;
+         swrIndexBuffer.xpIndices = (gfxptr_t) p_data;
          swrIndexBuffer.size = size;
 
          ctx->api.pfnSwrSetIndexBuffer(ctx->swrContext, &swrIndexBuffer);

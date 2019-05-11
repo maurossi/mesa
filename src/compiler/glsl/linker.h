@@ -25,6 +25,12 @@
 #ifndef GLSL_LINKER_H
 #define GLSL_LINKER_H
 
+#include "linker_util.h"
+
+struct gl_shader_program;
+struct gl_shader;
+struct gl_linked_shader;
+
 extern bool
 link_function_calls(gl_shader_program *prog, gl_linked_shader *main,
                     gl_shader **shader_list, unsigned num_shaders);
@@ -129,6 +135,26 @@ public:
    void process(ir_variable *var, bool use_std430_as_default);
 
    /**
+    * Begin processing a variable
+    *
+    * Classes that overload this function should call \c ::process from the
+    * base class to start the recursive processing of the variable.
+    *
+    * \param var  The variable that is to be processed
+    * \param var_type The glsl_type reference of the variable
+    *
+    * Calls \c ::visit_field for each leaf of the variable.
+    *
+    * \warning
+    * When processing a uniform block, this entry should only be used in cases
+    * where the row / column ordering of matrices in the block does not
+    * matter.  For example, enumerating the names of members of the block, but
+    * not for determining the offsets of members.
+    */
+   void process(ir_variable *var, const glsl_type *var_type,
+                bool use_std430_as_default);
+
+   /**
     * Begin processing a variable of a structured type.
     *
     * This flavor of \c process should be used to handle structured types
@@ -186,25 +212,6 @@ private:
                   const enum glsl_interface_packing packing,
                   bool last_field, unsigned record_array_count,
                   const glsl_struct_field *named_ifc_member);
-};
-
-void
-linker_error(gl_shader_program *prog, const char *fmt, ...);
-
-void
-linker_warning(gl_shader_program *prog, const char *fmt, ...);
-
-/**
- * Sometimes there are empty slots left over in UniformRemapTable after we
- * allocate slots to explicit locations. This struct represents a single
- * continouous block of empty slots in UniformRemapTable.
- */
-struct empty_uniform_block {
-   struct exec_node link;
-   /* The start location of the block */
-   unsigned start;
-   /* The number of slots in the block */
-   unsigned slots;
 };
 
 #endif /* GLSL_LINKER_H */

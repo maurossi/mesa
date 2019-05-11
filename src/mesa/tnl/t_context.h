@@ -57,6 +57,8 @@
 
 #include "vbo/vbo.h"
 
+#include "tnl.h"
+
 #define MAX_PIPELINE_STAGES     30
 
 /*
@@ -126,7 +128,7 @@ enum {
 	 * generic attribute in order to pick up per-vertex material
 	 * data.
 	 */
-	_TNL_ATTRIB_MAT_FRONT_AMBIENT = _TNL_ATTRIB_GENERIC0,
+	_TNL_ATTRIB_MAT_FRONT_AMBIENT=VERT_ATTRIB_MAT(MAT_ATTRIB_FRONT_AMBIENT),
 	_TNL_ATTRIB_MAT_BACK_AMBIENT,
 	_TNL_ATTRIB_MAT_FRONT_DIFFUSE,
 	_TNL_ATTRIB_MAT_BACK_DIFFUSE,
@@ -158,8 +160,8 @@ enum {
 #define _TNL_FIRST_GENERIC _TNL_ATTRIB_GENERIC0
 #define _TNL_LAST_GENERIC  _TNL_ATTRIB_GENERIC15
 
-#define _TNL_FIRST_MAT       _TNL_ATTRIB_MAT_FRONT_AMBIENT /* GENERIC0 */
-#define _TNL_LAST_MAT        _TNL_ATTRIB_MAT_BACK_INDEXES  /* GENERIC11 */
+#define _TNL_FIRST_MAT       _TNL_ATTRIB_MAT_FRONT_AMBIENT /* GENERIC4 */
+#define _TNL_LAST_MAT        _TNL_ATTRIB_MAT_BACK_INDEXES  /* GENERIC15 */
 
 /* Number of available texture attributes */
 #define _TNL_NUM_TEX 8
@@ -497,6 +499,41 @@ struct tnl_device_driver
 
 
 /**
+ * Utility that tracks and updates the current array entries.
+ */
+struct tnl_inputs
+{
+   /**
+    * Array of inputs to be set to the _DrawArrays pointer.
+    * The array contains pointers into the _DrawVAO and to the vbo modules
+    * current values. The array of pointers is updated incrementally
+    * based on the current and vertex_processing_mode values below.
+    */
+   struct tnl_vertex_array inputs[VERT_ATTRIB_MAX];
+   /** Those VERT_BIT_'s where the inputs array point to current values. */
+   GLbitfield current;
+   /** Store which aliasing current values - generics or materials - are set. */
+   gl_vertex_processing_mode vertex_processing_mode;
+};
+
+
+/**
+ * Initialize inputs.
+ */
+void
+_tnl_init_inputs(struct tnl_inputs *inputs);
+
+
+/**
+ * Update the tnl_vertex_array array inside the tnl_inputs structure
+ * provided the current _VPMode, the provided vao and
+ * the vao's enabled arrays filtered by the filter bitmask.
+ */
+void
+_tnl_update_inputs(struct gl_context *ctx, struct tnl_inputs *inputs);
+
+
+/**
  * Context state for T&L context.
  */
 typedef struct
@@ -536,6 +573,9 @@ typedef struct
    struct tnl_shine_tab *_ShineTable[2]; /**< Active shine tables */
    struct tnl_shine_tab *_ShineTabList;  /**< MRU list of inactive shine tables */
    /**@}*/
+
+   /* The list of tnl_vertex_array inputs. */
+   struct tnl_inputs draw_arrays;
 } TNLcontext;
 
 

@@ -34,11 +34,9 @@
 
 #include "vl/vl_video_buffer.h"
 
-#include "r600_pipe_common.h"
+#include "si_pipe.h"
 #include "radeon_video.h"
 #include "radeon_vce.h"
-
-static const unsigned profiles[7] = { 66, 77, 88, 100, 110, 122, 244 };
 
 static void session(struct rvce_encoder *enc)
 {
@@ -82,8 +80,7 @@ static void create(struct rvce_encoder *enc)
 
 	RVCE_BEGIN(0x01000001); // create cmd
 	RVCE_CS(0x00000000); // encUseCircularBuffer
-	RVCE_CS(profiles[enc->base.profile -
-		PIPE_VIDEO_PROFILE_MPEG4_AVC_BASELINE]); // encProfile
+	RVCE_CS(u_get_h264_profile_idc(enc->base.profile)); // encProfile
 	RVCE_CS(enc->base.level); // encLevel
 	RVCE_CS(0x00000000); // encPicStructRestriction
 	RVCE_CS(enc->base.width); // encImageWidth

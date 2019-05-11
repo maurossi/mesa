@@ -45,6 +45,14 @@ LOCAL_SHARED_LIBRARIES := \
 	libexpat \
 	libz
 
+LOCAL_STATIC_LIBRARIES += \
+	libfreedreno_drm \
+	libfreedreno_ir3
+
+ifeq ($(USE_LIBBACKTRACE),true)
+	LOCAL_SHARED_LIBRARIES += libbacktrace
+endif
+
 $(foreach d, $(MESA_BUILD_GALLIUM), $(eval LOCAL_CFLAGS += $(patsubst HAVE_%,-D%,$(d))))
 
 # sort GALLIUM_LIBS to remove any duplicates

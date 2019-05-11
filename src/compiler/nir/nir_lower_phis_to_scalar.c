@@ -83,16 +83,22 @@ is_phi_src_scalarizable(nir_phi_src *src,
       nir_intrinsic_instr *src_intrin = nir_instr_as_intrinsic(src_instr);
 
       switch (src_intrin->intrinsic) {
-      case nir_intrinsic_load_var:
-         return src_intrin->variables[0]->var->data.mode == nir_var_shader_in ||
-                src_intrin->variables[0]->var->data.mode == nir_var_uniform;
+      case nir_intrinsic_load_deref: {
+         nir_deref_instr *deref = nir_src_as_deref(src_intrin->src[0]);
+         return deref->mode == nir_var_shader_in ||
+                deref->mode == nir_var_uniform ||
+                deref->mode == nir_var_mem_ubo ||
+                deref->mode == nir_var_mem_ssbo ||
+                deref->mode == nir_var_mem_global;
+      }
 
-      case nir_intrinsic_interp_var_at_centroid:
-      case nir_intrinsic_interp_var_at_sample:
-      case nir_intrinsic_interp_var_at_offset:
+      case nir_intrinsic_interp_deref_at_centroid:
+      case nir_intrinsic_interp_deref_at_sample:
+      case nir_intrinsic_interp_deref_at_offset:
       case nir_intrinsic_load_uniform:
       case nir_intrinsic_load_ubo:
       case nir_intrinsic_load_ssbo:
+      case nir_intrinsic_load_global:
       case nir_intrinsic_load_input:
          return true;
       default:
@@ -273,8 +279,7 @@ lower_phis_to_scalar_impl(nir_function_impl *impl)
 
    state.mem_ctx = ralloc_parent(impl);
    state.dead_ctx = ralloc_context(NULL);
-   state.phi_table = _mesa_hash_table_create(state.dead_ctx, _mesa_hash_pointer,
-                                             _mesa_key_pointer_equal);
+   state.phi_table = _mesa_pointer_hash_table_create(state.dead_ctx);
 
    nir_foreach_block(block, impl) {
       progress = lower_phis_to_scalar_block(block, &state) || progress;

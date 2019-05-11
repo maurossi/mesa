@@ -41,7 +41,6 @@
 #include <c99_alloca.h>
 #include "main/glheader.h"
 #include "main/context.h"
-#include "main/dispatch.h"
 #include "main/enums.h"
 #include "main/glspirv.h"
 #include "main/hash.h"
@@ -50,6 +49,7 @@
 #include "main/program_binary.h"
 #include "main/shaderapi.h"
 #include "main/shaderobj.h"
+#include "main/state.h"
 #include "main/transformfeedback.h"
 #include "main/uniforms.h"
 #include "compiler/glsl/glsl_parser_extras.h"
@@ -159,6 +159,9 @@ _mesa_free_shader_state(struct gl_context *ctx)
 {
    for (int i = 0; i < MESA_SHADER_STAGES; i++) {
       _mesa_reference_program(ctx, &ctx->Shader.CurrentProgram[i], NULL);
+      _mesa_reference_shader_program(ctx,
+                                     &ctx->Shader.ReferencedPrograms[i],
+                                     NULL);
    }
    _mesa_reference_shader_program(ctx, &ctx->Shader.ActiveProgram, NULL);
 
@@ -667,7 +670,7 @@ get_programiv(struct gl_context *ctx, GLuint program, GLenum pname,
    /* True if geometry shaders (of the form that was adopted into GLSL 1.50
     * and GL 3.2) are available in this context
     */
-   const bool has_core_gs = _mesa_has_geometry_shaders(ctx);
+   const bool has_gs = _mesa_has_geometry_shaders(ctx);
    const bool has_tess = _mesa_has_tessellation(ctx);
 
    /* Are uniform buffer objects available in this context?
@@ -768,7 +771,7 @@ get_programiv(struct gl_context *ctx, GLuint program, GLenum pname,
       *params = shProg->TransformFeedback.BufferMode;
       return;
    case GL_GEOMETRY_VERTICES_OUT:
-      if (!has_core_gs)
+      if (!has_gs)
          break;
       if (check_gs_query(ctx, shProg)) {
          *params = shProg->_LinkedShaders[MESA_SHADER_GEOMETRY]->
@@ -776,7 +779,7 @@ get_programiv(struct gl_context *ctx, GLuint program, GLenum pname,
       }
       return;
    case GL_GEOMETRY_SHADER_INVOCATIONS:
-      if (!has_core_gs || !ctx->Extensions.ARB_gpu_shader5)
+      if (!has_gs || !ctx->Extensions.ARB_gpu_shader5)
          break;
       if (check_gs_query(ctx, shProg)) {
          *params = shProg->_LinkedShaders[MESA_SHADER_GEOMETRY]->
@@ -784,7 +787,7 @@ get_programiv(struct gl_context *ctx, GLuint program, GLenum pname,
       }
       return;
    case GL_GEOMETRY_INPUT_TYPE:
-      if (!has_core_gs)
+      if (!has_gs)
          break;
       if (check_gs_query(ctx, shProg)) {
          *params = shProg->_LinkedShaders[MESA_SHADER_GEOMETRY]->
@@ -792,7 +795,7 @@ get_programiv(struct gl_context *ctx, GLuint program, GLenum pname,
       }
       return;
    case GL_GEOMETRY_OUTPUT_TYPE:
-      if (!has_core_gs)
+      if (!has_gs)
          break;
       if (check_gs_query(ctx, shProg)) {
          *params = shProg->_LinkedShaders[MESA_SHADER_GEOMETRY]->
@@ -837,7 +840,7 @@ get_programiv(struct gl_context *ctx, GLuint program, GLenum pname,
       *params = shProg->BinaryRetreivableHint;
       return;
    case GL_PROGRAM_BINARY_LENGTH:
-      if (ctx->Const.NumProgramBinaryFormats == 0) {
+      if (ctx->Const.NumProgramBinaryFormats == 0 || !shProg->data->LinkStatus) {
          *params = 0;
       } else {
          _mesa_get_program_binary_length(ctx, shProg, params);
@@ -870,7 +873,7 @@ get_programiv(struct gl_context *ctx, GLuint program, GLenum pname,
    }
    case GL_PROGRAM_SEPARABLE:
       /* If the program has not been linked, return initial value 0. */
-      *params = (shProg->data->LinkStatus == linking_failure) ? 0 : shProg->SeparateShader;
+      *params = (shProg->data->LinkStatus == LINKING_FAILURE) ? 0 : shProg->SeparateShader;
       return;
 
    /* ARB_tessellation_shader */
@@ -1071,7 +1074,7 @@ set_shader_source(struct gl_shader *sh, const GLchar *source)
     */
    _mesa_shader_spirv_data_reference(&sh->spirv_data, NULL);
 
-   if (sh->CompileStatus == compile_skipped && !sh->FallbackSource) {
+   if (sh->CompileStatus == COMPILE_SKIPPED && !sh->FallbackSource) {
       /* If shader was previously compiled back-up the source in case of cache
        * fallback.
        */
@@ -1114,7 +1117,7 @@ _mesa_compile_shader(struct gl_context *ctx, struct gl_shader *sh)
       /* If the user called glCompileShader without first calling
        * glShaderSource, we should fail to compile, but not raise a GL_ERROR.
        */
-      sh->CompileStatus = compile_failure;
+      sh->CompileStatus = COMPILE_FAILURE;
    } else {
       if (ctx->_Shader->Flags & GLSL_DUMP) {
          _mesa_log("GLSL source for %s shader %d:\n",
@@ -1252,11 +1255,13 @@ link_program(struct gl_context *ctx, struct gl_shader_program *shProg,
       ralloc_free(filename);
    }
 
-   if (shProg->data->LinkStatus == linking_failure &&
+   if (shProg->data->LinkStatus == LINKING_FAILURE &&
        (ctx->_Shader->Flags & GLSL_REPORT_ERRORS)) {
       _mesa_debug(ctx, "Error linking program %u:\n%s\n",
                   shProg->Name, shProg->data->InfoLog);
    }
+
+   _mesa_update_vertex_processing_mode(ctx);
 
    /* debug code */
    if (0) {
@@ -1790,6 +1795,7 @@ generate_sha1(const char *source, char sha_str[64])
  * following format:
  *
  * <path>/<stage prefix>_<CHECKSUM>.glsl
+ * <path>/<stage prefix>_<CHECKSUM>.arb
  */
 static char *
 construct_name(const gl_shader_stage stage, const char *source,
@@ -1800,15 +1806,17 @@ construct_name(const gl_shader_stage stage, const char *source,
       "VS", "TC", "TE", "GS", "FS", "CS",
    };
 
+   const char *format = strncmp(source, "!!ARB", 5) ? "glsl" : "arb";
+
    generate_sha1(source, sha);
-   return ralloc_asprintf(NULL, "%s/%s_%s.glsl", path, types[stage], sha);
+   return ralloc_asprintf(NULL, "%s/%s_%s.%s", path, types[stage], sha, format);
 }
 
 /**
  * Write given shader source to a file in MESA_SHADER_DUMP_PATH.
  */
-static void
-dump_shader(const gl_shader_stage stage, const char *source)
+void
+_mesa_dump_shader_source(const gl_shader_stage stage, const char *source)
 {
    static bool path_exists = true;
    char *dump_path;
@@ -1841,8 +1849,8 @@ dump_shader(const gl_shader_stage stage, const char *source)
  * Read shader source code from a file.
  * Useful for debugging to override an app's shader.
  */
-static GLcharARB *
-read_shader(const gl_shader_stage stage, const char *source)
+GLcharARB *
+_mesa_read_shader_source(const gl_shader_stage stage, const char *source)
 {
    char *read_path;
    static bool path_exists = true;
@@ -1966,9 +1974,9 @@ shader_source(struct gl_context *ctx, GLuint shaderObj, GLsizei count,
    /* Dump original shader source to MESA_SHADER_DUMP_PATH and replace
     * if corresponding entry found from MESA_SHADER_READ_PATH.
     */
-   dump_shader(sh->Stage, source);
+   _mesa_dump_shader_source(sh->Stage, source);
 
-   replacement = read_shader(sh->Stage, source);
+   replacement = _mesa_read_shader_source(sh->Stage, source);
    if (replacement) {
       free(source);
       source = replacement;
@@ -2066,6 +2074,8 @@ use_program(GLuint program, bool no_error)
             _mesa_BindProgramPipeline(ctx->Pipeline.Current->Name);
       }
    }
+
+   _mesa_update_vertex_processing_mode(ctx);
 }
 
 
@@ -2304,7 +2314,7 @@ _mesa_ProgramBinary(GLuint program, GLenum binaryFormat,
        * Since any value of binaryFormat passed "is not one of those specified as
        * allowable for [this] command, an INVALID_ENUM error is generated."
        */
-      shProg->data->LinkStatus = linking_failure;
+      shProg->data->LinkStatus = LINKING_FAILURE;
       _mesa_error(ctx, GL_INVALID_ENUM, "glProgramBinary");
    } else {
       _mesa_program_binary(ctx, shProg, binaryFormat, binary, length);
@@ -2432,6 +2442,8 @@ _mesa_use_program(struct gl_context *ctx, gl_shader_stage stage,
                                      &shTarget->ReferencedPrograms[stage],
                                      shProg);
       _mesa_reference_program(ctx, target, prog);
+      if (stage == MESA_SHADER_VERTEX)
+         _mesa_update_vertex_processing_mode(ctx);
       return;
    }
 
@@ -2521,7 +2533,7 @@ _mesa_CreateShaderProgramv(GLenum type, GLsizei count,
 	    /* Possibly... */
 	    if (active-user-defined-varyings-in-linked-program) {
 	       append-error-to-info-log;
-               shProg->data->LinkStatus = linking_failure;
+               shProg->data->LinkStatus = LINKING_FAILURE;
 	    }
 #endif
 	 }

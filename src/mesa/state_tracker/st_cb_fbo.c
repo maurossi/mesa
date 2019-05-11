@@ -47,6 +47,7 @@
 #include "pipe/p_screen.h"
 #include "st_atom.h"
 #include "st_context.h"
+#include "st_cb_bufferobjects.h"
 #include "st_cb_fbo.h"
 #include "st_cb_flush.h"
 #include "st_cb_texture.h"
@@ -82,7 +83,7 @@ st_renderbuffer_alloc_sw_storage(struct gl_context * ctx,
       format = PIPE_FORMAT_R16G16B16A16_SNORM;
    }
    else {
-      format = st_choose_renderbuffer_format(st, internalFormat, 0);
+      format = st_choose_renderbuffer_format(st, internalFormat, 0, 0);
 
       /* Not setting gl_renderbuffer::Format here will cause
        * FRAMEBUFFER_UNSUPPORTED and ValidateFramebuffer will not be called.
@@ -138,7 +139,7 @@ st_renderbuffer_alloc_storage(struct gl_context * ctx,
    /* If an sRGB framebuffer is unsupported, sRGB formats behave like linear
     * formats.
     */
-   if (!ctx->Extensions.EXT_framebuffer_sRGB) {
+   if (!ctx->Extensions.EXT_sRGB) {
       internalFormat = _mesa_get_linear_internalformat(internalFormat);
    }
 
@@ -158,25 +159,70 @@ st_renderbuffer_alloc_storage(struct gl_context * ctx,
     * Find the supported number of samples >= rb->NumSamples
     */
    if (rb->NumSamples > 0) {
-      unsigned start, i;
+      unsigned start, start_storage;
 
       if (ctx->Const.MaxSamples > 1 &&  rb->NumSamples == 1) {
          /* don't try num_samples = 1 with drivers that support real msaa */
          start = 2;
+         start_storage = 2;
       } else {
          start = rb->NumSamples;
+         start_storage = rb->NumStorageSamples;
       }
 
-      for (i = start; i <= ctx->Const.MaxSamples; i++) {
-         format = st_choose_renderbuffer_format(st, internalFormat, i);
+      if (ctx->Extensions.AMD_framebuffer_multisample_advanced) {
+         if (rb->_BaseFormat == GL_DEPTH_COMPONENT ||
+             rb->_BaseFormat == GL_DEPTH_STENCIL ||
+             rb->_BaseFormat == GL_STENCIL_INDEX) {
+            /* Find a supported depth-stencil format. */
+            for (unsigned samples = start;
+                 samples <= ctx->Const.MaxDepthStencilFramebufferSamples;
+                 samples++) {
+               format = st_choose_renderbuffer_format(st, internalFormat,
+                                                      samples, samples);
 
-         if (format != PIPE_FORMAT_NONE) {
-            rb->NumSamples = i;
-            break;
+               if (format != PIPE_FORMAT_NONE) {
+                  rb->NumSamples = samples;
+                  rb->NumStorageSamples = samples;
+                  break;
+               }
+            }
+         } else {
+            /* Find a supported color format, samples >= storage_samples. */
+            for (unsigned storage_samples = start_storage;
+                 storage_samples <= ctx->Const.MaxColorFramebufferStorageSamples;
+                 storage_samples++) {
+               for (unsigned samples = MAX2(start, storage_samples);
+                    samples <= ctx->Const.MaxColorFramebufferSamples;
+                    samples++) {
+                  format = st_choose_renderbuffer_format(st, internalFormat,
+                                                         samples,
+                                                         storage_samples);
+
+                  if (format != PIPE_FORMAT_NONE) {
+                     rb->NumSamples = samples;
+                     rb->NumStorageSamples = storage_samples;
+                     goto found;
+                  }
+               }
+            }
+            found:;
+         }
+      } else {
+         for (unsigned samples = start; samples <= ctx->Const.MaxSamples;
+              samples++) {
+            format = st_choose_renderbuffer_format(st, internalFormat,
+                                                   samples, samples);
+
+            if (format != PIPE_FORMAT_NONE) {
+               rb->NumSamples = samples;
+               rb->NumStorageSamples = samples;
+               break;
+            }
          }
       }
    } else {
-      format = st_choose_renderbuffer_format(st, internalFormat, 0);
+      format = st_choose_renderbuffer_format(st, internalFormat, 0, 0);
    }
 
    /* Not setting gl_renderbuffer::Format here will cause
@@ -203,6 +249,8 @@ st_renderbuffer_alloc_storage(struct gl_context * ctx,
    templ.depth0 = 1;
    templ.array_size = 1;
    templ.nr_samples = rb->NumSamples;
+   templ.nr_storage_samples = rb->NumStorageSamples;
+
    if (util_format_is_depth_or_stencil(format)) {
       templ.bind = PIPE_BIND_DEPTH_STENCIL;
    }
@@ -237,8 +285,11 @@ st_renderbuffer_delete(struct gl_context *ctx, struct gl_renderbuffer *rb)
       struct st_context *st = st_context(ctx);
       pipe_surface_release(st->pipe, &strb->surface_srgb);
       pipe_surface_release(st->pipe, &strb->surface_linear);
-      strb->surface = NULL;
+   } else {
+      pipe_surface_release_no_context(&strb->surface_srgb);
+      pipe_surface_release_no_context(&strb->surface_linear);
    }
+   strb->surface = NULL;
    pipe_resource_reference(&strb->texture, NULL);
    free(strb->data);
    _mesa_delete_renderbuffer(ctx, rb);
@@ -281,14 +332,17 @@ st_new_renderbuffer_fb(enum pipe_format format, unsigned samples, boolean sw)
    _mesa_init_renderbuffer(&strb->Base, 0);
    strb->Base.ClassID = 0x4242; /* just a unique value */
    strb->Base.NumSamples = samples;
+   strb->Base.NumStorageSamples = samples;
    strb->Base.Format = st_pipe_format_to_mesa_format(format);
    strb->Base._BaseFormat = _mesa_get_format_base_format(strb->Base.Format);
    strb->software = sw;
 
    switch (format) {
    case PIPE_FORMAT_B10G10R10A2_UNORM:
+   case PIPE_FORMAT_R10G10B10A2_UNORM:
       strb->Base.InternalFormat = GL_RGB10_A2;
       break;
+   case PIPE_FORMAT_R10G10B10X2_UNORM:
    case PIPE_FORMAT_B10G10R10X2_UNORM:
       strb->Base.InternalFormat = GL_RGB10;
       break;
@@ -460,10 +514,12 @@ st_update_renderbuffer_surface(struct st_context *st,
 
    if (!surf ||
        surf->texture->nr_samples != strb->Base.NumSamples ||
+       surf->texture->nr_storage_samples != strb->Base.NumStorageSamples ||
        surf->format != format ||
        surf->texture != resource ||
        surf->width != rtt_width ||
        surf->height != rtt_height ||
+       surf->nr_samples != strb->rtt_nr_samples ||
        surf->u.tex.level != level ||
        surf->u.tex.first_layer != first_layer ||
        surf->u.tex.last_layer != last_layer) {
@@ -471,6 +527,7 @@ st_update_renderbuffer_surface(struct st_context *st,
       struct pipe_surface surf_tmpl;
       memset(&surf_tmpl, 0, sizeof(surf_tmpl));
       surf_tmpl.format = format;
+      surf_tmpl.nr_samples = strb->rtt_nr_samples;
       surf_tmpl.u.tex.level = level;
       surf_tmpl.u.tex.first_layer = first_layer;
       surf_tmpl.u.tex.last_layer = last_layer;
@@ -506,13 +563,9 @@ st_render_texture(struct gl_context *ctx,
                   struct gl_renderbuffer_attachment *att)
 {
    struct st_context *st = st_context(ctx);
-   struct pipe_context *pipe = st->pipe;
    struct gl_renderbuffer *rb = att->Renderbuffer;
    struct st_renderbuffer *strb = st_renderbuffer(rb);
    struct pipe_resource *pt;
-
-   if (!st_finalize_texture(ctx, pipe, att->Texture, att->CubeMapFace))
-      return;
 
    pt = get_teximage_resource(att->Texture,
                               att->CubeMapFace,
@@ -524,6 +577,7 @@ st_render_texture(struct gl_context *ctx,
    strb->rtt_face = att->CubeMapFace;
    strb->rtt_slice = att->Zoffset;
    strb->rtt_layered = att->Layered;
+   strb->rtt_nr_samples = att->NumSamples;
    pipe_resource_reference(&strb->texture, pt);
 
    st_update_renderbuffer_surface(st, strb);
@@ -608,15 +662,17 @@ st_validate_attachment(struct gl_context *ctx,
    /* If the encoding is sRGB and sRGB rendering cannot be enabled,
     * check for linear format support instead.
     * Later when we create a surface, we change the format to a linear one. */
-   if (!ctx->Extensions.EXT_framebuffer_sRGB &&
+   if (!ctx->Extensions.EXT_sRGB &&
        _mesa_get_format_color_encoding(texFormat) == GL_SRGB) {
       const mesa_format linearFormat = _mesa_get_srgb_format_linear(texFormat);
       format = st_mesa_format_to_pipe_format(st_context(ctx), linearFormat);
    }
 
    valid = screen->is_format_supported(screen, format,
-                                      PIPE_TEXTURE_2D,
-                                      stObj->pt->nr_samples, bindings);
+                                       PIPE_TEXTURE_2D,
+                                       stObj->pt->nr_samples,
+                                       stObj->pt->nr_storage_samples,
+                                       bindings);
    if (!valid) {
       st_fbo_invalid("Invalid format");
    }
@@ -707,6 +763,30 @@ st_validate_framebuffer(struct gl_context *ctx, struct gl_framebuffer *fb)
 
 
 /**
+ * Called by ctx->Driver.DiscardFramebuffer
+ */
+static void
+st_discard_framebuffer(struct gl_context *ctx, struct gl_framebuffer *fb,
+                       struct gl_renderbuffer_attachment *att)
+{
+   struct st_context *st = st_context(ctx);
+   struct pipe_resource *prsc;
+
+   if (!att->Renderbuffer)
+      return;
+
+   prsc = st_renderbuffer(att->Renderbuffer)->surface->texture;
+
+   /* using invalidate_resource will only work for simple 2D resources */
+   if (prsc->depth0 != 1 || prsc->array_size != 1 || prsc->last_level != 0)
+      return;
+
+   if (st->pipe->invalidate_resource)
+      st->pipe->invalidate_resource(st->pipe, prsc);
+}
+
+
+/**
  * Called via glDrawBuffer.  We only provide this driver function so that we
  * can check if we need to allocate a new renderbuffer.  Specifically, we
  * don't usually allocate a front color buffer when using a double-buffered
@@ -715,13 +795,10 @@ st_validate_framebuffer(struct gl_context *ctx, struct gl_framebuffer *fb)
  * created FBOs.
  */
 static void
-st_DrawBuffers(struct gl_context *ctx, GLsizei count, const GLenum *buffers)
+st_DrawBufferAllocate(struct gl_context *ctx)
 {
    struct st_context *st = st_context(ctx);
    struct gl_framebuffer *fb = ctx->DrawBuffer;
-
-   (void) count;
-   (void) buffers;
 
    if (_mesa_is_winsys_fbo(fb)) {
       GLuint i;
@@ -738,8 +815,8 @@ st_DrawBuffers(struct gl_context *ctx, GLsizei count, const GLenum *buffers)
 
 
 /**
- * Called via glReadBuffer.  As with st_DrawBuffers, we use this function
- * to check if we need to allocate a renderbuffer on demand.
+ * Called via glReadBuffer.  As with st_DrawBufferAllocate, we use this
+ * function to check if we need to allocate a renderbuffer on demand.
  */
 static void
 st_ReadBuffer(struct gl_context *ctx, GLenum buffer)
@@ -774,15 +851,18 @@ st_MapRenderbuffer(struct gl_context *ctx,
                    struct gl_renderbuffer *rb,
                    GLuint x, GLuint y, GLuint w, GLuint h,
                    GLbitfield mode,
-                   GLubyte **mapOut, GLint *rowStrideOut)
+                   GLubyte **mapOut, GLint *rowStrideOut,
+                   bool flip_y)
 {
    struct st_context *st = st_context(ctx);
    struct st_renderbuffer *strb = st_renderbuffer(rb);
    struct pipe_context *pipe = st->pipe;
    const GLboolean invert = rb->Name == 0;
-   unsigned usage;
    GLuint y2;
    GLubyte *map;
+
+   /* driver does not support GL_FRAMEBUFFER_FLIP_Y_MESA */
+   assert((rb->Name == 0) == flip_y);
 
    if (strb->software) {
       /* software-allocated renderbuffer (probably an accum buffer) */
@@ -800,13 +880,13 @@ st_MapRenderbuffer(struct gl_context *ctx,
       return;
    }
 
-   usage = 0x0;
-   if (mode & GL_MAP_READ_BIT)
-      usage |= PIPE_TRANSFER_READ;
-   if (mode & GL_MAP_WRITE_BIT)
-      usage |= PIPE_TRANSFER_WRITE;
-   if (mode & GL_MAP_INVALIDATE_RANGE_BIT)
-      usage |= PIPE_TRANSFER_DISCARD_RANGE;
+   /* Check for unexpected flags */
+   assert((mode & ~(GL_MAP_READ_BIT |
+                    GL_MAP_WRITE_BIT |
+                    GL_MAP_INVALIDATE_RANGE_BIT)) == 0);
+
+   const enum pipe_transfer_usage transfer_flags =
+      st_access_flags_to_transfer_flags(mode, false);
 
    /* Note: y=0=bottom of buffer while y2=0=top of buffer.
     * 'invert' will be true for window-system buffers and false for
@@ -821,7 +901,7 @@ st_MapRenderbuffer(struct gl_context *ctx,
                             strb->texture,
                             strb->surface->u.tex.level,
                             strb->surface->u.tex.first_layer,
-                            usage, x, y2, w, h, &strb->transfer);
+                            transfer_flags, x, y2, w, h, &strb->transfer);
    if (map) {
       if (invert) {
          *rowStrideOut = -(int) strb->transfer->stride;
@@ -860,6 +940,19 @@ st_UnmapRenderbuffer(struct gl_context *ctx,
 }
 
 
+/**
+ * Called via ctx->Driver.EvaluateDepthValues.
+ */
+static void
+st_EvaluateDepthValues(struct gl_context *ctx)
+{
+   struct st_context *st = st_context(ctx);
+
+   st_validate_state(st, ST_PIPELINE_UPDATE_FRAMEBUFFER);
+
+   st->pipe->evaluate_depth_buffer(st->pipe);
+}
+
 
 void
 st_init_fbo_functions(struct dd_function_table *functions)
@@ -870,10 +963,12 @@ st_init_fbo_functions(struct dd_function_table *functions)
    functions->RenderTexture = st_render_texture;
    functions->FinishRenderTexture = st_finish_render_texture;
    functions->ValidateFramebuffer = st_validate_framebuffer;
+   functions->DiscardFramebuffer = st_discard_framebuffer;
 
-   functions->DrawBuffers = st_DrawBuffers;
+   functions->DrawBufferAllocate = st_DrawBufferAllocate;
    functions->ReadBuffer = st_ReadBuffer;
 
    functions->MapRenderbuffer = st_MapRenderbuffer;
    functions->UnmapRenderbuffer = st_UnmapRenderbuffer;
+   functions->EvaluateDepthValues = st_EvaluateDepthValues;
 }

@@ -122,7 +122,8 @@ static void evergreen_set_rat(struct r600_pipe_compute *pipe,
 	rat_templ.u.tex.first_layer = 0;
 	rat_templ.u.tex.last_layer = 0;
 
-	/* Add the RAT the list of color buffers */
+	/* Add the RAT the list of color buffers. Drop the old buffer first. */
+	pipe_surface_reference(&pipe->ctx->framebuffer.state.cbufs[id], NULL);
 	pipe->ctx->framebuffer.state.cbufs[id] = pipe->ctx->b.b.create_surface(
 		(struct pipe_context *)pipe->ctx,
 		(struct pipe_resource *)bo, &rat_templ);
@@ -437,7 +438,9 @@ static void *evergreen_create_compute_state(struct pipe_context *ctx,
 	/* Upload code + ROdata */
 	shader->code_bo = r600_compute_buffer_alloc_vram(rctx->screen,
 							shader->bc.ndw * 4);
-	p = r600_buffer_map_sync_with_rings(&rctx->b, shader->code_bo, PIPE_TRANSFER_WRITE);
+	p = r600_buffer_map_sync_with_rings(
+		&rctx->b, shader->code_bo,
+		PIPE_TRANSFER_WRITE | RADEON_TRANSFER_TEMPORARY);
 	//TODO: use util_memcpy_cpu_to_le32 ?
 	memcpy(p, shader->bc.bytecode, shader->bc.ndw * 4);
 	rctx->b.ws->buffer_unmap(shader->code_bo->buf);
@@ -461,11 +464,10 @@ static void evergreen_delete_compute_state(struct pipe_context *ctx, void *state
 	} else {
 #ifdef HAVE_OPENCL
 		radeon_shader_binary_clean(&shader->binary);
+		pipe_resource_reference(&shader->code_bo, NULL);
+		pipe_resource_reference(&shader->kernel_param, NULL);
 #endif
 		r600_destroy_shader(&shader->bc);
-
-		/* TODO destroy shader->code_bo, shader->const_bo
-		 * we'll need something like r600_buffer_free */
 	}
 	FREE(shader);
 }
@@ -571,11 +573,13 @@ static void evergreen_compute_upload_input(struct pipe_context *ctx,
 }
 
 static void evergreen_emit_dispatch(struct r600_context *rctx,
-				    const struct pipe_grid_info *info)
+				    const struct pipe_grid_info *info,
+				    uint32_t indirect_grid[3])
 {
 	int i;
-	struct radeon_winsys_cs *cs = rctx->b.gfx.cs;
+	struct radeon_cmdbuf *cs = rctx->b.gfx.cs;
 	struct r600_pipe_compute *shader = rctx->cs_shader_state.shader;
+	bool render_cond_bit = rctx->b.render_cond && !rctx->b.render_cond_force_off;
 	unsigned num_waves;
 	unsigned num_pipes = rctx->screen->b.info.r600_max_quad_pipes;
 	unsigned wave_divisor = (16 * num_pipes);
@@ -630,13 +634,21 @@ static void evergreen_emit_dispatch(struct r600_context *rctx,
 	radeon_compute_set_context_reg(cs, R_0288E8_SQ_LDS_ALLOC,
 					lds_size | (num_waves << 14));
 
-	/* Dispatch packet */
-	radeon_emit(cs, PKT3C(PKT3_DISPATCH_DIRECT, 3, 0));
-	radeon_emit(cs, info->grid[0]);
-	radeon_emit(cs, info->grid[1]);
-	radeon_emit(cs, info->grid[2]);
-	/* VGT_DISPATCH_INITIATOR = COMPUTE_SHADER_EN */
-	radeon_emit(cs, 1);
+	if (info->indirect) {
+		radeon_emit(cs, PKT3C(PKT3_DISPATCH_DIRECT, 3, render_cond_bit));
+		radeon_emit(cs, indirect_grid[0]);
+		radeon_emit(cs, indirect_grid[1]);
+		radeon_emit(cs, indirect_grid[2]);
+		radeon_emit(cs, 1);
+	} else {
+		/* Dispatch packet */
+		radeon_emit(cs, PKT3C(PKT3_DISPATCH_DIRECT, 3, render_cond_bit));
+		radeon_emit(cs, info->grid[0]);
+		radeon_emit(cs, info->grid[1]);
+		radeon_emit(cs, info->grid[2]);
+		/* VGT_DISPATCH_INITIATOR = COMPUTE_SHADER_EN */
+		radeon_emit(cs, 1);
+	}
 
 	if (rctx->is_debug)
 		eg_trace_emit(rctx);
@@ -644,7 +656,7 @@ static void evergreen_emit_dispatch(struct r600_context *rctx,
 
 static void compute_setup_cbs(struct r600_context *rctx)
 {
-	struct radeon_winsys_cs *cs = rctx->b.gfx.cs;
+	struct radeon_cmdbuf *cs = rctx->b.gfx.cs;
 	unsigned i;
 
 	/* Emit colorbuffers. */
@@ -686,11 +698,12 @@ static void compute_setup_cbs(struct r600_context *rctx)
 static void compute_emit_cs(struct r600_context *rctx,
 			    const struct pipe_grid_info *info)
 {
-	struct radeon_winsys_cs *cs = rctx->b.gfx.cs;
+	struct radeon_cmdbuf *cs = rctx->b.gfx.cs;
 	bool compute_dirty = false;
 	struct r600_pipe_shader *current;
 	struct r600_shader_atomic combined_atomics[8];
 	uint8_t atomic_used_mask;
+	uint32_t indirect_grid[3] = { 0, 0, 0 };
 
 	/* make sure that the gfx ring is only one active */
 	if (radeon_emitted(rctx->b.dma.cs, 0)) {
@@ -704,7 +717,6 @@ static void compute_emit_cs(struct r600_context *rctx,
 		rctx->cmd_buf_is_compute = true;
 	}
 
-	r600_need_cs_space(rctx, 0, true);
 	if (rctx->cs_shader_state.shader->ir_type == PIPE_SHADER_IR_TGSI) {
 		r600_shader_select(&rctx->b.b, rctx->cs_shader_state.shader->sel, &compute_dirty);
 		current = rctx->cs_shader_state.shader->sel->current;
@@ -717,22 +729,36 @@ static void compute_emit_cs(struct r600_context *rctx,
 		bool need_buf_const = current->shader.uses_tex_buffers ||
 			current->shader.has_txq_cube_array_z_comp;
 
+		if (info->indirect) {
+			struct r600_resource *indirect_resource = (struct r600_resource *)info->indirect;
+			unsigned *data = r600_buffer_map_sync_with_rings(&rctx->b, indirect_resource, PIPE_TRANSFER_READ);
+			unsigned offset = info->indirect_offset / 4;
+			indirect_grid[0] = data[offset];
+			indirect_grid[1] = data[offset + 1];
+			indirect_grid[2] = data[offset + 2];
+		}
 		for (int i = 0; i < 3; i++) {
 			rctx->cs_block_grid_sizes[i] = info->block[i];
-			rctx->cs_block_grid_sizes[i + 4] = info->grid[i];
+			rctx->cs_block_grid_sizes[i + 4] = info->indirect ? indirect_grid[i] : info->grid[i];
 		}
 		rctx->cs_block_grid_sizes[3] = rctx->cs_block_grid_sizes[7] = 0;
 		rctx->driver_consts[PIPE_SHADER_COMPUTE].cs_block_grid_size_dirty = true;
+
+		evergreen_emit_atomic_buffer_setup_count(rctx, current, combined_atomics, &atomic_used_mask);
+		r600_need_cs_space(rctx, 0, true, util_bitcount(atomic_used_mask));
+
 		if (need_buf_const) {
 			eg_setup_buffer_constants(rctx, PIPE_SHADER_COMPUTE);
 		}
 		r600_update_driver_const_buffers(rctx, true);
 
-		if (evergreen_emit_atomic_buffer_setup(rctx, current, combined_atomics, &atomic_used_mask)) {
+		evergreen_emit_atomic_buffer_setup(rctx, true, combined_atomics, atomic_used_mask);
+		if (atomic_used_mask) {
 			radeon_emit(cs, PKT3(PKT3_EVENT_WRITE, 0, 0));
 			radeon_emit(cs, EVENT_TYPE(EVENT_TYPE_CS_PARTIAL_FLUSH) | EVENT_INDEX(4));
 		}
-	}
+	} else
+		r600_need_cs_space(rctx, 0, true, 0);
 
 	/* Initialize all the compute-related registers.
 	 *
@@ -771,6 +797,8 @@ static void compute_emit_cs(struct r600_context *rctx,
 					       rat_mask);
 	}
 
+	r600_emit_atom(rctx, &rctx->b.render_cond_atom);
+
 	/* Emit constant buffer state */
 	r600_emit_atom(rctx, &rctx->constbuf_state[PIPE_SHADER_COMPUTE].atom);
 
@@ -790,7 +818,7 @@ static void compute_emit_cs(struct r600_context *rctx,
 	r600_emit_atom(rctx, &rctx->cs_shader_state.atom);
 
 	/* Emit dispatch state and dispatch packet */
-	evergreen_emit_dispatch(rctx, info);
+	evergreen_emit_dispatch(rctx, info, indirect_grid);
 
 	/* XXX evergreen_flush_emit() hardcodes the CP_COHER_SIZE to 0xffffffff
 	 */
@@ -832,7 +860,7 @@ void evergreen_emit_cs_shader(struct r600_context *rctx,
 	struct r600_cs_shader_state *state =
 					(struct r600_cs_shader_state*)atom;
 	struct r600_pipe_compute *shader = state->shader;
-	struct radeon_winsys_cs *cs = rctx->b.gfx.cs;
+	struct radeon_cmdbuf *cs = rctx->b.gfx.cs;
 	uint64_t va;
 	struct r600_resource *code_bo;
 	unsigned ngpr, nstack;

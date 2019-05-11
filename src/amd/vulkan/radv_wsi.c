@@ -32,7 +32,7 @@
 static PFN_vkVoidFunction
 radv_wsi_proc_addr(VkPhysicalDevice physicalDevice, const char *pName)
 {
-	return radv_lookup_entrypoint(pName);
+	return radv_lookup_entrypoint_unchecked(pName);
 }
 
 VkResult
@@ -41,7 +41,8 @@ radv_init_wsi(struct radv_physical_device *physical_device)
 	return wsi_device_init(&physical_device->wsi_device,
 			       radv_physical_device_to_handle(physical_device),
 			       radv_wsi_proc_addr,
-			       &physical_device->instance->alloc);
+			       &physical_device->instance->alloc,
+			       physical_device->master_fd);
 }
 
 void
@@ -71,10 +72,8 @@ VkResult radv_GetPhysicalDeviceSurfaceSupportKHR(
 	RADV_FROM_HANDLE(radv_physical_device, device, physicalDevice);
 
 	return wsi_common_get_surface_support(&device->wsi_device,
-					      device->local_fd,
 					      queueFamilyIndex,
 					      surface,
-					      &device->instance->alloc,
 					      pSupported);
 }
 
@@ -100,6 +99,18 @@ VkResult radv_GetPhysicalDeviceSurfaceCapabilities2KHR(
 	return wsi_common_get_surface_capabilities2(&device->wsi_device,
 						    pSurfaceInfo,
 						    pSurfaceCapabilities);
+}
+
+VkResult radv_GetPhysicalDeviceSurfaceCapabilities2EXT(
+ 	VkPhysicalDevice                            physicalDevice,
+	VkSurfaceKHR                                surface,
+	VkSurfaceCapabilities2EXT*                  pSurfaceCapabilities)
+{
+	RADV_FROM_HANDLE(radv_physical_device, device, physicalDevice);
+
+	return wsi_common_get_surface_capabilities2ext(&device->wsi_device,
+						       surface,
+						       pSurfaceCapabilities);
 }
 
 VkResult radv_GetPhysicalDeviceSurfaceFormatsKHR(
@@ -159,7 +170,6 @@ VkResult radv_CreateSwapchainKHR(
 
 	return wsi_common_create_swapchain(&device->physical_device->wsi_device,
 					   radv_device_to_handle(device),
-					   device->physical_device->local_fd,
 					   pCreateInfo,
 					   alloc,
 					   pSwapchain);
@@ -193,23 +203,38 @@ VkResult radv_GetSwapchainImagesKHR(
 }
 
 VkResult radv_AcquireNextImageKHR(
-	VkDevice                                     _device,
+	VkDevice                                     device,
 	VkSwapchainKHR                               swapchain,
 	uint64_t                                     timeout,
 	VkSemaphore                                  semaphore,
-	VkFence                                      _fence,
+	VkFence                                      fence,
+	uint32_t*                                    pImageIndex)
+{
+	VkAcquireNextImageInfoKHR acquire_info = {
+		.sType = VK_STRUCTURE_TYPE_ACQUIRE_NEXT_IMAGE_INFO_KHR,
+		.swapchain = swapchain,
+		.timeout = timeout,
+		.semaphore = semaphore,
+		.fence = fence,
+		.deviceMask = 0,
+	};
+
+	return radv_AcquireNextImage2KHR(device, &acquire_info, pImageIndex);
+}
+
+VkResult radv_AcquireNextImage2KHR(
+	VkDevice                                     _device,
+	const VkAcquireNextImageInfoKHR*             pAcquireInfo,
 	uint32_t*                                    pImageIndex)
 {
 	RADV_FROM_HANDLE(radv_device, device, _device);
 	struct radv_physical_device *pdevice = device->physical_device;
-	RADV_FROM_HANDLE(radv_fence, fence, _fence);
+	RADV_FROM_HANDLE(radv_fence, fence, pAcquireInfo->fence);
 
-	VkResult result = wsi_common_acquire_next_image(&pdevice->wsi_device,
-							_device,
-							swapchain,
-							timeout,
-							semaphore,
-							pImageIndex);
+	VkResult result = wsi_common_acquire_next_image2(&pdevice->wsi_device,
+							 _device,
+                                                         pAcquireInfo,
+							 pImageIndex);
 
 	if (fence && (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR)) {
 		fence->submitted = true;
@@ -233,4 +258,40 @@ VkResult radv_QueuePresentKHR(
 					_queue,
 					queue->queue_family_index,
 					pPresentInfo);
+}
+
+
+VkResult radv_GetDeviceGroupPresentCapabilitiesKHR(
+    VkDevice                                    device,
+    VkDeviceGroupPresentCapabilitiesKHR*        pCapabilities)
+{
+   memset(pCapabilities->presentMask, 0,
+          sizeof(pCapabilities->presentMask));
+   pCapabilities->presentMask[0] = 0x1;
+   pCapabilities->modes = VK_DEVICE_GROUP_PRESENT_MODE_LOCAL_BIT_KHR;
+
+   return VK_SUCCESS;
+}
+
+VkResult radv_GetDeviceGroupSurfacePresentModesKHR(
+    VkDevice                                    device,
+    VkSurfaceKHR                                surface,
+    VkDeviceGroupPresentModeFlagsKHR*           pModes)
+{
+   *pModes = VK_DEVICE_GROUP_PRESENT_MODE_LOCAL_BIT_KHR;
+
+   return VK_SUCCESS;
+}
+
+VkResult radv_GetPhysicalDevicePresentRectanglesKHR(
+	VkPhysicalDevice                            physicalDevice,
+	VkSurfaceKHR                                surface,
+	uint32_t*                                   pRectCount,
+	VkRect2D*                                   pRects)
+{
+	RADV_FROM_HANDLE(radv_physical_device, device, physicalDevice);
+
+	return wsi_common_get_present_rectangles(&device->wsi_device,
+						 surface,
+						 pRectCount, pRects);
 }

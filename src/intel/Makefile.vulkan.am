@@ -23,37 +23,30 @@
 # rules must be outside of any AM_CONDITIONALs. Otherwise they will be commented
 # out and we'll fail at `make dist'
 vulkan_api_xml = $(top_srcdir)/src/vulkan/registry/vk.xml
-vk_android_native_buffer_xml = $(top_srcdir)/src/vulkan/registry/vk_android_native_buffer.xml
 
 vulkan/anv_entrypoints.c: vulkan/anv_entrypoints_gen.py \
 			  vulkan/anv_extensions.py \
-			  $(vulkan_api_xml) \
-			  $(vk_android_native_buffer_xml)
+			  $(vulkan_api_xml)
 	$(MKDIR_GEN)
-	$(AM_V_GEN)$(PYTHON2) $(srcdir)/vulkan/anv_entrypoints_gen.py \
+	$(AM_V_GEN)$(PYTHON) $(srcdir)/vulkan/anv_entrypoints_gen.py \
 		--xml $(vulkan_api_xml) \
-		--xml $(vk_android_native_buffer_xml) \
 		--outdir $(builddir)/vulkan
 vulkan/anv_entrypoints.h: vulkan/anv_entrypoints.c
 
 vulkan/anv_extensions.c: vulkan/anv_extensions_gen.py \
 			 vulkan/anv_extensions.py \
-			 $(vulkan_api_xml) \
-			 $(vk_android_native_buffer_xml)
+			 $(vulkan_api_xml)
 	$(MKDIR_GEN)
-	$(AM_V_GEN)$(PYTHON2) $(srcdir)/vulkan/anv_extensions_gen.py \
+	$(AM_V_GEN)$(PYTHON) $(srcdir)/vulkan/anv_extensions_gen.py \
 		--xml $(vulkan_api_xml) \
-		--xml $(vk_android_native_buffer_xml) \
 		--out-c $@
 
 vulkan/anv_extensions.h: vulkan/anv_extensions_gen.py \
 			 vulkan/anv_extensions.py \
-			 $(vulkan_api_xml) \
-			 $(vk_android_native_buffer_xml)
+			 $(vulkan_api_xml)
 	$(MKDIR_GEN)
-	$(AM_V_GEN)$(PYTHON2) $(srcdir)/vulkan/anv_extensions_gen.py \
+	$(AM_V_GEN)$(PYTHON) $(srcdir)/vulkan/anv_extensions_gen.py \
 		--xml $(vulkan_api_xml) \
-		--xml $(vk_android_native_buffer_xml) \
 		--out-h $@
 
 BUILT_SOURCES += $(VULKAN_GENERATED_FILES)
@@ -71,11 +64,13 @@ EXTRA_DIST += \
 	vulkan/TODO
 
 vulkan/dev_icd.json : vulkan/anv_extensions.py vulkan/anv_icd.py
-	$(AM_V_GEN)$(PYTHON2) $(srcdir)/vulkan/anv_icd.py \
+	$(MKDIR_GEN)
+	$(AM_V_GEN)$(PYTHON) $(srcdir)/vulkan/anv_icd.py \
 		--lib-path="${abs_top_builddir}/${LIB_DIR}" --out $@
 
 vulkan/intel_icd.@host_cpu@.json : vulkan/anv_extensions.py vulkan/anv_icd.py
-	$(AM_V_GEN)$(PYTHON2) $(srcdir)/vulkan/anv_icd.py \
+	$(MKDIR_GEN)
+	$(AM_V_GEN)$(PYTHON) $(srcdir)/vulkan/anv_icd.py \
 		--lib-path="${libdir}" --out $@
 
 if HAVE_INTEL_VULKAN
@@ -84,6 +79,10 @@ vulkan_includedir = $(includedir)/vulkan
 
 noinst_HEADERS += \
 	$(top_srcdir)/include/vulkan/vk_platform.h \
+	$(top_srcdir)/include/vulkan/vulkan_core.h \
+	$(top_srcdir)/include/vulkan/vulkan_wayland.h \
+	$(top_srcdir)/include/vulkan/vulkan_xcb.h \
+	$(top_srcdir)/include/vulkan/vulkan_xlib.h \
 	$(top_srcdir)/include/vulkan/vulkan.h
 
 vulkan_include_HEADERS = \
@@ -98,13 +97,14 @@ VULKAN_PER_GEN_LIBS = \
 	vulkan/libanv-gen75.la \
 	vulkan/libanv-gen8.la \
 	vulkan/libanv-gen9.la \
-	vulkan/libanv-gen10.la
+	vulkan/libanv-gen10.la \
+	vulkan/libanv-gen11.la
 
 noinst_LTLIBRARIES += $(VULKAN_PER_GEN_LIBS)
 
 VULKAN_CFLAGS = \
 	$(AM_CFLAGS) \
-	-msse2
+	-msse2 -mstackrealign
 
 VULKAN_CPPFLAGS = \
 	-I$(top_srcdir)/src/compiler \
@@ -138,6 +138,10 @@ vulkan_libanv_gen10_la_CFLAGS = $(VULKAN_CFLAGS)
 vulkan_libanv_gen10_la_CPPFLAGS = $(VULKAN_CPPFLAGS) -DGEN_VERSIONx10=100
 vulkan_libanv_gen10_la_SOURCES = $(VULKAN_GEN10_FILES)
 
+vulkan_libanv_gen11_la_CFLAGS = $(VULKAN_CFLAGS)
+vulkan_libanv_gen11_la_CPPFLAGS = $(VULKAN_CPPFLAGS) -DGEN_VERSIONx10=110
+vulkan_libanv_gen11_la_SOURCES = $(VULKAN_GEN11_FILES)
+
 VULKAN_SOURCES = \
 	$(VULKAN_GENERATED_FILES) \
 	$(VULKAN_FILES)
@@ -147,6 +151,7 @@ VULKAN_LIB_DEPS = \
 	$(VULKAN_PER_GEN_LIBS) \
 	compiler/libintel_compiler.la \
 	common/libintel_common.la \
+	dev/libintel_dev.la \
 	isl/libisl.la \
 	blorp/libblorp.la \
 	$(top_builddir)/src/vulkan/libvulkan_util.la \
@@ -159,10 +164,15 @@ VULKAN_LIB_DEPS = \
 	-lm
 
 if HAVE_PLATFORM_ANDROID
-VULKAN_CPPFLAGS += $(ANDROID_CPPFLAGS)
+VULKAN_CPPFLAGS += \
+    $(ANDROID_CPPFLAGS) \
+    -DVK_USE_PLATFORM_ANDROID_KHR
+
 VULKAN_CFLAGS += $(ANDROID_CFLAGS)
 VULKAN_LIB_DEPS += $(ANDROID_LIBS)
 VULKAN_SOURCES += $(VULKAN_ANDROID_FILES)
+else
+VULKAN_SOURCES += $(VULKAN_NON_ANDROID_FILES)
 endif
 
 if HAVE_PLATFORM_X11
@@ -185,6 +195,21 @@ VULKAN_CPPFLAGS += \
 VULKAN_SOURCES += $(VULKAN_WSI_WAYLAND_FILES)
 
 VULKAN_LIB_DEPS += $(WAYLAND_CLIENT_LIBS)
+endif
+
+if HAVE_PLATFORM_DRM
+VULKAN_CPPFLAGS += \
+	-DVK_USE_PLATFORM_DISPLAY_KHR
+
+VULKAN_SOURCES += $(VULKAN_WSI_DISPLAY_FILES)
+endif
+
+if HAVE_XLIB_LEASE
+VULKAN_CPPFLAGS += \
+	-DVK_USE_PLATFORM_XLIB_XRANDR_EXT \
+	$(XCB_RANDR_CFLAGS) \
+	$(XLIB_RANDR_CFLAGS)
+VULKAN_LIB_DEPS += $(XCB_RANDR_LIBS)
 endif
 
 noinst_LTLIBRARIES += vulkan/libvulkan_common.la
@@ -228,6 +253,7 @@ VULKAN_TESTS = \
 	vulkan/tests/block_pool_no_free \
 	vulkan/tests/state_pool_no_free \
 	vulkan/tests/state_pool_free_list_only \
+	vulkan/tests/state_pool_padding \
 	vulkan/tests/state_pool
 
 VULKAN_TEST_LDADD = \
@@ -237,15 +263,23 @@ VULKAN_TEST_LDADD = \
 check_PROGRAMS += $(VULKAN_TESTS)
 TESTS += $(VULKAN_TESTS)
 
+vulkan_tests_block_pool_no_free_CFLAGS = $(VULKAN_CFLAGS)
 vulkan_tests_block_pool_no_free_CPPFLAGS = $(VULKAN_CPPFLAGS)
 vulkan_tests_block_pool_no_free_LDADD = $(VULKAN_TEST_LDADD)
 
+vulkan_tests_state_pool_no_free_CFLAGS = $(VULKAN_CFLAGS)
 vulkan_tests_state_pool_no_free_CPPFLAGS = $(VULKAN_CPPFLAGS)
 vulkan_tests_state_pool_no_free_LDADD = $(VULKAN_TEST_LDADD)
 
+vulkan_tests_state_pool_free_list_only_CFLAGS = $(VULKAN_CFLAGS)
 vulkan_tests_state_pool_free_list_only_CPPFLAGS = $(VULKAN_CPPFLAGS)
 vulkan_tests_state_pool_free_list_only_LDADD = $(VULKAN_TEST_LDADD)
 
+vulkan_tests_state_pool_padding_CFLAGS = $(VULKAN_CFLAGS)
+vulkan_tests_state_pool_padding_CPPFLAGS = $(VULKAN_CPPFLAGS)
+vulkan_tests_state_pool_padding_LDADD = $(VULKAN_TEST_LDADD)
+
+vulkan_tests_state_pool_CFLAGS = $(VULKAN_CFLAGS)
 vulkan_tests_state_pool_CPPFLAGS = $(VULKAN_CPPFLAGS)
 vulkan_tests_state_pool_LDADD = $(VULKAN_TEST_LDADD)
 

@@ -79,9 +79,19 @@ virgl_vtest_transfer_put(struct virgl_winsys *vws,
    size = vtest_get_transfer_size(res, box, stride, layer_stride, level,
                                   &valid_stride);
 
-   virgl_vtest_send_transfer_cmd(vtws, VCMD_TRANSFER_PUT, res->res_handle,
+   /* The size calculated above is the full box size, but if this box origin
+    * is not zero we may have to correct the transfer size to not read past the
+    * end of the resource. The correct adjustment depends on various factors
+    * that are not documented, so instead of going though all the hops to get
+    * the size right up-front, we just make sure we don't read past the end.
+    * FIXME: figure out what it takes to actually get this right.
+    */
+   if (size + buf_offset > res->size)
+      size = res->size - buf_offset;
+
+   virgl_vtest_send_transfer_put(vtws, res->res_handle,
                                  level, stride, layer_stride,
-                                 box, size);
+                                 box, size, buf_offset);
    ptr = virgl_vtest_resource_map(vws, res);
    virgl_vtest_send_transfer_put_data(vtws, ptr + buf_offset, size);
    virgl_vtest_resource_unmap(vws, res);
@@ -102,15 +112,22 @@ virgl_vtest_transfer_get(struct virgl_winsys *vws,
 
    size = vtest_get_transfer_size(res, box, stride, layer_stride, level,
                                   &valid_stride);
+   /* Don't ask for more pixels than available (see above) */
+   if (size + buf_offset > res->size)
+      size = res->size - buf_offset;
 
-   virgl_vtest_send_transfer_cmd(vtws, VCMD_TRANSFER_GET, res->res_handle,
+   virgl_vtest_send_transfer_get(vtws, res->res_handle,
                                  level, stride, layer_stride,
-                                 box, size);
-
+                                 box, size, buf_offset);
 
    ptr = virgl_vtest_resource_map(vws, res);
+
+   /* This functions seems to be using a specific transfer resource that
+    * has exactly the box size and hence its src stride is equal to the target
+    * stride */
    virgl_vtest_recv_transfer_get_data(vtws, ptr + buf_offset, size,
-                                      valid_stride, box, res->format);
+                                      valid_stride, box, res->format, valid_stride);
+
    virgl_vtest_resource_unmap(vws, res);
    return 0;
 }
@@ -240,9 +257,10 @@ virgl_vtest_winsys_resource_create(struct virgl_winsys *vws,
    res->format = format;
    res->height = height;
    res->width = width;
+   res->size = size;
    virgl_vtest_send_resource_create(vtws, handle, target, format, bind,
                                     width, height, depth, array_size,
-                                    last_level, nr_samples);
+                                    last_level, nr_samples, size);
 
    res->res_handle = handle++;
    pipe_reference_init(&res->reference, 1);
@@ -326,7 +344,7 @@ virgl_vtest_winsys_resource_cache_create(struct virgl_winsys *vws,
    struct virgl_hw_res *res, *curr_res;
    struct list_head *curr, *next;
    int64_t now;
-   int ret;
+   int ret = -1;
 
    /* only store binds for vertex/index/const buffers */
    if (bind != VIRGL_BIND_CONSTANT_BUFFER && bind != VIRGL_BIND_INDEX_BUFFER &&
@@ -409,6 +427,7 @@ static struct virgl_cmd_buf *virgl_vtest_cmd_buf_create(struct virgl_winsys *vws
    }
    cbuf->ws = vws;
    cbuf->base.buf = cbuf->buf;
+   cbuf->base.in_fence_fd = -1;
    return &cbuf->base;
 }
 
@@ -459,9 +478,18 @@ static void virgl_vtest_add_res(struct virgl_vtest_winsys *vtws,
 {
    unsigned hash = res->res_handle & (sizeof(cbuf->is_handle_added)-1);
 
-   if (cbuf->cres > cbuf->nres) {
-      fprintf(stderr,"failure to add relocation\n");
-      return;
+   if (cbuf->cres >= cbuf->nres) {
+      unsigned new_nres = cbuf->nres + 256;
+      struct virgl_hw_res **new_re_bo = REALLOC(cbuf->res_bo,
+                                                cbuf->nres * sizeof(struct virgl_hw_buf*),
+                                                new_nres * sizeof(struct virgl_hw_buf*));
+      if (!new_re_bo) {
+          fprintf(stderr,"failure to add relocation %d, %d\n", cbuf->cres, cbuf->nres);
+          return;
+      }
+
+      cbuf->res_bo = new_re_bo;
+      cbuf->nres = new_nres;
    }
 
    cbuf->res_bo[cbuf->cres] = NULL;
@@ -474,7 +502,8 @@ static void virgl_vtest_add_res(struct virgl_vtest_winsys *vtws,
 }
 
 static int virgl_vtest_winsys_submit_cmd(struct virgl_winsys *vws,
-                                         struct virgl_cmd_buf *_cbuf)
+                                         struct virgl_cmd_buf *_cbuf,
+                                         int in_fence_fd, int *out_fence_fd)
 {
    struct virgl_vtest_winsys *vtws = virgl_vtest_winsys(vws);
    struct virgl_vtest_cmd_buf *cbuf = virgl_vtest_cmd_buf(_cbuf);
@@ -482,6 +511,9 @@ static int virgl_vtest_winsys_submit_cmd(struct virgl_winsys *vws,
 
    if (cbuf->base.cdw == 0)
       return 0;
+
+   assert(in_fence_fd == -1);
+   assert(out_fence_fd == NULL);
 
    ret = virgl_vtest_submit_cmd(vtws, cbuf);
 
@@ -519,18 +551,20 @@ static int virgl_vtest_get_caps(struct virgl_winsys *vws,
                                 struct virgl_drm_caps *caps)
 {
    struct virgl_vtest_winsys *vtws = virgl_vtest_winsys(vws);
+
+   virgl_ws_fill_new_caps_defaults(caps);
    return virgl_vtest_send_get_caps(vtws, caps);
 }
 
 static struct pipe_fence_handle *
-virgl_cs_create_fence(struct virgl_winsys *vws)
+virgl_cs_create_fence(struct virgl_winsys *vws, int fd)
 {
    struct virgl_hw_res *res;
 
    res = virgl_vtest_winsys_resource_cache_create(vws,
                                                 PIPE_BUFFER,
                                                 PIPE_FORMAT_R8_UNORM,
-                                                PIPE_BIND_CUSTOM,
+                                                VIRGL_BIND_CUSTOM,
                                                 8, 1, 1, 0, 0, 0, 8);
 
    return (struct pipe_fence_handle *)res;
@@ -602,10 +636,16 @@ static void virgl_vtest_flush_frontbuffer(struct virgl_winsys *vws,
    map = vtws->sws->displaytarget_map(vtws->sws, res->dt, 0);
 
    /* execute a transfer */
-   virgl_vtest_send_transfer_cmd(vtws, VCMD_TRANSFER_GET, res->res_handle,
-                                 level, res->stride, 0, &box, size);
+   virgl_vtest_send_transfer_get(vtws, res->res_handle,
+                                 level, res->stride, 0, &box, size, offset);
+
+   /* This functions gets the resource from the hardware backend that may have
+    * a hardware imposed stride that is different from the IOV stride used to
+    * get the data. */
    virgl_vtest_recv_transfer_get_data(vtws, map + offset, size, valid_stride,
-                                      &box, res->format);
+                                      &box, res->format,
+                                      vtws->protocol_version == 0 ? valid_stride : util_format_get_stride(res->format, res->width));
+
    vtws->sws->displaytarget_unmap(vtws->sws, res->dt);
 
    vtws->sws->displaytarget_display(vtws->sws, res->dt, winsys_drawable_handle,
@@ -659,6 +699,7 @@ virgl_vtest_winsys_wrap(struct sw_winsys *sws)
    vtws->base.cs_create_fence = virgl_cs_create_fence;
    vtws->base.fence_wait = virgl_fence_wait;
    vtws->base.fence_reference = virgl_fence_reference;
+   vtws->base.supports_fences =  0;
 
    vtws->base.flush_frontbuffer = virgl_vtest_flush_frontbuffer;
 

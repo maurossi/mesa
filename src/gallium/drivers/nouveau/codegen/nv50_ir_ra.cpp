@@ -55,7 +55,7 @@ public:
    void periodicMask(DataFile f, uint32_t lock, uint32_t unlock);
    void intersect(DataFile f, const RegisterSet *);
 
-   bool assign(int32_t& reg, DataFile f, unsigned int size);
+   bool assign(int32_t& reg, DataFile f, unsigned int size, unsigned int maxReg);
    void release(DataFile f, int32_t reg, unsigned int size);
    void occupy(DataFile f, int32_t reg, unsigned int size);
    void occupy(const Value *);
@@ -66,10 +66,8 @@ public:
 
    inline int getMaxAssigned(DataFile f) const { return fill[f]; }
 
-   inline unsigned int getFileSize(DataFile f, uint8_t regSize) const
+   inline unsigned int getFileSize(DataFile f) const
    {
-      if (restrictedGPR16Range && f == FILE_GPR && regSize == 2)
-         return (last[f] + 1) / 2;
       return last[f] + 1;
    }
 
@@ -162,9 +160,9 @@ RegisterSet::print(DataFile f) const
 }
 
 bool
-RegisterSet::assign(int32_t& reg, DataFile f, unsigned int size)
+RegisterSet::assign(int32_t& reg, DataFile f, unsigned int size, unsigned int maxReg)
 {
-   reg = bits[f].findFreeRange(size);
+   reg = bits[f].findFreeRange(size, maxReg);
    if (reg < 0)
       return false;
    fill[f] = MAX2(fill[f], (int32_t)(reg + size - 1));
@@ -257,9 +255,11 @@ private:
    private:
       virtual bool visit(BasicBlock *);
 
+      void insertConstraintMove(Instruction *, int s);
       bool insertConstraintMoves();
 
       void condenseDefs(Instruction *);
+      void condenseDefs(Instruction *, const int first, const int last);
       void condenseSrcs(Instruction *, const int first, const int last);
 
       void addHazard(Instruction *i, const ValueRef *src);
@@ -272,6 +272,9 @@ private:
       void texConstraintNVC0(TexInstruction *);
       void texConstraintNVE0(TexInstruction *);
       void texConstraintGM107(TexInstruction *);
+
+      bool isScalarTexGM107(TexInstruction *);
+      void handleScalarTexGM107(TexInstruction *);
 
       std::list<Instruction *> constrList;
 
@@ -744,6 +747,7 @@ private:
    public:
       uint32_t degree;
       uint16_t degreeLimit; // if deg < degLimit, node is trivially colourable
+      uint16_t maxReg;
       uint16_t colors;
 
       DataFile f;
@@ -799,7 +803,21 @@ private:
    Function *func;
    Program *prog;
 
-   static uint8_t relDegree[17][17];
+   struct RelDegree {
+      uint8_t data[17][17];
+
+      RelDegree() {
+         for (int i = 1; i <= 16; ++i)
+            for (int j = 1; j <= 16; ++j)
+               data[i][j] = j * ((i + j - 1) / j);
+      }
+
+      const uint8_t* operator[](std::size_t i) const {
+         return data[i];
+      }
+   };
+
+   static const RelDegree relDegree;
 
    RegisterSet regs;
 
@@ -811,7 +829,7 @@ private:
    std::list<ValuePair> mustSpill;
 };
 
-uint8_t GCRA::relDegree[17][17];
+const GCRA::RelDegree GCRA::relDegree;
 
 GCRA::RIG_Node::RIG_Node() : Node(NULL), next(this), prev(this)
 {
@@ -841,9 +859,11 @@ GCRA::printNodeInfo() const
 static bool
 isShortRegOp(Instruction *insn)
 {
-   // Immediates are always in src1. Every other situation can be resolved by
+   // Immediates are always in src1 (except zeroes, which end up getting
+   // replaced with a zero reg). Every other situation can be resolved by
    // using a long encoding.
-   return insn->srcExists(1) && insn->src(1).getFile() == FILE_IMMEDIATE;
+   return insn->srcExists(1) && insn->src(1).getFile() == FILE_IMMEDIATE &&
+      insn->getSrc(1)->reg.data.u64;
 }
 
 // Check if this LValue is ever used in an instruction that can't be encoded
@@ -879,12 +899,12 @@ GCRA::RIG_Node::init(const RegisterSet& regs, LValue *lval)
 
    weight = std::numeric_limits<float>::infinity();
    degree = 0;
-   int size = regs.getFileSize(f, lval->reg.size);
+   maxReg = regs.getFileSize(f);
    // On nv50, we lose a bit of gpr encoding when there's an embedded
    // immediate.
-   if (regs.restrictedGPR16Range && f == FILE_GPR && isShortRegVal(lval))
-      size /= 2;
-   degreeLimit = size;
+   if (regs.restrictedGPR16Range && f == FILE_GPR && (lval->reg.size == 2 || isShortRegVal(lval)))
+      maxReg /= 2;
+   degreeLimit = maxReg;
    degreeLimit -= relDegree[1][colors] - 1;
 
    livei.insert(lval->livei);
@@ -944,6 +964,8 @@ GCRA::coalesceValues(Value *dst, Value *src, bool force)
    // add val's definitions to rep and extend the live interval of its RIG node
    rep->defs.insert(rep->defs.end(), val->defs.begin(), val->defs.end());
    nRep->livei.unify(nVal->livei);
+   nRep->degreeLimit = MIN2(nRep->degreeLimit, nVal->degreeLimit);
+   nRep->maxReg = MIN2(nRep->maxReg, nVal->maxReg);
    return true;
 }
 
@@ -1147,11 +1169,6 @@ GCRA::GCRA(Function *fn, SpillCodeInserter& spill) :
    spill(spill)
 {
    prog = func->getProgram();
-
-   // initialize relative degrees array - i takes away from j
-   for (int i = 1; i <= 16; ++i)
-      for (int j = 1; j <= 16; ++j)
-         relDegree[i][j] = j * ((i + j - 1) / j);
 }
 
 GCRA::~GCRA()
@@ -1317,13 +1334,17 @@ GCRA::simplify()
       } else
       if (!DLLIST_EMPTY(&hi)) {
          RIG_Node *best = hi.next;
+         unsigned bestMaxReg = best->maxReg;
          float bestScore = best->weight / (float)best->degree;
-         // spill candidate
+         // Spill candidate. First go through the ones with the highest max
+         // register, then the ones with lower. That way the ones with the
+         // lowest requirement will be allocated first, since it's a stack.
          for (RIG_Node *it = best->next; it != &hi; it = it->next) {
             float score = it->weight / (float)it->degree;
-            if (score < bestScore) {
+            if (score < bestScore || it->maxReg > bestMaxReg) {
                best = it;
                bestScore = score;
+               bestMaxReg = it->maxReg;
             }
          }
          if (isinf(bestScore)) {
@@ -1424,7 +1445,7 @@ GCRA::selectRegisters()
       LValue *lval = node->getValue();
       if (prog->dbgFlags & NV50_IR_DEBUG_REG_ALLOC)
          regs.print(node->f);
-      bool ret = regs.assign(node->reg, node->f, node->colors);
+      bool ret = regs.assign(node->reg, node->f, node->colors, node->maxReg);
       if (ret) {
          INFO_DBG(prog->dbgFlags, REG_ALLOC, "assigned reg %i\n", node->reg);
          lval->compMask = node->getCompMask();
@@ -1466,17 +1487,36 @@ GCRA::allocateRegisters(ArrayList& insns)
          nodes[i].init(regs, lval);
          RIG.insert(&nodes[i]);
 
-         if (lval->inFile(FILE_GPR) && lval->getInsn() != NULL &&
-             prog->getTarget()->getChipset() < 0xc0) {
+         if (lval->inFile(FILE_GPR) && lval->getInsn() != NULL) {
             Instruction *insn = lval->getInsn();
-            if (insn->op == OP_MAD || insn->op == OP_FMA || insn->op == OP_SAD)
-               // Short encoding only possible if they're all GPRs, no need to
-               // affect them otherwise.
-               if (insn->flagsDef < 0 &&
-                   insn->src(0).getFile() == FILE_GPR &&
-                   insn->src(1).getFile() == FILE_GPR &&
-                   insn->src(2).getFile() == FILE_GPR)
-                  nodes[i].addRegPreference(getNode(insn->getSrc(2)->asLValue()));
+            if (insn->op != OP_MAD && insn->op != OP_FMA && insn->op != OP_SAD)
+               continue;
+            // For both of the cases below, we only want to add the preference
+            // if all arguments are in registers.
+            if (insn->src(0).getFile() != FILE_GPR ||
+                insn->src(1).getFile() != FILE_GPR ||
+                insn->src(2).getFile() != FILE_GPR)
+               continue;
+            if (prog->getTarget()->getChipset() < 0xc0) {
+               // Outputting a flag is not supported with short encodings nor
+               // with immediate arguments.
+               // See handleMADforNV50.
+               if (insn->flagsDef >= 0)
+                  continue;
+            } else {
+               // We can only fold immediate arguments if dst == src2. This
+               // only matters if one of the first two arguments is an
+               // immediate. This form is also only supported for floats.
+               // See handleMADforNVC0.
+               ImmediateValue imm;
+               if (insn->dType != TYPE_F32)
+                  continue;
+               if (!insn->src(0).getImmediate(imm) &&
+                   !insn->src(1).getImmediate(imm))
+                  continue;
+            }
+
+            nodes[i].addRegPreference(getNode(insn->getSrc(2)->asLValue()));
          }
       }
    }
@@ -2028,24 +2068,35 @@ RegAlloc::InsertConstraintsPass::addHazard(Instruction *i, const ValueRef *src)
 void
 RegAlloc::InsertConstraintsPass::condenseDefs(Instruction *insn)
 {
-   uint8_t size = 0;
    int n;
-   for (n = 0; insn->defExists(n) && insn->def(n).getFile() == FILE_GPR; ++n)
-      size += insn->getDef(n)->reg.size;
-   if (n < 2)
+   for (n = 0; insn->defExists(n) && insn->def(n).getFile() == FILE_GPR; ++n);
+   condenseDefs(insn, 0, n - 1);
+}
+
+void
+RegAlloc::InsertConstraintsPass::condenseDefs(Instruction *insn,
+                                              const int a, const int b)
+{
+   uint8_t size = 0;
+   if (a >= b)
       return;
+   for (int s = a; s <= b; ++s)
+      size += insn->getDef(s)->reg.size;
+   if (!size)
+      return;
+
    LValue *lval = new_LValue(func, FILE_GPR);
    lval->reg.size = size;
 
    Instruction *split = new_Instruction(func, OP_SPLIT, typeOfSize(size));
    split->setSrc(0, lval);
-   for (int d = 0; d < n; ++d) {
-      split->setDef(d, insn->getDef(d));
+   for (int d = a; d <= b; ++d) {
+      split->setDef(d - a, insn->getDef(d));
       insn->setDef(d, NULL);
    }
-   insn->setDef(0, lval);
+   insn->setDef(a, lval);
 
-   for (int k = 1, d = n; insn->defExists(d); ++d, ++k) {
+   for (int k = a + 1, d = b + 1; insn->defExists(d); ++d, ++k) {
       insn->setDef(k, insn->getDef(d));
       insn->setDef(d, NULL);
    }
@@ -2055,6 +2106,7 @@ RegAlloc::InsertConstraintsPass::condenseDefs(Instruction *insn)
    insn->bb->insertAfter(insn, split);
    constrList.push_back(split);
 }
+
 void
 RegAlloc::InsertConstraintsPass::condenseSrcs(Instruction *insn,
                                               const int a, const int b)
@@ -2086,6 +2138,159 @@ RegAlloc::InsertConstraintsPass::condenseSrcs(Instruction *insn,
    constrList.push_back(merge);
 }
 
+bool
+RegAlloc::InsertConstraintsPass::isScalarTexGM107(TexInstruction *tex)
+{
+   if (tex->tex.sIndirectSrc >= 0 ||
+       tex->tex.rIndirectSrc >= 0 ||
+       tex->tex.derivAll)
+      return false;
+
+   if (tex->tex.mask == 5 || tex->tex.mask == 6)
+      return false;
+
+   switch (tex->op) {
+   case OP_TEX:
+   case OP_TXF:
+   case OP_TXG:
+   case OP_TXL:
+      break;
+   default:
+      return false;
+   }
+
+   // legal variants:
+   // TEXS.1D.LZ
+   // TEXS.2D
+   // TEXS.2D.LZ
+   // TEXS.2D.LL
+   // TEXS.2D.DC
+   // TEXS.2D.LL.DC
+   // TEXS.2D.LZ.DC
+   // TEXS.A2D
+   // TEXS.A2D.LZ
+   // TEXS.A2D.LZ.DC
+   // TEXS.3D
+   // TEXS.3D.LZ
+   // TEXS.CUBE
+   // TEXS.CUBE.LL
+
+   // TLDS.1D.LZ
+   // TLDS.1D.LL
+   // TLDS.2D.LZ
+   // TLSD.2D.LZ.AOFFI
+   // TLDS.2D.LZ.MZ
+   // TLDS.2D.LL
+   // TLDS.2D.LL.AOFFI
+   // TLDS.A2D.LZ
+   // TLDS.3D.LZ
+
+   // TLD4S: all 2D/RECT variants and only offset
+
+   switch (tex->op) {
+   case OP_TEX:
+      if (tex->tex.useOffsets)
+         return false;
+
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_1D:
+      case TEX_TARGET_2D_ARRAY_SHADOW:
+         return tex->tex.levelZero;
+      case TEX_TARGET_CUBE:
+         return !tex->tex.levelZero;
+      case TEX_TARGET_2D:
+      case TEX_TARGET_2D_ARRAY:
+      case TEX_TARGET_2D_SHADOW:
+      case TEX_TARGET_3D:
+      case TEX_TARGET_RECT:
+      case TEX_TARGET_RECT_SHADOW:
+         return true;
+      default:
+         return false;
+      }
+
+   case OP_TXL:
+      if (tex->tex.useOffsets)
+         return false;
+
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_2D:
+      case TEX_TARGET_2D_SHADOW:
+      case TEX_TARGET_RECT:
+      case TEX_TARGET_RECT_SHADOW:
+      case TEX_TARGET_CUBE:
+         return true;
+      default:
+         return false;
+      }
+
+   case OP_TXF:
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_1D:
+         return !tex->tex.useOffsets;
+      case TEX_TARGET_2D:
+      case TEX_TARGET_RECT:
+         return true;
+      case TEX_TARGET_2D_ARRAY:
+      case TEX_TARGET_2D_MS:
+      case TEX_TARGET_3D:
+         return !tex->tex.useOffsets && tex->tex.levelZero;
+      default:
+         return false;
+      }
+
+   case OP_TXG:
+      if (tex->tex.useOffsets > 1)
+         return false;
+      if (tex->tex.mask != 0x3 && tex->tex.mask != 0xf)
+         return false;
+
+      switch (tex->tex.target.getEnum()) {
+      case TEX_TARGET_2D:
+      case TEX_TARGET_2D_MS:
+      case TEX_TARGET_2D_SHADOW:
+      case TEX_TARGET_RECT:
+      case TEX_TARGET_RECT_SHADOW:
+         return true;
+      default:
+         return false;
+      }
+
+   default:
+      return false;
+   }
+}
+
+void
+RegAlloc::InsertConstraintsPass::handleScalarTexGM107(TexInstruction *tex)
+{
+   int defCount = tex->defCount(0xff);
+   int srcCount = tex->srcCount(0xff);
+
+   tex->tex.scalar = true;
+
+   // 1. handle defs
+   if (defCount > 3)
+      condenseDefs(tex, 2, 3);
+   if (defCount > 1)
+      condenseDefs(tex, 0, 1);
+
+   // 2. handle srcs
+   // special case for TXF.A2D
+   if (tex->op == OP_TXF && tex->tex.target == TEX_TARGET_2D_ARRAY) {
+      assert(srcCount >= 3);
+      condenseSrcs(tex, 1, 2);
+   } else {
+      if (srcCount > 3)
+         condenseSrcs(tex, 2, 3);
+      // only if we have more than 2 sources
+      if (srcCount > 2)
+         condenseSrcs(tex, 0, 1);
+   }
+
+   assert(!tex->defExists(2) && !tex->srcExists(2));
+}
+
 void
 RegAlloc::InsertConstraintsPass::texConstraintGM107(TexInstruction *tex)
 {
@@ -2093,6 +2298,13 @@ RegAlloc::InsertConstraintsPass::texConstraintGM107(TexInstruction *tex)
 
    if (isTextureOp(tex->op))
       textureMask(tex);
+
+   if (isScalarTexGM107(tex)) {
+      handleScalarTexGM107(tex);
+      return;
+   }
+
+   assert(!tex->tex.scalar);
    condenseDefs(tex);
 
    if (isSurfaceOp(tex->op)) {
@@ -2129,9 +2341,19 @@ RegAlloc::InsertConstraintsPass::texConstraintGM107(TexInstruction *tex)
             if (!tex->tex.target.isArray() && tex->tex.useOffsets)
                s++;
          }
-         n = tex->srcCount(0xff) - s;
+         n = tex->srcCount(0xff, true) - s;
+         // TODO: Is this necessary? Perhaps just has to be aligned to the
+         // level that the first arg is, not necessarily to 4. This
+         // requirement has not been rigorously verified, as it has been on
+         // Kepler.
+         if (n > 0 && n < 3) {
+            if (tex->srcExists(n + s)) // move potential predicate out of the way
+               tex->moveSources(n + s, 3 - n);
+            while (n < 3)
+               tex->setSrc(s + n++, new_LValue(func, FILE_GPR));
+         }
       } else {
-         s = tex->srcCount(0xff);
+         s = tex->srcCount(0xff, true);
          n = 0;
       }
 
@@ -2154,14 +2376,18 @@ RegAlloc::InsertConstraintsPass::texConstraintNVE0(TexInstruction *tex)
    } else
    if (isTextureOp(tex->op)) {
       int n = tex->srcCount(0xff, true);
-      if (n > 4) {
-         condenseSrcs(tex, 0, 3);
-         if (n > 5) // NOTE: first call modified positions already
-            condenseSrcs(tex, 4 - (4 - 1), n - 1 - (4 - 1));
-      } else
-      if (n > 1) {
-         condenseSrcs(tex, 0, n - 1);
+      int s = n > 4 ? 4 : n;
+      if (n > 4 && n < 7) {
+         if (tex->srcExists(n)) // move potential predicate out of the way
+            tex->moveSources(n, 7 - n);
+
+         while (n < 7)
+            tex->setSrc(n++, new_LValue(func, FILE_GPR));
       }
+      if (s > 1)
+         condenseSrcs(tex, 0, s - 1);
+      if (n > 4)
+         condenseSrcs(tex, 1, n - s);
    }
 }
 
@@ -2216,6 +2442,8 @@ RegAlloc::InsertConstraintsPass::texConstraintNV50(TexInstruction *tex)
    for (c = 0; tex->srcExists(c) || tex->defExists(c); ++c) {
       if (!tex->srcExists(c))
          tex->setSrc(c, new_LValue(func, tex->getSrc(0)->asLValue()));
+      else
+         insertConstraintMove(tex, c);
       if (!tex->defExists(c))
          tex->setDef(c, new_LValue(func, tex->getDef(0)->asLValue()));
    }
@@ -2288,6 +2516,54 @@ RegAlloc::InsertConstraintsPass::visit(BasicBlock *bb)
    return true;
 }
 
+void
+RegAlloc::InsertConstraintsPass::insertConstraintMove(Instruction *cst, int s)
+{
+   const uint8_t size = cst->src(s).getSize();
+
+   assert(cst->getSrc(s)->defs.size() == 1); // still SSA
+
+   Instruction *defi = cst->getSrc(s)->defs.front()->getInsn();
+
+   bool imm = defi->op == OP_MOV &&
+      defi->src(0).getFile() == FILE_IMMEDIATE;
+   bool load = defi->op == OP_LOAD &&
+      defi->src(0).getFile() == FILE_MEMORY_CONST &&
+      !defi->src(0).isIndirect(0);
+   // catch some cases where don't really need MOVs
+   if (cst->getSrc(s)->refCount() == 1 && !defi->constrainedDefs()) {
+      if (imm || load) {
+         // Move the defi right before the cst. No point in expanding
+         // the range.
+         defi->bb->remove(defi);
+         cst->bb->insertBefore(cst, defi);
+      }
+      return;
+   }
+
+   LValue *lval = new_LValue(func, cst->src(s).getFile());
+   lval->reg.size = size;
+
+   Instruction *mov = new_Instruction(func, OP_MOV, typeOfSize(size));
+   mov->setDef(0, lval);
+   mov->setSrc(0, cst->getSrc(s));
+
+   if (load) {
+      mov->op = OP_LOAD;
+      mov->setSrc(0, defi->getSrc(0));
+   } else if (imm) {
+      mov->setSrc(0, defi->getSrc(0));
+   }
+
+   if (defi->getPredicate())
+      mov->setPredicate(defi->cc, defi->getPredicate());
+
+   cst->setSrc(s, mov->getDef(0));
+   cst->bb->insertBefore(cst, mov);
+
+   cst->getDef(0)->asLValue()->noSpill = 1; // doesn't help
+}
+
 // Insert extra moves so that, if multiple register constraints on a value are
 // in conflict, these conflicts can be resolved.
 bool
@@ -2328,46 +2604,8 @@ RegAlloc::InsertConstraintsPass::insertConstraintMoves()
                cst->bb->insertBefore(cst, mov);
                continue;
             }
-            assert(cst->getSrc(s)->defs.size() == 1); // still SSA
 
-            Instruction *defi = cst->getSrc(s)->defs.front()->getInsn();
-            bool imm = defi->op == OP_MOV &&
-               defi->src(0).getFile() == FILE_IMMEDIATE;
-            bool load = defi->op == OP_LOAD &&
-               defi->src(0).getFile() == FILE_MEMORY_CONST &&
-               !defi->src(0).isIndirect(0);
-            // catch some cases where don't really need MOVs
-            if (cst->getSrc(s)->refCount() == 1 && !defi->constrainedDefs()) {
-               if (imm || load) {
-                  // Move the defi right before the cst. No point in expanding
-                  // the range.
-                  defi->bb->remove(defi);
-                  cst->bb->insertBefore(cst, defi);
-               }
-               continue;
-            }
-
-            LValue *lval = new_LValue(func, cst->src(s).getFile());
-            lval->reg.size = size;
-
-            mov = new_Instruction(func, OP_MOV, typeOfSize(size));
-            mov->setDef(0, lval);
-            mov->setSrc(0, cst->getSrc(s));
-
-            if (load) {
-               mov->op = OP_LOAD;
-               mov->setSrc(0, defi->getSrc(0));
-            } else if (imm) {
-               mov->setSrc(0, defi->getSrc(0));
-            }
-
-            cst->setSrc(s, mov->getDef(0));
-            cst->bb->insertBefore(cst, mov);
-
-            cst->getDef(0)->asLValue()->noSpill = 1; // doesn't help
-
-            if (cst->op == OP_UNION)
-               mov->setPredicate(defi->cc, defi->getPredicate());
+            insertConstraintMove(cst, s);
          }
       }
    }

@@ -1154,14 +1154,21 @@ bool post_scheduler::schedule_alu(container_node *c) {
 
 	assert(!ready.empty() || !ready_copies.empty());
 
-	bool improving = true;
+	/* This number is rather arbitrary, important is that the scheduler has
+	 * more than one try to create an instruction group
+	 */
+	int improving = 10;
 	int last_pending = pending.count();
-	while (improving) {
+	while (improving > 0) {
 		prev_regmap = regmap;
 		if (!prepare_alu_group()) {
 
 			int new_pending = pending.count();
-			improving = (new_pending < last_pending) || (last_pending == 0);
+			if ((new_pending < last_pending) || (last_pending == 0))
+				improving = 10;
+			else
+				--improving;
+
 			last_pending = new_pending;
 
 			if (alu.current_idx[0] || alu.current_idx[1]) {
@@ -1670,7 +1677,7 @@ unsigned post_scheduler::try_add_instruction(node *n) {
 		value *d = a->dst.empty() ? NULL : a->dst[0];
 
 		if (d && d->is_special_reg()) {
-			assert((a->bc.op_ptr->flags & AF_MOVA) || d->is_geometry_emit() || d->is_lds_oq() || d->is_lds_access());
+			assert((a->bc.op_ptr->flags & AF_MOVA) || d->is_geometry_emit() || d->is_lds_oq() || d->is_lds_access() || d->is_scratch());
 			d = NULL;
 		}
 

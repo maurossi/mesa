@@ -42,6 +42,7 @@
 #include "program.h"
 #include "ir_reader.h"
 #include "standalone_scaffolding.h"
+#include "main/mtypes.h"
 
 using namespace std;
 
@@ -72,8 +73,6 @@ do_optimization(struct exec_list *ir, const char *optimization,
       return do_constant_variable(ir);
    } else if (strcmp(optimization, "do_constant_variable_unlinked") == 0) {
       return do_constant_variable_unlinked(ir);
-   } else if (strcmp(optimization, "do_copy_propagation") == 0) {
-      return do_copy_propagation(ir);
    } else if (strcmp(optimization, "do_copy_propagation_elements") == 0) {
       return do_copy_propagation_elements(ir);
    } else if (strcmp(optimization, "do_constant_propagation") == 0) {
@@ -167,6 +166,7 @@ int test_optpass(int argc, char **argv)
    int loop = 0;
    int shader_type = GL_VERTEX_SHADER;
    int quiet = 0;
+   int error;
 
    const struct option optpass_opts[] = {
       { "input-ir", no_argument, &input_format_ir, 1 },
@@ -265,9 +265,11 @@ int test_optpass(int argc, char **argv)
       printf("--\n");
    }
 
+   error = state->error;
+
    ralloc_free(state);
    ralloc_free(shader);
 
-   return state->error;
+   return error;
 }
 

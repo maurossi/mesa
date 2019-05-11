@@ -68,6 +68,9 @@ objects. They all follow simple, one-method binding calls, e.g.
   that this takes effect even if multisampling is not explicitly enabled if
   the frambuffer surface(s) are multisampled.  Also, this mask is AND-ed
   with the optional fragment shader sample mask output (when emitted).
+* ``set_sample_locations`` sets the sample locations used for rasterization.
+  ```get_sample_position``` still returns the default locations. When NULL,
+  the default locations are used.
 * ``set_min_samples`` sets the minimum number of samples that must be run.
 * ``set_clip_state``
 * ``set_polygon_stipple``
@@ -269,6 +272,17 @@ format.
 (which may be multiple bytes in length). Logically this is a memset with a
 multi-byte element value starting at offset bytes from resource start, going
 for size bytes. It is guaranteed that size % clear_value_size == 0.
+
+Evaluating Depth Buffers
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+``evaluate_depth_buffer`` is a hint to decompress the current depth buffer
+assuming the current sample locations to avoid problems that could arise when
+using programmable sample locations.
+
+If a depth buffer is rendered with different sample location state than
+what is current at the time of reading the depth buffer, the values may differ
+because depth buffer compression can depend the sample locations.
 
 
 Uploading
@@ -477,6 +491,11 @@ Number of tessellation evaluation shader threads launched.
 If a shader type is not supported by the device/driver,
 the corresponding values should be set to 0.
 
+``PIPE_QUERY_PIPELINE_STATISTICS_SINGLE`` returns a single counter from
+the ``PIPE_QUERY_PIPELINE_STATISTICS`` group.  The specific counter must
+be selected when calling ``create_query`` by passing one of the
+``PIPE_STAT_QUERY`` enums as the query's ``index``.
+
 Gallium does not guarantee the availability of any query types; one must
 always check the capabilities of the :ref:`Screen` first.
 
@@ -567,7 +586,38 @@ by a single pipe_screen and is not shared with another process.
 (i.e. you shouldn't use it to flush caches explicitly if you want to e.g.
 use the resource for texturing)
 
+Fences
+^^^^^^
 
+``pipe_fence_handle``, and related methods, are used to synchronize
+execution between multiple parties. Examples include CPU <-> GPU synchronization,
+renderer <-> windowing system, multiple external APIs, etc.
+
+A ``pipe_fence_handle`` can either be 'one time use' or 're-usable'. A 'one time use'
+fence behaves like a traditional GPU fence. Once it reaches the signaled state it
+is forever considered to be signaled.
+
+Once a re-usable ``pipe_fence_handle`` becomes signaled, it can be reset
+back into an unsignaled state. The ``pipe_fence_handle`` will be reset to
+the unsignaled state by performing a wait operation on said object, i.e.
+``fence_server_sync``. As a corollary to this behaviour, a re-usable
+``pipe_fence_handle`` can only have one waiter.
+
+This behaviour is useful in producer <-> consumer chains. It helps avoid
+unecessarily sharing a new ``pipe_fence_handle`` each time a new frame is
+ready. Instead, the fences are exchanged once ahead of time, and access is synchronized
+through GPU signaling instead of direct producer <-> consumer communication.
+
+``fence_server_sync`` inserts a wait command into the GPU's command stream.
+
+``fence_server_signal`` inserts a signal command into the GPU's command stream.
+
+There are no guarantees that the wait/signal commands will be flushed when
+calling ``fence_server_sync`` or ``fence_server_signal``. An explicit
+call to ``flush`` is required to make sure the commands are emitted to the GPU.
+
+The Gallium implementation may implicitly ``flush`` the command stream during a
+``fence_server_sync`` or ``fence_server_signal`` call if necessary.
 
 Resource Busy Queries
 ^^^^^^^^^^^^^^^^^^^^^
