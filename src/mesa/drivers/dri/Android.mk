@@ -49,10 +49,16 @@ MESA_DRI_WHOLE_STATIC_LIBRARIES := \
 MESA_DRI_SHARED_LIBRARIES := \
 	libcutils \
 	libdl \
-	libexpat \
 	libglapi \
 	liblog \
 	libz
+
+# If Android version <8 MESA should dynamic link libexpat
+# version >= 8 would use altxmlconfig instead
+ifneq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+LOCAL_SHARED_LIBRARIES += \
+        libexpat
+endif
 
 #-----------------------------------------------
 # Build drivers and libmesa_dri_common

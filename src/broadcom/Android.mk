@@ -25,5 +25,5 @@ LOCAL_PATH := $(call my-dir)
 # Import variables
 include $(LOCAL_PATH)/Makefile.sources
 
-include $(LOCAL_PATH)/Android.genxml.mk
-include $(LOCAL_PATH)/Android.cle.mk
+#include $(LOCAL_PATH)/Android.genxml.mk
+#include $(LOCAL_PATH)/Android.cle.mk
