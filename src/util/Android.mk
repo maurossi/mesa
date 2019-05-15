@@ -41,8 +41,12 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary
 
-LOCAL_SHARED_LIBRARIES := \
-	libexpat
+# If Android version <8 MESA should dynamic link libexpat
+# version >= 8 would use altxmlconfig instead
+ifneq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+LOCAL_SHARED_LIBRARIES += \
+        libexpat
+endif
 
 LOCAL_MODULE := libmesa_util
 
