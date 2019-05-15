@@ -38,7 +38,15 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/mesa
 
-LOCAL_SHARED_LIBRARIES := libexpat liblog libz
+LOCAL_SHARED_LIBRARIES := libz liblog
+
+# If Android version <8 MESA should dynamic link libexpat
+# version >= 8 would use altxmlconfig instead
+ifneq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+LOCAL_SHARED_LIBRARIES += \
+	libexpat
+endif
+
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_genxml
 
