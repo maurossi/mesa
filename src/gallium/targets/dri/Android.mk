@@ -42,10 +42,16 @@ LOCAL_LDFLAGS := \
 LOCAL_SHARED_LIBRARIES := \
 	libdl \
 	libglapi \
-	libexpat \
 	libz
 
-LOCAL_STATIC_LIBRARIES += \
+# If Android version <8 MESA should dynamic link libexpat
+# version >= 8 would use altxmlconfig instead
+ifneq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+LOCAL_SHARED_LIBRARIES += \
+	libexpat
+endif
+
+LOCAL_STATIC_LIBRARIES := \
 	libfreedreno_drm \
 	libfreedreno_ir3
 
