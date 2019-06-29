@@ -109,6 +109,7 @@
 #include "eglconfig.h"
 #include "eglimage.h"
 #include "eglsync.h"
+#include "egllog.h"
 
 #include "GL/mesa_glinterop.h"
 
@@ -799,6 +800,9 @@ eglCreateContext(EGLDisplay dpy, EGLConfig config, EGLContext share_list,
 
    if (!share && share_list != EGL_NO_CONTEXT)
       RETURN_EGL_ERROR(disp, EGL_BAD_CONTEXT, EGL_NO_CONTEXT);
+
+   if (share)
+      _eglLog(_EGL_WARNING, "Application is using shared EGL context\n");
 
    context = drv->API.CreateContext(drv, disp, conf, share, attrib_list);
    ret = (context) ? _eglLinkContext(context) : EGL_NO_CONTEXT;

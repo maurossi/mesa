@@ -79,6 +79,7 @@ nouveau_drm_screen_create(int fd)
 	screen = util_hash_table_get(fd_tab, intptr_to_pointer(fd));
 	if (screen) {
 		screen->refcount++;
+		fprintf(stdout, "reusing nouveau screen %p\n", screen);
 		mtx_unlock(&nouveau_screen_mutex);
 		return &screen->base;
 	}
@@ -143,6 +144,7 @@ nouveau_drm_screen_create(int fd)
 	 */
 	util_hash_table_set(fd_tab, intptr_to_pointer(dupfd), screen);
 	screen->refcount = 1;
+	fprintf(stdout, "creating new nouveau screen %p\n", screen);
 	mtx_unlock(&nouveau_screen_mutex);
 	return &screen->base;
 
