@@ -40,9 +40,9 @@ LOCAL_C_INCLUDES := \
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_nir
 
-#LOCAL_WHOLE_STATIC_LIBRARIES := \
-#	libmesa_broadcom_cle \
-#	libmesa_broadcom_genxml
+LOCAL_WHOLE_STATIC_LIBRARIES := \
+	libmesa_broadcom_cle \
+	libmesa_broadcom_genxml
 
 LOCAL_MODULE := libmesa_pipe_vc4
 
