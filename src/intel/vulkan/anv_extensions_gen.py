@@ -31,8 +31,6 @@ from mako.template import Template
 
 from anv_extensions import *
 
-platform_defines = []
-
 def _init_exts_from_xml(xml):
     """ Walk the Vulkan XML and fill out extra extension information. """
 
@@ -41,9 +39,6 @@ def _init_exts_from_xml(xml):
     ext_name_map = {}
     for ext in EXTENSIONS:
         ext_name_map[ext.name] = ext
-
-    for platform in xml.findall('./platforms/platform'):
-        platform_defines.append(platform.attrib['protect'])
 
     for ext_elem in xml.findall('.extensions/extension'):
         ext_name = ext_elem.attrib['name']
@@ -108,12 +103,12 @@ _TEMPLATE_C = Template(COPYRIGHT + """
 #include "vk_util.h"
 
 /* Convert the VK_USE_PLATFORM_* defines to booleans */
-%for platform_define in platform_defines:
-#ifdef ${platform_define}
-#   undef ${platform_define}
-#   define ${platform_define} true
+%for platform in ['ANDROID_KHR', 'WAYLAND_KHR', 'XCB_KHR', 'XLIB_KHR', 'DISPLAY_KHR', 'XLIB_XRANDR_EXT']:
+#ifdef VK_USE_PLATFORM_${platform}
+#   undef VK_USE_PLATFORM_${platform}
+#   define VK_USE_PLATFORM_${platform} true
 #else
-#   define ${platform_define} false
+#   define VK_USE_PLATFORM_${platform} false
 #endif
 %endfor
 
@@ -209,7 +204,6 @@ if __name__ == '__main__':
         'MAX_API_VERSION': MAX_API_VERSION,
         'instance_extensions': [e for e in EXTENSIONS if e.type == 'instance'],
         'device_extensions': [e for e in EXTENSIONS if e.type == 'device'],
-        'platform_defines': platform_defines,
     }
 
     if args.out_h:
