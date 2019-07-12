@@ -40,13 +40,14 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_SHARED_LIBRARIES := libz liblog
 
-# If Android version <8 MESA should dynamic link libexpat
-# version >= 8 would use altxmlconfig instead
-ifneq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+# If Android version >=8 MESA should static link libexpat else should dynamic link
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+LOCAL_STATIC_LIBRARIES := \
+	libexpat
+else
 LOCAL_SHARED_LIBRARIES += \
 	libexpat
 endif
-
 
 LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_genxml
 

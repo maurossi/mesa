@@ -500,6 +500,7 @@ static const char device_strings[] =
     "vkFreeDescriptorSets\0"
     "vkFreeMemory\0"
     "vkGetAndroidHardwareBufferPropertiesANDROID\0"
+    "vkGetBufferDeviceAddressEXT\0"
     "vkGetBufferMemoryRequirements\0"
     "vkGetBufferMemoryRequirements2\0"
     "vkGetBufferMemoryRequirements2KHR\0"
@@ -509,6 +510,7 @@ static const char device_strings[] =
     "vkGetDeviceGroupPeerMemoryFeatures\0"
     "vkGetDeviceGroupPeerMemoryFeaturesKHR\0"
     "vkGetDeviceGroupPresentCapabilitiesKHR\0"
+    "vkGetDeviceGroupSurfacePresentModes2EXT\0"
     "vkGetDeviceGroupSurfacePresentModesKHR\0"
     "vkGetDeviceMemoryCommitment\0"
     "vkGetDeviceProcAddr\0"
@@ -527,6 +529,7 @@ static const char device_strings[] =
     "vkGetMemoryAndroidHardwareBufferANDROID\0"
     "vkGetMemoryFdKHR\0"
     "vkGetMemoryFdPropertiesKHR\0"
+    "vkGetMemoryHostPointerPropertiesEXT\0"
     "vkGetPipelineCacheData\0"
     "vkGetQueryPoolResults\0"
     "vkGetRenderAreaGranularity\0"
@@ -551,6 +554,7 @@ static const char device_strings[] =
     "vkResetDescriptorPool\0"
     "vkResetEvent\0"
     "vkResetFences\0"
+    "vkResetQueryPoolEXT\0"
     "vkSetEvent\0"
     "vkTrimCommandPool\0"
     "vkTrimCommandPoolKHR\0"
@@ -562,214 +566,218 @@ static const char device_strings[] =
 ;
 
 static const struct string_map_entry device_string_map_entries[] = {
-    { 0, 0x6bf780dd, 175 }, /* vkAcquireImageANDROID */
-    { 22, 0x82860572, 151 }, /* vkAcquireNextImage2KHR */
-    { 45, 0xc3fedb2e, 126 }, /* vkAcquireNextImageKHR */
-    { 67, 0x8c0c811a, 72 }, /* vkAllocateCommandBuffers */
-    { 92, 0x4c449d3a, 61 }, /* vkAllocateDescriptorSets */
+    { 0, 0x6bf780dd, 176 }, /* vkAcquireImageANDROID */
+    { 22, 0x82860572, 152 }, /* vkAcquireNextImage2KHR */
+    { 45, 0xc3fedb2e, 127 }, /* vkAcquireNextImageKHR */
+    { 67, 0x8c0c811a, 73 }, /* vkAllocateCommandBuffers */
+    { 92, 0x4c449d3a, 62 }, /* vkAllocateDescriptorSets */
     { 117, 0x522b85d3, 6 }, /* vkAllocateMemory */
-    { 134, 0xc54f7327, 74 }, /* vkBeginCommandBuffer */
+    { 134, 0xc54f7327, 75 }, /* vkBeginCommandBuffer */
     { 155, 0x6bcbdcb, 14 }, /* vkBindBufferMemory */
-    { 174, 0xc27aaf4f, 143 }, /* vkBindBufferMemory2 */
-    { 194, 0x6878d3ce, 144 }, /* vkBindBufferMemory2KHR */
+    { 174, 0xc27aaf4f, 144 }, /* vkBindBufferMemory2 */
+    { 194, 0x6878d3ce, 145 }, /* vkBindBufferMemory2KHR */
     { 217, 0x5caaae4a, 16 }, /* vkBindImageMemory */
-    { 235, 0xa9097118, 145 }, /* vkBindImageMemory2 */
-    { 254, 0xf18729ad, 146 }, /* vkBindImageMemory2KHR */
-    { 276, 0xe561c19f, 113 }, /* vkCmdBeginConditionalRenderingEXT */
-    { 310, 0xf5064ea4, 111 }, /* vkCmdBeginQuery */
-    { 326, 0x73251a2c, 189 }, /* vkCmdBeginQueryIndexedEXT */
-    { 352, 0xcb7a58e3, 119 }, /* vkCmdBeginRenderPass */
-    { 373, 0x8b6b4de6, 179 }, /* vkCmdBeginRenderPass2KHR */
-    { 398, 0xb217c94, 187 }, /* vkCmdBeginTransformFeedbackEXT */
-    { 429, 0x28c7a5da, 87 }, /* vkCmdBindDescriptorSets */
-    { 453, 0x4c22d870, 88 }, /* vkCmdBindIndexBuffer */
-    { 474, 0x3af9fd84, 77 }, /* vkCmdBindPipeline */
-    { 492, 0x98fdb5cd, 186 }, /* vkCmdBindTransformFeedbackBuffersEXT */
-    { 529, 0xa9c83f1d, 89 }, /* vkCmdBindVertexBuffers */
-    { 552, 0x331ebf89, 98 }, /* vkCmdBlitImage */
-    { 567, 0x93cb5cb8, 105 }, /* vkCmdClearAttachments */
-    { 589, 0xb4bc8d08, 103 }, /* vkCmdClearColorImage */
-    { 610, 0x4f88e4ba, 104 }, /* vkCmdClearDepthStencilImage */
-    { 638, 0xc939a0da, 96 }, /* vkCmdCopyBuffer */
-    { 654, 0x929847e, 99 }, /* vkCmdCopyBufferToImage */
-    { 677, 0x278effa9, 97 }, /* vkCmdCopyImage */
-    { 692, 0x68cddbac, 100 }, /* vkCmdCopyImageToBuffer */
-    { 715, 0xdee8c6d4, 117 }, /* vkCmdCopyQueryPoolResults */
-    { 741, 0xbd58e867, 94 }, /* vkCmdDispatch */
-    { 755, 0xfb767220, 152 }, /* vkCmdDispatchBase */
-    { 773, 0x402403e5, 153 }, /* vkCmdDispatchBaseKHR */
-    { 794, 0xd6353005, 95 }, /* vkCmdDispatchIndirect */
-    { 816, 0x9912c1a1, 90 }, /* vkCmdDraw */
-    { 826, 0xbe5a8058, 91 }, /* vkCmdDrawIndexed */
-    { 843, 0x94e7ed36, 93 }, /* vkCmdDrawIndexedIndirect */
-    { 868, 0xda9e8a2c, 185 }, /* vkCmdDrawIndexedIndirectCountKHR */
-    { 901, 0xe9ac41bf, 92 }, /* vkCmdDrawIndirect */
-    { 919, 0x80c3b089, 191 }, /* vkCmdDrawIndirectByteCountEXT */
-    { 949, 0xf7dd01f5, 184 }, /* vkCmdDrawIndirectCountKHR */
-    { 975, 0x18c8217d, 114 }, /* vkCmdEndConditionalRenderingEXT */
-    { 1007, 0xd556fd22, 112 }, /* vkCmdEndQuery */
-    { 1021, 0xd5c2f48a, 190 }, /* vkCmdEndQueryIndexedEXT */
-    { 1045, 0xdcdb0235, 121 }, /* vkCmdEndRenderPass */
-    { 1064, 0x57eebe78, 181 }, /* vkCmdEndRenderPass2KHR */
-    { 1087, 0xf008d706, 188 }, /* vkCmdEndTransformFeedbackEXT */
-    { 1116, 0x9eaabe40, 122 }, /* vkCmdExecuteCommands */
-    { 1137, 0x5bdd2ae0, 102 }, /* vkCmdFillBuffer */
-    { 1153, 0x2eeec2f9, 120 }, /* vkCmdNextSubpass */
-    { 1170, 0x25b621bc, 180 }, /* vkCmdNextSubpass2KHR */
-    { 1191, 0x97fccfe8, 110 }, /* vkCmdPipelineBarrier */
-    { 1212, 0xb1c6b468, 118 }, /* vkCmdPushConstants */
-    { 1231, 0xf17232a1, 128 }, /* vkCmdPushDescriptorSetKHR */
-    { 1257, 0x3d528981, 160 }, /* vkCmdPushDescriptorSetWithTemplateKHR */
-    { 1295, 0x4fccce28, 108 }, /* vkCmdResetEvent */
-    { 1311, 0x2f614082, 115 }, /* vkCmdResetQueryPool */
-    { 1331, 0x671bb594, 106 }, /* vkCmdResolveImage */
-    { 1349, 0x1c989dfb, 82 }, /* vkCmdSetBlendConstants */
-    { 1372, 0x30f14d07, 81 }, /* vkCmdSetDepthBias */
-    { 1390, 0x7b3a8a63, 83 }, /* vkCmdSetDepthBounds */
-    { 1410, 0xaecdae87, 147 }, /* vkCmdSetDeviceMask */
-    { 1429, 0xfbb79356, 148 }, /* vkCmdSetDeviceMaskKHR */
-    { 1451, 0xe257f075, 107 }, /* vkCmdSetEvent */
-    { 1465, 0x32282165, 80 }, /* vkCmdSetLineWidth */
-    { 1483, 0x48f28c7f, 79 }, /* vkCmdSetScissor */
-    { 1499, 0xa8f534e2, 84 }, /* vkCmdSetStencilCompareMask */
-    { 1526, 0x83e2b024, 86 }, /* vkCmdSetStencilReference */
-    { 1551, 0xe7c4b134, 85 }, /* vkCmdSetStencilWriteMask */
-    { 1576, 0x53d6c2b, 78 }, /* vkCmdSetViewport */
-    { 1593, 0xd2986b5e, 101 }, /* vkCmdUpdateBuffer */
-    { 1611, 0x3b9346b3, 109 }, /* vkCmdWaitEvents */
-    { 1627, 0xec4d324c, 116 }, /* vkCmdWriteTimestamp */
-    { 1647, 0x7d4282b9, 34 }, /* vkCreateBuffer */
-    { 1662, 0x925bd256, 36 }, /* vkCreateBufferView */
-    { 1681, 0x820fe476, 69 }, /* vkCreateCommandPool */
-    { 1701, 0xf70c85eb, 50 }, /* vkCreateComputePipelines */
-    { 1726, 0xfb95a8a4, 58 }, /* vkCreateDescriptorPool */
-    { 1749, 0x3c14cc74, 56 }, /* vkCreateDescriptorSetLayout */
-    { 1777, 0xad3ce733, 154 }, /* vkCreateDescriptorUpdateTemplate */
-    { 1810, 0x5189488a, 155 }, /* vkCreateDescriptorUpdateTemplateKHR */
-    { 1846, 0x6392dfa7, 192 }, /* vkCreateDmaBufImageINTEL */
+    { 235, 0xa9097118, 146 }, /* vkBindImageMemory2 */
+    { 254, 0xf18729ad, 147 }, /* vkBindImageMemory2KHR */
+    { 276, 0xe561c19f, 114 }, /* vkCmdBeginConditionalRenderingEXT */
+    { 310, 0xf5064ea4, 112 }, /* vkCmdBeginQuery */
+    { 326, 0x73251a2c, 191 }, /* vkCmdBeginQueryIndexedEXT */
+    { 352, 0xcb7a58e3, 120 }, /* vkCmdBeginRenderPass */
+    { 373, 0x8b6b4de6, 181 }, /* vkCmdBeginRenderPass2KHR */
+    { 398, 0xb217c94, 189 }, /* vkCmdBeginTransformFeedbackEXT */
+    { 429, 0x28c7a5da, 88 }, /* vkCmdBindDescriptorSets */
+    { 453, 0x4c22d870, 89 }, /* vkCmdBindIndexBuffer */
+    { 474, 0x3af9fd84, 78 }, /* vkCmdBindPipeline */
+    { 492, 0x98fdb5cd, 188 }, /* vkCmdBindTransformFeedbackBuffersEXT */
+    { 529, 0xa9c83f1d, 90 }, /* vkCmdBindVertexBuffers */
+    { 552, 0x331ebf89, 99 }, /* vkCmdBlitImage */
+    { 567, 0x93cb5cb8, 106 }, /* vkCmdClearAttachments */
+    { 589, 0xb4bc8d08, 104 }, /* vkCmdClearColorImage */
+    { 610, 0x4f88e4ba, 105 }, /* vkCmdClearDepthStencilImage */
+    { 638, 0xc939a0da, 97 }, /* vkCmdCopyBuffer */
+    { 654, 0x929847e, 100 }, /* vkCmdCopyBufferToImage */
+    { 677, 0x278effa9, 98 }, /* vkCmdCopyImage */
+    { 692, 0x68cddbac, 101 }, /* vkCmdCopyImageToBuffer */
+    { 715, 0xdee8c6d4, 118 }, /* vkCmdCopyQueryPoolResults */
+    { 741, 0xbd58e867, 95 }, /* vkCmdDispatch */
+    { 755, 0xfb767220, 153 }, /* vkCmdDispatchBase */
+    { 773, 0x402403e5, 154 }, /* vkCmdDispatchBaseKHR */
+    { 794, 0xd6353005, 96 }, /* vkCmdDispatchIndirect */
+    { 816, 0x9912c1a1, 91 }, /* vkCmdDraw */
+    { 826, 0xbe5a8058, 92 }, /* vkCmdDrawIndexed */
+    { 843, 0x94e7ed36, 94 }, /* vkCmdDrawIndexedIndirect */
+    { 868, 0xda9e8a2c, 187 }, /* vkCmdDrawIndexedIndirectCountKHR */
+    { 901, 0xe9ac41bf, 93 }, /* vkCmdDrawIndirect */
+    { 919, 0x80c3b089, 193 }, /* vkCmdDrawIndirectByteCountEXT */
+    { 949, 0xf7dd01f5, 186 }, /* vkCmdDrawIndirectCountKHR */
+    { 975, 0x18c8217d, 115 }, /* vkCmdEndConditionalRenderingEXT */
+    { 1007, 0xd556fd22, 113 }, /* vkCmdEndQuery */
+    { 1021, 0xd5c2f48a, 192 }, /* vkCmdEndQueryIndexedEXT */
+    { 1045, 0xdcdb0235, 122 }, /* vkCmdEndRenderPass */
+    { 1064, 0x57eebe78, 183 }, /* vkCmdEndRenderPass2KHR */
+    { 1087, 0xf008d706, 190 }, /* vkCmdEndTransformFeedbackEXT */
+    { 1116, 0x9eaabe40, 123 }, /* vkCmdExecuteCommands */
+    { 1137, 0x5bdd2ae0, 103 }, /* vkCmdFillBuffer */
+    { 1153, 0x2eeec2f9, 121 }, /* vkCmdNextSubpass */
+    { 1170, 0x25b621bc, 182 }, /* vkCmdNextSubpass2KHR */
+    { 1191, 0x97fccfe8, 111 }, /* vkCmdPipelineBarrier */
+    { 1212, 0xb1c6b468, 119 }, /* vkCmdPushConstants */
+    { 1231, 0xf17232a1, 129 }, /* vkCmdPushDescriptorSetKHR */
+    { 1257, 0x3d528981, 161 }, /* vkCmdPushDescriptorSetWithTemplateKHR */
+    { 1295, 0x4fccce28, 109 }, /* vkCmdResetEvent */
+    { 1311, 0x2f614082, 116 }, /* vkCmdResetQueryPool */
+    { 1331, 0x671bb594, 107 }, /* vkCmdResolveImage */
+    { 1349, 0x1c989dfb, 83 }, /* vkCmdSetBlendConstants */
+    { 1372, 0x30f14d07, 82 }, /* vkCmdSetDepthBias */
+    { 1390, 0x7b3a8a63, 84 }, /* vkCmdSetDepthBounds */
+    { 1410, 0xaecdae87, 148 }, /* vkCmdSetDeviceMask */
+    { 1429, 0xfbb79356, 149 }, /* vkCmdSetDeviceMaskKHR */
+    { 1451, 0xe257f075, 108 }, /* vkCmdSetEvent */
+    { 1465, 0x32282165, 81 }, /* vkCmdSetLineWidth */
+    { 1483, 0x48f28c7f, 80 }, /* vkCmdSetScissor */
+    { 1499, 0xa8f534e2, 85 }, /* vkCmdSetStencilCompareMask */
+    { 1526, 0x83e2b024, 87 }, /* vkCmdSetStencilReference */
+    { 1551, 0xe7c4b134, 86 }, /* vkCmdSetStencilWriteMask */
+    { 1576, 0x53d6c2b, 79 }, /* vkCmdSetViewport */
+    { 1593, 0xd2986b5e, 102 }, /* vkCmdUpdateBuffer */
+    { 1611, 0x3b9346b3, 110 }, /* vkCmdWaitEvents */
+    { 1627, 0xec4d324c, 117 }, /* vkCmdWriteTimestamp */
+    { 1647, 0x7d4282b9, 35 }, /* vkCreateBuffer */
+    { 1662, 0x925bd256, 37 }, /* vkCreateBufferView */
+    { 1681, 0x820fe476, 70 }, /* vkCreateCommandPool */
+    { 1701, 0xf70c85eb, 51 }, /* vkCreateComputePipelines */
+    { 1726, 0xfb95a8a4, 59 }, /* vkCreateDescriptorPool */
+    { 1749, 0x3c14cc74, 57 }, /* vkCreateDescriptorSetLayout */
+    { 1777, 0xad3ce733, 155 }, /* vkCreateDescriptorUpdateTemplate */
+    { 1810, 0x5189488a, 156 }, /* vkCreateDescriptorUpdateTemplateKHR */
+    { 1846, 0x6392dfa7, 196 }, /* vkCreateDmaBufImageINTEL */
     { 1871, 0xe7188731, 26 }, /* vkCreateEvent */
     { 1885, 0x958af968, 19 }, /* vkCreateFence */
-    { 1899, 0x887a38c4, 64 }, /* vkCreateFramebuffer */
-    { 1919, 0x4b59f96d, 49 }, /* vkCreateGraphicsPipelines */
-    { 1945, 0x652128c2, 38 }, /* vkCreateImage */
-    { 1959, 0xdce077ff, 41 }, /* vkCreateImageView */
-    { 1977, 0xcbf6489f, 45 }, /* vkCreatePipelineCache */
-    { 1999, 0x451ef1ed, 52 }, /* vkCreatePipelineLayout */
+    { 1899, 0x887a38c4, 65 }, /* vkCreateFramebuffer */
+    { 1919, 0x4b59f96d, 50 }, /* vkCreateGraphicsPipelines */
+    { 1945, 0x652128c2, 39 }, /* vkCreateImage */
+    { 1959, 0xdce077ff, 42 }, /* vkCreateImageView */
+    { 1977, 0xcbf6489f, 46 }, /* vkCreatePipelineCache */
+    { 1999, 0x451ef1ed, 53 }, /* vkCreatePipelineLayout */
     { 2022, 0x5edcd92b, 31 }, /* vkCreateQueryPool */
-    { 2040, 0x109a9c18, 66 }, /* vkCreateRenderPass */
-    { 2059, 0xfa16043b, 178 }, /* vkCreateRenderPass2KHR */
-    { 2082, 0x13cf03f, 54 }, /* vkCreateSampler */
-    { 2098, 0xe6a58c26, 167 }, /* vkCreateSamplerYcbcrConversion */
-    { 2129, 0x7482104f, 168 }, /* vkCreateSamplerYcbcrConversionKHR */
+    { 2040, 0x109a9c18, 67 }, /* vkCreateRenderPass */
+    { 2059, 0xfa16043b, 180 }, /* vkCreateRenderPass2KHR */
+    { 2082, 0x13cf03f, 55 }, /* vkCreateSampler */
+    { 2098, 0xe6a58c26, 168 }, /* vkCreateSamplerYcbcrConversion */
+    { 2129, 0x7482104f, 169 }, /* vkCreateSamplerYcbcrConversionKHR */
     { 2163, 0xf2065e5b, 24 }, /* vkCreateSemaphore */
-    { 2181, 0xa0d3cea2, 43 }, /* vkCreateShaderModule */
-    { 2202, 0xcdefcaa8, 123 }, /* vkCreateSwapchainKHR */
-    { 2223, 0x94a07a45, 35 }, /* vkDestroyBuffer */
-    { 2239, 0x98b27962, 37 }, /* vkDestroyBufferView */
-    { 2259, 0xd5d83a0a, 70 }, /* vkDestroyCommandPool */
-    { 2280, 0x47bdaf30, 59 }, /* vkDestroyDescriptorPool */
-    { 2304, 0xa4227b08, 57 }, /* vkDestroyDescriptorSetLayout */
-    { 2333, 0xbb2cbe7f, 156 }, /* vkDestroyDescriptorUpdateTemplate */
-    { 2367, 0xaa83901e, 157 }, /* vkDestroyDescriptorUpdateTemplateKHR */
+    { 2181, 0xa0d3cea2, 44 }, /* vkCreateShaderModule */
+    { 2202, 0xcdefcaa8, 124 }, /* vkCreateSwapchainKHR */
+    { 2223, 0x94a07a45, 36 }, /* vkDestroyBuffer */
+    { 2239, 0x98b27962, 38 }, /* vkDestroyBufferView */
+    { 2259, 0xd5d83a0a, 71 }, /* vkDestroyCommandPool */
+    { 2280, 0x47bdaf30, 60 }, /* vkDestroyDescriptorPool */
+    { 2304, 0xa4227b08, 58 }, /* vkDestroyDescriptorSetLayout */
+    { 2333, 0xbb2cbe7f, 157 }, /* vkDestroyDescriptorUpdateTemplate */
+    { 2367, 0xaa83901e, 158 }, /* vkDestroyDescriptorUpdateTemplateKHR */
     { 2404, 0x1fbcc9cb, 1 }, /* vkDestroyDevice */
     { 2420, 0x4df27c05, 27 }, /* vkDestroyEvent */
     { 2435, 0xfc64ee3c, 20 }, /* vkDestroyFence */
-    { 2450, 0xdc428e58, 65 }, /* vkDestroyFramebuffer */
-    { 2471, 0xcbfb1d96, 39 }, /* vkDestroyImage */
-    { 2486, 0xb5853953, 42 }, /* vkDestroyImageView */
-    { 2505, 0x6aac68af, 51 }, /* vkDestroyPipeline */
-    { 2523, 0x4112a673, 46 }, /* vkDestroyPipelineCache */
-    { 2546, 0x9146f879, 53 }, /* vkDestroyPipelineLayout */
+    { 2450, 0xdc428e58, 66 }, /* vkDestroyFramebuffer */
+    { 2471, 0xcbfb1d96, 40 }, /* vkDestroyImage */
+    { 2486, 0xb5853953, 43 }, /* vkDestroyImageView */
+    { 2505, 0x6aac68af, 52 }, /* vkDestroyPipeline */
+    { 2523, 0x4112a673, 47 }, /* vkDestroyPipelineCache */
+    { 2546, 0x9146f879, 54 }, /* vkDestroyPipelineLayout */
     { 2570, 0x37819a7f, 32 }, /* vkDestroyQueryPool */
-    { 2589, 0x16f14324, 67 }, /* vkDestroyRenderPass */
-    { 2609, 0x3b645153, 55 }, /* vkDestroySampler */
-    { 2626, 0x20f261b2, 169 }, /* vkDestroySamplerYcbcrConversion */
-    { 2658, 0xaaa623a3, 170 }, /* vkDestroySamplerYcbcrConversionKHR */
+    { 2589, 0x16f14324, 68 }, /* vkDestroyRenderPass */
+    { 2609, 0x3b645153, 56 }, /* vkDestroySampler */
+    { 2626, 0x20f261b2, 170 }, /* vkDestroySamplerYcbcrConversion */
+    { 2658, 0xaaa623a3, 171 }, /* vkDestroySamplerYcbcrConversionKHR */
     { 2693, 0xcaab1faf, 25 }, /* vkDestroySemaphore */
-    { 2712, 0x2d77af6e, 44 }, /* vkDestroyShaderModule */
-    { 2734, 0x5a93ab74, 124 }, /* vkDestroySwapchainKHR */
+    { 2712, 0x2d77af6e, 45 }, /* vkDestroyShaderModule */
+    { 2734, 0x5a93ab74, 125 }, /* vkDestroySwapchainKHR */
     { 2756, 0xd46c5f24, 5 }, /* vkDeviceWaitIdle */
-    { 2773, 0xdbb064, 137 }, /* vkDisplayPowerControlEXT */
-    { 2798, 0xaffb5725, 75 }, /* vkEndCommandBuffer */
+    { 2773, 0xdbb064, 138 }, /* vkDisplayPowerControlEXT */
+    { 2798, 0xaffb5725, 76 }, /* vkEndCommandBuffer */
     { 2817, 0xff52f051, 10 }, /* vkFlushMappedMemoryRanges */
-    { 2843, 0xb9db2b91, 73 }, /* vkFreeCommandBuffers */
-    { 2864, 0x7a1347b1, 62 }, /* vkFreeDescriptorSets */
+    { 2843, 0xb9db2b91, 74 }, /* vkFreeCommandBuffers */
+    { 2864, 0x7a1347b1, 63 }, /* vkFreeDescriptorSets */
     { 2885, 0x8f6f838a, 7 }, /* vkFreeMemory */
-    { 2898, 0xb891b5e, 182 }, /* vkGetAndroidHardwareBufferPropertiesANDROID */
-    { 2942, 0xab98422a, 13 }, /* vkGetBufferMemoryRequirements */
-    { 2972, 0xd1fd0638, 161 }, /* vkGetBufferMemoryRequirements2 */
-    { 3003, 0x78dbe98d, 162 }, /* vkGetBufferMemoryRequirements2KHR */
-    { 3037, 0xcf3070fe, 177 }, /* vkGetCalibratedTimestampsEXT */
-    { 3066, 0xfeac9573, 172 }, /* vkGetDescriptorSetLayoutSupport */
-    { 3098, 0xd7e44a, 173 }, /* vkGetDescriptorSetLayoutSupportKHR */
-    { 3133, 0x2e218c10, 141 }, /* vkGetDeviceGroupPeerMemoryFeatures */
-    { 3168, 0xa3809375, 142 }, /* vkGetDeviceGroupPeerMemoryFeaturesKHR */
-    { 3206, 0xf72c87d4, 149 }, /* vkGetDeviceGroupPresentCapabilitiesKHR */
-    { 3245, 0x6b9448c3, 150 }, /* vkGetDeviceGroupSurfacePresentModesKHR */
-    { 3284, 0x46e38db5, 12 }, /* vkGetDeviceMemoryCommitment */
-    { 3312, 0xba013486, 0 }, /* vkGetDeviceProcAddr */
-    { 3332, 0xcc920d9a, 2 }, /* vkGetDeviceQueue */
-    { 3349, 0xb11a6348, 171 }, /* vkGetDeviceQueue2 */
-    { 3367, 0x96d834b, 28 }, /* vkGetEventStatus */
-    { 3384, 0x69a5d6af, 135 }, /* vkGetFenceFdKHR */
-    { 3400, 0x5f391892, 22 }, /* vkGetFenceStatus */
-    { 3417, 0x916f1e63, 15 }, /* vkGetImageMemoryRequirements */
-    { 3446, 0x56e213f7, 163 }, /* vkGetImageMemoryRequirements2 */
-    { 3476, 0x8de28366, 164 }, /* vkGetImageMemoryRequirements2KHR */
-    { 3509, 0x15855f5b, 17 }, /* vkGetImageSparseMemoryRequirements */
-    { 3544, 0xbd4e3d3f, 165 }, /* vkGetImageSparseMemoryRequirements2 */
-    { 3580, 0x3df40f5e, 166 }, /* vkGetImageSparseMemoryRequirements2KHR */
-    { 3619, 0x9163b686, 40 }, /* vkGetImageSubresourceLayout */
-    { 3647, 0x71220e82, 183 }, /* vkGetMemoryAndroidHardwareBufferANDROID */
-    { 3687, 0x503c14c5, 131 }, /* vkGetMemoryFdKHR */
-    { 3704, 0xb028a792, 132 }, /* vkGetMemoryFdPropertiesKHR */
-    { 3731, 0x2092a349, 47 }, /* vkGetPipelineCacheData */
-    { 3754, 0xbf3f2cb3, 33 }, /* vkGetQueryPoolResults */
-    { 3776, 0xa9820d22, 68 }, /* vkGetRenderAreaGranularity */
-    { 3803, 0x3e0e9884, 133 }, /* vkGetSemaphoreFdKHR */
-    { 3823, 0xa4aeb5a, 140 }, /* vkGetSwapchainCounterEXT */
-    { 3848, 0x4979c9a3, 174 }, /* vkGetSwapchainGrallocUsageANDROID */
-    { 3882, 0x57695f28, 125 }, /* vkGetSwapchainImagesKHR */
-    { 3906, 0x51df0390, 136 }, /* vkImportFenceFdKHR */
-    { 3925, 0x36337c05, 134 }, /* vkImportSemaphoreFdKHR */
-    { 3948, 0x1e115cca, 11 }, /* vkInvalidateMappedMemoryRanges */
-    { 3979, 0xcb977bd8, 8 }, /* vkMapMemory */
-    { 3991, 0xc3499606, 48 }, /* vkMergePipelineCaches */
-    { 4013, 0xc3628a09, 18 }, /* vkQueueBindSparse */
-    { 4031, 0xfc5fb6ce, 127 }, /* vkQueuePresentKHR */
-    { 4049, 0xa0313eef, 176 }, /* vkQueueSignalReleaseImageANDROID */
-    { 4082, 0xfa4713ec, 3 }, /* vkQueueSubmit */
-    { 4096, 0x6f8fc2a5, 4 }, /* vkQueueWaitIdle */
-    { 4112, 0x26cc78f5, 138 }, /* vkRegisterDeviceEventEXT */
-    { 4137, 0x4a0bd849, 139 }, /* vkRegisterDisplayEventEXT */
-    { 4163, 0x847dc731, 76 }, /* vkResetCommandBuffer */
-    { 4184, 0x6da9f7fd, 71 }, /* vkResetCommandPool */
-    { 4203, 0x9bd85f5, 60 }, /* vkResetDescriptorPool */
-    { 4225, 0x6d373ba8, 30 }, /* vkResetEvent */
-    { 4238, 0x684781dc, 21 }, /* vkResetFences */
-    { 4252, 0x592ae5f5, 29 }, /* vkSetEvent */
-    { 4263, 0xfef2fb38, 129 }, /* vkTrimCommandPool */
-    { 4281, 0x51177c8d, 130 }, /* vkTrimCommandPoolKHR */
-    { 4302, 0x1a1a0e2f, 9 }, /* vkUnmapMemory */
-    { 4316, 0x5349c9d, 158 }, /* vkUpdateDescriptorSetWithTemplate */
-    { 4350, 0x214ad230, 159 }, /* vkUpdateDescriptorSetWithTemplateKHR */
-    { 4387, 0xbfd090ae, 63 }, /* vkUpdateDescriptorSets */
-    { 4410, 0x19d64c81, 23 }, /* vkWaitForFences */
+    { 2898, 0xb891b5e, 184 }, /* vkGetAndroidHardwareBufferPropertiesANDROID */
+    { 2942, 0x3703280c, 194 }, /* vkGetBufferDeviceAddressEXT */
+    { 2970, 0xab98422a, 13 }, /* vkGetBufferMemoryRequirements */
+    { 3000, 0xd1fd0638, 162 }, /* vkGetBufferMemoryRequirements2 */
+    { 3031, 0x78dbe98d, 163 }, /* vkGetBufferMemoryRequirements2KHR */
+    { 3065, 0xcf3070fe, 178 }, /* vkGetCalibratedTimestampsEXT */
+    { 3094, 0xfeac9573, 173 }, /* vkGetDescriptorSetLayoutSupport */
+    { 3126, 0xd7e44a, 174 }, /* vkGetDescriptorSetLayoutSupportKHR */
+    { 3161, 0x2e218c10, 142 }, /* vkGetDeviceGroupPeerMemoryFeatures */
+    { 3196, 0xa3809375, 143 }, /* vkGetDeviceGroupPeerMemoryFeaturesKHR */
+    { 3234, 0xf72c87d4, 150 }, /* vkGetDeviceGroupPresentCapabilitiesKHR */
+    { 3273, 0x41b28e81, 195 }, /* vkGetDeviceGroupSurfacePresentModes2EXT */
+    { 3313, 0x6b9448c3, 151 }, /* vkGetDeviceGroupSurfacePresentModesKHR */
+    { 3352, 0x46e38db5, 12 }, /* vkGetDeviceMemoryCommitment */
+    { 3380, 0xba013486, 0 }, /* vkGetDeviceProcAddr */
+    { 3400, 0xcc920d9a, 2 }, /* vkGetDeviceQueue */
+    { 3417, 0xb11a6348, 172 }, /* vkGetDeviceQueue2 */
+    { 3435, 0x96d834b, 28 }, /* vkGetEventStatus */
+    { 3452, 0x69a5d6af, 136 }, /* vkGetFenceFdKHR */
+    { 3468, 0x5f391892, 22 }, /* vkGetFenceStatus */
+    { 3485, 0x916f1e63, 15 }, /* vkGetImageMemoryRequirements */
+    { 3514, 0x56e213f7, 164 }, /* vkGetImageMemoryRequirements2 */
+    { 3544, 0x8de28366, 165 }, /* vkGetImageMemoryRequirements2KHR */
+    { 3577, 0x15855f5b, 17 }, /* vkGetImageSparseMemoryRequirements */
+    { 3612, 0xbd4e3d3f, 166 }, /* vkGetImageSparseMemoryRequirements2 */
+    { 3648, 0x3df40f5e, 167 }, /* vkGetImageSparseMemoryRequirements2KHR */
+    { 3687, 0x9163b686, 41 }, /* vkGetImageSubresourceLayout */
+    { 3715, 0x71220e82, 185 }, /* vkGetMemoryAndroidHardwareBufferANDROID */
+    { 3755, 0x503c14c5, 132 }, /* vkGetMemoryFdKHR */
+    { 3772, 0xb028a792, 133 }, /* vkGetMemoryFdPropertiesKHR */
+    { 3799, 0x7030ee5b, 179 }, /* vkGetMemoryHostPointerPropertiesEXT */
+    { 3835, 0x2092a349, 48 }, /* vkGetPipelineCacheData */
+    { 3858, 0xbf3f2cb3, 33 }, /* vkGetQueryPoolResults */
+    { 3880, 0xa9820d22, 69 }, /* vkGetRenderAreaGranularity */
+    { 3907, 0x3e0e9884, 134 }, /* vkGetSemaphoreFdKHR */
+    { 3927, 0xa4aeb5a, 141 }, /* vkGetSwapchainCounterEXT */
+    { 3952, 0x4979c9a3, 175 }, /* vkGetSwapchainGrallocUsageANDROID */
+    { 3986, 0x57695f28, 126 }, /* vkGetSwapchainImagesKHR */
+    { 4010, 0x51df0390, 137 }, /* vkImportFenceFdKHR */
+    { 4029, 0x36337c05, 135 }, /* vkImportSemaphoreFdKHR */
+    { 4052, 0x1e115cca, 11 }, /* vkInvalidateMappedMemoryRanges */
+    { 4083, 0xcb977bd8, 8 }, /* vkMapMemory */
+    { 4095, 0xc3499606, 49 }, /* vkMergePipelineCaches */
+    { 4117, 0xc3628a09, 18 }, /* vkQueueBindSparse */
+    { 4135, 0xfc5fb6ce, 128 }, /* vkQueuePresentKHR */
+    { 4153, 0xa0313eef, 177 }, /* vkQueueSignalReleaseImageANDROID */
+    { 4186, 0xfa4713ec, 3 }, /* vkQueueSubmit */
+    { 4200, 0x6f8fc2a5, 4 }, /* vkQueueWaitIdle */
+    { 4216, 0x26cc78f5, 139 }, /* vkRegisterDeviceEventEXT */
+    { 4241, 0x4a0bd849, 140 }, /* vkRegisterDisplayEventEXT */
+    { 4267, 0x847dc731, 77 }, /* vkResetCommandBuffer */
+    { 4288, 0x6da9f7fd, 72 }, /* vkResetCommandPool */
+    { 4307, 0x9bd85f5, 61 }, /* vkResetDescriptorPool */
+    { 4329, 0x6d373ba8, 30 }, /* vkResetEvent */
+    { 4342, 0x684781dc, 21 }, /* vkResetFences */
+    { 4356, 0xe6701e5f, 34 }, /* vkResetQueryPoolEXT */
+    { 4376, 0x592ae5f5, 29 }, /* vkSetEvent */
+    { 4387, 0xfef2fb38, 130 }, /* vkTrimCommandPool */
+    { 4405, 0x51177c8d, 131 }, /* vkTrimCommandPoolKHR */
+    { 4426, 0x1a1a0e2f, 9 }, /* vkUnmapMemory */
+    { 4440, 0x5349c9d, 159 }, /* vkUpdateDescriptorSetWithTemplate */
+    { 4474, 0x214ad230, 160 }, /* vkUpdateDescriptorSetWithTemplateKHR */
+    { 4511, 0xbfd090ae, 64 }, /* vkUpdateDescriptorSets */
+    { 4534, 0x19d64c81, 23 }, /* vkWaitForFences */
 };
 
 /* Hash table stats:
- * size 193 entries
+ * size 197 entries
  * collisions entries:
- *     0      121
+ *     0      122
  *     1      37
- *     2      9
+ *     2      10
  *     3      6
- *     4      4
- *     5      6
+ *     4      3
+ *     5      7
  *     6      2
  *     7      2
- *     8      0
- *     9+     6
+ *     8      1
+ *     9+     7
  */
 
 #define none 0xffff
@@ -778,28 +786,28 @@ static const uint16_t device_string_map[256] = {
     none,
     none,
     none,
-    0x00a0,
+    0x00a2,
     0x0024,
     0x0031,
     0x003e,
     0x001a,
-    0x00ad,
+    0x00b0,
     0x0068,
     none,
+    0x0086,
+    none,
+    0x0097,
+    none,
+    0x008d,
+    0x00ae,
     none,
     none,
-    0x0095,
-    none,
-    0x008c,
-    0x00ab,
     none,
     none,
     none,
-    none,
-    none,
-    0x00b1,
+    0x00b4,
     0x000b,
-    0x009a,
+    0x0090,
     0x0003,
     0x006a,
     none,
@@ -807,21 +815,21 @@ static const uint16_t device_string_map[256] = {
     0x006c,
     none,
     0x0022,
-    0x0097,
+    0x0099,
     0x002d,
-    none,
+    0x00b8,
     0x0046,
     0x0080,
     0x0061,
     0x0006,
     0x003a,
     none,
-    0x0086,
+    0x0087,
     0x0048,
     0x000f,
     none,
     0x0002,
-    0x00bc,
+    0x00c0,
     0x0069,
     0x0055,
     none,
@@ -830,7 +838,7 @@ static const uint16_t device_string_map[256] = {
     0x002f,
     0x0027,
     0x0077,
-    0x0087,
+    0x0088,
     none,
     0x0004,
     0x005f,
@@ -839,37 +847,37 @@ static const uint16_t device_string_map[256] = {
     0x005d,
     0x0028,
     0x0032,
-    0x00b2,
+    0x00b5,
     none,
-    0x00be,
-    0x00b4,
+    0x00c2,
+    0x00b7,
     0x0066,
     none,
     none,
-    0x0093,
-    0x00a1,
+    0x0095,
+    0x00a4,
     0x000a,
-    0x0094,
+    0x0096,
     0x004b,
     none,
-    0x00a7,
+    0x00aa,
     0x0008,
     none,
     0x005e,
     0x0060,
     0x0072,
-    0x00b6,
+    0x00b9,
     none,
     0x0041,
     none,
     0x0026,
     none,
-    0x00a5,
+    0x00a8,
     0x0063,
-    0x00b3,
+    0x00b6,
     0x007e,
     0x0049,
-    none,
+    0x00bc,
     none,
     none,
     0x0062,
@@ -885,7 +893,7 @@ static const uint16_t device_string_map[256] = {
     none,
     0x0058,
     0x007c,
-    none,
+    0x00c4,
     0x0014,
     0x0085,
     0x0001,
@@ -896,7 +904,7 @@ static const uint16_t device_string_map[256] = {
     0x007f,
     0x0030,
     0x0075,
-    0x00b9,
+    0x00bd,
     0x0056,
     none,
     0x002c,
@@ -905,36 +913,36 @@ static const uint16_t device_string_map[256] = {
     none,
     0x0039,
     0x003b,
-    0x008b,
+    0x008c,
     0x0015,
     none,
-    0x008a,
+    0x008b,
     0x0040,
     0x0067,
     0x0018,
     0x002e,
+    0x009c,
     0x009b,
-    0x0099,
-    0x0088,
+    0x0089,
     none,
     none,
-    0x00a8,
+    0x00ab,
     0x0082,
     0x006b,
     none,
     0x0012,
-    0x009e,
+    0x00a0,
     0x0071,
-    0x009c,
+    0x009e,
     none,
-    0x0091,
+    0x0093,
     0x007d,
-    0x008d,
+    0x008e,
     0x002a,
     0x0053,
-    0x00a3,
+    0x009d,
     0x000d,
-    0x00bb,
+    0x00bf,
     0x0025,
     0x0064,
     0x007a,
@@ -944,39 +952,39 @@ static const uint16_t device_string_map[256] = {
     0x003c,
     0x0065,
     0x001e,
-    0x00a4,
+    0x00a7,
     none,
     0x001f,
     0x000c,
-    0x00bf,
+    0x00c3,
     0x0073,
     0x0081,
     0x0083,
     0x005b,
     0x004a,
     0x0038,
-    0x0090,
-    0x00a6,
+    0x0092,
+    0x00a9,
     0x0050,
     0x0019,
     0x004c,
     0x001b,
-    0x00b7,
-    0x0035,
     0x00ba,
+    0x0035,
+    0x00be,
     none,
     0x0029,
-    0x0092,
+    0x0094,
     none,
     0x0059,
     0x0084,
     0x0057,
     0x0079,
-    0x00a2,
+    0x00a5,
     none,
     none,
     none,
-    0x00aa,
+    0x00ad,
     0x0007,
     none,
     0x0016,
@@ -984,51 +992,51 @@ static const uint16_t device_string_map[256] = {
     none,
     none,
     none,
-    0x009d,
+    0x009f,
     0x0005,
     0x0020,
     0x007b,
-    0x008f,
-    0x00ac,
-    0x009f,
+    0x0091,
+    0x00a3,
+    0x00a1,
     none,
     0x0013,
     none,
-    0x00b8,
+    0x00bb,
     0x0000,
     0x006d,
     none,
     0x0033,
-    0x00ae,
+    0x00b1,
     0x0045,
     0x0010,
     none,
     0x0023,
     0x0011,
-    0x008e,
+    0x008f,
     0x0036,
-    0x00a9,
-    0x00c0,
+    0x00ac,
+    0x00a6,
     0x004f,
-    0x00b0,
+    0x00b3,
     0x001c,
     none,
-    0x00af,
+    0x00b2,
     none,
-    0x0096,
+    0x0098,
     none,
     0x0054,
     none,
     0x002b,
     none,
-    0x0098,
+    0x009a,
     none,
     0x0034,
     none,
     0x003d,
-    0x00bd,
-    0x00b5,
-    0x0089,
+    0x00c1,
+    0x00af,
+    0x008a,
     0x005a,
 };
 
@@ -1438,6 +1446,12 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       {
           ANV_FROM_HANDLE(anv_device, anv_device, device);
           return anv_device->dispatch.vkGetQueryPoolResults(device, queryPool, firstQuery, queryCount, dataSize, pData, stride, flags);
+      }
+      void __attribute__ ((weak))
+      anv_ResetQueryPoolEXT(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkResetQueryPoolEXT(device, queryPool, firstQuery, queryCount);
       }
       VkResult __attribute__ ((weak))
       anv_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer)
@@ -2220,6 +2234,12 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
           return anv_device->dispatch.vkGetCalibratedTimestampsEXT(device, timestampCount, pTimestampInfos, pTimestamps, pMaxDeviation);
       }
       VkResult __attribute__ ((weak))
+      anv_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkGetMemoryHostPointerPropertiesEXT(device, handleType, pHostPointer, pMemoryHostPointerProperties);
+      }
+      VkResult __attribute__ ((weak))
       anv_CreateRenderPass2KHR(VkDevice device, const VkRenderPassCreateInfo2KHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass)
       {
           ANV_FROM_HANDLE(anv_device, anv_device, device);
@@ -2307,6 +2327,20 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
           ANV_FROM_HANDLE(anv_cmd_buffer, anv_cmd_buffer, commandBuffer);
           return anv_cmd_buffer->device->dispatch.vkCmdDrawIndirectByteCountEXT(commandBuffer, instanceCount, firstInstance, counterBuffer, counterBufferOffset, counterOffset, vertexStride);
       }
+      VkDeviceAddress __attribute__ ((weak))
+      anv_GetBufferDeviceAddressEXT(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkGetBufferDeviceAddressEXT(device, pInfo);
+      }
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+      VkResult __attribute__ ((weak))
+      anv_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes)
+      {
+          ANV_FROM_HANDLE(anv_device, anv_device, device);
+          return anv_device->dispatch.vkGetDeviceGroupSurfacePresentModes2EXT(device, pSurfaceInfo, pModes);
+      }
+#endif // VK_USE_PLATFORM_WIN32_KHR
       VkResult __attribute__ ((weak))
       anv_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage)
       {
@@ -2349,6 +2383,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCreateQueryPool = anv_CreateQueryPool,
     .vkDestroyQueryPool = anv_DestroyQueryPool,
     .vkGetQueryPoolResults = anv_GetQueryPoolResults,
+    .vkResetQueryPoolEXT = anv_ResetQueryPoolEXT,
     .vkCreateBuffer = anv_CreateBuffer,
     .vkDestroyBuffer = anv_DestroyBuffer,
     .vkCreateBufferView = anv_CreateBufferView,
@@ -2499,6 +2534,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkQueueSignalReleaseImageANDROID = anv_QueueSignalReleaseImageANDROID,
 #endif // VK_USE_PLATFORM_ANDROID_KHR
     .vkGetCalibratedTimestampsEXT = anv_GetCalibratedTimestampsEXT,
+    .vkGetMemoryHostPointerPropertiesEXT = anv_GetMemoryHostPointerPropertiesEXT,
     .vkCreateRenderPass2KHR = anv_CreateRenderPass2KHR,
     .vkCmdBeginRenderPass2KHR = anv_CmdBeginRenderPass2KHR,
     .vkCmdNextSubpass2KHR = anv_CmdNextSubpass2KHR,
@@ -2517,6 +2553,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCmdBeginQueryIndexedEXT = anv_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = anv_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = anv_CmdDrawIndirectByteCountEXT,
+    .vkGetBufferDeviceAddressEXT = anv_GetBufferDeviceAddressEXT,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    .vkGetDeviceGroupSurfacePresentModes2EXT = anv_GetDeviceGroupSurfacePresentModes2EXT,
+#endif // VK_USE_PLATFORM_WIN32_KHR
     .vkCreateDmaBufImageINTEL = anv_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen7_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -2553,6 +2593,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen7_CreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkQueryPool* pQueryPool) __attribute__ ((weak));
       void gen7_DestroyQueryPool(VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen7_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
+      void gen7_ResetQueryPoolEXT(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
       VkResult gen7_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer) __attribute__ ((weak));
       void gen7_DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen7_CreateBufferView(VkDevice device, const VkBufferViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBufferView* pView) __attribute__ ((weak));
@@ -2688,6 +2729,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen7_QueueSignalReleaseImageANDROID(VkQueue queue, uint32_t waitSemaphoreCount, const VkSemaphore* pWaitSemaphores, VkImage image, int* pNativeFenceFd) __attribute__ ((weak));
 #endif // VK_USE_PLATFORM_ANDROID_KHR
       VkResult gen7_GetCalibratedTimestampsEXT(VkDevice device, uint32_t timestampCount, const VkCalibratedTimestampInfoEXT* pTimestampInfos, uint64_t* pTimestamps, uint64_t* pMaxDeviation) __attribute__ ((weak));
+      VkResult gen7_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties) __attribute__ ((weak));
       VkResult gen7_CreateRenderPass2KHR(VkDevice device, const VkRenderPassCreateInfo2KHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
       void gen7_CmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo*      pRenderPassBegin, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo) __attribute__ ((weak));
       void gen7_CmdNextSubpass2KHR(VkCommandBuffer commandBuffer, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo, const VkSubpassEndInfoKHR*        pSubpassEndInfo) __attribute__ ((weak));
@@ -2706,6 +2748,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       void gen7_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen7_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen7_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkDeviceAddress gen7_GetBufferDeviceAddressEXT(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo) __attribute__ ((weak));
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+      VkResult gen7_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes) __attribute__ ((weak));
+#endif // VK_USE_PLATFORM_WIN32_KHR
       VkResult gen7_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen7_device_dispatch_table = {
@@ -2743,6 +2789,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCreateQueryPool = gen7_CreateQueryPool,
     .vkDestroyQueryPool = gen7_DestroyQueryPool,
     .vkGetQueryPoolResults = gen7_GetQueryPoolResults,
+    .vkResetQueryPoolEXT = gen7_ResetQueryPoolEXT,
     .vkCreateBuffer = gen7_CreateBuffer,
     .vkDestroyBuffer = gen7_DestroyBuffer,
     .vkCreateBufferView = gen7_CreateBufferView,
@@ -2893,6 +2940,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkQueueSignalReleaseImageANDROID = gen7_QueueSignalReleaseImageANDROID,
 #endif // VK_USE_PLATFORM_ANDROID_KHR
     .vkGetCalibratedTimestampsEXT = gen7_GetCalibratedTimestampsEXT,
+    .vkGetMemoryHostPointerPropertiesEXT = gen7_GetMemoryHostPointerPropertiesEXT,
     .vkCreateRenderPass2KHR = gen7_CreateRenderPass2KHR,
     .vkCmdBeginRenderPass2KHR = gen7_CmdBeginRenderPass2KHR,
     .vkCmdNextSubpass2KHR = gen7_CmdNextSubpass2KHR,
@@ -2911,6 +2959,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCmdBeginQueryIndexedEXT = gen7_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen7_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen7_CmdDrawIndirectByteCountEXT,
+    .vkGetBufferDeviceAddressEXT = gen7_GetBufferDeviceAddressEXT,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    .vkGetDeviceGroupSurfacePresentModes2EXT = gen7_GetDeviceGroupSurfacePresentModes2EXT,
+#endif // VK_USE_PLATFORM_WIN32_KHR
     .vkCreateDmaBufImageINTEL = gen7_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen75_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -2947,6 +2999,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen75_CreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkQueryPool* pQueryPool) __attribute__ ((weak));
       void gen75_DestroyQueryPool(VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen75_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
+      void gen75_ResetQueryPoolEXT(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
       VkResult gen75_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer) __attribute__ ((weak));
       void gen75_DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen75_CreateBufferView(VkDevice device, const VkBufferViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBufferView* pView) __attribute__ ((weak));
@@ -3082,6 +3135,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen75_QueueSignalReleaseImageANDROID(VkQueue queue, uint32_t waitSemaphoreCount, const VkSemaphore* pWaitSemaphores, VkImage image, int* pNativeFenceFd) __attribute__ ((weak));
 #endif // VK_USE_PLATFORM_ANDROID_KHR
       VkResult gen75_GetCalibratedTimestampsEXT(VkDevice device, uint32_t timestampCount, const VkCalibratedTimestampInfoEXT* pTimestampInfos, uint64_t* pTimestamps, uint64_t* pMaxDeviation) __attribute__ ((weak));
+      VkResult gen75_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties) __attribute__ ((weak));
       VkResult gen75_CreateRenderPass2KHR(VkDevice device, const VkRenderPassCreateInfo2KHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
       void gen75_CmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo*      pRenderPassBegin, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo) __attribute__ ((weak));
       void gen75_CmdNextSubpass2KHR(VkCommandBuffer commandBuffer, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo, const VkSubpassEndInfoKHR*        pSubpassEndInfo) __attribute__ ((weak));
@@ -3100,6 +3154,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       void gen75_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen75_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen75_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkDeviceAddress gen75_GetBufferDeviceAddressEXT(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo) __attribute__ ((weak));
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+      VkResult gen75_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes) __attribute__ ((weak));
+#endif // VK_USE_PLATFORM_WIN32_KHR
       VkResult gen75_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen75_device_dispatch_table = {
@@ -3137,6 +3195,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCreateQueryPool = gen75_CreateQueryPool,
     .vkDestroyQueryPool = gen75_DestroyQueryPool,
     .vkGetQueryPoolResults = gen75_GetQueryPoolResults,
+    .vkResetQueryPoolEXT = gen75_ResetQueryPoolEXT,
     .vkCreateBuffer = gen75_CreateBuffer,
     .vkDestroyBuffer = gen75_DestroyBuffer,
     .vkCreateBufferView = gen75_CreateBufferView,
@@ -3287,6 +3346,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkQueueSignalReleaseImageANDROID = gen75_QueueSignalReleaseImageANDROID,
 #endif // VK_USE_PLATFORM_ANDROID_KHR
     .vkGetCalibratedTimestampsEXT = gen75_GetCalibratedTimestampsEXT,
+    .vkGetMemoryHostPointerPropertiesEXT = gen75_GetMemoryHostPointerPropertiesEXT,
     .vkCreateRenderPass2KHR = gen75_CreateRenderPass2KHR,
     .vkCmdBeginRenderPass2KHR = gen75_CmdBeginRenderPass2KHR,
     .vkCmdNextSubpass2KHR = gen75_CmdNextSubpass2KHR,
@@ -3305,6 +3365,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCmdBeginQueryIndexedEXT = gen75_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen75_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen75_CmdDrawIndirectByteCountEXT,
+    .vkGetBufferDeviceAddressEXT = gen75_GetBufferDeviceAddressEXT,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    .vkGetDeviceGroupSurfacePresentModes2EXT = gen75_GetDeviceGroupSurfacePresentModes2EXT,
+#endif // VK_USE_PLATFORM_WIN32_KHR
     .vkCreateDmaBufImageINTEL = gen75_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen8_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -3341,6 +3405,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen8_CreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkQueryPool* pQueryPool) __attribute__ ((weak));
       void gen8_DestroyQueryPool(VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen8_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
+      void gen8_ResetQueryPoolEXT(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
       VkResult gen8_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer) __attribute__ ((weak));
       void gen8_DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen8_CreateBufferView(VkDevice device, const VkBufferViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBufferView* pView) __attribute__ ((weak));
@@ -3476,6 +3541,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen8_QueueSignalReleaseImageANDROID(VkQueue queue, uint32_t waitSemaphoreCount, const VkSemaphore* pWaitSemaphores, VkImage image, int* pNativeFenceFd) __attribute__ ((weak));
 #endif // VK_USE_PLATFORM_ANDROID_KHR
       VkResult gen8_GetCalibratedTimestampsEXT(VkDevice device, uint32_t timestampCount, const VkCalibratedTimestampInfoEXT* pTimestampInfos, uint64_t* pTimestamps, uint64_t* pMaxDeviation) __attribute__ ((weak));
+      VkResult gen8_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties) __attribute__ ((weak));
       VkResult gen8_CreateRenderPass2KHR(VkDevice device, const VkRenderPassCreateInfo2KHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
       void gen8_CmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo*      pRenderPassBegin, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo) __attribute__ ((weak));
       void gen8_CmdNextSubpass2KHR(VkCommandBuffer commandBuffer, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo, const VkSubpassEndInfoKHR*        pSubpassEndInfo) __attribute__ ((weak));
@@ -3494,6 +3560,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       void gen8_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen8_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen8_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkDeviceAddress gen8_GetBufferDeviceAddressEXT(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo) __attribute__ ((weak));
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+      VkResult gen8_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes) __attribute__ ((weak));
+#endif // VK_USE_PLATFORM_WIN32_KHR
       VkResult gen8_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen8_device_dispatch_table = {
@@ -3531,6 +3601,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCreateQueryPool = gen8_CreateQueryPool,
     .vkDestroyQueryPool = gen8_DestroyQueryPool,
     .vkGetQueryPoolResults = gen8_GetQueryPoolResults,
+    .vkResetQueryPoolEXT = gen8_ResetQueryPoolEXT,
     .vkCreateBuffer = gen8_CreateBuffer,
     .vkDestroyBuffer = gen8_DestroyBuffer,
     .vkCreateBufferView = gen8_CreateBufferView,
@@ -3681,6 +3752,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkQueueSignalReleaseImageANDROID = gen8_QueueSignalReleaseImageANDROID,
 #endif // VK_USE_PLATFORM_ANDROID_KHR
     .vkGetCalibratedTimestampsEXT = gen8_GetCalibratedTimestampsEXT,
+    .vkGetMemoryHostPointerPropertiesEXT = gen8_GetMemoryHostPointerPropertiesEXT,
     .vkCreateRenderPass2KHR = gen8_CreateRenderPass2KHR,
     .vkCmdBeginRenderPass2KHR = gen8_CmdBeginRenderPass2KHR,
     .vkCmdNextSubpass2KHR = gen8_CmdNextSubpass2KHR,
@@ -3699,6 +3771,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCmdBeginQueryIndexedEXT = gen8_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen8_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen8_CmdDrawIndirectByteCountEXT,
+    .vkGetBufferDeviceAddressEXT = gen8_GetBufferDeviceAddressEXT,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    .vkGetDeviceGroupSurfacePresentModes2EXT = gen8_GetDeviceGroupSurfacePresentModes2EXT,
+#endif // VK_USE_PLATFORM_WIN32_KHR
     .vkCreateDmaBufImageINTEL = gen8_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen9_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -3735,6 +3811,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen9_CreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkQueryPool* pQueryPool) __attribute__ ((weak));
       void gen9_DestroyQueryPool(VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen9_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
+      void gen9_ResetQueryPoolEXT(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
       VkResult gen9_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer) __attribute__ ((weak));
       void gen9_DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen9_CreateBufferView(VkDevice device, const VkBufferViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBufferView* pView) __attribute__ ((weak));
@@ -3870,6 +3947,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen9_QueueSignalReleaseImageANDROID(VkQueue queue, uint32_t waitSemaphoreCount, const VkSemaphore* pWaitSemaphores, VkImage image, int* pNativeFenceFd) __attribute__ ((weak));
 #endif // VK_USE_PLATFORM_ANDROID_KHR
       VkResult gen9_GetCalibratedTimestampsEXT(VkDevice device, uint32_t timestampCount, const VkCalibratedTimestampInfoEXT* pTimestampInfos, uint64_t* pTimestamps, uint64_t* pMaxDeviation) __attribute__ ((weak));
+      VkResult gen9_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties) __attribute__ ((weak));
       VkResult gen9_CreateRenderPass2KHR(VkDevice device, const VkRenderPassCreateInfo2KHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
       void gen9_CmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo*      pRenderPassBegin, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo) __attribute__ ((weak));
       void gen9_CmdNextSubpass2KHR(VkCommandBuffer commandBuffer, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo, const VkSubpassEndInfoKHR*        pSubpassEndInfo) __attribute__ ((weak));
@@ -3888,6 +3966,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       void gen9_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen9_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen9_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkDeviceAddress gen9_GetBufferDeviceAddressEXT(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo) __attribute__ ((weak));
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+      VkResult gen9_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes) __attribute__ ((weak));
+#endif // VK_USE_PLATFORM_WIN32_KHR
       VkResult gen9_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen9_device_dispatch_table = {
@@ -3925,6 +4007,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCreateQueryPool = gen9_CreateQueryPool,
     .vkDestroyQueryPool = gen9_DestroyQueryPool,
     .vkGetQueryPoolResults = gen9_GetQueryPoolResults,
+    .vkResetQueryPoolEXT = gen9_ResetQueryPoolEXT,
     .vkCreateBuffer = gen9_CreateBuffer,
     .vkDestroyBuffer = gen9_DestroyBuffer,
     .vkCreateBufferView = gen9_CreateBufferView,
@@ -4075,6 +4158,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkQueueSignalReleaseImageANDROID = gen9_QueueSignalReleaseImageANDROID,
 #endif // VK_USE_PLATFORM_ANDROID_KHR
     .vkGetCalibratedTimestampsEXT = gen9_GetCalibratedTimestampsEXT,
+    .vkGetMemoryHostPointerPropertiesEXT = gen9_GetMemoryHostPointerPropertiesEXT,
     .vkCreateRenderPass2KHR = gen9_CreateRenderPass2KHR,
     .vkCmdBeginRenderPass2KHR = gen9_CmdBeginRenderPass2KHR,
     .vkCmdNextSubpass2KHR = gen9_CmdNextSubpass2KHR,
@@ -4093,6 +4177,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCmdBeginQueryIndexedEXT = gen9_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen9_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen9_CmdDrawIndirectByteCountEXT,
+    .vkGetBufferDeviceAddressEXT = gen9_GetBufferDeviceAddressEXT,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    .vkGetDeviceGroupSurfacePresentModes2EXT = gen9_GetDeviceGroupSurfacePresentModes2EXT,
+#endif // VK_USE_PLATFORM_WIN32_KHR
     .vkCreateDmaBufImageINTEL = gen9_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen10_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -4129,6 +4217,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen10_CreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkQueryPool* pQueryPool) __attribute__ ((weak));
       void gen10_DestroyQueryPool(VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen10_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
+      void gen10_ResetQueryPoolEXT(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
       VkResult gen10_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer) __attribute__ ((weak));
       void gen10_DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen10_CreateBufferView(VkDevice device, const VkBufferViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBufferView* pView) __attribute__ ((weak));
@@ -4264,6 +4353,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen10_QueueSignalReleaseImageANDROID(VkQueue queue, uint32_t waitSemaphoreCount, const VkSemaphore* pWaitSemaphores, VkImage image, int* pNativeFenceFd) __attribute__ ((weak));
 #endif // VK_USE_PLATFORM_ANDROID_KHR
       VkResult gen10_GetCalibratedTimestampsEXT(VkDevice device, uint32_t timestampCount, const VkCalibratedTimestampInfoEXT* pTimestampInfos, uint64_t* pTimestamps, uint64_t* pMaxDeviation) __attribute__ ((weak));
+      VkResult gen10_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties) __attribute__ ((weak));
       VkResult gen10_CreateRenderPass2KHR(VkDevice device, const VkRenderPassCreateInfo2KHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
       void gen10_CmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo*      pRenderPassBegin, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo) __attribute__ ((weak));
       void gen10_CmdNextSubpass2KHR(VkCommandBuffer commandBuffer, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo, const VkSubpassEndInfoKHR*        pSubpassEndInfo) __attribute__ ((weak));
@@ -4282,6 +4372,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       void gen10_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen10_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen10_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkDeviceAddress gen10_GetBufferDeviceAddressEXT(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo) __attribute__ ((weak));
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+      VkResult gen10_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes) __attribute__ ((weak));
+#endif // VK_USE_PLATFORM_WIN32_KHR
       VkResult gen10_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen10_device_dispatch_table = {
@@ -4319,6 +4413,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCreateQueryPool = gen10_CreateQueryPool,
     .vkDestroyQueryPool = gen10_DestroyQueryPool,
     .vkGetQueryPoolResults = gen10_GetQueryPoolResults,
+    .vkResetQueryPoolEXT = gen10_ResetQueryPoolEXT,
     .vkCreateBuffer = gen10_CreateBuffer,
     .vkDestroyBuffer = gen10_DestroyBuffer,
     .vkCreateBufferView = gen10_CreateBufferView,
@@ -4469,6 +4564,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkQueueSignalReleaseImageANDROID = gen10_QueueSignalReleaseImageANDROID,
 #endif // VK_USE_PLATFORM_ANDROID_KHR
     .vkGetCalibratedTimestampsEXT = gen10_GetCalibratedTimestampsEXT,
+    .vkGetMemoryHostPointerPropertiesEXT = gen10_GetMemoryHostPointerPropertiesEXT,
     .vkCreateRenderPass2KHR = gen10_CreateRenderPass2KHR,
     .vkCmdBeginRenderPass2KHR = gen10_CmdBeginRenderPass2KHR,
     .vkCmdNextSubpass2KHR = gen10_CmdNextSubpass2KHR,
@@ -4487,6 +4583,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCmdBeginQueryIndexedEXT = gen10_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen10_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen10_CmdDrawIndirectByteCountEXT,
+    .vkGetBufferDeviceAddressEXT = gen10_GetBufferDeviceAddressEXT,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    .vkGetDeviceGroupSurfacePresentModes2EXT = gen10_GetDeviceGroupSurfacePresentModes2EXT,
+#endif // VK_USE_PLATFORM_WIN32_KHR
     .vkCreateDmaBufImageINTEL = gen10_CreateDmaBufImageINTEL,
   };
       PFN_vkVoidFunction gen11_GetDeviceProcAddr(VkDevice device, const char* pName) __attribute__ ((weak));
@@ -4523,6 +4623,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen11_CreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkQueryPool* pQueryPool) __attribute__ ((weak));
       void gen11_DestroyQueryPool(VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen11_GetQueryPoolResults(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount, size_t dataSize, void* pData, VkDeviceSize stride, VkQueryResultFlags flags) __attribute__ ((weak));
+      void gen11_ResetQueryPoolEXT(VkDevice device, VkQueryPool queryPool, uint32_t firstQuery, uint32_t queryCount) __attribute__ ((weak));
       VkResult gen11_CreateBuffer(VkDevice device, const VkBufferCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBuffer* pBuffer) __attribute__ ((weak));
       void gen11_DestroyBuffer(VkDevice device, VkBuffer buffer, const VkAllocationCallbacks* pAllocator) __attribute__ ((weak));
       VkResult gen11_CreateBufferView(VkDevice device, const VkBufferViewCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkBufferView* pView) __attribute__ ((weak));
@@ -4658,6 +4759,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       VkResult gen11_QueueSignalReleaseImageANDROID(VkQueue queue, uint32_t waitSemaphoreCount, const VkSemaphore* pWaitSemaphores, VkImage image, int* pNativeFenceFd) __attribute__ ((weak));
 #endif // VK_USE_PLATFORM_ANDROID_KHR
       VkResult gen11_GetCalibratedTimestampsEXT(VkDevice device, uint32_t timestampCount, const VkCalibratedTimestampInfoEXT* pTimestampInfos, uint64_t* pTimestamps, uint64_t* pMaxDeviation) __attribute__ ((weak));
+      VkResult gen11_GetMemoryHostPointerPropertiesEXT(VkDevice device, VkExternalMemoryHandleTypeFlagBits handleType, const void* pHostPointer, VkMemoryHostPointerPropertiesEXT* pMemoryHostPointerProperties) __attribute__ ((weak));
       VkResult gen11_CreateRenderPass2KHR(VkDevice device, const VkRenderPassCreateInfo2KHR* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkRenderPass* pRenderPass) __attribute__ ((weak));
       void gen11_CmdBeginRenderPass2KHR(VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo*      pRenderPassBegin, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo) __attribute__ ((weak));
       void gen11_CmdNextSubpass2KHR(VkCommandBuffer commandBuffer, const VkSubpassBeginInfoKHR*      pSubpassBeginInfo, const VkSubpassEndInfoKHR*        pSubpassEndInfo) __attribute__ ((weak));
@@ -4676,6 +4778,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
       void gen11_CmdBeginQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, VkQueryControlFlags flags, uint32_t index) __attribute__ ((weak));
       void gen11_CmdEndQueryIndexedEXT(VkCommandBuffer commandBuffer, VkQueryPool queryPool, uint32_t query, uint32_t index) __attribute__ ((weak));
       void gen11_CmdDrawIndirectByteCountEXT(VkCommandBuffer commandBuffer, uint32_t instanceCount, uint32_t firstInstance, VkBuffer counterBuffer, VkDeviceSize counterBufferOffset, uint32_t counterOffset, uint32_t vertexStride) __attribute__ ((weak));
+      VkDeviceAddress gen11_GetBufferDeviceAddressEXT(VkDevice device, const VkBufferDeviceAddressInfoEXT* pInfo) __attribute__ ((weak));
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+      VkResult gen11_GetDeviceGroupSurfacePresentModes2EXT(VkDevice device, const VkPhysicalDeviceSurfaceInfo2KHR* pSurfaceInfo, VkDeviceGroupPresentModeFlagsKHR* pModes) __attribute__ ((weak));
+#endif // VK_USE_PLATFORM_WIN32_KHR
       VkResult gen11_CreateDmaBufImageINTEL(VkDevice device, const VkDmaBufImageCreateInfo* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDeviceMemory* pMem, VkImage* pImage) __attribute__ ((weak));
 
   const struct anv_device_dispatch_table gen11_device_dispatch_table = {
@@ -4713,6 +4819,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCreateQueryPool = gen11_CreateQueryPool,
     .vkDestroyQueryPool = gen11_DestroyQueryPool,
     .vkGetQueryPoolResults = gen11_GetQueryPoolResults,
+    .vkResetQueryPoolEXT = gen11_ResetQueryPoolEXT,
     .vkCreateBuffer = gen11_CreateBuffer,
     .vkDestroyBuffer = gen11_DestroyBuffer,
     .vkCreateBufferView = gen11_CreateBufferView,
@@ -4863,6 +4970,7 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkQueueSignalReleaseImageANDROID = gen11_QueueSignalReleaseImageANDROID,
 #endif // VK_USE_PLATFORM_ANDROID_KHR
     .vkGetCalibratedTimestampsEXT = gen11_GetCalibratedTimestampsEXT,
+    .vkGetMemoryHostPointerPropertiesEXT = gen11_GetMemoryHostPointerPropertiesEXT,
     .vkCreateRenderPass2KHR = gen11_CreateRenderPass2KHR,
     .vkCmdBeginRenderPass2KHR = gen11_CmdBeginRenderPass2KHR,
     .vkCmdNextSubpass2KHR = gen11_CmdNextSubpass2KHR,
@@ -4881,6 +4989,10 @@ const struct anv_instance_dispatch_table anv_instance_dispatch_table = {
     .vkCmdBeginQueryIndexedEXT = gen11_CmdBeginQueryIndexedEXT,
     .vkCmdEndQueryIndexedEXT = gen11_CmdEndQueryIndexedEXT,
     .vkCmdDrawIndirectByteCountEXT = gen11_CmdDrawIndirectByteCountEXT,
+    .vkGetBufferDeviceAddressEXT = gen11_GetBufferDeviceAddressEXT,
+#ifdef VK_USE_PLATFORM_WIN32_KHR
+    .vkGetDeviceGroupSurfacePresentModes2EXT = gen11_GetDeviceGroupSurfacePresentModes2EXT,
+#endif // VK_USE_PLATFORM_WIN32_KHR
     .vkCreateDmaBufImageINTEL = gen11_CreateDmaBufImageINTEL,
   };
 
@@ -5278,539 +5390,555 @@ anv_device_entrypoint_is_enabled(int index, uint32_t core_version,
       /* vkGetQueryPoolResults */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
    case 34:
+      /* vkResetQueryPoolEXT */
+      if (!device || device->EXT_host_query_reset) return true;
+      return false;
+   case 35:
       /* vkCreateBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 35:
+   case 36:
       /* vkDestroyBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 36:
+   case 37:
       /* vkCreateBufferView */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 37:
+   case 38:
       /* vkDestroyBufferView */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 38:
+   case 39:
       /* vkCreateImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 39:
+   case 40:
       /* vkDestroyImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 40:
+   case 41:
       /* vkGetImageSubresourceLayout */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 41:
+   case 42:
       /* vkCreateImageView */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 42:
+   case 43:
       /* vkDestroyImageView */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 43:
+   case 44:
       /* vkCreateShaderModule */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 44:
+   case 45:
       /* vkDestroyShaderModule */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 45:
+   case 46:
       /* vkCreatePipelineCache */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 46:
+   case 47:
       /* vkDestroyPipelineCache */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 47:
+   case 48:
       /* vkGetPipelineCacheData */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 48:
+   case 49:
       /* vkMergePipelineCaches */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 49:
+   case 50:
       /* vkCreateGraphicsPipelines */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 50:
+   case 51:
       /* vkCreateComputePipelines */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 51:
+   case 52:
       /* vkDestroyPipeline */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 52:
+   case 53:
       /* vkCreatePipelineLayout */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 53:
+   case 54:
       /* vkDestroyPipelineLayout */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 54:
+   case 55:
       /* vkCreateSampler */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 55:
+   case 56:
       /* vkDestroySampler */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 56:
+   case 57:
       /* vkCreateDescriptorSetLayout */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 57:
+   case 58:
       /* vkDestroyDescriptorSetLayout */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 58:
+   case 59:
       /* vkCreateDescriptorPool */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 59:
+   case 60:
       /* vkDestroyDescriptorPool */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 60:
+   case 61:
       /* vkResetDescriptorPool */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 61:
+   case 62:
       /* vkAllocateDescriptorSets */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 62:
+   case 63:
       /* vkFreeDescriptorSets */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 63:
+   case 64:
       /* vkUpdateDescriptorSets */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 64:
+   case 65:
       /* vkCreateFramebuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 65:
+   case 66:
       /* vkDestroyFramebuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 66:
+   case 67:
       /* vkCreateRenderPass */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 67:
+   case 68:
       /* vkDestroyRenderPass */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 68:
+   case 69:
       /* vkGetRenderAreaGranularity */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 69:
+   case 70:
       /* vkCreateCommandPool */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 70:
+   case 71:
       /* vkDestroyCommandPool */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 71:
+   case 72:
       /* vkResetCommandPool */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 72:
+   case 73:
       /* vkAllocateCommandBuffers */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 73:
+   case 74:
       /* vkFreeCommandBuffers */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 74:
+   case 75:
       /* vkBeginCommandBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 75:
+   case 76:
       /* vkEndCommandBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 76:
+   case 77:
       /* vkResetCommandBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 77:
+   case 78:
       /* vkCmdBindPipeline */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 78:
+   case 79:
       /* vkCmdSetViewport */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 79:
+   case 80:
       /* vkCmdSetScissor */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 80:
+   case 81:
       /* vkCmdSetLineWidth */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 81:
+   case 82:
       /* vkCmdSetDepthBias */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 82:
+   case 83:
       /* vkCmdSetBlendConstants */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 83:
+   case 84:
       /* vkCmdSetDepthBounds */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 84:
+   case 85:
       /* vkCmdSetStencilCompareMask */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 85:
+   case 86:
       /* vkCmdSetStencilWriteMask */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 86:
+   case 87:
       /* vkCmdSetStencilReference */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 87:
+   case 88:
       /* vkCmdBindDescriptorSets */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 88:
+   case 89:
       /* vkCmdBindIndexBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 89:
+   case 90:
       /* vkCmdBindVertexBuffers */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 90:
+   case 91:
       /* vkCmdDraw */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 91:
+   case 92:
       /* vkCmdDrawIndexed */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 92:
+   case 93:
       /* vkCmdDrawIndirect */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 93:
+   case 94:
       /* vkCmdDrawIndexedIndirect */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 94:
+   case 95:
       /* vkCmdDispatch */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 95:
+   case 96:
       /* vkCmdDispatchIndirect */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 96:
+   case 97:
       /* vkCmdCopyBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 97:
+   case 98:
       /* vkCmdCopyImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 98:
+   case 99:
       /* vkCmdBlitImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 99:
+   case 100:
       /* vkCmdCopyBufferToImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 100:
+   case 101:
       /* vkCmdCopyImageToBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 101:
+   case 102:
       /* vkCmdUpdateBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 102:
+   case 103:
       /* vkCmdFillBuffer */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 103:
+   case 104:
       /* vkCmdClearColorImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 104:
+   case 105:
       /* vkCmdClearDepthStencilImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 105:
+   case 106:
       /* vkCmdClearAttachments */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 106:
+   case 107:
       /* vkCmdResolveImage */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 107:
+   case 108:
       /* vkCmdSetEvent */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 108:
+   case 109:
       /* vkCmdResetEvent */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 109:
+   case 110:
       /* vkCmdWaitEvents */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 110:
+   case 111:
       /* vkCmdPipelineBarrier */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 111:
+   case 112:
       /* vkCmdBeginQuery */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 112:
+   case 113:
       /* vkCmdEndQuery */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 113:
+   case 114:
       /* vkCmdBeginConditionalRenderingEXT */
       if (!device || device->EXT_conditional_rendering) return true;
       return false;
-   case 114:
+   case 115:
       /* vkCmdEndConditionalRenderingEXT */
       if (!device || device->EXT_conditional_rendering) return true;
       return false;
-   case 115:
+   case 116:
       /* vkCmdResetQueryPool */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 116:
+   case 117:
       /* vkCmdWriteTimestamp */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 117:
+   case 118:
       /* vkCmdCopyQueryPoolResults */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 118:
+   case 119:
       /* vkCmdPushConstants */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 119:
+   case 120:
       /* vkCmdBeginRenderPass */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 120:
+   case 121:
       /* vkCmdNextSubpass */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 121:
+   case 122:
       /* vkCmdEndRenderPass */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 122:
+   case 123:
       /* vkCmdExecuteCommands */
       return VK_MAKE_VERSION(1, 0, 0) <= core_version;
-   case 123:
+   case 124:
       /* vkCreateSwapchainKHR */
       if (!device || device->KHR_swapchain) return true;
       return false;
-   case 124:
+   case 125:
       /* vkDestroySwapchainKHR */
       if (!device || device->KHR_swapchain) return true;
       return false;
-   case 125:
+   case 126:
       /* vkGetSwapchainImagesKHR */
       if (!device || device->KHR_swapchain) return true;
       return false;
-   case 126:
+   case 127:
       /* vkAcquireNextImageKHR */
       if (!device || device->KHR_swapchain) return true;
       return false;
-   case 127:
+   case 128:
       /* vkQueuePresentKHR */
       if (!device || device->KHR_swapchain) return true;
       return false;
-   case 128:
+   case 129:
       /* vkCmdPushDescriptorSetKHR */
       if (!device || device->KHR_push_descriptor) return true;
       return false;
-   case 129:
+   case 130:
       /* vkTrimCommandPool */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 130:
+   case 131:
       /* vkTrimCommandPoolKHR */
       if (!device || device->KHR_maintenance1) return true;
       return false;
-   case 131:
+   case 132:
       /* vkGetMemoryFdKHR */
       if (!device || device->KHR_external_memory_fd) return true;
       return false;
-   case 132:
+   case 133:
       /* vkGetMemoryFdPropertiesKHR */
       if (!device || device->KHR_external_memory_fd) return true;
       return false;
-   case 133:
+   case 134:
       /* vkGetSemaphoreFdKHR */
       if (!device || device->KHR_external_semaphore_fd) return true;
       return false;
-   case 134:
+   case 135:
       /* vkImportSemaphoreFdKHR */
       if (!device || device->KHR_external_semaphore_fd) return true;
       return false;
-   case 135:
+   case 136:
       /* vkGetFenceFdKHR */
       if (!device || device->KHR_external_fence_fd) return true;
       return false;
-   case 136:
+   case 137:
       /* vkImportFenceFdKHR */
       if (!device || device->KHR_external_fence_fd) return true;
       return false;
-   case 137:
+   case 138:
       /* vkDisplayPowerControlEXT */
       if (!device || device->EXT_display_control) return true;
       return false;
-   case 138:
+   case 139:
       /* vkRegisterDeviceEventEXT */
       if (!device || device->EXT_display_control) return true;
       return false;
-   case 139:
+   case 140:
       /* vkRegisterDisplayEventEXT */
       if (!device || device->EXT_display_control) return true;
       return false;
-   case 140:
+   case 141:
       /* vkGetSwapchainCounterEXT */
       if (!device || device->EXT_display_control) return true;
       return false;
-   case 141:
+   case 142:
       /* vkGetDeviceGroupPeerMemoryFeatures */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 142:
+   case 143:
       /* vkGetDeviceGroupPeerMemoryFeaturesKHR */
       if (!device || device->KHR_device_group) return true;
       return false;
-   case 143:
+   case 144:
       /* vkBindBufferMemory2 */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 144:
+   case 145:
       /* vkBindBufferMemory2KHR */
       if (!device || device->KHR_bind_memory2) return true;
       return false;
-   case 145:
+   case 146:
       /* vkBindImageMemory2 */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 146:
+   case 147:
       /* vkBindImageMemory2KHR */
       if (!device || device->KHR_bind_memory2) return true;
       return false;
-   case 147:
+   case 148:
       /* vkCmdSetDeviceMask */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 148:
+   case 149:
       /* vkCmdSetDeviceMaskKHR */
       if (!device || device->KHR_device_group) return true;
       return false;
-   case 149:
+   case 150:
       /* vkGetDeviceGroupPresentCapabilitiesKHR */
       if (!device || device->KHR_swapchain) return true;
       if (!device || device->KHR_device_group) return true;
       return false;
-   case 150:
+   case 151:
       /* vkGetDeviceGroupSurfacePresentModesKHR */
       if (!device || device->KHR_swapchain) return true;
       if (!device || device->KHR_device_group) return true;
       return false;
-   case 151:
+   case 152:
       /* vkAcquireNextImage2KHR */
       if (!device || device->KHR_swapchain) return true;
       if (!device || device->KHR_device_group) return true;
       return false;
-   case 152:
+   case 153:
       /* vkCmdDispatchBase */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 153:
+   case 154:
       /* vkCmdDispatchBaseKHR */
       if (!device || device->KHR_device_group) return true;
       return false;
-   case 154:
+   case 155:
       /* vkCreateDescriptorUpdateTemplate */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 155:
+   case 156:
       /* vkCreateDescriptorUpdateTemplateKHR */
       if (!device || device->KHR_descriptor_update_template) return true;
       return false;
-   case 156:
+   case 157:
       /* vkDestroyDescriptorUpdateTemplate */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 157:
+   case 158:
       /* vkDestroyDescriptorUpdateTemplateKHR */
       if (!device || device->KHR_descriptor_update_template) return true;
       return false;
-   case 158:
+   case 159:
       /* vkUpdateDescriptorSetWithTemplate */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 159:
+   case 160:
       /* vkUpdateDescriptorSetWithTemplateKHR */
       if (!device || device->KHR_descriptor_update_template) return true;
       return false;
-   case 160:
+   case 161:
       /* vkCmdPushDescriptorSetWithTemplateKHR */
       if (!device || device->KHR_push_descriptor) return true;
       if (!device || device->KHR_descriptor_update_template) return true;
       return false;
-   case 161:
+   case 162:
       /* vkGetBufferMemoryRequirements2 */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 162:
+   case 163:
       /* vkGetBufferMemoryRequirements2KHR */
       if (!device || device->KHR_get_memory_requirements2) return true;
       return false;
-   case 163:
+   case 164:
       /* vkGetImageMemoryRequirements2 */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 164:
+   case 165:
       /* vkGetImageMemoryRequirements2KHR */
       if (!device || device->KHR_get_memory_requirements2) return true;
       return false;
-   case 165:
+   case 166:
       /* vkGetImageSparseMemoryRequirements2 */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 166:
+   case 167:
       /* vkGetImageSparseMemoryRequirements2KHR */
       if (!device || device->KHR_get_memory_requirements2) return true;
       return false;
-   case 167:
+   case 168:
       /* vkCreateSamplerYcbcrConversion */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 168:
+   case 169:
       /* vkCreateSamplerYcbcrConversionKHR */
       if (!device || device->KHR_sampler_ycbcr_conversion) return true;
       return false;
-   case 169:
+   case 170:
       /* vkDestroySamplerYcbcrConversion */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 170:
+   case 171:
       /* vkDestroySamplerYcbcrConversionKHR */
       if (!device || device->KHR_sampler_ycbcr_conversion) return true;
       return false;
-   case 171:
+   case 172:
       /* vkGetDeviceQueue2 */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 172:
+   case 173:
       /* vkGetDescriptorSetLayoutSupport */
       return VK_MAKE_VERSION(1, 1, 0) <= core_version;
-   case 173:
+   case 174:
       /* vkGetDescriptorSetLayoutSupportKHR */
       if (!device || device->KHR_maintenance3) return true;
       return false;
-   case 174:
+   case 175:
       /* vkGetSwapchainGrallocUsageANDROID */
       if (!device || device->ANDROID_native_buffer) return true;
       return false;
-   case 175:
+   case 176:
       /* vkAcquireImageANDROID */
       if (!device || device->ANDROID_native_buffer) return true;
       return false;
-   case 176:
+   case 177:
       /* vkQueueSignalReleaseImageANDROID */
       if (!device || device->ANDROID_native_buffer) return true;
       return false;
-   case 177:
+   case 178:
       /* vkGetCalibratedTimestampsEXT */
       if (!device || device->EXT_calibrated_timestamps) return true;
       return false;
-   case 178:
+   case 179:
+      /* vkGetMemoryHostPointerPropertiesEXT */
+      if (!device || device->EXT_external_memory_host) return true;
+      return false;
+   case 180:
       /* vkCreateRenderPass2KHR */
       if (!device || device->KHR_create_renderpass2) return true;
       return false;
-   case 179:
+   case 181:
       /* vkCmdBeginRenderPass2KHR */
       if (!device || device->KHR_create_renderpass2) return true;
       return false;
-   case 180:
+   case 182:
       /* vkCmdNextSubpass2KHR */
       if (!device || device->KHR_create_renderpass2) return true;
       return false;
-   case 181:
+   case 183:
       /* vkCmdEndRenderPass2KHR */
       if (!device || device->KHR_create_renderpass2) return true;
       return false;
-   case 182:
+   case 184:
       /* vkGetAndroidHardwareBufferPropertiesANDROID */
       if (!device || device->ANDROID_external_memory_android_hardware_buffer) return true;
       return false;
-   case 183:
+   case 185:
       /* vkGetMemoryAndroidHardwareBufferANDROID */
       if (!device || device->ANDROID_external_memory_android_hardware_buffer) return true;
       return false;
-   case 184:
+   case 186:
       /* vkCmdDrawIndirectCountKHR */
       if (!device || device->KHR_draw_indirect_count) return true;
       return false;
-   case 185:
+   case 187:
       /* vkCmdDrawIndexedIndirectCountKHR */
       if (!device || device->KHR_draw_indirect_count) return true;
       return false;
-   case 186:
+   case 188:
       /* vkCmdBindTransformFeedbackBuffersEXT */
       if (!device || device->EXT_transform_feedback) return true;
       return false;
-   case 187:
+   case 189:
       /* vkCmdBeginTransformFeedbackEXT */
       if (!device || device->EXT_transform_feedback) return true;
       return false;
-   case 188:
+   case 190:
       /* vkCmdEndTransformFeedbackEXT */
       if (!device || device->EXT_transform_feedback) return true;
       return false;
-   case 189:
+   case 191:
       /* vkCmdBeginQueryIndexedEXT */
       if (!device || device->EXT_transform_feedback) return true;
       return false;
-   case 190:
+   case 192:
       /* vkCmdEndQueryIndexedEXT */
       if (!device || device->EXT_transform_feedback) return true;
       return false;
-   case 191:
+   case 193:
       /* vkCmdDrawIndirectByteCountEXT */
       if (!device || device->EXT_transform_feedback) return true;
       return false;
-   case 192:
+   case 194:
+      /* vkGetBufferDeviceAddressEXT */
+      if (!device || device->EXT_buffer_device_address) return true;
+      return false;
+   case 195:
+      /* vkGetDeviceGroupSurfacePresentModes2EXT */
+      if (!device || device->KHR_device_group) return true;
+      return false;
+   case 196:
       /* vkCreateDmaBufImageINTEL */
       return true;
    default:

@@ -14,10 +14,23 @@ struct transform {
    unsigned condition_offset;
 };
 
+struct per_op_table {
+   const uint16_t *filter;
+   unsigned num_filtered_states;
+   const uint16_t *table;
+};
+
+/* Note: these must match the start states created in
+ * TreeAutomaton._build_table()
+ */
+
+/* WILDCARD_STATE = 0 is set by zeroing the state array */
+static const uint16_t CONST_STATE = 1;
+
 #endif
 
-   
-static const nir_search_variable search0_0 = {
+
+   static const nir_search_variable search0_0 = {
    { nir_search_value_variable, -1 },
    0, /* x */
    false,
@@ -27,25 +40,14 @@ static const nir_search_variable search0_0 = {
 static const nir_search_expression search0 = {
    { nir_search_value_expression, -1 },
    false,
+   -1, 0,
    nir_op_fsin,
    { &search0_0.value },
    NULL,
 };
-   
-static const nir_search_variable replace0_0_0 = {
-   { nir_search_value_variable, -1 },
-   0, /* x */
-   false,
-   nir_type_invalid,
-   NULL,
-};
-static const nir_search_expression replace0_0 = {
-   { nir_search_value_expression, -1 },
-   false,
-   nir_op_fsin,
-   { &replace0_0_0.value },
-   NULL,
-};
+
+   /* replace0_0_0 -> search0_0 in the cache */
+/* replace0_0 -> search0 in the cache */
 
 static const nir_search_constant replace0_1 = {
    { nir_search_value_constant, -1 },
@@ -54,63 +56,116 @@ static const nir_search_constant replace0_1 = {
 static const nir_search_expression replace0 = {
    { nir_search_value_expression, -1 },
    false,
+   0, 1,
    nir_op_fmul,
-   { &replace0_0.value, &replace0_1.value },
+   { &search0.value, &replace0_1.value },
    NULL,
 };
-   
-static const nir_search_variable search1_0 = {
-   { nir_search_value_variable, -1 },
-   0, /* x */
-   false,
-   nir_type_invalid,
-   NULL,
-};
+
+   /* search1_0 -> search0_0 in the cache */
 static const nir_search_expression search1 = {
    { nir_search_value_expression, -1 },
    false,
+   -1, 0,
    nir_op_fcos,
-   { &search1_0.value },
-   NULL,
-};
-   
-static const nir_search_variable replace1_0_0 = {
-   { nir_search_value_variable, -1 },
-   0, /* x */
-   false,
-   nir_type_invalid,
-   NULL,
-};
-static const nir_search_expression replace1_0 = {
-   { nir_search_value_expression, -1 },
-   false,
-   nir_op_fcos,
-   { &replace1_0_0.value },
+   { &search0_0.value },
    NULL,
 };
 
-static const nir_search_constant replace1_1 = {
-   { nir_search_value_constant, -1 },
-   nir_type_float, { 0x3fefffc115df6556 /* 0.99997 */ },
-};
+   /* replace1_0_0 -> search0_0 in the cache */
+/* replace1_0 -> search1 in the cache */
+
+/* replace1_1 -> replace0_1 in the cache */
 static const nir_search_expression replace1 = {
    { nir_search_value_expression, -1 },
    false,
+   0, 1,
    nir_op_fmul,
-   { &replace1_0.value, &replace1_1.value },
+   { &search1.value, &replace0_1.value },
    NULL,
 };
 
-static const struct transform brw_nir_apply_trig_workarounds_fcos_xforms[] = {
-   { &search1, &replace1.value, 0 },
+
+static const struct transform brw_nir_apply_trig_workarounds_state2_xforms[] = {
+  { &search0, &replace0.value, 0 },
 };
-static const struct transform brw_nir_apply_trig_workarounds_fsin_xforms[] = {
-   { &search0, &replace0.value, 0 },
+static const struct transform brw_nir_apply_trig_workarounds_state3_xforms[] = {
+  { &search1, &replace1.value, 0 },
 };
+
+static const struct per_op_table brw_nir_apply_trig_workarounds_table[nir_num_search_ops] = {
+   [nir_op_fsin] = {
+      .filter = (uint16_t []) {
+         0,
+         0,
+         0,
+         0,
+      },
+      
+      .num_filtered_states = 1,
+      .table = (uint16_t []) {
+      
+         2,
+      },
+   },
+   [nir_op_fcos] = {
+      .filter = (uint16_t []) {
+         0,
+         0,
+         0,
+         0,
+      },
+      
+      .num_filtered_states = 1,
+      .table = (uint16_t []) {
+      
+         3,
+      },
+   },
+};
+
+static void
+brw_nir_apply_trig_workarounds_pre_block(nir_block *block, uint16_t *states)
+{
+   nir_foreach_instr(instr, block) {
+      switch (instr->type) {
+      case nir_instr_type_alu: {
+         nir_alu_instr *alu = nir_instr_as_alu(instr);
+         nir_op op = alu->op;
+         uint16_t search_op = nir_search_op_for_nir_op(op);
+         const struct per_op_table *tbl = &brw_nir_apply_trig_workarounds_table[search_op];
+         if (tbl->num_filtered_states == 0)
+            continue;
+
+         /* Calculate the index into the transition table. Note the index
+          * calculated must match the iteration order of Python's
+          * itertools.product(), which was used to emit the transition
+          * table.
+          */
+         uint16_t index = 0;
+         for (unsigned i = 0; i < nir_op_infos[op].num_inputs; i++) {
+            index *= tbl->num_filtered_states;
+            index += tbl->filter[states[alu->src[i].src.ssa->index]];
+         }
+         states[alu->dest.dest.ssa.index] = tbl->table[index];
+         break;
+      }
+
+      case nir_instr_type_load_const: {
+         nir_load_const_instr *load_const = nir_instr_as_load_const(instr);
+         states[load_const->def.index] = CONST_STATE;
+         break;
+      }
+
+      default:
+         break;
+      }
+   }
+}
 
 static bool
 brw_nir_apply_trig_workarounds_block(nir_builder *build, nir_block *block,
-                   const bool *condition_flags)
+                   const uint16_t *states, const bool *condition_flags)
 {
    bool progress = false;
 
@@ -122,10 +177,14 @@ brw_nir_apply_trig_workarounds_block(nir_builder *build, nir_block *block,
       if (!alu->dest.dest.is_ssa)
          continue;
 
-      switch (alu->op) {
-      case nir_op_fcos:
-         for (unsigned i = 0; i < ARRAY_SIZE(brw_nir_apply_trig_workarounds_fcos_xforms); i++) {
-            const struct transform *xform = &brw_nir_apply_trig_workarounds_fcos_xforms[i];
+      switch (states[alu->dest.dest.ssa.index]) {
+      case 0:
+         break;
+      case 1:
+         break;
+      case 2:
+         for (unsigned i = 0; i < ARRAY_SIZE(brw_nir_apply_trig_workarounds_state2_xforms); i++) {
+            const struct transform *xform = &brw_nir_apply_trig_workarounds_state2_xforms[i];
             if (condition_flags[xform->condition_offset] &&
                 nir_replace_instr(build, alu, xform->search, xform->replace)) {
                progress = true;
@@ -133,9 +192,9 @@ brw_nir_apply_trig_workarounds_block(nir_builder *build, nir_block *block,
             }
          }
          break;
-      case nir_op_fsin:
-         for (unsigned i = 0; i < ARRAY_SIZE(brw_nir_apply_trig_workarounds_fsin_xforms); i++) {
-            const struct transform *xform = &brw_nir_apply_trig_workarounds_fsin_xforms[i];
+      case 3:
+         for (unsigned i = 0; i < ARRAY_SIZE(brw_nir_apply_trig_workarounds_state3_xforms); i++) {
+            const struct transform *xform = &brw_nir_apply_trig_workarounds_state3_xforms[i];
             if (condition_flags[xform->condition_offset] &&
                 nir_replace_instr(build, alu, xform->search, xform->replace)) {
                progress = true;
@@ -143,8 +202,7 @@ brw_nir_apply_trig_workarounds_block(nir_builder *build, nir_block *block,
             }
          }
          break;
-      default:
-         break;
+      default: assert(0);
       }
    }
 
@@ -159,9 +217,21 @@ brw_nir_apply_trig_workarounds_impl(nir_function_impl *impl, const bool *conditi
    nir_builder build;
    nir_builder_init(&build, impl);
 
-   nir_foreach_block_reverse(block, impl) {
-      progress |= brw_nir_apply_trig_workarounds_block(&build, block, condition_flags);
+   /* Note: it's important here that we're allocating a zeroed array, since
+    * state 0 is the default state, which means we don't have to visit
+    * anything other than constants and ALU instructions.
+    */
+   uint16_t *states = calloc(impl->ssa_alloc, sizeof(*states));
+
+   nir_foreach_block(block, impl) {
+      brw_nir_apply_trig_workarounds_pre_block(block, states);
    }
+
+   nir_foreach_block_reverse(block, impl) {
+      progress |= brw_nir_apply_trig_workarounds_block(&build, block, states, condition_flags);
+   }
+
+   free(states);
 
    if (progress) {
       nir_metadata_preserve(impl, nir_metadata_block_index |
@@ -182,7 +252,9 @@ brw_nir_apply_trig_workarounds(nir_shader *shader)
    bool progress = false;
    bool condition_flags[1];
    const nir_shader_compiler_options *options = shader->options;
+   const shader_info *info = &shader->info;
    (void) options;
+   (void) info;
 
    condition_flags[0] = true;
 
