@@ -25,6 +25,9 @@ python src/util/format_srgb.py > prebuilt-intermediates/util/format_srgb.c
 
 python src/intel/genxml/gen_zipped_file.py src/broadcom/cle/v3d_packet_v21.xml src/broadcom/cle/v3d_packet_v33.xml > prebuilt-intermediates/cle/v3d_xml.h
 
+python src/broadcom/cle/gen_pack_header.py src/broadcom/cle/v3d_packet_v21.xml 21 > prebuilt-intermediates/cle/v3d_packet_v21_pack.h
+python src/broadcom/cle/gen_pack_header.py src/broadcom/cle/v3d_packet_v33.xml 33 > prebuilt-intermediates/cle/v3d_packet_v33_pack.h
+
 
 python src/intel/isl/gen_format_layout.py --csv src/intel/isl/isl_format_layout.csv --out prebuilt-intermediates/isl/isl_format_layout.c
 
