@@ -74,7 +74,7 @@
 
 #define ANV_HAS_SURFACE (VK_USE_PLATFORM_WAYLAND_KHR ||                          VK_USE_PLATFORM_XCB_KHR ||                          VK_USE_PLATFORM_XLIB_KHR ||                          VK_USE_PLATFORM_DISPLAY_KHR)
 
-static const uint32_t MAX_API_VERSION = VK_MAKE_VERSION(1, 1, 96);
+static const uint32_t MAX_API_VERSION = VK_MAKE_VERSION(1, 1, 102);
 
 VkResult anv_EnumerateInstanceVersion(
     uint32_t*                                   pApiVersion)
@@ -93,6 +93,7 @@ const VkExtensionProperties anv_instance_extensions[ANV_INSTANCE_EXTENSION_COUNT
    {"VK_KHR_get_physical_device_properties2", 1},
    {"VK_KHR_get_surface_capabilities2", 1},
    {"VK_KHR_surface", 25},
+   {"VK_KHR_surface_protected_capabilities", 1},
    {"VK_KHR_wayland_surface", 6},
    {"VK_KHR_xcb_surface", 6},
    {"VK_KHR_xlib_surface", 6},
@@ -112,6 +113,7 @@ const struct anv_instance_extension_table anv_instance_extensions_supported = {
    .KHR_get_physical_device_properties2 = true,
    .KHR_get_surface_capabilities2 = ANV_HAS_SURFACE,
    .KHR_surface = ANV_HAS_SURFACE,
+   .KHR_surface_protected_capabilities = ANV_HAS_SURFACE,
    .KHR_wayland_surface = VK_USE_PLATFORM_WAYLAND_KHR,
    .KHR_xcb_surface = VK_USE_PLATFORM_XCB_KHR,
    .KHR_xlib_surface = VK_USE_PLATFORM_XLIB_KHR,
@@ -132,18 +134,16 @@ anv_physical_device_api_version(struct anv_physical_device *device)
 
     if (!(true))
         return version;
-    version = VK_MAKE_VERSION(1, 0, 96);
+    version = VK_MAKE_VERSION(1, 0, 102);
 
     if (!(device->has_syncobj_wait))
         return version;
-    version = VK_MAKE_VERSION(1, 1, 96);
+    version = VK_MAKE_VERSION(1, 1, 102);
 
     return version;
 }
 
 const VkExtensionProperties anv_device_extensions[ANV_DEVICE_EXTENSION_COUNT] = {
-   {"VK_ANDROID_external_memory_android_hardware_buffer", 3},
-   {"VK_ANDROID_native_buffer", 5},
    {"VK_KHR_8bit_storage", 1},
    {"VK_KHR_16bit_storage", 1},
    {"VK_KHR_bind_memory2", 1},
@@ -171,25 +171,40 @@ const VkExtensionProperties anv_device_extensions[ANV_DEVICE_EXTENSION_COUNT] = 
    {"VK_KHR_relaxed_block_layout", 1},
    {"VK_KHR_sampler_mirror_clamp_to_edge", 1},
    {"VK_KHR_sampler_ycbcr_conversion", 1},
+   {"VK_KHR_shader_atomic_int64", 1},
    {"VK_KHR_shader_draw_parameters", 1},
+   {"VK_KHR_shader_float16_int8", 1},
    {"VK_KHR_storage_buffer_storage_class", 1},
-   {"VK_KHR_swapchain", 68},
+   {"VK_KHR_swapchain", 70},
    {"VK_KHR_variable_pointers", 1},
+   {"VK_EXT_buffer_device_address", 1},
    {"VK_EXT_calibrated_timestamps", 1},
    {"VK_EXT_conditional_rendering", 1},
+   {"VK_EXT_depth_clip_enable", 1},
+   {"VK_EXT_descriptor_indexing", 2},
    {"VK_EXT_display_control", 1},
    {"VK_EXT_external_memory_dma_buf", 1},
+   {"VK_EXT_external_memory_host", 1},
    {"VK_EXT_global_priority", 1},
+   {"VK_EXT_host_query_reset", 1},
+   {"VK_EXT_inline_uniform_block", 1},
+   {"VK_EXT_memory_budget", 1},
    {"VK_EXT_pci_bus_info", 2},
+   {"VK_EXT_pipeline_creation_feedback", 1},
    {"VK_EXT_post_depth_coverage", 1},
+   {"VK_EXT_queue_family_foreign", 1},
    {"VK_EXT_sampler_filter_minmax", 1},
    {"VK_EXT_scalar_block_layout", 1},
-   {"VK_EXT_shader_viewport_index_layer", 1},
    {"VK_EXT_shader_stencil_export", 1},
+   {"VK_EXT_shader_viewport_index_layer", 1},
    {"VK_EXT_transform_feedback", 1},
    {"VK_EXT_vertex_attribute_divisor", 3},
+   {"VK_EXT_ycbcr_image_arrays", 1},
+   {"VK_ANDROID_external_memory_android_hardware_buffer", 3},
+   {"VK_ANDROID_native_buffer", 5},
    {"VK_GOOGLE_decorate_string", 1},
    {"VK_GOOGLE_hlsl_functionality1", 1},
+   {"VK_NV_compute_shader_derivatives", 1},
 };
 
 void
@@ -197,8 +212,6 @@ anv_physical_device_get_supported_extensions(const struct anv_physical_device *d
                                              struct anv_device_extension_table *extensions)
 {
    *extensions = (struct anv_device_extension_table) {
-      .ANDROID_external_memory_android_hardware_buffer = ANDROID,
-      .ANDROID_native_buffer = ANDROID,
       .KHR_8bit_storage = device->info.gen >= 8,
       .KHR_16bit_storage = device->info.gen >= 8,
       .KHR_bind_memory2 = true,
@@ -226,24 +239,39 @@ anv_physical_device_get_supported_extensions(const struct anv_physical_device *d
       .KHR_relaxed_block_layout = true,
       .KHR_sampler_mirror_clamp_to_edge = true,
       .KHR_sampler_ycbcr_conversion = true,
+      .KHR_shader_atomic_int64 = device->info.gen >= 9 && device->use_softpin,
       .KHR_shader_draw_parameters = true,
+      .KHR_shader_float16_int8 = device->info.gen >= 8,
       .KHR_storage_buffer_storage_class = true,
       .KHR_swapchain = ANV_HAS_SURFACE,
       .KHR_variable_pointers = true,
+      .EXT_buffer_device_address = device->has_a64_buffer_access,
       .EXT_calibrated_timestamps = true,
       .EXT_conditional_rendering = device->info.gen >= 8 || device->info.is_haswell,
+      .EXT_depth_clip_enable = true,
+      .EXT_descriptor_indexing = device->has_a64_buffer_access && device->has_bindless_images,
       .EXT_display_control = VK_USE_PLATFORM_DISPLAY_KHR,
       .EXT_external_memory_dma_buf = true,
+      .EXT_external_memory_host = true,
       .EXT_global_priority = device->has_context_priority,
+      .EXT_host_query_reset = true,
+      .EXT_inline_uniform_block = true,
+      .EXT_memory_budget = device->has_mem_available,
       .EXT_pci_bus_info = true,
+      .EXT_pipeline_creation_feedback = true,
       .EXT_post_depth_coverage = device->info.gen >= 9,
+      .EXT_queue_family_foreign = ANDROID,
       .EXT_sampler_filter_minmax = device->info.gen >= 9,
       .EXT_scalar_block_layout = true,
-      .EXT_shader_viewport_index_layer = true,
       .EXT_shader_stencil_export = device->info.gen >= 9,
+      .EXT_shader_viewport_index_layer = true,
       .EXT_transform_feedback = true,
       .EXT_vertex_attribute_divisor = true,
+      .EXT_ycbcr_image_arrays = true,
+      .ANDROID_external_memory_android_hardware_buffer = ANDROID,
+      .ANDROID_native_buffer = ANDROID,
       .GOOGLE_decorate_string = true,
       .GOOGLE_hlsl_functionality1 = true,
+      .NV_compute_shader_derivatives = true,
    };
 }
