@@ -38,8 +38,8 @@
 
 static XML_Parser temp;
 
-static XML_Parser * XML_ParserCreate(const XML_Char *encoding) {
-	return &temp;
+static XML_Parser XML_ParserCreate(const XML_Char *encoding) {
+	return temp;
 }
 
 static unsigned long XML_GetCurrentLineNumber(XML_Parser parser) {
