@@ -1,4 +1,4 @@
-mkdir -p prebuilt-intermediates/{glsl,ir3,main,nir,spirv,cle,isl,genxml,compiler,util,vulkan,xmlpool}
+mkdir -p prebuilt-intermediates/{glsl,ir3,main,nir,spirv,cle,isl,perf,genxml,compiler,iris,util,vulkan,xmlpool}
 
 python src/compiler/glsl/ir_expression_operation.py strings > prebuilt-intermediates/glsl/ir_expression_operation_strings.h 
 python src/compiler/glsl/ir_expression_operation.py constant > prebuilt-intermediates/glsl/ir_expression_operation_constant.h
@@ -61,8 +61,29 @@ python src/intel/genxml/gen_zipped_file.py \
 python  src/intel/vulkan/anv_entrypoints_gen.py --outdir prebuilt-intermediates/vulkan/ --xml src/vulkan/registry/vk.xml
 python  src/intel/vulkan/anv_extensions_gen.py --xml src/vulkan/registry/vk.xml --out-c  prebuilt-intermediates/vulkan/anv_extensions.c
 python  src/intel/vulkan/anv_extensions_gen.py --xml src/vulkan/registry/vk.xml --out-h  prebuilt-intermediates/vulkan/anv_extensions.h
+python  src/vulkan/util/gen_enum_to_str.py  --xml src/vulkan/registry/vk.xml   --outdir prebuilt-intermediates/util/
+
+python src/util/merge_driinfo.py src/gallium/auxiliary/pipe-loader/driinfo_gallium.h src/gallium/drivers/iris/driinfo_iris.h > prebuilt-intermediates/iris/iris_driinfo.h 
+
 
 python src/intel/compiler/brw_nir_trig_workarounds.py -p src/compiler/nir > prebuilt-intermediates/compiler/brw_nir_trig_workarounds.c
+
+python src/intel/perf/gen_perf.py  --code=prebuilt-intermediates/perf/gen_perf_metrics.c   --header=prebuilt-intermediates/perf/gen_perf_metrics.h \
+		src/intel/perf/oa-hsw.xml \
+		src/intel/perf/oa-bdw.xml \
+		src/intel/perf/oa-chv.xml \
+		src/intel/perf/oa-sklgt2.xml \
+		src/intel/perf/oa-sklgt3.xml \
+		src/intel/perf/oa-sklgt4.xml \
+		src/intel/perf/oa-bxt.xml \
+		src/intel/perf/oa-kblgt2.xml \
+		src/intel/perf/oa-kblgt3.xml \
+		src/intel/perf/oa-glk.xml \
+		src/intel/perf/oa-cflgt2.xml \
+		src/intel/perf/oa-cflgt3.xml \
+		src/intel/perf/oa-cnl.xml \
+		src/intel/perf/oa-icl.xml
+
 
 xgettext -L C --from-code utf-8 -o prebuilt-intermediates/xmlpool/xmlpool.pot src/util/xmlpool/t_options.h
 

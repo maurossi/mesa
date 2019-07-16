@@ -215,6 +215,18 @@ enum V3D33_Dither_Mode {
         V3D_DITHER_MODE_RGBA                 =      3,
 };
 
+enum V3D33_Pack_Mode {
+        V3D_PACK_MODE_16_WAY                 =      0,
+        V3D_PACK_MODE_8_WAY                  =      1,
+        V3D_PACK_MODE_4_WAY                  =      2,
+};
+
+enum V3D33_TCS_flush_mode {
+        V3D_TCS_FLUSH_MODE_FULLY_PACKED      =      0,
+        V3D_TCS_FLUSH_MODE_SINGLE_PATCH      =      1,
+        V3D_TCS_FLUSH_MODE_PACKED_COMPLETE_PATCHES =      2,
+};
+
 #define V3D33_HALT_opcode                      0
 #define V3D33_HALT_header                       \
    .opcode                              =      0
@@ -1553,6 +1565,49 @@ V3D33_VERTEX_ARRAY_INSTANCED_PRIMS_unpack(const uint8_t * restrict cl,
 #endif
 
 
+#define V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS_opcode     39
+#define V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS_header\
+   .opcode                              =     39
+
+struct V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS {
+   uint32_t                             opcode;
+   uint32_t                             index_of_first_vertex;
+   uint32_t                             instance_id;
+   uint32_t                             instance_length;
+   enum V3D33_Primitive                 mode;
+};
+
+static inline void
+V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS_pack(__gen_user_data *data, uint8_t * restrict cl,
+                                              const struct V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS * restrict values)
+{
+   cl[ 0] = __gen_uint(values->opcode, 0, 7);
+
+   cl[ 1] = __gen_uint(values->mode, 0, 7);
+
+
+   memcpy(&cl[2], &values->instance_length, sizeof(values->instance_length));
+
+   memcpy(&cl[6], &values->instance_id, sizeof(values->instance_id));
+
+   memcpy(&cl[10], &values->index_of_first_vertex, sizeof(values->index_of_first_vertex));
+}
+
+#define V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS_length     14
+#ifdef __gen_unpack_address
+static inline void
+V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS_unpack(const uint8_t * restrict cl,
+                                                struct V3D33_VERTEX_ARRAY_SINGLE_INSTANCE_PRIMS * restrict values)
+{
+   values->opcode = __gen_unpack_uint(cl, 0, 7);
+   values->index_of_first_vertex = __gen_unpack_uint(cl, 80, 111);
+   values->instance_id = __gen_unpack_uint(cl, 48, 79);
+   values->instance_length = __gen_unpack_uint(cl, 16, 47);
+   values->mode = __gen_unpack_uint(cl, 8, 15);
+}
+#endif
+
+
 #define V3D33_BASE_VERTEX_BASE_INSTANCE_opcode     43
 #define V3D33_BASE_VERTEX_BASE_INSTANCE_header  \
    .opcode                              =     43
@@ -1625,6 +1680,50 @@ V3D33_PRIM_LIST_FORMAT_unpack(const uint8_t * restrict cl,
 #endif
 
 
+#define V3D33_SERIAL_NUMBER_LIST_START_opcode     57
+#define V3D33_SERIAL_NUMBER_LIST_START_header   \
+   .opcode                              =     57
+
+struct V3D33_SERIAL_NUMBER_LIST_START {
+   uint32_t                             opcode;
+   __gen_address_type                   address;
+   uint32_t                             block_size;
+#define BLOCK_SIZE_64B                           0
+#define BLOCK_SIZE_128B                          1
+#define BLOCK_SIZE_256B                          2
+};
+
+static inline void
+V3D33_SERIAL_NUMBER_LIST_START_pack(__gen_user_data *data, uint8_t * restrict cl,
+                                    const struct V3D33_SERIAL_NUMBER_LIST_START * restrict values)
+{
+   cl[ 0] = __gen_uint(values->opcode, 0, 7);
+
+   __gen_emit_reloc(data, &values->address);
+   cl[ 1] = __gen_address_offset(&values->address) |
+            __gen_uint(values->block_size, 0, 1);
+
+   cl[ 2] = __gen_address_offset(&values->address) >> 8;
+
+   cl[ 3] = __gen_address_offset(&values->address) >> 16;
+
+   cl[ 4] = __gen_address_offset(&values->address) >> 24;
+
+}
+
+#define V3D33_SERIAL_NUMBER_LIST_START_length      5
+#ifdef __gen_unpack_address
+static inline void
+V3D33_SERIAL_NUMBER_LIST_START_unpack(const uint8_t * restrict cl,
+                                      struct V3D33_SERIAL_NUMBER_LIST_START * restrict values)
+{
+   values->opcode = __gen_unpack_uint(cl, 0, 7);
+   values->address = __gen_unpack_address(cl, 14, 39);
+   values->block_size = __gen_unpack_uint(cl, 8, 9);
+}
+#endif
+
+
 #define V3D33_GL_SHADER_STATE_opcode          64
 #define V3D33_GL_SHADER_STATE_header            \
    .opcode                              =     64
@@ -1662,6 +1761,55 @@ V3D33_GL_SHADER_STATE_unpack(const uint8_t * restrict cl,
    values->opcode = __gen_unpack_uint(cl, 0, 7);
    values->address = __gen_unpack_address(cl, 13, 39);
    values->number_of_attribute_arrays = __gen_unpack_uint(cl, 8, 12);
+}
+#endif
+
+
+#define V3D33_PRIMITIVE_COUNTS_FEEDBACK_opcode     72
+#define V3D33_PRIMITIVE_COUNTS_FEEDBACK_header  \
+   .opcode                              =     72
+
+struct V3D33_PRIMITIVE_COUNTS_FEEDBACK {
+   uint32_t                             opcode;
+   __gen_address_type                   address;
+   bool                                 read_write_64byte;
+   uint32_t                             op;
+#define STORE_PRIMITIVE_COUNTS                   0
+#define STORE_PRIMITIVE_COUNTS_AND_ZERO          1
+#define STORE_BUFFER_STATE                       2
+#define STORE_BUFFER_STATE_CL                    3
+#define LOAD_BUFFER_STATE                        8
+};
+
+static inline void
+V3D33_PRIMITIVE_COUNTS_FEEDBACK_pack(__gen_user_data *data, uint8_t * restrict cl,
+                                     const struct V3D33_PRIMITIVE_COUNTS_FEEDBACK * restrict values)
+{
+   cl[ 0] = __gen_uint(values->opcode, 0, 7);
+
+   __gen_emit_reloc(data, &values->address);
+   cl[ 1] = __gen_address_offset(&values->address) |
+            __gen_uint(values->read_write_64byte, 4, 4) |
+            __gen_uint(values->op, 0, 3);
+
+   cl[ 2] = __gen_address_offset(&values->address) >> 8;
+
+   cl[ 3] = __gen_address_offset(&values->address) >> 16;
+
+   cl[ 4] = __gen_address_offset(&values->address) >> 24;
+
+}
+
+#define V3D33_PRIMITIVE_COUNTS_FEEDBACK_length      5
+#ifdef __gen_unpack_address
+static inline void
+V3D33_PRIMITIVE_COUNTS_FEEDBACK_unpack(const uint8_t * restrict cl,
+                                       struct V3D33_PRIMITIVE_COUNTS_FEEDBACK * restrict values)
+{
+   values->opcode = __gen_unpack_uint(cl, 0, 7);
+   values->address = __gen_unpack_address(cl, 13, 39);
+   values->read_write_64byte = __gen_unpack_uint(cl, 12, 12);
+   values->op = __gen_unpack_uint(cl, 8, 11);
 }
 #endif
 
@@ -3545,6 +3693,99 @@ V3D33_GL_SHADER_STATE_RECORD_unpack(const uint8_t * restrict cl,
    values->coordinate_shader_4_way_threadable = __gen_unpack_uint(cl, 225, 225);
    values->coordinate_shader_propagate_nans = __gen_unpack_uint(cl, 226, 226);
    values->coordinate_shader_uniforms_address = __gen_unpack_address(cl, 256, 287);
+}
+#endif
+
+
+#define V3D33_TESSELLATION_GEOMETRY_SHADER_PARAMS_header\
+
+
+struct V3D33_TESSELLATION_GEOMETRY_SHADER_PARAMS {
+   enum V3D33_TCS_flush_mode            tcs_batch_flush_mode;
+   uint32_t                             per_patch_data_column_depth;
+   uint32_t                             tcs_output_segment_size_in_sectors;
+   enum V3D33_Pack_Mode                 tcs_output_segment_pack_mode;
+   uint32_t                             tes_output_segment_size_in_sectors;
+   enum V3D33_Pack_Mode                 tes_output_segment_pack_mode;
+   uint32_t                             gs_output_segment_size_in_sectors;
+   enum V3D33_Pack_Mode                 gs_output_segment_pack_mode;
+   uint32_t                             tbg_max_patches_per_tcs_batch;
+   uint32_t                             tbg_max_extra_vertex_segs_for_patches_after_first;
+   uint32_t                             tbg_min_tcs_output_segments_required_in_play;
+   uint32_t                             tbg_min_per_patch_data_segments_required_in_play;
+   uint32_t                             tpg_max_patches_per_tes_batch;
+   uint32_t                             tpg_max_vertex_segments_per_tes_batch;
+   uint32_t                             tpg_max_tcs_output_segments_per_tes_batch;
+   uint32_t                             tpg_min_tes_output_segments_required_in_play;
+   uint32_t                             gbg_max_tes_output_vertex_segments_per_gs_batch;
+   uint32_t                             gbg_max_tes_output_vertex_segments_required_in_play;
+};
+
+static inline void
+V3D33_TESSELLATION_GEOMETRY_SHADER_PARAMS_pack(__gen_user_data *data, uint8_t * restrict cl,
+                                               const struct V3D33_TESSELLATION_GEOMETRY_SHADER_PARAMS * restrict values)
+{
+   assert(values->tbg_max_patches_per_tcs_batch >= 1);
+   assert(values->tbg_min_tcs_output_segments_required_in_play >= 1);
+   assert(values->tbg_min_per_patch_data_segments_required_in_play >= 1);
+   assert(values->tpg_max_patches_per_tes_batch >= 1);
+   assert(values->tpg_max_tcs_output_segments_per_tes_batch >= 1);
+   assert(values->tpg_min_tes_output_segments_required_in_play >= 1);
+   assert(values->gbg_max_tes_output_vertex_segments_required_in_play >= 1);
+   cl[ 0] = __gen_uint(values->tcs_batch_flush_mode, 0, 1) |
+            __gen_uint(values->per_patch_data_column_depth, 2, 5);
+
+   cl[ 1] = __gen_uint(values->tcs_output_segment_size_in_sectors, 0, 5) |
+            __gen_uint(values->tcs_output_segment_pack_mode, 6, 7);
+
+   cl[ 2] = __gen_uint(values->tes_output_segment_size_in_sectors, 0, 5) |
+            __gen_uint(values->tes_output_segment_pack_mode, 6, 7);
+
+   cl[ 3] = __gen_uint(values->gs_output_segment_size_in_sectors, 0, 5) |
+            __gen_uint(values->gs_output_segment_pack_mode, 6, 7);
+
+   cl[ 4] = __gen_uint(values->tbg_max_patches_per_tcs_batch - 1, 0, 3) |
+            __gen_uint(values->tbg_max_extra_vertex_segs_for_patches_after_first, 4, 5) |
+            __gen_uint(values->tbg_min_tcs_output_segments_required_in_play - 1, 6, 7);
+
+   cl[ 5] = __gen_uint(values->tbg_min_per_patch_data_segments_required_in_play - 1, 0, 2) |
+            __gen_uint(values->tpg_max_patches_per_tes_batch - 1, 5, 8);
+
+   cl[ 6] = __gen_uint(values->tpg_max_patches_per_tes_batch - 1, 5, 8) >> 8 |
+            __gen_uint(values->tpg_max_vertex_segments_per_tes_batch, 1, 2) |
+            __gen_uint(values->tpg_max_tcs_output_segments_per_tes_batch - 1, 3, 5) |
+            __gen_uint(values->tpg_min_tes_output_segments_required_in_play - 1, 6, 8);
+
+   cl[ 7] = __gen_uint(values->tpg_min_tes_output_segments_required_in_play - 1, 6, 8) >> 8 |
+            __gen_uint(values->gbg_max_tes_output_vertex_segments_per_gs_batch, 1, 2) |
+            __gen_uint(values->gbg_max_tes_output_vertex_segments_required_in_play - 1, 3, 5);
+
+}
+
+#define V3D33_TESSELLATION_GEOMETRY_SHADER_PARAMS_length      8
+#ifdef __gen_unpack_address
+static inline void
+V3D33_TESSELLATION_GEOMETRY_SHADER_PARAMS_unpack(const uint8_t * restrict cl,
+                                                 struct V3D33_TESSELLATION_GEOMETRY_SHADER_PARAMS * restrict values)
+{
+   values->tcs_batch_flush_mode = __gen_unpack_uint(cl, 0, 1);
+   values->per_patch_data_column_depth = __gen_unpack_uint(cl, 2, 5);
+   values->tcs_output_segment_size_in_sectors = __gen_unpack_uint(cl, 8, 13);
+   values->tcs_output_segment_pack_mode = __gen_unpack_uint(cl, 14, 15);
+   values->tes_output_segment_size_in_sectors = __gen_unpack_uint(cl, 16, 21);
+   values->tes_output_segment_pack_mode = __gen_unpack_uint(cl, 22, 23);
+   values->gs_output_segment_size_in_sectors = __gen_unpack_uint(cl, 24, 29);
+   values->gs_output_segment_pack_mode = __gen_unpack_uint(cl, 30, 31);
+   values->tbg_max_patches_per_tcs_batch = __gen_unpack_uint(cl, 32, 35) + 1;
+   values->tbg_max_extra_vertex_segs_for_patches_after_first = __gen_unpack_uint(cl, 36, 37);
+   values->tbg_min_tcs_output_segments_required_in_play = __gen_unpack_uint(cl, 38, 39) + 1;
+   values->tbg_min_per_patch_data_segments_required_in_play = __gen_unpack_uint(cl, 40, 42) + 1;
+   values->tpg_max_patches_per_tes_batch = __gen_unpack_uint(cl, 45, 48) + 1;
+   values->tpg_max_vertex_segments_per_tes_batch = __gen_unpack_uint(cl, 49, 50);
+   values->tpg_max_tcs_output_segments_per_tes_batch = __gen_unpack_uint(cl, 51, 53) + 1;
+   values->tpg_min_tes_output_segments_required_in_play = __gen_unpack_uint(cl, 54, 56) + 1;
+   values->gbg_max_tes_output_vertex_segments_per_gs_batch = __gen_unpack_uint(cl, 57, 58);
+   values->gbg_max_tes_output_vertex_segments_required_in_play = __gen_unpack_uint(cl, 59, 61) + 1;
 }
 #endif
 

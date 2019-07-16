@@ -53,11 +53,13 @@ MESA_DRI_SHARED_LIBRARIES := \
 	liblog \
 	libz
 
-# If Android version <8 MESA should dynamic link libexpat
-# version >= 8 would use altxmlconfig instead
-ifneq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
-LOCAL_SHARED_LIBRARIES += \
-        libexpat
+# If Android version >=8 MESA should static link libexpat else should dynamic link
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+MESA_DRI_WHOLE_STATIC_LIBRARIES += \
+	libexpat
+else
+MESA_DRI_SHARED_LIBRARIES += \
+	libexpat
 endif
 
 #-----------------------------------------------

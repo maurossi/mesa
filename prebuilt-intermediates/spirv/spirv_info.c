@@ -25,6 +25,121 @@
 #include "spirv_info.h"
 
 const char *
+spirv_addressingmodel_to_string(SpvAddressingModel v)
+{
+   switch (v) {
+   case SpvAddressingModelLogical: return "SpvAddressingModelLogical";
+   case SpvAddressingModelPhysical32: return "SpvAddressingModelPhysical32";
+   case SpvAddressingModelPhysical64: return "SpvAddressingModelPhysical64";
+   case SpvAddressingModelPhysicalStorageBuffer64EXT: return "SpvAddressingModelPhysicalStorageBuffer64EXT";
+   case SpvAddressingModelMax: break; /* silence warnings about unhandled enums. */
+   }
+
+   return "unknown";
+}
+
+const char *
+spirv_builtin_to_string(SpvBuiltIn v)
+{
+   switch (v) {
+   case SpvBuiltInPosition: return "SpvBuiltInPosition";
+   case SpvBuiltInPointSize: return "SpvBuiltInPointSize";
+   case SpvBuiltInClipDistance: return "SpvBuiltInClipDistance";
+   case SpvBuiltInCullDistance: return "SpvBuiltInCullDistance";
+   case SpvBuiltInVertexId: return "SpvBuiltInVertexId";
+   case SpvBuiltInInstanceId: return "SpvBuiltInInstanceId";
+   case SpvBuiltInPrimitiveId: return "SpvBuiltInPrimitiveId";
+   case SpvBuiltInInvocationId: return "SpvBuiltInInvocationId";
+   case SpvBuiltInLayer: return "SpvBuiltInLayer";
+   case SpvBuiltInViewportIndex: return "SpvBuiltInViewportIndex";
+   case SpvBuiltInTessLevelOuter: return "SpvBuiltInTessLevelOuter";
+   case SpvBuiltInTessLevelInner: return "SpvBuiltInTessLevelInner";
+   case SpvBuiltInTessCoord: return "SpvBuiltInTessCoord";
+   case SpvBuiltInPatchVertices: return "SpvBuiltInPatchVertices";
+   case SpvBuiltInFragCoord: return "SpvBuiltInFragCoord";
+   case SpvBuiltInPointCoord: return "SpvBuiltInPointCoord";
+   case SpvBuiltInFrontFacing: return "SpvBuiltInFrontFacing";
+   case SpvBuiltInSampleId: return "SpvBuiltInSampleId";
+   case SpvBuiltInSamplePosition: return "SpvBuiltInSamplePosition";
+   case SpvBuiltInSampleMask: return "SpvBuiltInSampleMask";
+   case SpvBuiltInFragDepth: return "SpvBuiltInFragDepth";
+   case SpvBuiltInHelperInvocation: return "SpvBuiltInHelperInvocation";
+   case SpvBuiltInNumWorkgroups: return "SpvBuiltInNumWorkgroups";
+   case SpvBuiltInWorkgroupSize: return "SpvBuiltInWorkgroupSize";
+   case SpvBuiltInWorkgroupId: return "SpvBuiltInWorkgroupId";
+   case SpvBuiltInLocalInvocationId: return "SpvBuiltInLocalInvocationId";
+   case SpvBuiltInGlobalInvocationId: return "SpvBuiltInGlobalInvocationId";
+   case SpvBuiltInLocalInvocationIndex: return "SpvBuiltInLocalInvocationIndex";
+   case SpvBuiltInWorkDim: return "SpvBuiltInWorkDim";
+   case SpvBuiltInGlobalSize: return "SpvBuiltInGlobalSize";
+   case SpvBuiltInEnqueuedWorkgroupSize: return "SpvBuiltInEnqueuedWorkgroupSize";
+   case SpvBuiltInGlobalOffset: return "SpvBuiltInGlobalOffset";
+   case SpvBuiltInGlobalLinearId: return "SpvBuiltInGlobalLinearId";
+   case SpvBuiltInSubgroupSize: return "SpvBuiltInSubgroupSize";
+   case SpvBuiltInSubgroupMaxSize: return "SpvBuiltInSubgroupMaxSize";
+   case SpvBuiltInNumSubgroups: return "SpvBuiltInNumSubgroups";
+   case SpvBuiltInNumEnqueuedSubgroups: return "SpvBuiltInNumEnqueuedSubgroups";
+   case SpvBuiltInSubgroupId: return "SpvBuiltInSubgroupId";
+   case SpvBuiltInSubgroupLocalInvocationId: return "SpvBuiltInSubgroupLocalInvocationId";
+   case SpvBuiltInVertexIndex: return "SpvBuiltInVertexIndex";
+   case SpvBuiltInInstanceIndex: return "SpvBuiltInInstanceIndex";
+   case SpvBuiltInSubgroupEqMask: return "SpvBuiltInSubgroupEqMask";
+   case SpvBuiltInSubgroupGeMask: return "SpvBuiltInSubgroupGeMask";
+   case SpvBuiltInSubgroupGtMask: return "SpvBuiltInSubgroupGtMask";
+   case SpvBuiltInSubgroupLeMask: return "SpvBuiltInSubgroupLeMask";
+   case SpvBuiltInSubgroupLtMask: return "SpvBuiltInSubgroupLtMask";
+   case SpvBuiltInBaseVertex: return "SpvBuiltInBaseVertex";
+   case SpvBuiltInBaseInstance: return "SpvBuiltInBaseInstance";
+   case SpvBuiltInDrawIndex: return "SpvBuiltInDrawIndex";
+   case SpvBuiltInDeviceIndex: return "SpvBuiltInDeviceIndex";
+   case SpvBuiltInViewIndex: return "SpvBuiltInViewIndex";
+   case SpvBuiltInBaryCoordNoPerspAMD: return "SpvBuiltInBaryCoordNoPerspAMD";
+   case SpvBuiltInBaryCoordNoPerspCentroidAMD: return "SpvBuiltInBaryCoordNoPerspCentroidAMD";
+   case SpvBuiltInBaryCoordNoPerspSampleAMD: return "SpvBuiltInBaryCoordNoPerspSampleAMD";
+   case SpvBuiltInBaryCoordSmoothAMD: return "SpvBuiltInBaryCoordSmoothAMD";
+   case SpvBuiltInBaryCoordSmoothCentroidAMD: return "SpvBuiltInBaryCoordSmoothCentroidAMD";
+   case SpvBuiltInBaryCoordSmoothSampleAMD: return "SpvBuiltInBaryCoordSmoothSampleAMD";
+   case SpvBuiltInBaryCoordPullModelAMD: return "SpvBuiltInBaryCoordPullModelAMD";
+   case SpvBuiltInFragStencilRefEXT: return "SpvBuiltInFragStencilRefEXT";
+   case SpvBuiltInViewportMaskNV: return "SpvBuiltInViewportMaskNV";
+   case SpvBuiltInSecondaryPositionNV: return "SpvBuiltInSecondaryPositionNV";
+   case SpvBuiltInSecondaryViewportMaskNV: return "SpvBuiltInSecondaryViewportMaskNV";
+   case SpvBuiltInPositionPerViewNV: return "SpvBuiltInPositionPerViewNV";
+   case SpvBuiltInViewportMaskPerViewNV: return "SpvBuiltInViewportMaskPerViewNV";
+   case SpvBuiltInFullyCoveredEXT: return "SpvBuiltInFullyCoveredEXT";
+   case SpvBuiltInTaskCountNV: return "SpvBuiltInTaskCountNV";
+   case SpvBuiltInPrimitiveCountNV: return "SpvBuiltInPrimitiveCountNV";
+   case SpvBuiltInPrimitiveIndicesNV: return "SpvBuiltInPrimitiveIndicesNV";
+   case SpvBuiltInClipDistancePerViewNV: return "SpvBuiltInClipDistancePerViewNV";
+   case SpvBuiltInCullDistancePerViewNV: return "SpvBuiltInCullDistancePerViewNV";
+   case SpvBuiltInLayerPerViewNV: return "SpvBuiltInLayerPerViewNV";
+   case SpvBuiltInMeshViewCountNV: return "SpvBuiltInMeshViewCountNV";
+   case SpvBuiltInMeshViewIndicesNV: return "SpvBuiltInMeshViewIndicesNV";
+   case SpvBuiltInBaryCoordNV: return "SpvBuiltInBaryCoordNV";
+   case SpvBuiltInBaryCoordNoPerspNV: return "SpvBuiltInBaryCoordNoPerspNV";
+   case SpvBuiltInFragSizeEXT: return "SpvBuiltInFragSizeEXT";
+   case SpvBuiltInFragInvocationCountEXT: return "SpvBuiltInFragInvocationCountEXT";
+   case SpvBuiltInLaunchIdNV: return "SpvBuiltInLaunchIdNV";
+   case SpvBuiltInLaunchSizeNV: return "SpvBuiltInLaunchSizeNV";
+   case SpvBuiltInWorldRayOriginNV: return "SpvBuiltInWorldRayOriginNV";
+   case SpvBuiltInWorldRayDirectionNV: return "SpvBuiltInWorldRayDirectionNV";
+   case SpvBuiltInObjectRayOriginNV: return "SpvBuiltInObjectRayOriginNV";
+   case SpvBuiltInObjectRayDirectionNV: return "SpvBuiltInObjectRayDirectionNV";
+   case SpvBuiltInRayTminNV: return "SpvBuiltInRayTminNV";
+   case SpvBuiltInRayTmaxNV: return "SpvBuiltInRayTmaxNV";
+   case SpvBuiltInInstanceCustomIndexNV: return "SpvBuiltInInstanceCustomIndexNV";
+   case SpvBuiltInObjectToWorldNV: return "SpvBuiltInObjectToWorldNV";
+   case SpvBuiltInWorldToObjectNV: return "SpvBuiltInWorldToObjectNV";
+   case SpvBuiltInHitTNV: return "SpvBuiltInHitTNV";
+   case SpvBuiltInHitKindNV: return "SpvBuiltInHitKindNV";
+   case SpvBuiltInIncomingRayFlagsNV: return "SpvBuiltInIncomingRayFlagsNV";
+   case SpvBuiltInMax: break; /* silence warnings about unhandled enums. */
+   }
+
+   return "unknown";
+}
+
+const char *
 spirv_capability_to_string(SpvCapability v)
 {
    switch (v) {
@@ -233,6 +348,23 @@ spirv_decoration_to_string(SpvDecoration v)
 }
 
 const char *
+spirv_dim_to_string(SpvDim v)
+{
+   switch (v) {
+   case SpvDim1D: return "SpvDim1D";
+   case SpvDim2D: return "SpvDim2D";
+   case SpvDim3D: return "SpvDim3D";
+   case SpvDimCube: return "SpvDimCube";
+   case SpvDimRect: return "SpvDimRect";
+   case SpvDimBuffer: return "SpvDimBuffer";
+   case SpvDimSubpassData: return "SpvDimSubpassData";
+   case SpvDimMax: break; /* silence warnings about unhandled enums. */
+   }
+
+   return "unknown";
+}
+
+const char *
 spirv_executionmode_to_string(SpvExecutionMode v)
 {
    switch (v) {
@@ -287,6 +419,111 @@ spirv_executionmode_to_string(SpvExecutionMode v)
    case SpvExecutionModeDerivativeGroupLinearNV: return "SpvExecutionModeDerivativeGroupLinearNV";
    case SpvExecutionModeOutputTrianglesNV: return "SpvExecutionModeOutputTrianglesNV";
    case SpvExecutionModeMax: break; /* silence warnings about unhandled enums. */
+   }
+
+   return "unknown";
+}
+
+const char *
+spirv_executionmodel_to_string(SpvExecutionModel v)
+{
+   switch (v) {
+   case SpvExecutionModelVertex: return "SpvExecutionModelVertex";
+   case SpvExecutionModelTessellationControl: return "SpvExecutionModelTessellationControl";
+   case SpvExecutionModelTessellationEvaluation: return "SpvExecutionModelTessellationEvaluation";
+   case SpvExecutionModelGeometry: return "SpvExecutionModelGeometry";
+   case SpvExecutionModelFragment: return "SpvExecutionModelFragment";
+   case SpvExecutionModelGLCompute: return "SpvExecutionModelGLCompute";
+   case SpvExecutionModelKernel: return "SpvExecutionModelKernel";
+   case SpvExecutionModelTaskNV: return "SpvExecutionModelTaskNV";
+   case SpvExecutionModelMeshNV: return "SpvExecutionModelMeshNV";
+   case SpvExecutionModelRayGenerationNV: return "SpvExecutionModelRayGenerationNV";
+   case SpvExecutionModelIntersectionNV: return "SpvExecutionModelIntersectionNV";
+   case SpvExecutionModelAnyHitNV: return "SpvExecutionModelAnyHitNV";
+   case SpvExecutionModelClosestHitNV: return "SpvExecutionModelClosestHitNV";
+   case SpvExecutionModelMissNV: return "SpvExecutionModelMissNV";
+   case SpvExecutionModelCallableNV: return "SpvExecutionModelCallableNV";
+   case SpvExecutionModelMax: break; /* silence warnings about unhandled enums. */
+   }
+
+   return "unknown";
+}
+
+const char *
+spirv_imageformat_to_string(SpvImageFormat v)
+{
+   switch (v) {
+   case SpvImageFormatUnknown: return "SpvImageFormatUnknown";
+   case SpvImageFormatRgba32f: return "SpvImageFormatRgba32f";
+   case SpvImageFormatRgba16f: return "SpvImageFormatRgba16f";
+   case SpvImageFormatR32f: return "SpvImageFormatR32f";
+   case SpvImageFormatRgba8: return "SpvImageFormatRgba8";
+   case SpvImageFormatRgba8Snorm: return "SpvImageFormatRgba8Snorm";
+   case SpvImageFormatRg32f: return "SpvImageFormatRg32f";
+   case SpvImageFormatRg16f: return "SpvImageFormatRg16f";
+   case SpvImageFormatR11fG11fB10f: return "SpvImageFormatR11fG11fB10f";
+   case SpvImageFormatR16f: return "SpvImageFormatR16f";
+   case SpvImageFormatRgba16: return "SpvImageFormatRgba16";
+   case SpvImageFormatRgb10A2: return "SpvImageFormatRgb10A2";
+   case SpvImageFormatRg16: return "SpvImageFormatRg16";
+   case SpvImageFormatRg8: return "SpvImageFormatRg8";
+   case SpvImageFormatR16: return "SpvImageFormatR16";
+   case SpvImageFormatR8: return "SpvImageFormatR8";
+   case SpvImageFormatRgba16Snorm: return "SpvImageFormatRgba16Snorm";
+   case SpvImageFormatRg16Snorm: return "SpvImageFormatRg16Snorm";
+   case SpvImageFormatRg8Snorm: return "SpvImageFormatRg8Snorm";
+   case SpvImageFormatR16Snorm: return "SpvImageFormatR16Snorm";
+   case SpvImageFormatR8Snorm: return "SpvImageFormatR8Snorm";
+   case SpvImageFormatRgba32i: return "SpvImageFormatRgba32i";
+   case SpvImageFormatRgba16i: return "SpvImageFormatRgba16i";
+   case SpvImageFormatRgba8i: return "SpvImageFormatRgba8i";
+   case SpvImageFormatR32i: return "SpvImageFormatR32i";
+   case SpvImageFormatRg32i: return "SpvImageFormatRg32i";
+   case SpvImageFormatRg16i: return "SpvImageFormatRg16i";
+   case SpvImageFormatRg8i: return "SpvImageFormatRg8i";
+   case SpvImageFormatR16i: return "SpvImageFormatR16i";
+   case SpvImageFormatR8i: return "SpvImageFormatR8i";
+   case SpvImageFormatRgba32ui: return "SpvImageFormatRgba32ui";
+   case SpvImageFormatRgba16ui: return "SpvImageFormatRgba16ui";
+   case SpvImageFormatRgba8ui: return "SpvImageFormatRgba8ui";
+   case SpvImageFormatR32ui: return "SpvImageFormatR32ui";
+   case SpvImageFormatRgb10a2ui: return "SpvImageFormatRgb10a2ui";
+   case SpvImageFormatRg32ui: return "SpvImageFormatRg32ui";
+   case SpvImageFormatRg16ui: return "SpvImageFormatRg16ui";
+   case SpvImageFormatRg8ui: return "SpvImageFormatRg8ui";
+   case SpvImageFormatR16ui: return "SpvImageFormatR16ui";
+   case SpvImageFormatR8ui: return "SpvImageFormatR8ui";
+   case SpvImageFormatMax: break; /* silence warnings about unhandled enums. */
+   }
+
+   return "unknown";
+}
+
+const char *
+spirv_storageclass_to_string(SpvStorageClass v)
+{
+   switch (v) {
+   case SpvStorageClassUniformConstant: return "SpvStorageClassUniformConstant";
+   case SpvStorageClassInput: return "SpvStorageClassInput";
+   case SpvStorageClassUniform: return "SpvStorageClassUniform";
+   case SpvStorageClassOutput: return "SpvStorageClassOutput";
+   case SpvStorageClassWorkgroup: return "SpvStorageClassWorkgroup";
+   case SpvStorageClassCrossWorkgroup: return "SpvStorageClassCrossWorkgroup";
+   case SpvStorageClassPrivate: return "SpvStorageClassPrivate";
+   case SpvStorageClassFunction: return "SpvStorageClassFunction";
+   case SpvStorageClassGeneric: return "SpvStorageClassGeneric";
+   case SpvStorageClassPushConstant: return "SpvStorageClassPushConstant";
+   case SpvStorageClassAtomicCounter: return "SpvStorageClassAtomicCounter";
+   case SpvStorageClassImage: return "SpvStorageClassImage";
+   case SpvStorageClassStorageBuffer: return "SpvStorageClassStorageBuffer";
+   case SpvStorageClassCallableDataNV: return "SpvStorageClassCallableDataNV";
+   case SpvStorageClassIncomingCallableDataNV: return "SpvStorageClassIncomingCallableDataNV";
+   case SpvStorageClassRayPayloadNV: return "SpvStorageClassRayPayloadNV";
+   case SpvStorageClassHitAttributeNV: return "SpvStorageClassHitAttributeNV";
+   case SpvStorageClassIncomingRayPayloadNV: return "SpvStorageClassIncomingRayPayloadNV";
+   case SpvStorageClassShaderRecordBufferNV: return "SpvStorageClassShaderRecordBufferNV";
+   case SpvStorageClassPhysicalStorageBufferEXT: return "SpvStorageClassPhysicalStorageBufferEXT";
+   case SpvStorageClassMax: break; /* silence warnings about unhandled enums. */
    }
 
    return "unknown";
