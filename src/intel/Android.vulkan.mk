@@ -37,7 +37,6 @@ VULKAN_COMMON_INCLUDES := \
 	$(MESA_TOP)/src/vulkan/wsi \
 	$(MESA_TOP)/src/vulkan/util \
 	$(MESA_TOP)/src/intel \
-	$(MESA_TOP)/include/drm-uapi \
 	$(MESA_TOP)/src/intel/vulkan \
 	$(MESA_TOP)/src/compiler \
 	frameworks/native/vulkan/include
@@ -73,6 +72,7 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_entrypoints.h
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/dummy.c
+LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_extensions.h
 
 $(intermediates)/vulkan/dummy.c:
 	@mkdir -p $(dir $@)
@@ -80,6 +80,10 @@ $(intermediates)/vulkan/dummy.c:
 	$(hide) touch $@
 
 $(intermediates)/vulkan/anv_entrypoints.h: $(prebuilt_intermediates)/vulkan/anv_entrypoints.h
+	@mkdir -p $(dir $@)
+	@cp -f $< $@
+
+$(intermediates)/vulkan/anv_extensions.h: $(prebuilt_intermediates)/vulkan/anv_extensions.h
 	@mkdir -p $(dir $@)
 	@cp -f $< $@
 
@@ -272,7 +276,6 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_entrypoints.c
 LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_extensions.c
-LOCAL_GENERATED_SOURCES += $(intermediates)/vulkan/anv_extensions.h
 
 $(intermediates)/vulkan/anv_entrypoints.c: $(prebuilt_intermediates)/vulkan/anv_entrypoints.c
 	@mkdir -p $(dir $@)
@@ -282,9 +285,6 @@ $(intermediates)/vulkan/anv_extensions.c: $(prebuilt_intermediates)/vulkan/anv_e
 	@mkdir -p $(dir $@)
 	@cp -f $< $@
 
-$(intermediates)/vulkan/anv_extensions.h: $(prebuilt_intermediates)/vulkan/anv_extensions.h
-	@mkdir -p $(dir $@)
-	@cp -f $< $@
 
 LOCAL_HEADER_LIBRARIES := $(ANV_HEADER_LIBRARIES)
 LOCAL_STATIC_LIBRARIES := $(ANV_STATIC_LIBRARIES)
@@ -348,8 +348,17 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 
 LOCAL_HEADER_LIBRARIES := $(ANV_HEADER_LIBRARIES) libhardware_headers
 LOCAL_STATIC_LIBRARIES := $(ANV_STATIC_LIBRARIES)
-LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES) libexpat libz libsync liblog
+LOCAL_SHARED_LIBRARIES := $(ANV_SHARED_LIBRARIES) libz libsync liblog
 LOCAL_HEADER_LIBRARIES += $(VULKAN_COMMON_HEADER_LIBRARIES)
+
+# If Android version >=8 MESA should static link libexpat else should dynamic link
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 27; echo $$?), 0)
+LOCAL_STATIC_LIBRARIES := \
+       libexpat
+else
+ LOCAL_SHARED_LIBRARIES += \
+        libexpat
+endif
 
 include $(MESA_COMMON_MK)
 include $(BUILD_SHARED_LIBRARY)

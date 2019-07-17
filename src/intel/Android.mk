@@ -31,4 +31,5 @@ include $(LOCAL_PATH)/Android.compiler.mk
 include $(LOCAL_PATH)/Android.dev.mk
 include $(LOCAL_PATH)/Android.genxml.mk
 include $(LOCAL_PATH)/Android.isl.mk
+include $(LOCAL_PATH)/Android.perf.mk
 include $(LOCAL_PATH)/Android.vulkan.mk

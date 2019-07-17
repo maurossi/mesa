@@ -28,7 +28,7 @@
 
 #include "stdbool.h"
 
-#define ANV_INSTANCE_EXTENSION_COUNT 16
+#define ANV_INSTANCE_EXTENSION_COUNT 17
 
 extern const VkExtensionProperties anv_instance_extensions[];
 
@@ -45,6 +45,7 @@ struct anv_instance_extension_table {
          bool KHR_get_physical_device_properties2;
          bool KHR_get_surface_capabilities2;
          bool KHR_surface;
+         bool KHR_surface_protected_capabilities;
          bool KHR_wayland_surface;
          bool KHR_xcb_surface;
          bool KHR_xlib_surface;
@@ -59,7 +60,7 @@ struct anv_instance_extension_table {
 extern const struct anv_instance_extension_table anv_instance_extensions_supported;
 
 
-#define ANV_DEVICE_EXTENSION_COUNT 48
+#define ANV_DEVICE_EXTENSION_COUNT 61
 
 extern const VkExtensionProperties anv_device_extensions[];
 
@@ -67,8 +68,6 @@ struct anv_device_extension_table {
    union {
       bool extensions[ANV_DEVICE_EXTENSION_COUNT];
       struct {
-        bool ANDROID_external_memory_android_hardware_buffer;
-        bool ANDROID_native_buffer;
         bool KHR_8bit_storage;
         bool KHR_16bit_storage;
         bool KHR_bind_memory2;
@@ -96,25 +95,40 @@ struct anv_device_extension_table {
         bool KHR_relaxed_block_layout;
         bool KHR_sampler_mirror_clamp_to_edge;
         bool KHR_sampler_ycbcr_conversion;
+        bool KHR_shader_atomic_int64;
         bool KHR_shader_draw_parameters;
+        bool KHR_shader_float16_int8;
         bool KHR_storage_buffer_storage_class;
         bool KHR_swapchain;
         bool KHR_variable_pointers;
+        bool EXT_buffer_device_address;
         bool EXT_calibrated_timestamps;
         bool EXT_conditional_rendering;
+        bool EXT_depth_clip_enable;
+        bool EXT_descriptor_indexing;
         bool EXT_display_control;
         bool EXT_external_memory_dma_buf;
+        bool EXT_external_memory_host;
         bool EXT_global_priority;
+        bool EXT_host_query_reset;
+        bool EXT_inline_uniform_block;
+        bool EXT_memory_budget;
         bool EXT_pci_bus_info;
+        bool EXT_pipeline_creation_feedback;
         bool EXT_post_depth_coverage;
+        bool EXT_queue_family_foreign;
         bool EXT_sampler_filter_minmax;
         bool EXT_scalar_block_layout;
-        bool EXT_shader_viewport_index_layer;
         bool EXT_shader_stencil_export;
+        bool EXT_shader_viewport_index_layer;
         bool EXT_transform_feedback;
         bool EXT_vertex_attribute_divisor;
+        bool EXT_ycbcr_image_arrays;
+        bool ANDROID_external_memory_android_hardware_buffer;
+        bool ANDROID_native_buffer;
         bool GOOGLE_decorate_string;
         bool GOOGLE_hlsl_functionality1;
+        bool NV_compute_shader_derivatives;
       };
    };
 };

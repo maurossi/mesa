@@ -285,6 +285,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -299,6 +300,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -313,6 +315,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -327,6 +330,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -341,6 +345,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -355,6 +360,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -369,6 +375,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -383,6 +390,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -397,6 +405,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -411,6 +420,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -425,6 +435,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -439,6 +450,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -453,6 +465,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -467,6 +480,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -481,6 +495,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -495,6 +510,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -509,6 +525,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -523,6 +540,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -537,6 +555,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -551,6 +570,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -565,6 +585,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool32, nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -579,6 +600,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -593,6 +615,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -607,6 +630,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -621,6 +645,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -635,6 +660,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -649,6 +675,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -663,6 +690,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -677,6 +705,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -691,6 +720,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -705,6 +735,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -719,6 +750,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -733,6 +765,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -747,6 +780,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_bool1, nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -761,6 +795,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32, nir_type_uint32, nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -775,6 +810,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -789,6 +825,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -803,6 +840,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32, nir_type_uint32, nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -817,6 +855,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -831,6 +870,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -845,6 +885,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -859,6 +900,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -873,6 +915,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -887,6 +930,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -901,6 +945,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -915,6 +960,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -929,6 +975,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -943,6 +990,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -957,6 +1005,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -971,6 +1020,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -985,6 +1035,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -999,6 +1050,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1013,6 +1065,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1027,6 +1080,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1041,6 +1095,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1055,6 +1110,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1069,6 +1125,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1083,6 +1140,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1097,6 +1155,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1111,6 +1170,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1125,6 +1185,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1139,6 +1200,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -1153,6 +1215,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1167,6 +1230,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -1181,6 +1245,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1195,6 +1260,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1209,6 +1275,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1223,6 +1290,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1237,6 +1305,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1251,6 +1320,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1265,6 +1335,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1279,6 +1350,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1293,6 +1365,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1307,6 +1380,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1321,6 +1395,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1335,6 +1410,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1349,6 +1425,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1363,6 +1440,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1377,6 +1455,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1391,6 +1470,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1405,6 +1485,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1419,6 +1500,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1433,6 +1515,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1447,6 +1530,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1461,6 +1545,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1475,6 +1560,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1489,6 +1575,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1503,6 +1590,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1517,6 +1605,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1531,6 +1620,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1545,6 +1635,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1559,6 +1650,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1573,6 +1665,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1587,6 +1680,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1601,6 +1695,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1615,6 +1710,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1629,6 +1725,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1643,6 +1740,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1657,6 +1755,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1671,6 +1770,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1685,6 +1785,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1699,6 +1800,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1713,6 +1815,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1727,6 +1830,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1741,6 +1845,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1755,6 +1860,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1769,6 +1875,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1783,6 +1890,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1797,6 +1905,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1811,6 +1920,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -1825,6 +1935,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1839,6 +1950,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -1853,6 +1965,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1867,6 +1980,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1881,6 +1995,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1895,6 +2010,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1909,6 +2025,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1923,6 +2040,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1937,6 +2055,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1951,6 +2070,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1965,6 +2085,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1979,6 +2100,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -1993,6 +2115,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2007,6 +2130,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2021,6 +2145,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2035,6 +2160,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2049,6 +2175,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2063,6 +2190,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2077,6 +2205,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2091,6 +2220,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2105,6 +2235,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -2119,6 +2250,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2133,6 +2265,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2147,6 +2280,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2161,6 +2295,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2173,8 +2308,9 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
       0
    },
    .input_types = {
-      nir_type_float64
+      nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2182,13 +2318,14 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .name = "frexp_sig",
    .num_inputs = 1,
    .output_size = 0,
-   .output_type = nir_type_float64,
+   .output_type = nir_type_float,
    .input_sizes = {
       0
    },
    .input_types = {
-      nir_type_float64
+      nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2203,6 +2340,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2217,6 +2355,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2231,6 +2370,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2245,6 +2385,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2259,6 +2400,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2273,6 +2415,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2287,6 +2430,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2301,6 +2445,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2315,6 +2460,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -2329,6 +2475,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2343,6 +2490,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2357,6 +2505,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2371,6 +2520,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2385,6 +2535,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2399,6 +2550,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2413,6 +2565,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2427,6 +2580,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2441,6 +2595,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2455,6 +2610,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -2469,6 +2625,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2483,8 +2640,24 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
+},
+{
+   .name = "iadd_sat",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_int,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_int, nir_type_int
+   },
+   .is_conversion = false,
+   .algebraic_properties =
+      NIR_OP_IS_COMMUTATIVE
 },
 {
    .name = "iand",
@@ -2497,6 +2670,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -2511,6 +2685,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2525,6 +2700,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2539,6 +2715,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2553,6 +2730,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -2567,6 +2745,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -2581,6 +2760,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2595,6 +2775,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2609,8 +2790,24 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
+},
+{
+   .name = "ihadd",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_int,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_int, nir_type_int
+   },
+   .is_conversion = false,
+   .algebraic_properties =
+      NIR_OP_IS_COMMUTATIVE
 },
 {
    .name = "ilt",
@@ -2623,6 +2820,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2637,6 +2835,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2651,6 +2850,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -2665,6 +2865,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2679,6 +2880,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2693,6 +2895,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -2707,6 +2910,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2721,6 +2925,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2735,6 +2940,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2749,8 +2955,24 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
+},
+{
+   .name = "imul_2x32_64",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_int64,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_int32, nir_type_int32
+   },
+   .is_conversion = false,
+   .algebraic_properties =
+      NIR_OP_IS_COMMUTATIVE
 },
 {
    .name = "imul_high",
@@ -2763,6 +2985,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -2777,6 +3000,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -2791,6 +3015,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -2805,6 +3030,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2819,6 +3045,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2833,6 +3060,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -2847,8 +3075,24 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
+},
+{
+   .name = "irhadd",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_int,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_int, nir_type_int
+   },
+   .is_conversion = false,
+   .algebraic_properties =
+      NIR_OP_IS_COMMUTATIVE
 },
 {
    .name = "ishl",
@@ -2861,6 +3105,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2875,6 +3120,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2889,6 +3135,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2903,6 +3150,22 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int, nir_type_int
    },
+   .is_conversion = false,
+   .algebraic_properties =
+      0
+},
+{
+   .name = "isub_sat",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_int,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_int, nir_type_int
+   },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2917,6 +3180,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -2931,6 +3195,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2945,6 +3210,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint16
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2959,6 +3225,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint16, nir_type_uint16
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2973,6 +3240,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -2987,6 +3255,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32, nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3001,6 +3270,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint16
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3015,6 +3285,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3029,6 +3300,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3043,6 +3315,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3057,6 +3330,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3071,6 +3345,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3085,6 +3360,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3099,6 +3375,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3113,6 +3390,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3127,6 +3405,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -3141,6 +3420,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float, nir_type_float
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3155,6 +3435,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3169,6 +3450,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_float32, nir_type_float32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -3183,6 +3465,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3197,6 +3480,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3211,6 +3495,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3225,6 +3510,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3239,6 +3525,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3253,6 +3540,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3267,6 +3555,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3281,6 +3570,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = true,
    .algebraic_properties =
       0
 },
@@ -3295,6 +3585,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -3309,6 +3600,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -3323,6 +3615,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32, nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3337,6 +3630,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32, nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3351,6 +3645,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3365,6 +3660,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3379,6 +3675,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3393,8 +3690,24 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
+},
+{
+   .name = "uhadd",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_uint,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_uint, nir_type_uint
+   },
+   .is_conversion = false,
+   .algebraic_properties =
+      NIR_OP_IS_COMMUTATIVE
 },
 {
    .name = "ult",
@@ -3407,6 +3720,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3421,6 +3735,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3435,6 +3750,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -3449,6 +3765,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3463,6 +3780,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -3477,6 +3795,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3491,6 +3810,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -3505,6 +3825,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3519,6 +3840,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -3533,8 +3855,24 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
+},
+{
+   .name = "umul_2x32_64",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_uint64,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_uint32, nir_type_uint32
+   },
+   .is_conversion = false,
+   .algebraic_properties =
+      NIR_OP_IS_COMMUTATIVE
 },
 {
    .name = "umul_high",
@@ -3547,6 +3885,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE
 },
@@ -3561,6 +3900,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -3575,6 +3915,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3589,6 +3930,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3603,6 +3945,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3617,6 +3960,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint64
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3631,6 +3975,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint64
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3645,6 +3990,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint64
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3659,6 +4005,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint64
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3673,6 +4020,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3687,6 +4035,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3701,6 +4050,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3715,6 +4065,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3729,6 +4080,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3743,6 +4095,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3757,8 +4110,24 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
+},
+{
+   .name = "urhadd",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_uint,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_uint, nir_type_uint
+   },
+   .is_conversion = false,
+   .algebraic_properties =
+      NIR_OP_IS_COMMUTATIVE
 },
 {
    .name = "usadd_4x8",
@@ -3771,6 +4140,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       NIR_OP_IS_COMMUTATIVE | NIR_OP_IS_ASSOCIATIVE
 },
@@ -3785,6 +4155,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3799,6 +4170,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_int32, nir_type_int32
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3813,6 +4185,22 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
+   .algebraic_properties =
+      0
+},
+{
+   .name = "usub_sat",
+   .num_inputs = 2,
+   .output_size = 0,
+   .output_type = nir_type_uint,
+   .input_sizes = {
+      0, 0
+   },
+   .input_types = {
+      nir_type_uint, nir_type_uint
+   },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3827,6 +4215,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3841,6 +4230,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
@@ -3855,6 +4245,7 @@ const nir_op_info nir_op_infos[nir_num_opcodes] = {
    .input_types = {
       nir_type_uint, nir_type_uint, nir_type_uint, nir_type_uint
    },
+   .is_conversion = false,
    .algebraic_properties =
       0
 },
