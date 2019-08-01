@@ -65,6 +65,7 @@ nouveau_fence_list_init(struct nouveau_fence_list *list,
                         struct nouveau_screen *screen,
                         struct nouveau_pushbuf *push)
 {
+   memset(list, 0, sizeof(*list));
    list->screen = screen;
    list->push = push;
 }

@@ -22,7 +22,7 @@ struct nouveau_context {
    struct nouveau_pushbuf *pushbuf;
    struct pipe_debug_callback debug;
 
-   struct nouveau_fence_list fence;
+   struct nouveau_fence_list *fence;
 
    bool vbo_dirty;
 

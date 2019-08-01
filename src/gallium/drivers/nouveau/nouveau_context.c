@@ -30,7 +30,8 @@ nouveau_context_init(struct nouveau_context *context)
    if (ret)
       return ret;
 
-   nouveau_fence_list_init(&context->fence, screen, context->pushbuf);
+   context->fence = malloc(sizeof(*context->fence));
+   nouveau_fence_list_init(context->fence, screen, context->pushbuf);
    return ret;
 }
 

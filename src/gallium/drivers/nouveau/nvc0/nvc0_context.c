@@ -36,7 +36,7 @@ nvc0_flush(struct pipe_context *pipe,
    struct nvc0_context *nvc0 = nvc0_context(pipe);
 
    if (fence)
-      nouveau_fence_ref(nvc0->base.fence.current, (struct nouveau_fence **)fence);
+      nouveau_fence_ref(nvc0->base.fence->current, (struct nouveau_fence **)fence);
 
 //   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
 //   nouveau_pushbuf_validate(nvc0->base.pushbuf);
@@ -220,16 +220,16 @@ nvc0_destroy(struct pipe_context *pipe)
       free(pos);
    }
 
-   if (nvc0->base.fence.current) {
+   if (nvc0->base.fence->current) {
       struct nouveau_fence *current = NULL;
 
       /* nouveau_fence_wait will create a new current fence, so wait on the
        * _current_ one, and remove both.
        */
-      nouveau_fence_ref(nvc0->base.fence.current, &current);
+      nouveau_fence_ref(nvc0->base.fence->current, &current);
       nouveau_fence_wait(current, nvc0->base.pushbuf, NULL);
       nouveau_fence_ref(NULL, &current);
-      nouveau_fence_ref(NULL, &nvc0->base.fence.current);
+      nouveau_fence_ref(NULL, &nvc0->base.fence->current);
    }
    if (nvc0->base.pushbuf)
       nvc0->base.pushbuf->user_priv = NULL;
@@ -244,8 +244,8 @@ nvc0_default_kick_notify(struct nouveau_pushbuf *push)
 
    if (nvc0) {
       mtx_lock(&nvc0->screen->cur_ctx_lock);
-      nouveau_fence_next(&nvc0->base.fence, push);
-      nouveau_fence_update(&nvc0->base.fence, true);
+      nouveau_fence_next(nvc0->base.fence, push);
+      nouveau_fence_update(nvc0->base.fence, true);
       nvc0->state.flushed = true;
       mtx_unlock(&nvc0->screen->cur_ctx_lock);
       NOUVEAU_DRV_STAT(&nvc0->screen->base, pushbuf_count, 1);
@@ -430,11 +430,11 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    if (ret)
       goto out_err;
    nouveau_bo_map(nvc0->fence.bo, 0, NULL);
-   nvc0->base.fence.data = nvc0->fence.bo;
-   nvc0->base.fence.emit = nvc0_screen_fence_emit;
-   nvc0->base.fence.update = nvc0_screen_fence_update;
+   nvc0->base.fence->data = nvc0->fence.bo;
+   nvc0->base.fence->emit = nvc0_screen_fence_emit;
+   nvc0->base.fence->update = nvc0_screen_fence_update;
 
-   nouveau_fence_new(&nvc0->base.fence, &nvc0->base.fence.current);
+   nouveau_fence_new(nvc0->base.fence, &nvc0->base.fence->current);
 
    /* initialize the pushbuffer */
    nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
