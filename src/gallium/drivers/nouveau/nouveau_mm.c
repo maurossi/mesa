@@ -29,6 +29,7 @@ struct mm_bucket {
    struct list_head used;
    struct list_head full;
    int num_free;
+   mtx_t lock;
 };
 
 struct nouveau_mman {
@@ -181,6 +182,7 @@ nouveau_mm_allocate(struct nouveau_mman *cache,
       return NULL;
    }
 
+   mtx_lock(&bucket->lock);
    if (!LIST_IS_EMPTY(&bucket->used)) {
       slab = LIST_ENTRY(struct mm_slab, bucket->used.next, head);
    } else {
@@ -196,8 +198,10 @@ nouveau_mm_allocate(struct nouveau_mman *cache,
    *offset = mm_slab_alloc(slab) << slab->order;
 
    alloc = MALLOC_STRUCT(nouveau_mm_allocation);
-   if (!alloc)
+   if (!alloc) {
+      mtx_unlock(&bucket->lock);
       return NULL;
+   }
 
    nouveau_bo_ref(slab->bo, bo);
 
@@ -205,6 +209,7 @@ nouveau_mm_allocate(struct nouveau_mman *cache,
       LIST_DEL(&slab->head);
       LIST_ADD(&slab->head, &bucket->full);
    }
+   mtx_unlock(&bucket->lock);
 
    alloc->next = NULL;
    alloc->offset = *offset;
@@ -219,6 +224,7 @@ nouveau_mm_free(struct nouveau_mm_allocation *alloc)
    struct mm_slab *slab = (struct mm_slab *)alloc->priv;
    struct mm_bucket *bucket = mm_bucket_by_order(slab->cache, slab->order);
 
+   mtx_lock(&bucket->lock);
    mm_slab_free(slab, alloc->offset >> slab->order);
 
    if (slab->free == slab->count) {
@@ -229,6 +235,7 @@ nouveau_mm_free(struct nouveau_mm_allocation *alloc)
       LIST_DEL(&slab->head);
       LIST_ADDTAIL(&slab->head, &bucket->used);
    }
+   mtx_unlock(&bucket->lock);
 
    FREE(alloc);
 }
@@ -258,6 +265,7 @@ nouveau_mm_create(struct nouveau_device *dev, uint32_t domain,
       LIST_INITHEAD(&cache->bucket[i].free);
       LIST_INITHEAD(&cache->bucket[i].used);
       LIST_INITHEAD(&cache->bucket[i].full);
+      mtx_init(&cache->bucket[i].lock, mtx_plain);
    }
 
    return cache;
@@ -292,6 +300,7 @@ nouveau_mm_destroy(struct nouveau_mman *cache)
       nouveau_mm_free_slabs(&cache->bucket[i].free);
       nouveau_mm_free_slabs(&cache->bucket[i].used);
       nouveau_mm_free_slabs(&cache->bucket[i].full);
+      mtx_destroy(&cache->bucket[i].lock);
    }
 
    FREE(cache);
