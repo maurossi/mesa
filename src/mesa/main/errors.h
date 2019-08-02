@@ -40,7 +40,7 @@
 #include <stdarg.h>
 #include "glheader.h"
 #include "menums.h"
-
+#include "util/detect_os.h"
 
 #ifdef __cplusplus
 extern "C" {
