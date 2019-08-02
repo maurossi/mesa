@@ -47,7 +47,10 @@
 #endif
 
 
-#if DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD
+#if DETECT_OS_ANDROID
+#  define LOG_TAG "gallium"
+#  include <log/log.h>
+#elif DETECT_OS_LINUX || DETECT_OS_CYGWIN || DETECT_OS_SOLARIS || DETECT_OS_HURD
 #  include <unistd.h>
 #elif DETECT_OS_APPLE || DETECT_OS_BSD
 #  include <sys/sysctl.h>
@@ -100,6 +103,12 @@ os_log_message(const char *message)
       fflush(fout);
    }
 #else /* !DETECT_OS_WINDOWS */
+#if DETECT_OS_ANDROID
+   if (fout == stderr) {
+      ALOGD("%s", message);
+      return;
+   }
+#endif
    fflush(stdout);
    fputs(message, fout);
    fflush(fout);
