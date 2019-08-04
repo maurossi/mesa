@@ -481,7 +481,7 @@ bool
 nvc0_validate_tic(struct nvc0_context *nvc0, int s)
 {
    uint32_t commands[32];
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    unsigned i;
    unsigned n = 0;
    bool need_flush = false;
@@ -549,7 +549,7 @@ nvc0_validate_tic(struct nvc0_context *nvc0, int s)
 static bool
 nve4_validate_tic(struct nvc0_context *nvc0, unsigned s)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    unsigned i;
    bool need_flush = false;
 
@@ -616,7 +616,7 @@ void nvc0_validate_textures(struct nvc0_context *nvc0)
 
    /* Invalidate all CP textures because they are aliased. */
    for (int i = 0; i < nvc0->num_textures[5]; i++)
-      nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_TEX(i));
+      nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_TEX(i));
    nvc0->textures_dirty[5] = ~0;
    nvc0->dirty_cp |= NVC0_NEW_CP_TEXTURES;
 }
@@ -625,7 +625,7 @@ bool
 nvc0_validate_tsc(struct nvc0_context *nvc0, int s)
 {
    uint32_t commands[16];
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    unsigned i;
    unsigned n = 0;
    bool need_flush = false;
@@ -744,7 +744,7 @@ void nvc0_validate_samplers(struct nvc0_context *nvc0)
 void
 nvc0_upload_tsc0(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    u32 data[8] = { G80_TSC_0_SRGB_CONVERSION };
    nvc0->base.push_data(&nvc0->base, nvc0->screen->txc,
                         65536 /*+ tsc->id * 32*/,
@@ -760,7 +760,7 @@ nvc0_upload_tsc0(struct nvc0_context *nvc0)
 void
 nve4_set_tex_handles(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    unsigned s;
 
@@ -799,7 +799,7 @@ nve4_create_texture_handle(struct pipe_context *pipe,
     * they can't be kicked out later.
     */
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv50_tic_entry *tic = nv50_tic_entry(view);
    struct nv50_tsc_entry *tsc = pipe->create_sampler_state(pipe, sampler);
    struct pipe_sampler_view *v = NULL;
@@ -954,7 +954,7 @@ nvc0_mark_image_range_valid(const struct pipe_image_view *view)
 }
 
 void
-nve4_set_surface_info(struct nouveau_pushbuf *push,
+nve4_set_surface_info(struct nouveau_ws_pushbuf *push,
                       const struct pipe_image_view *view,
                       struct nvc0_context *nvc0)
 {
@@ -1080,7 +1080,7 @@ nve4_set_surface_info(struct nouveau_pushbuf *push,
 }
 
 static inline void
-nvc0_set_surface_info(struct nouveau_pushbuf *push,
+nvc0_set_surface_info(struct nouveau_ws_pushbuf *push,
                       const struct pipe_image_view *view, uint64_t address,
                       int width, int height, int depth)
 {
@@ -1125,7 +1125,7 @@ nvc0_set_surface_info(struct nouveau_pushbuf *push,
 void
 nvc0_validate_suf(struct nvc0_context *nvc0, int s)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
 
    for (int i = 0; i < NVC0_MAX_IMAGES; ++i) {
@@ -1228,7 +1228,7 @@ nvc0_update_surface_bindings(struct nvc0_context *nvc0)
    nvc0_validate_suf(nvc0, 4);
 
    /* Invalidate all COMPUTE images because they are aliased with FRAGMENT. */
-   nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
    nvc0->dirty_cp |= NVC0_NEW_CP_SURFACES;
    nvc0->images_dirty[5] |= nvc0->images_valid[5];
 }
@@ -1238,7 +1238,7 @@ gm107_validate_surfaces(struct nvc0_context *nvc0,
                         struct pipe_image_view *view, int stage, int slot)
 {
    struct nv04_resource *res = nv04_resource(view->resource);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    struct nv50_tic_entry *tic;
 
@@ -1281,7 +1281,7 @@ gm107_validate_surfaces(struct nvc0_context *nvc0,
 static inline void
 nve4_update_surface_bindings(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    int i, j, s;
 
@@ -1335,7 +1335,7 @@ nve4_create_image_handle(struct pipe_context *pipe,
                          const struct pipe_image_view *view)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    int i = screen->img.next, s;
 
@@ -1412,7 +1412,7 @@ gm107_create_image_handle(struct pipe_context *pipe,
     * just the TIC id.
     */
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct pipe_sampler_view *sview =
       gm107_create_texture_view_from_image(pipe, view);
    struct nv50_tic_entry *tic = nv50_tic_entry(sview);

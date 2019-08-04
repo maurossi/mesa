@@ -4,7 +4,7 @@
 #include "nv50/nv50_context.h"
 
 static inline void
-nv50_fb_set_null_rt(struct nouveau_pushbuf *push, unsigned i)
+nv50_fb_set_null_rt(struct nouveau_ws_pushbuf *push, unsigned i)
 {
    BEGIN_NV04(push, NV50_3D(RT_ADDRESS_HIGH(i)), 4);
    PUSH_DATA (push, 0);
@@ -19,13 +19,13 @@ nv50_fb_set_null_rt(struct nouveau_pushbuf *push, unsigned i)
 static void
 nv50_validate_fb(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct pipe_framebuffer_state *fb = &nv50->framebuffer;
    unsigned i;
    unsigned ms_mode = NV50_3D_MULTISAMPLE_MODE_MS1;
    uint32_t array_size = 0xffff, array_mode = 0;
 
-   nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
+   nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
 
    BEGIN_NV04(push, NV50_3D(RT_CONTROL), 1);
    PUSH_DATA (push, (076543210 << 4) | fb->nr_cbufs);
@@ -36,7 +36,7 @@ nv50_validate_fb(struct nv50_context *nv50)
    for (i = 0; i < fb->nr_cbufs; ++i) {
       struct nv50_miptree *mt;
       struct nv50_surface *sf;
-      struct nouveau_bo *bo;
+      struct nouveau_ws_bo *bo;
 
       if (!fb->cbufs[i]) {
          nv50_fb_set_null_rt(push, i);
@@ -149,7 +149,7 @@ nv50_validate_fb(struct nv50_context *nv50)
 static void
 nv50_validate_blend_colour(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 
    BEGIN_NV04(push, NV50_3D(BLEND_COLOR(0)), 4);
    PUSH_DATAf(push, nv50->blend_colour.color[0]);
@@ -161,7 +161,7 @@ nv50_validate_blend_colour(struct nv50_context *nv50)
 static void
 nv50_validate_stencil_ref(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 
    BEGIN_NV04(push, NV50_3D(STENCIL_FRONT_FUNC_REF), 1);
    PUSH_DATA (push, nv50->stencil_ref.ref_value[0]);
@@ -172,7 +172,7 @@ nv50_validate_stencil_ref(struct nv50_context *nv50)
 static void
 nv50_validate_stipple(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    unsigned i;
 
    BEGIN_NV04(push, NV50_3D(POLYGON_STIPPLE_PATTERN(0)), 32);
@@ -183,7 +183,7 @@ nv50_validate_stipple(struct nv50_context *nv50)
 static void
 nv50_validate_scissor(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 #ifdef NV50_SCISSORS_CLIPPING
    int minx, maxx, miny, maxy, i;
    bool rast_scissor = nv50->rast ? nv50->rast->pipe.scissor : false;
@@ -247,7 +247,7 @@ nv50_validate_scissor(struct nv50_context *nv50)
 static void
 nv50_validate_viewport(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    float zmin, zmax;
    int i;
 
@@ -286,7 +286,7 @@ nv50_validate_viewport(struct nv50_context *nv50)
 static void
 nv50_validate_window_rects(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    bool enable = nv50->window_rect.rects > 0 || nv50->window_rect.inclusive;
    int i;
 
@@ -337,7 +337,7 @@ nv50_check_program_ucps(struct nv50_context *nv50,
 static void
 nv50_validate_derived_2(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 
    if (nv50->zsa && nv50->zsa->pipe.alpha.enabled &&
        nv50->framebuffer.nr_cbufs == 0) {
@@ -350,7 +350,7 @@ nv50_validate_derived_2(struct nv50_context *nv50)
 static void
 nv50_validate_clip(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_program *vp;
    uint8_t clip_enable = nv50->rast->pipe.clip_plane_enable;
 
@@ -384,7 +384,7 @@ nv50_validate_clip(struct nv50_context *nv50)
 static void
 nv50_validate_blend(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 
    PUSH_SPACE(push, nv50->blend->size);
    PUSH_DATAp(push, nv50->blend->state, nv50->blend->size);
@@ -393,7 +393,7 @@ nv50_validate_blend(struct nv50_context *nv50)
 static void
 nv50_validate_zsa(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 
    PUSH_SPACE(push, nv50->zsa->size);
    PUSH_DATAp(push, nv50->zsa->state, nv50->zsa->size);
@@ -402,7 +402,7 @@ nv50_validate_zsa(struct nv50_context *nv50)
 static void
 nv50_validate_rasterizer(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 
    PUSH_SPACE(push, nv50->rast->size);
    PUSH_DATAp(push, nv50->rast->state, nv50->rast->size);
@@ -411,7 +411,7 @@ nv50_validate_rasterizer(struct nv50_context *nv50)
 static void
 nv50_validate_sample_mask(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
 
    unsigned mask[4] =
    {
@@ -431,7 +431,7 @@ nv50_validate_sample_mask(struct nv50_context *nv50)
 static void
 nv50_validate_min_samples(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    int samples;
 
    if (nv50->screen->tesla->oclass < NVA3_3D_CLASS)
@@ -530,7 +530,7 @@ validate_list_3d[] = {
 bool
 nv50_state_validate(struct nv50_context *nv50, uint32_t mask,
                     struct nv50_state_validate *validate_list, int size,
-                    uint32_t *dirty, struct nouveau_bufctx *bufctx)
+                    uint32_t *dirty, struct nouveau_ws_bufctx *bufctx)
 {
    uint32_t state_mask;
    int ret;
@@ -558,8 +558,8 @@ nv50_state_validate(struct nv50_context *nv50, uint32_t mask,
 
       nv50_bufctx_fence(bufctx, false);
    }
-   nouveau_pushbuf_bufctx(nv50->base.pushbuf, bufctx);
-   ret = nouveau_pushbuf_validate(nv50->base.pushbuf);
+   nouveau_ws_pushbuf_bufctx(nv50->base.pushbuf, bufctx);
+   ret = nouveau_ws_pushbuf_validate(nv50->base.pushbuf);
 
    return !ret;
 }
