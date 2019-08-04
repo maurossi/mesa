@@ -5,7 +5,7 @@
 #include "pipe/p_state.h"
 #include "util/u_memory.h"
 
-#include <nouveau.h>
+#include <ws/nouveau.h>
 
 #include "nouveau_screen.h"
 
@@ -17,17 +17,17 @@ struct nouveau_context {
    struct pipe_context pipe;
    struct nouveau_screen *screen;
 
-   struct nouveau_client *client;
-   struct nouveau_pushbuf *pushbuf;
+   struct nouveau_ws_client *client;
+   struct nouveau_ws_pushbuf *pushbuf;
    struct pipe_debug_callback debug;
 
    bool vbo_dirty;
 
    void (*copy_data)(struct nouveau_context *,
-                     struct nouveau_bo *dst, unsigned, unsigned,
-                     struct nouveau_bo *src, unsigned, unsigned, unsigned);
+                     struct nouveau_ws_bo *dst, unsigned, unsigned,
+                     struct nouveau_ws_bo *src, unsigned, unsigned, unsigned);
    void (*push_data)(struct nouveau_context *,
-                     struct nouveau_bo *dst, unsigned, unsigned,
+                     struct nouveau_ws_bo *dst, unsigned, unsigned,
                      unsigned, const void *);
    /* base, size refer to the whole constant buffer */
    void (*push_cb)(struct nouveau_context *,
@@ -45,11 +45,11 @@ struct nouveau_context {
       unsigned wrap;
       unsigned offset;
       unsigned end;
-      struct nouveau_bo *bo[NOUVEAU_MAX_SCRATCH_BUFS];
-      struct nouveau_bo *current;
+      struct nouveau_ws_bo *bo[NOUVEAU_MAX_SCRATCH_BUFS];
+      struct nouveau_ws_bo *current;
       struct runout {
          unsigned nr;
-         struct nouveau_bo *bo[0];
+         struct nouveau_ws_bo *bo[0];
       } *runout;
       unsigned bo_size;
    } scratch;
@@ -88,11 +88,11 @@ nouveau_scratch_done(struct nouveau_context *nv)
 }
 
 /* Get pointer to scratch buffer.
- * The returned nouveau_bo is only referenced by the context, don't un-ref it !
+ * The returned nouveau_ws_bo is only referenced by the context, don't un-ref it !
  */
 void *
 nouveau_scratch_get(struct nouveau_context *, unsigned size, uint64_t *gpu_addr,
-                    struct nouveau_bo **);
+                    struct nouveau_ws_bo **);
 
 static inline void
 nouveau_context_destroy(struct nouveau_context *ctx)
@@ -101,7 +101,7 @@ nouveau_context_destroy(struct nouveau_context *ctx)
 
    for (i = 0; i < NOUVEAU_MAX_SCRATCH_BUFS; ++i)
       if (ctx->scratch.bo[i])
-         nouveau_bo_ref(NULL, &ctx->scratch.bo[i]);
+         nouveau_ws_bo_ref(NULL, &ctx->scratch.bo[i]);
 
    FREE(ctx);
 }

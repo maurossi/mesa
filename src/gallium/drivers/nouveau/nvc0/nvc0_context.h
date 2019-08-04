@@ -174,9 +174,9 @@ struct nvc0_resident {
 struct nvc0_context {
    struct nouveau_context base;
 
-   struct nouveau_bufctx *bufctx_3d;
-   struct nouveau_bufctx *bufctx;
-   struct nouveau_bufctx *bufctx_cp;
+   struct nouveau_ws_bufctx *bufctx_3d;
+   struct nouveau_ws_bufctx *bufctx;
+   struct nouveau_ws_bufctx *bufctx_cp;
 
    struct nvc0_screen *screen;
 
@@ -311,9 +311,9 @@ nvc0_shader_stage(unsigned pipe)
 
 /* nvc0_context.c */
 struct pipe_context *nvc0_create(struct pipe_screen *, void *, unsigned flags);
-void nvc0_bufctx_fence(struct nvc0_context *, struct nouveau_bufctx *,
+void nvc0_bufctx_fence(struct nvc0_context *, struct nouveau_ws_bufctx *,
                        bool on_flush);
-void nvc0_default_kick_notify(struct nouveau_pushbuf *);
+void nvc0_default_kick_notify(struct nouveau_ws_pushbuf *);
 const void *nvc0_get_sample_locations(unsigned);
 
 /* nvc0_draw.c */
@@ -351,7 +351,7 @@ struct nvc0_state_validate {
 
 bool nvc0_state_validate(struct nvc0_context *, uint32_t,
                          struct nvc0_state_validate *, int, uint32_t *,
-                         struct nouveau_bufctx *);
+                         struct nouveau_ws_bufctx *);
 bool nvc0_state_validate_3d(struct nvc0_context *, uint32_t);
 
 /* nvc0_surface.c */
@@ -370,7 +370,7 @@ void nvc0_validate_samplers(struct nvc0_context *);
 void nvc0_upload_tsc0(struct nvc0_context *);
 void nve4_set_tex_handles(struct nvc0_context *);
 void nvc0_validate_surfaces(struct nvc0_context *);
-void nve4_set_surface_info(struct nouveau_pushbuf *,
+void nve4_set_surface_info(struct nouveau_ws_pushbuf *,
                            const struct pipe_image_view *,
                            struct nvc0_context *);
 void nvc0_mark_image_range_valid(const struct pipe_image_view *);
@@ -399,15 +399,15 @@ nvc0_init_transfer_functions(struct nvc0_context *);
 
 void
 nvc0_m2mf_push_linear(struct nouveau_context *nv,
-                      struct nouveau_bo *dst, unsigned offset, unsigned domain,
+                      struct nouveau_ws_bo *dst, unsigned offset, unsigned domain,
                       unsigned size, const void *data);
 void
 nve4_p2mf_push_linear(struct nouveau_context *nv,
-                      struct nouveau_bo *dst, unsigned offset, unsigned domain,
+                      struct nouveau_ws_bo *dst, unsigned offset, unsigned domain,
                       unsigned size, const void *data);
 void
 nvc0_cb_bo_push(struct nouveau_context *,
-                struct nouveau_bo *bo, unsigned domain,
+                struct nouveau_ws_bo *bo, unsigned domain,
                 unsigned base, unsigned size,
                 unsigned offset, unsigned words, const uint32_t *data);
 

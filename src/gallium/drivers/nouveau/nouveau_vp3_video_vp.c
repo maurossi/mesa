@@ -458,7 +458,7 @@ void nouveau_vp3_vp_caps(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
                          unsigned *caps, unsigned *is_ref,
                          struct nouveau_vp3_video_buffer *refs[16])
 {
-   struct nouveau_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
+   struct nouveau_ws_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
    enum pipe_video_format codec = u_reduce_video_profile(dec->base.profile);
    char *vp = bsp_bo->map + VP_OFFSET;
 

@@ -35,7 +35,7 @@
 #include "nv30/nv30_resource.h"
 
 struct push_context {
-   struct nouveau_pushbuf *push;
+   struct nouveau_ws_pushbuf *push;
 
    const void *idxbuf;
 

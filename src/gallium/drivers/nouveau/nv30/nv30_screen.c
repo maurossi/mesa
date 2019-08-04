@@ -23,8 +23,6 @@
  *
  */
 
-#include <xf86drm.h>
-#include <nouveau_drm.h>
 #include "util/u_format.h"
 #include "util/u_format_s3tc.h"
 #include "util/u_screen.h"
@@ -51,8 +49,8 @@ static int
 nv30_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 {
    struct nv30_screen *screen = nv30_screen(pscreen);
-   struct nouveau_object *eng3d = screen->eng3d;
-   struct nouveau_device *dev = nouveau_screen(pscreen)->device;
+   struct nouveau_ws_object *eng3d = screen->eng3d;
+   struct nouveau_ws_device *dev = nouveau_screen(pscreen)->device;
 
    switch (param) {
    /* non-boolean capabilities */
@@ -261,7 +259,7 @@ nv30_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0x10de;
    case PIPE_CAP_DEVICE_ID: {
       uint64_t device_id;
-      if (nouveau_getparam(dev, NOUVEAU_GETPARAM_PCI_DEVICE, &device_id)) {
+      if (nouveau_ws_getparam(dev, NOUVEAU_GETPARAM_PCI_DEVICE, &device_id)) {
          NOUVEAU_ERR("NOUVEAU_GETPARAM_PCI_DEVICE failed.\n");
          return -1;
       }
@@ -282,7 +280,7 @@ static float
 nv30_screen_get_paramf(struct pipe_screen *pscreen, enum pipe_capf param)
 {
    struct nv30_screen *screen = nv30_screen(pscreen);
-   struct nouveau_object *eng3d = screen->eng3d;
+   struct nouveau_ws_object *eng3d = screen->eng3d;
 
    switch (param) {
    case PIPE_CAPF_MAX_LINE_WIDTH:
@@ -311,7 +309,7 @@ nv30_screen_get_shader_param(struct pipe_screen *pscreen,
                              enum pipe_shader_cap param)
 {
    struct nv30_screen *screen = nv30_screen(pscreen);
-   struct nouveau_object *eng3d = screen->eng3d;
+   struct nouveau_ws_object *eng3d = screen->eng3d;
 
    switch (shader) {
    case PIPE_SHADER_VERTEX:
@@ -459,11 +457,11 @@ static void
 nv30_screen_fence_emit(struct pipe_screen *pscreen, uint32_t *sequence)
 {
    struct nv30_screen *screen = nv30_screen(pscreen);
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = screen->base.pushbuf;
 
    *sequence = ++screen->base.fence.sequence;
 
-   assert(PUSH_AVAIL(push) + push->rsvd_kick >= 3);
+   assert(PUSH_AVAIL(push) >= 0);
    PUSH_DATA (push, NV30_3D_FENCE_OFFSET |
               (2 /* size */ << 18) | (7 /* subchan */ << 13));
    PUSH_DATA (push, 0);
@@ -498,22 +496,22 @@ nv30_screen_destroy(struct pipe_screen *pscreen)
       nouveau_fence_ref(NULL, &screen->base.fence.current);
    }
 
-   nouveau_bo_ref(NULL, &screen->notify);
+   nouveau_ws_bo_ref(NULL, &screen->notify);
 
    nouveau_heap_destroy(&screen->query_heap);
    nouveau_heap_destroy(&screen->vp_exec_heap);
    nouveau_heap_destroy(&screen->vp_data_heap);
 
-   nouveau_object_del(&screen->query);
-   nouveau_object_del(&screen->fence);
-   nouveau_object_del(&screen->ntfy);
+   nouveau_ws_object_del(&screen->query);
+   nouveau_ws_object_del(&screen->fence);
+   nouveau_ws_object_del(&screen->ntfy);
 
-   nouveau_object_del(&screen->sifm);
-   nouveau_object_del(&screen->swzsurf);
-   nouveau_object_del(&screen->surf2d);
-   nouveau_object_del(&screen->m2mf);
-   nouveau_object_del(&screen->eng3d);
-   nouveau_object_del(&screen->null);
+   nouveau_ws_object_del(&screen->sifm);
+   nouveau_ws_object_del(&screen->swzsurf);
+   nouveau_ws_object_del(&screen->surf2d);
+   nouveau_ws_object_del(&screen->m2mf);
+   nouveau_ws_object_del(&screen->eng3d);
+   nouveau_ws_object_del(&screen->null);
 
    nouveau_screen_fini(&screen->base);
    FREE(screen);
@@ -527,11 +525,11 @@ nv30_screen_destroy(struct pipe_screen *pscreen)
    } while(0)
 
 struct nouveau_screen *
-nv30_screen_create(struct nouveau_device *dev)
+nv30_screen_create(struct nouveau_ws_device *dev)
 {
    struct nv30_screen *screen;
    struct pipe_screen *pscreen;
-   struct nouveau_pushbuf *push;
+   struct nouveau_ws_pushbuf *push;
    struct nv04_fifo *fifo;
    unsigned oclass = 0;
    int ret, i;
@@ -615,9 +613,8 @@ nv30_screen_create(struct nouveau_device *dev)
 
    fifo = screen->base.channel->data;
    push = screen->base.pushbuf;
-   push->rsvd_kick = 16;
 
-   ret = nouveau_object_new(screen->base.channel, 0x00000000, NV01_NULL_CLASS,
+   ret = nouveau_ws_object_new(screen->base.channel, 0x00000000, NV01_NULL_CLASS,
                             NULL, 0, &screen->null);
    if (ret)
       FAIL_SCREEN_INIT("error allocating null object: %d\n", ret);
@@ -627,7 +624,7 @@ nv30_screen_create(struct nouveau_device *dev)
     * be 4KiB aligned, which means this object needs to be the first
     * one allocated on the channel.
     */
-   ret = nouveau_object_new(screen->base.channel, 0xbeef1e00,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef1e00,
                             NOUVEAU_NOTIFIER_CLASS, &(struct nv04_notify) {
                             .length = 32 }, sizeof(struct nv04_notify),
                             &screen->fence);
@@ -635,7 +632,7 @@ nv30_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("error allocating fence notifier: %d\n", ret);
 
    /* DMA_NOTIFY object, we don't actually use this but M2MF fails without */
-   ret = nouveau_object_new(screen->base.channel, 0xbeef0301,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef0301,
                             NOUVEAU_NOTIFIER_CLASS, &(struct nv04_notify) {
                             .length = 32 }, sizeof(struct nv04_notify),
                             &screen->ntfy);
@@ -646,7 +643,7 @@ nv30_screen_create(struct nouveau_device *dev)
     * the remainder of the "notifier block" assigned by the kernel for
     * use as query objects
     */
-   ret = nouveau_object_new(screen->base.channel, 0xbeef0351,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef0351,
                             NOUVEAU_NOTIFIER_CLASS, &(struct nv04_notify) {
                             .length = 4096 - 128 }, sizeof(struct nv04_notify),
                             &screen->query);
@@ -670,13 +667,13 @@ nv30_screen_create(struct nouveau_device *dev)
       nouveau_heap_init(&screen->vp_data_heap, 6, 468 - 6);
    }
 
-   ret = nouveau_bo_wrap(screen->base.device, fifo->notify, &screen->notify);
+   ret = nouveau_ws_bo_wrap(screen->base.device, fifo->notify, &screen->notify);
    if (ret == 0)
-      ret = nouveau_bo_map(screen->notify, 0, screen->base.client);
+      ret = nouveau_ws_bo_map(screen->notify, 0, screen->base.client);
    if (ret)
       FAIL_SCREEN_INIT("error mapping notifier memory: %d\n", ret);
 
-   ret = nouveau_object_new(screen->base.channel, 0xbeef3097, oclass,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef3097, oclass,
                             NULL, 0, &screen->eng3d);
    if (ret)
       FAIL_SCREEN_INIT("error allocating 3d object: %d\n", ret);
@@ -748,7 +745,7 @@ nv30_screen_create(struct nouveau_device *dev)
       PUSH_DATA (push, NV40_3D_MIPMAP_ROUNDING_MODE_DOWN);
    }
 
-   ret = nouveau_object_new(screen->base.channel, 0xbeef3901, NV03_M2MF_CLASS,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef3901, NV03_M2MF_CLASS,
                             NULL, 0, &screen->m2mf);
    if (ret)
       FAIL_SCREEN_INIT("error allocating m2mf object: %d\n", ret);
@@ -758,7 +755,7 @@ nv30_screen_create(struct nouveau_device *dev)
    BEGIN_NV04(push, NV03_M2MF(DMA_NOTIFY), 1);
    PUSH_DATA (push, screen->ntfy->handle);
 
-   ret = nouveau_object_new(screen->base.channel, 0xbeef6201,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef6201,
                             NV10_SURFACE_2D_CLASS, NULL, 0, &screen->surf2d);
    if (ret)
       FAIL_SCREEN_INIT("error allocating surf2d object: %d\n", ret);
@@ -773,7 +770,7 @@ nv30_screen_create(struct nouveau_device *dev)
    else
       oclass = NV40_SURFACE_SWZ_CLASS;
 
-   ret = nouveau_object_new(screen->base.channel, 0xbeef5201, oclass,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef5201, oclass,
                             NULL, 0, &screen->swzsurf);
    if (ret)
       FAIL_SCREEN_INIT("error allocating swizzled surface object: %d\n", ret);
@@ -788,7 +785,7 @@ nv30_screen_create(struct nouveau_device *dev)
    else
       oclass = NV40_SIFM_CLASS;
 
-   ret = nouveau_object_new(screen->base.channel, 0xbeef7701, oclass,
+   ret = nouveau_ws_object_new(screen->base.channel, 0xbeef7701, oclass,
                             NULL, 0, &screen->sifm);
    if (ret)
       FAIL_SCREEN_INIT("error allocating scaled image object: %d\n", ret);
@@ -800,7 +797,7 @@ nv30_screen_create(struct nouveau_device *dev)
    BEGIN_NV04(push, NV05_SIFM(COLOR_CONVERSION), 1);
    PUSH_DATA (push, NV05_SIFM_COLOR_CONVERSION_TRUNCATE);
 
-   nouveau_pushbuf_kick(push, push->channel);
+   nouveau_ws_pushbuf_kick(push, push->channel);
 
    nouveau_fence_new(&screen->base, &screen->base.fence.current);
    return &screen->base;
