@@ -219,6 +219,9 @@ nvc0_destroy(struct pipe_context *pipe)
       free(pos);
    }
 
+   if (nvc0->base.pushbuf)
+      nvc0->base.pushbuf->user_priv = NULL;
+
    nouveau_context_destroy(&nvc0->base);
 }
 
@@ -372,8 +375,10 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    if (!nvc0_blitctx_create(nvc0))
       goto out_err;
 
-   nvc0->base.pushbuf = screen->base.pushbuf;
+   nvc0->screen = screen;
+   nvc0->base.screen = &screen->base;
    nvc0->base.client = screen->base.client;
+   nouveau_context_init(&nvc0->base);
 
    ret = nouveau_ws_bufctx_new(nvc0->base.client, 2, &nvc0->bufctx);
    if (!ret)
@@ -384,9 +389,6 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
                                &nvc0->bufctx_cp);
    if (ret)
       goto out_err;
-
-   nvc0->screen = screen;
-   nvc0->base.screen = &screen->base;
 
    pipe->screen = pscreen;
    pipe->priv = priv;
@@ -408,7 +410,6 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    pipe->get_sample_position = nvc0_context_get_sample_position;
    pipe->emit_string_marker = nvc0_emit_string_marker;
 
-   nouveau_context_init(&nvc0->base);
    nvc0_init_query_functions(nvc0);
    nvc0_init_surface_functions(nvc0);
    nvc0_init_state_functions(nvc0);
@@ -447,6 +448,7 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
       nouveau_ws_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
    }
    nvc0->base.pushbuf->kick_notify = nvc0_default_kick_notify;
+   nvc0->base.pushbuf->user_priv = nvc0->screen;
 
    /* add permanently resident buffers to bufctxts */
 

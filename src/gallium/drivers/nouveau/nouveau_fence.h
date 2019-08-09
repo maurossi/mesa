@@ -23,7 +23,7 @@ struct nouveau_fence {
    struct nouveau_fence *next;
    struct nouveau_screen *screen;
    int state;
-   int ref;
+   _Atomic int ref;
    uint32_t sequence;
    uint32_t work_count;
    struct list_head work;
