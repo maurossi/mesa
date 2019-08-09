@@ -31,7 +31,9 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
 intermediates := $(call local-generated-sources-dir)
 
-LOCAL_C_INCLUDES := $(MESA_TOP)/include/drm-uapi
+LOCAL_C_INCLUDES := \
+	$(MESA_TOP)/include/drm-uapi \
+	$(MESA_TOP)/src/gallium/include
 
 LOCAL_SRC_FILES := $(GEN_PERF_FILES)
 
