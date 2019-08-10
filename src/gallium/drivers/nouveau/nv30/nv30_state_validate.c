@@ -37,8 +37,8 @@ nv30_validate_fb(struct nv30_context *nv30)
 {
    struct pipe_screen *pscreen = &nv30->screen->base.base;
    struct pipe_framebuffer_state *fb = &nv30->framebuffer;
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_object *eng3d = nv30->screen->eng3d;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_object *eng3d = nv30->screen->eng3d;
    uint32_t rt_format;
    int h = fb->height;
    int w = fb->width;
@@ -116,7 +116,7 @@ nv30_validate_fb(struct nv30_context *nv30)
    if ((nv30->state.rt_enable & NV30_3D_RT_ENABLE_COLOR0) || fb->zsbuf) {
       struct nv30_surface *rsf = nv30_surface(fb->cbufs[0]);
       struct nv30_surface *zsf = nv30_surface(fb->zsbuf);
-      struct nouveau_bo *rbo, *zbo;
+      struct nouveau_ws_bo *rbo, *zbo;
 
       if (!rsf)      rsf = zsf;
       else if (!zsf) zsf = rsf;
@@ -140,7 +140,7 @@ nv30_validate_fb(struct nv30_context *nv30)
 
    if (nv30->state.rt_enable & NV30_3D_RT_ENABLE_COLOR1) {
       struct nv30_surface *sf = nv30_surface(fb->cbufs[1]);
-      struct nouveau_bo *bo = nv30_miptree(sf->base.texture)->base.bo;
+      struct nouveau_ws_bo *bo = nv30_miptree(sf->base.texture)->base.bo;
 
       BEGIN_NV04(push, NV30_3D(COLOR1_OFFSET), 2);
       PUSH_MTHDl(push, NV30_3D(COLOR1_OFFSET), BUFCTX_FB, bo, sf->offset,
@@ -150,7 +150,7 @@ nv30_validate_fb(struct nv30_context *nv30)
 
    if (nv30->state.rt_enable & NV40_3D_RT_ENABLE_COLOR2) {
       struct nv30_surface *sf = nv30_surface(fb->cbufs[2]);
-      struct nouveau_bo *bo = nv30_miptree(sf->base.texture)->base.bo;
+      struct nouveau_ws_bo *bo = nv30_miptree(sf->base.texture)->base.bo;
 
       BEGIN_NV04(push, NV40_3D(COLOR2_OFFSET), 1);
       PUSH_MTHDl(push, NV40_3D(COLOR2_OFFSET), BUFCTX_FB, bo, sf->offset,
@@ -161,7 +161,7 @@ nv30_validate_fb(struct nv30_context *nv30)
 
    if (nv30->state.rt_enable & NV40_3D_RT_ENABLE_COLOR3) {
       struct nv30_surface *sf = nv30_surface(fb->cbufs[3]);
-      struct nouveau_bo *bo = nv30_miptree(sf->base.texture)->base.bo;
+      struct nouveau_ws_bo *bo = nv30_miptree(sf->base.texture)->base.bo;
 
       BEGIN_NV04(push, NV40_3D(COLOR3_OFFSET), 1);
       PUSH_MTHDl(push, NV40_3D(COLOR3_OFFSET), BUFCTX_FB, bo, sf->offset,
@@ -174,7 +174,7 @@ nv30_validate_fb(struct nv30_context *nv30)
 static void
 nv30_validate_blend_colour(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    float *rgba = nv30->blend_colour.color;
 
    if (nv30->framebuffer.nr_cbufs) {
@@ -203,7 +203,7 @@ nv30_validate_blend_colour(struct nv30_context *nv30)
 static void
 nv30_validate_stencil_ref(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    BEGIN_NV04(push, NV30_3D(STENCIL_FUNC_REF(0)), 1);
    PUSH_DATA (push, nv30->stencil_ref.ref_value[0]);
@@ -214,7 +214,7 @@ nv30_validate_stencil_ref(struct nv30_context *nv30)
 static void
 nv30_validate_stipple(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    BEGIN_NV04(push, NV30_3D(POLYGON_STIPPLE_PATTERN(0)), 32);
    PUSH_DATAp(push, nv30->stipple.stipple, 32);
@@ -223,7 +223,7 @@ nv30_validate_stipple(struct nv30_context *nv30)
 static void
 nv30_validate_scissor(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    struct pipe_scissor_state *s = &nv30->scissor;
    bool rast_scissor = nv30->rast ? nv30->rast->pipe.scissor : false;
 
@@ -245,7 +245,7 @@ nv30_validate_scissor(struct nv30_context *nv30)
 static void
 nv30_validate_viewport(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    struct pipe_viewport_state *vp = &nv30->viewport;
 
    unsigned x = CLAMP(vp->translate[0] - fabsf(vp->scale[0]), 0, 4095);
@@ -274,7 +274,7 @@ nv30_validate_viewport(struct nv30_context *nv30)
 static void
 nv30_validate_clip(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    unsigned i;
    uint32_t clpd_enable = 0;
 
@@ -295,7 +295,7 @@ nv30_validate_clip(struct nv30_context *nv30)
 static void
 nv30_validate_blend(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    PUSH_SPACE(push, nv30->blend->size);
    PUSH_DATAp(push, nv30->blend->data, nv30->blend->size);
@@ -304,7 +304,7 @@ nv30_validate_blend(struct nv30_context *nv30)
 static void
 nv30_validate_zsa(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    PUSH_SPACE(push, nv30->zsa->size);
    PUSH_DATAp(push, nv30->zsa->data, nv30->zsa->size);
@@ -313,7 +313,7 @@ nv30_validate_zsa(struct nv30_context *nv30)
 static void
 nv30_validate_rasterizer(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    PUSH_SPACE(push, nv30->rast->size);
    PUSH_DATAp(push, nv30->rast->data, nv30->rast->size);
@@ -324,7 +324,7 @@ nv30_validate_multisample(struct nv30_context *nv30)
 {
    struct pipe_rasterizer_state *rasterizer = &nv30->rast->pipe;
    struct pipe_blend_state *blend = &nv30->blend->pipe;
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    uint32_t ctrl = nv30->sample_mask << 16;
 
    if (blend->alpha_to_one)
@@ -341,7 +341,7 @@ nv30_validate_multisample(struct nv30_context *nv30)
 static void
 nv30_validate_fragment(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    struct nv30_fragprog *fp = nv30->fragprog.program;
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
@@ -354,7 +354,7 @@ static void
 nv30_validate_point_coord(struct nv30_context *nv30)
 {
    struct pipe_rasterizer_state *rasterizer = &nv30->rast->pipe;
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    struct nv30_fragprog *fp = nv30->fragprog.program;
    uint32_t hw = 0x00000000;
 
@@ -464,9 +464,9 @@ bool
 nv30_state_validate(struct nv30_context *nv30, uint32_t mask, bool hwtnl)
 {
    struct nouveau_screen *screen = &nv30->screen->base;
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_bufctx *bctx = nv30->bufctx;
-   struct nouveau_bufref *bref;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_bufctx *bctx = nv30->bufctx;
+   struct nouveau_ws_bufref *bref;
    struct state_validate *validate;
 
    if (nv30->screen->cur_ctx != nv30)
@@ -498,9 +498,9 @@ nv30_state_validate(struct nv30_context *nv30, uint32_t mask, bool hwtnl)
       nv30->dirty &= ~mask;
    }
 
-   nouveau_pushbuf_bufctx(push, bctx);
-   if (nouveau_pushbuf_validate(push)) {
-      nouveau_pushbuf_bufctx(push, NULL);
+   nouveau_ws_pushbuf_bufctx(push, bctx);
+   if (nouveau_ws_pushbuf_validate(push)) {
+      nouveau_ws_pushbuf_bufctx(push, NULL);
       return false;
    }
 
@@ -541,5 +541,5 @@ nv30_state_validate(struct nv30_context *nv30, uint32_t mask, bool hwtnl)
 void
 nv30_state_release(struct nv30_context *nv30)
 {
-   nouveau_pushbuf_bufctx(nv30->base.pushbuf, NULL);
+   nouveau_ws_pushbuf_bufctx(nv30->base.pushbuf, NULL);
 }

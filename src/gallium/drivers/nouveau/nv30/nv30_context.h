@@ -45,7 +45,7 @@ struct nv30_context {
    struct nv30_screen *screen;
    struct blitter_context *blitter;
 
-   struct nouveau_bufctx *bufctx;
+   struct nouveau_ws_bufctx *bufctx;
 
    struct {
       unsigned rt_enable;

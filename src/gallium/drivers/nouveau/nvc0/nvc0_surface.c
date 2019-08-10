@@ -81,11 +81,11 @@ nvc0_2d_format(enum pipe_format format, bool dst, bool dst_src_equal)
 }
 
 static int
-nvc0_2d_texture_set(struct nouveau_pushbuf *push, bool dst,
+nvc0_2d_texture_set(struct nouveau_ws_pushbuf *push, bool dst,
                     struct nv50_miptree *mt, unsigned level, unsigned layer,
                     enum pipe_format pformat, bool dst_src_pformat_equal)
 {
-   struct nouveau_bo *bo = mt->base.bo;
+   struct nouveau_ws_bo *bo = mt->base.bo;
    uint32_t width, height, depth;
    uint32_t format;
    uint32_t mthd = dst ? NV50_2D_DST_FORMAT : NV50_2D_SRC_FORMAT;
@@ -151,7 +151,7 @@ nvc0_2d_texture_set(struct nouveau_pushbuf *push, bool dst,
 }
 
 static int
-nvc0_2d_texture_do_copy(struct nouveau_pushbuf *push,
+nvc0_2d_texture_do_copy(struct nouveau_ws_pushbuf *push,
                         struct nv50_miptree *dst, unsigned dst_level,
                         unsigned dx, unsigned dy, unsigned dz,
                         struct nv50_miptree *src, unsigned src_level,
@@ -259,8 +259,8 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
 
    BCTX_REFN(nvc0->bufctx, 2D, nv04_resource(src), RD);
    BCTX_REFN(nvc0->bufctx, 2D, nv04_resource(dst), WR);
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
-   nouveau_pushbuf_validate(nvc0->base.pushbuf);
+   nouveau_ws_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
+   nouveau_ws_pushbuf_validate(nvc0->base.pushbuf);
 
    for (; dst_layer < dstz + src_box->depth; ++dst_layer, ++src_layer) {
       ret = nvc0_2d_texture_do_copy(nvc0->base.pushbuf,
@@ -272,7 +272,7 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
       if (ret)
          break;
    }
-   nouveau_bufctx_reset(nvc0->bufctx, 0);
+   nouveau_ws_bufctx_reset(nvc0->bufctx, 0);
 }
 
 static void
@@ -284,7 +284,7 @@ nvc0_clear_render_target(struct pipe_context *pipe,
                          bool render_condition_enabled)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv50_surface *sf = nv50_surface(dst);
    struct nv04_resource *res = nv04_resource(sf->base.texture);
    unsigned z;
@@ -366,13 +366,13 @@ nvc0_clear_buffer_push_nvc0(struct pipe_context *pipe,
                             const void *data, int data_size)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv04_resource *buf = nv04_resource(res);
    unsigned i;
 
-   nouveau_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nvc0->bufctx);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
+   nouveau_ws_pushbuf_bufctx(push, nvc0->bufctx);
+   nouveau_ws_pushbuf_validate(push);
 
    unsigned count = (size + 3) / 4;
    unsigned data_words = data_size / 4;
@@ -405,7 +405,7 @@ nvc0_clear_buffer_push_nvc0(struct pipe_context *pipe,
 
    nvc0_resource_validate(buf, NOUVEAU_BO_WR);
 
-   nouveau_bufctx_reset(nvc0->bufctx, 0);
+   nouveau_ws_bufctx_reset(nvc0->bufctx, 0);
 }
 
 static void
@@ -415,13 +415,13 @@ nvc0_clear_buffer_push_nve4(struct pipe_context *pipe,
                             const void *data, int data_size)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv04_resource *buf = nv04_resource(res);
    unsigned i;
 
-   nouveau_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nvc0->bufctx);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
+   nouveau_ws_pushbuf_bufctx(push, nvc0->bufctx);
+   nouveau_ws_pushbuf_validate(push);
 
    unsigned count = (size + 3) / 4;
    unsigned data_words = data_size / 4;
@@ -452,7 +452,7 @@ nvc0_clear_buffer_push_nve4(struct pipe_context *pipe,
 
    nvc0_resource_validate(buf, NOUVEAU_BO_WR);
 
-   nouveau_bufctx_reset(nvc0->bufctx, 0);
+   nouveau_ws_bufctx_reset(nvc0->bufctx, 0);
 }
 
 static void
@@ -489,7 +489,7 @@ nvc0_clear_buffer(struct pipe_context *pipe,
                   const void *data, int data_size)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv04_resource *buf = nv04_resource(res);
    union pipe_color_union color;
    enum pipe_format dst_fmt;
@@ -619,7 +619,7 @@ nvc0_clear_depth_stencil(struct pipe_context *pipe,
                          bool render_condition_enabled)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv50_miptree *mt = nv50_miptree(dst->texture);
    struct nv50_surface *sf = nv50_surface(dst);
    uint32_t mode = 0;
@@ -686,7 +686,7 @@ nvc0_clear(struct pipe_context *pipe, unsigned buffers,
            double depth, unsigned stencil)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct pipe_framebuffer_state *fb = &nvc0->framebuffer;
    unsigned i, j, k;
    uint32_t mode = 0;
@@ -758,7 +758,7 @@ static void
 gm200_evaluate_depth_buffer(struct pipe_context *pipe)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
 
    nvc0_state_validate_3d(nvc0, NVC0_NEW_3D_FRAMEBUFFER);
    IMMED_NVC0(push, SUBC_3D(0x11fc), 1);
@@ -1012,7 +1012,7 @@ nvc0_blit_set_src(struct nvc0_blitctx *ctx,
 static void
 nvc0_blitctx_prepare_state(struct nvc0_blitctx *blit)
 {
-   struct nouveau_pushbuf *push = blit->nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = blit->nvc0->base.pushbuf;
 
    /* TODO: maybe make this a MACRO (if we need more logic) ? */
 
@@ -1119,9 +1119,9 @@ nvc0_blitctx_pre_blit(struct nvc0_blitctx *ctx,
    nvc0->textures_dirty[4] |= 3;
    nvc0->samplers_dirty[4] |= 3;
 
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_FB);
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 0));
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 1));
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_FB);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 0));
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 1));
 
    nvc0->dirty_3d = NVC0_NEW_3D_FRAMEBUFFER | NVC0_NEW_3D_MIN_SAMPLES |
       NVC0_NEW_3D_VERTPROG | NVC0_NEW_3D_FRAGPROG |
@@ -1177,11 +1177,11 @@ nvc0_blitctx_post_blit(struct nvc0_blitctx *blit)
       nvc0->base.pipe.render_condition(&nvc0->base.pipe, nvc0->cond_query,
                                        nvc0->cond_cond, nvc0->cond_mode);
 
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX_TMP);
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEXT);
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_FB);
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 0));
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 1));
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX_TMP);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEXT);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_FB);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 0));
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(4, 1));
    nouveau_scratch_done(&nvc0->base);
 
    nvc0->dirty_3d = blit->saved.dirty_3d |
@@ -1203,10 +1203,10 @@ nvc0_blit_3d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
 {
    struct nvc0_screen *screen = nvc0->screen;
    struct nvc0_blitctx *blit = nvc0->blit;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct pipe_resource *src = info->src.resource;
    struct pipe_resource *dst = info->dst.resource;
-   struct nouveau_bo *vtxbuf_bo;
+   struct nouveau_ws_bo *vtxbuf_bo;
    uint32_t stride, length, *vbuf;
    uint64_t vtxbuf;
    int32_t minx, maxx, miny, maxy;
@@ -1305,7 +1305,7 @@ nvc0_blit_3d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
                 NOUVEAU_BO_GART | NOUVEAU_BO_RD, vtxbuf_bo);
    BCTX_REFN_bo(nvc0->bufctx_3d, 3D_TEXT,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD, screen->text);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_pushbuf_validate(push);
 
    BEGIN_NVC0(push, NVC0_3D(VERTEX_ARRAY_FETCH(0)), 4);
    PUSH_DATA (push, NVC0_3D_VERTEX_ARRAY_FETCH_ENABLE | stride <<
@@ -1395,7 +1395,7 @@ nvc0_blit_3d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
 static void
 nvc0_blit_eng2d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv50_miptree *dst = nv50_miptree(info->dst.resource);
    struct nv50_miptree *src = nv50_miptree(info->src.resource);
    const int32_t srcx_adj = info->src.box.width < 0 ? -1 : 0;
@@ -1516,8 +1516,8 @@ nvc0_blit_eng2d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
 
    BCTX_REFN(nvc0->bufctx, 2D, &dst->base, WR);
    BCTX_REFN(nvc0->bufctx, 2D, &src->base, RD);
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
-   if (nouveau_pushbuf_validate(nvc0->base.pushbuf))
+   nouveau_ws_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
+   if (nouveau_ws_pushbuf_validate(nvc0->base.pushbuf))
       return;
 
    for (i = 0; i < info->dst.box.depth; ++i) {
@@ -1560,7 +1560,7 @@ nvc0_blit_eng2d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
    nvc0_resource_validate(&dst->base, NOUVEAU_BO_WR);
    nvc0_resource_validate(&src->base, NOUVEAU_BO_RD);
 
-   nouveau_bufctx_reset(nvc0->bufctx, NVC0_BIND_2D);
+   nouveau_ws_bufctx_reset(nvc0->bufctx, NVC0_BIND_2D);
 
    if (info->scissor_enable)
       IMMED_NVC0(push, NVC0_2D(CLIP_ENABLE), 0);
@@ -1574,7 +1574,7 @@ static void
 nvc0_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    bool eng3d = false;
 
    if (info->src.box.width == 0 || info->src.box.height == 0 ||

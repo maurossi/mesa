@@ -74,11 +74,11 @@ struct nvc0_screen {
 
    int num_occlusion_queries_active;
 
-   struct nouveau_bo *text;
-   struct nouveau_bo *uniform_bo;
-   struct nouveau_bo *tls;
-   struct nouveau_bo *txc; /* TIC (offset 0) and TSC (65536) */
-   struct nouveau_bo *poly_cache;
+   struct nouveau_ws_bo *text;
+   struct nouveau_ws_bo *uniform_bo;
+   struct nouveau_ws_bo *tls;
+   struct nouveau_ws_bo *txc; /* TIC (offset 0) and TSC (65536) */
+   struct nouveau_ws_bo *poly_cache;
 
    uint8_t gpc_count;
    uint16_t mp_count;
@@ -108,7 +108,7 @@ struct nvc0_screen {
    } img;
 
    struct {
-      struct nouveau_bo *bo;
+      struct nouveau_ws_bo *bo;
    } fence;
 
    struct {
@@ -121,11 +121,11 @@ struct nvc0_screen {
    /* only maintained on Maxwell+ */
    struct nvc0_cb_binding cb_bindings[5][NVC0_MAX_CONST_BUFFERS];
 
-   struct nouveau_object *eng3d; /* sqrt(1/2)|kepler> + sqrt(1/2)|fermi> */
-   struct nouveau_object *eng2d;
-   struct nouveau_object *m2mf;
-   struct nouveau_object *compute;
-   struct nouveau_object *nvsw;
+   struct nouveau_ws_object *eng3d; /* sqrt(1/2)|kepler> + sqrt(1/2)|fermi> */
+   struct nouveau_ws_object *eng2d;
+   struct nouveau_ws_object *m2mf;
+   struct nouveau_ws_object *compute;
+   struct nouveau_ws_object *nvsw;
 };
 
 static inline struct nvc0_screen *
@@ -148,8 +148,8 @@ void nvc0_screen_make_buffers_resident(struct nvc0_screen *);
 int nvc0_screen_tic_alloc(struct nvc0_screen *, void *);
 int nvc0_screen_tsc_alloc(struct nvc0_screen *, void *);
 
-int nve4_screen_compute_setup(struct nvc0_screen *, struct nouveau_pushbuf *);
-int nvc0_screen_compute_setup(struct nvc0_screen *, struct nouveau_pushbuf *);
+int nve4_screen_compute_setup(struct nvc0_screen *, struct nouveau_ws_pushbuf *);
+int nvc0_screen_compute_setup(struct nvc0_screen *, struct nouveau_ws_pushbuf *);
 
 int nvc0_screen_resize_text_area(struct nvc0_screen *, uint64_t);
 
