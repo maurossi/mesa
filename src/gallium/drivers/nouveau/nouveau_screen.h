@@ -15,18 +15,18 @@ typedef uint16_t u16;
 
 extern int nouveau_mesa_debug;
 
-struct nouveau_bo;
+struct nouveau_ws_bo;
 
 #define NOUVEAU_SHADER_CACHE_FLAGS_IR_TGSI 0 << 0
 #define NOUVEAU_SHADER_CACHE_FLAGS_IR_NIR  1 << 0
 
 struct nouveau_screen {
    struct pipe_screen base;
-   struct nouveau_drm *drm;
-   struct nouveau_device *device;
-   struct nouveau_object *channel;
-   struct nouveau_client *client;
-   struct nouveau_pushbuf *pushbuf;
+   struct nouveau_ws_drm *drm;
+   struct nouveau_ws_device *device;
+   struct nouveau_ws_object *channel;
+   struct nouveau_ws_client *client;
+   struct nouveau_ws_pushbuf *pushbuf;
 
    int refcount;
 
@@ -135,16 +135,16 @@ bool nouveau_drm_screen_unref(struct nouveau_screen *screen);
 
 bool
 nouveau_screen_bo_get_handle(struct pipe_screen *pscreen,
-                             struct nouveau_bo *bo,
+                             struct nouveau_ws_bo *bo,
                              unsigned stride,
                              struct winsys_handle *whandle);
-struct nouveau_bo *
+struct nouveau_ws_bo *
 nouveau_screen_bo_from_handle(struct pipe_screen *pscreen,
                               struct winsys_handle *whandle,
                               unsigned *out_stride);
 
 
-int nouveau_screen_init(struct nouveau_screen *, struct nouveau_device *);
+int nouveau_screen_init(struct nouveau_screen *, struct nouveau_ws_device *);
 void nouveau_screen_fini(struct nouveau_screen *);
 
 void nouveau_screen_init_vdec(struct nouveau_screen *);

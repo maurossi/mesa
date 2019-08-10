@@ -25,7 +25,7 @@
 
 #if NOUVEAU_VP3_DEBUG_FENCE
 static void dump_comm_vp(struct nouveau_vp3_decoder *dec, struct comm *comm, u32 comm_seq,
-                         struct nouveau_bo *inter_bo, unsigned slice_size)
+                         struct nouveau_ws_bo *inter_bo, unsigned slice_size)
 {
    unsigned i, idx = comm->pvp_cur_index & 0xf;
    debug_printf("Status: %08x, stage: %08x\n", comm->status_vp[idx], comm->pvp_stage);
@@ -44,7 +44,7 @@ static void dump_comm_vp(struct nouveau_vp3_decoder *dec, struct comm *comm, u32
 
    if ((comm->pvp_stage & 0xff) != 0xff) {
       unsigned *map;
-      int ret = nouveau_bo_map(inter_bo, NOUVEAU_BO_RD|NOUVEAU_BO_NOBLOCK, dec->client);
+      int ret = nouveau_ws_bo_map(inter_bo, NOUVEAU_BO_RD|NOUVEAU_BO_NOBLOCK, dec->client);
       assert(ret >= 0);
       map = inter_bo->map;
       for (i = 0; i < comm->byte_ofs + slice_size; i += 0x10) {
@@ -70,14 +70,14 @@ nvc0_decoder_vp(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
                 unsigned caps, unsigned is_ref,
                 struct nouveau_vp3_video_buffer *refs[16])
 {
-   struct nouveau_pushbuf *push = dec->pushbuf[1];
+   struct nouveau_ws_pushbuf *push = dec->pushbuf[1];
    uint32_t bsp_addr, comm_addr, inter_addr, ucode_addr, pic_addr[17], last_addr, null_addr;
    uint32_t slice_size, bucket_size, ring_size, i;
    enum pipe_video_format codec = u_reduce_video_profile(dec->base.profile);
-   struct nouveau_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
-   struct nouveau_bo *inter_bo = dec->inter_bo[comm_seq & 1];
+   struct nouveau_ws_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
+   struct nouveau_ws_bo *inter_bo = dec->inter_bo[comm_seq & 1];
    u32 codec_extra = 0;
-   struct nouveau_pushbuf_refn bo_refs[] = {
+   struct nouveau_ws_pushbuf_refn bo_refs[] = {
       { inter_bo, NOUVEAU_BO_WR | NOUVEAU_BO_VRAM },
       { dec->ref_bo, NOUVEAU_BO_WR | NOUVEAU_BO_VRAM },
       { bsp_bo, NOUVEAU_BO_RD | NOUVEAU_BO_VRAM },
@@ -111,9 +111,9 @@ nvc0_decoder_vp(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
    if (!is_ref && (dec->refs[target->valid_ref].decoded_top && dec->refs[target->valid_ref].decoded_bottom))
       nvc0_decoder_kick_ref(dec, target);
 
-   nouveau_pushbuf_space(push, 32 + codec_extra, num_refs, 0);
+   nouveau_ws_pushbuf_space(push, 32 + codec_extra, num_refs, 0);
 
-   nouveau_pushbuf_refn(push, bo_refs, num_refs);
+   nouveau_ws_pushbuf_refn(push, bo_refs, num_refs);
 
    bsp_addr = bsp_bo->offset >> 8;
 #if NOUVEAU_VP3_DEBUG_FENCE

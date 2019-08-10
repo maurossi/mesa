@@ -65,8 +65,8 @@ nv30_fragprog_upload(struct nv30_context *nv30)
 void
 nv30_fragprog_validate(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_object *eng3d = nv30->screen->eng3d;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_object *eng3d = nv30->screen->eng3d;
    struct nv30_fragprog *fp = nv30->fragprog.program;
    bool upload = false;
    int i;
@@ -171,7 +171,7 @@ nv30_fp_state_bind(struct pipe_context *pipe, void *hwcso)
     * code
     */
    if (fp != nv30->state.fragprog)
-      nouveau_bufctx_reset(nv30->bufctx, BUFCTX_FRAGPROG);
+      nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_FRAGPROG);
 
    nv30->fragprog.program = fp;
    nv30->dirty |= NV30_NEW_FRAGPROG;

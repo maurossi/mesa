@@ -239,8 +239,8 @@ nv50_update_tic(struct nv50_context *nv50, struct nv50_tic_entry *tic,
 static bool
 nv50_validate_tic(struct nv50_context *nv50, int s)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
-   struct nouveau_bo *txc = nv50->screen->txc;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_bo *txc = nv50->screen->txc;
    unsigned i;
    bool need_flush = false;
 
@@ -347,7 +347,7 @@ void nv50_validate_textures(struct nv50_context *nv50)
 static bool
 nv50_validate_tsc(struct nv50_context *nv50, int s)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    unsigned i;
    bool need_flush = false;
 
@@ -454,7 +454,7 @@ static const uint32_t msaa_sample_xy_offsets[] = {
    COMBINE(3, 1),
 };
 
-void nv50_upload_ms_info(struct nouveau_pushbuf *push)
+void nv50_upload_ms_info(struct nouveau_ws_pushbuf *push)
 {
    BEGIN_NV04(push, NV50_3D(CB_ADDR), 1);
    PUSH_DATA (push, (NV50_CB_AUX_MS_OFFSET << (8 - 2)) | NV50_CB_AUX);
@@ -464,7 +464,7 @@ void nv50_upload_ms_info(struct nouveau_pushbuf *push)
 
 void nv50_upload_tsc0(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    u32 data[8] = { G80_TSC_0_SRGB_CONVERSION };
    nv50_sifc_linear_u8(&nv50->base, nv50->screen->txc,
                        65536 /* + tsc->id * 32 */,

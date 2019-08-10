@@ -20,7 +20,7 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <nouveau.h>
+#include <ws/nouveau.h>
 
 #include "pipe/p_defines.h"
 #include "vl/vl_video_buffer.h"
@@ -63,19 +63,19 @@ union pipe_desc {
 
 struct nouveau_vp3_decoder {
    struct pipe_video_codec base;
-   struct nouveau_client *client;
-   struct nouveau_object *channel[3], *bsp, *vp, *ppp;
-   struct nouveau_pushbuf *pushbuf[3];
+   struct nouveau_ws_client *client;
+   struct nouveau_ws_object *channel[3], *bsp, *vp, *ppp;
+   struct nouveau_ws_pushbuf *pushbuf[3];
 
 #if NOUVEAU_VP3_DEBUG_FENCE
    /* dump fence and comm, as needed.. */
    unsigned *fence_map;
    struct comm *comm;
 
-   struct nouveau_bo *fence_bo;
+   struct nouveau_ws_bo *fence_bo;
 #endif
 
-   struct nouveau_bo *fw_bo, *bitplane_bo;
+   struct nouveau_ws_bo *fw_bo, *bitplane_bo;
 
    // array size max_references + 2, contains unpostprocessed images
    // added at the end of ref_bo is a tmp array
@@ -83,11 +83,11 @@ struct nouveau_vp3_decoder {
    // target.. size = (((mb(w)*((mb(h)+1)&~1))+3)>>2)<<8 * (max_references+1)
    // for other codecs, it simply seems that size = w*h is enough
    // unsure what it's supposed to contain..
-   struct nouveau_bo *ref_bo;
+   struct nouveau_ws_bo *ref_bo;
 
-   struct nouveau_bo *inter_bo[2];
+   struct nouveau_ws_bo *inter_bo[2];
 
-   struct nouveau_bo *bsp_bo[NOUVEAU_VP3_VIDEO_QDEPTH];
+   struct nouveau_ws_bo *bsp_bo[NOUVEAU_VP3_VIDEO_QDEPTH];
 
    // bo's used by each cycle:
 

@@ -87,7 +87,7 @@ nv98_create_decoder(struct pipe_context *context,
 {
    struct nouveau_screen *screen = &((struct nv50_context *)context)->screen->base;
    struct nouveau_vp3_decoder *dec;
-   struct nouveau_pushbuf **push;
+   struct nouveau_ws_pushbuf **push;
    struct nv04_fifo nv04_data = {.vram = 0xbeef0201, .gart = 0xbeef0202};
 
    int ret, i;
@@ -114,12 +114,12 @@ nv98_create_decoder(struct pipe_context *context,
    dec->vp_idx = 6;
    dec->ppp_idx = 7;
 
-   ret = nouveau_object_new(&screen->device->object, 0,
-                            NOUVEAU_FIFO_CHANNEL_CLASS,
-                            &nv04_data, sizeof(nv04_data), &dec->channel[0]);
+   ret = nouveau_ws_object_new(screen->device->object, 0,
+                               NOUVEAU_FIFO_CHANNEL_CLASS,
+                               &nv04_data, sizeof(nv04_data), &dec->channel[0]);
 
    if (!ret)
-      ret = nouveau_pushbuf_new(screen->client, dec->channel[0], 4,
+      ret = nouveau_ws_pushbuf_new(screen->client, dec->channel[0], 4,
                                 32 * 1024, true, &dec->pushbuf[0]);
 
    for (i = 1; i < 3; ++i) {
@@ -129,27 +129,27 @@ nv98_create_decoder(struct pipe_context *context,
    push = dec->pushbuf;
 
    if (!ret) {
-      ret = nouveau_object_mclass(dec->channel[0], nv98_decoder_msvld);
+      ret = nouveau_ws_object_mclass(dec->channel[0], nv98_decoder_msvld);
       if (ret >= 0) {
-         ret = nouveau_object_new(dec->channel[0], 0xbeef85b1,
+         ret = nouveau_ws_object_new(dec->channel[0], 0xbeef85b1,
                                   nv98_decoder_msvld[ret].oclass, NULL, 0,
                                   &dec->bsp);
       }
    }
 
    if (!ret) {
-      ret = nouveau_object_mclass(dec->channel[1], nv98_decoder_mspdec);
+      ret = nouveau_ws_object_mclass(dec->channel[1], nv98_decoder_mspdec);
       if (ret >= 0) {
-         ret = nouveau_object_new(dec->channel[1], 0xbeef85b2,
+         ret = nouveau_ws_object_new(dec->channel[1], 0xbeef85b2,
                                   nv98_decoder_mspdec[ret].oclass, NULL, 0,
                                   &dec->vp);
       }
    }
 
    if (!ret) {
-      ret = nouveau_object_mclass(dec->channel[2], nv98_decoder_msppp);
+      ret = nouveau_ws_object_mclass(dec->channel[2], nv98_decoder_msppp);
       if (ret >= 0) {
-         ret = nouveau_object_new(dec->channel[2], 0xbeef85b3,
+         ret = nouveau_ws_object_new(dec->channel[2], 0xbeef85b3,
                                   nv98_decoder_msppp[ret].oclass, NULL, 0,
                                   &dec->ppp);
       }
@@ -183,13 +183,13 @@ nv98_create_decoder(struct pipe_context *context,
    dec->base.decode_bitstream = nv98_decoder_decode_bitstream;
 
    for (i = 0; i < NOUVEAU_VP3_VIDEO_QDEPTH && !ret; ++i)
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM,
                            0, 1 << 20, NULL, &dec->bsp_bo[i]);
    if (!ret)
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM,
                            0x100, 4 << 20, NULL, &dec->inter_bo[0]);
    if (!ret)
-      nouveau_bo_ref(dec->inter_bo[0], &dec->inter_bo[1]);
+      nouveau_ws_bo_ref(dec->inter_bo[0], &dec->inter_bo[1]);
    if (ret)
       goto fail;
 
@@ -223,7 +223,7 @@ nv98_create_decoder(struct pipe_context *context,
       goto fail;
    }
 
-   ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
+   ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
                            0x4000, NULL, &dec->fw_bo);
    if (ret)
       goto fail;
@@ -233,14 +233,14 @@ nv98_create_decoder(struct pipe_context *context,
       goto fw_fail;
 
    if (codec != 3) {
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
                            0x400, NULL, &dec->bitplane_bo);
       if (ret)
          goto fail;
    }
 
    dec->ref_stride = mb(templ->width)*16 * (mb_half(templ->height)*32 + nouveau_vp3_video_align(templ->height)/2);
-   ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
+   ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
                         dec->ref_stride * (templ->max_references+2) + tmp_size,
                         NULL, &dec->ref_bo);
    if (ret)
@@ -263,18 +263,18 @@ nv98_create_decoder(struct pipe_context *context,
    ++dec->fence_seq;
 
 #if NOUVEAU_VP3_DEBUG_FENCE
-   ret = nouveau_bo_new(screen->device, NOUVEAU_BO_GART|NOUVEAU_BO_MAP,
+   ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_GART|NOUVEAU_BO_MAP,
                         0, 0x1000, NULL, &dec->fence_bo);
    if (ret)
       goto fail;
 
-   nouveau_bo_map(dec->fence_bo, NOUVEAU_BO_RDWR, screen->client);
+   nouveau_ws_bo_map(dec->fence_bo, NOUVEAU_BO_RDWR, screen->client);
    dec->fence_map = dec->fence_bo->map;
    dec->fence_map[0] = dec->fence_map[4] = dec->fence_map[8] = 0;
    dec->comm = (struct comm *)(dec->fence_map + (COMM_OFFSET/sizeof(*dec->fence_map)));
 
    /* So lets test if the fence is working? */
-   nouveau_pushbuf_space(push[0], 16, 1, 0);
+   nouveau_ws_pushbuf_space(push[0], 16, 1, 0);
    PUSH_REFN (push[0], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NV04(push[0], SUBC_BSP(0x240), 3);
    PUSH_DATAh(push[0], dec->fence_bo->offset);
@@ -285,7 +285,7 @@ nv98_create_decoder(struct pipe_context *context,
    PUSH_DATA (push[0], 0);
    PUSH_KICK (push[0]);
 
-   nouveau_pushbuf_space(push[1], 16, 1, 0);
+   nouveau_ws_pushbuf_space(push[1], 16, 1, 0);
    PUSH_REFN (push[1], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NV04(push[1], SUBC_VP(0x240), 3);
    PUSH_DATAh(push[1], (dec->fence_bo->offset + 0x10));
@@ -296,7 +296,7 @@ nv98_create_decoder(struct pipe_context *context,
    PUSH_DATA (push[1], 0);
    PUSH_KICK (push[1]);
 
-   nouveau_pushbuf_space(push[2], 16, 1, 0);
+   nouveau_ws_pushbuf_space(push[2], 16, 1, 0);
    PUSH_REFN (push[2], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NV04(push[2], SUBC_PPP(0x240), 3);
    PUSH_DATAh(push[2], (dec->fence_bo->offset + 0x20));
