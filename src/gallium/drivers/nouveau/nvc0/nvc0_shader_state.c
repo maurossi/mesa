@@ -41,7 +41,7 @@ nvc0_program_update_context_state(struct nvc0_context *nvc0,
       nvc0->state.tls_required |= 1 << stage;
    } else {
       if (nvc0->state.tls_required == (1 << stage))
-         nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TLS);
+         nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TLS);
       nvc0->state.tls_required &= ~(1 << stage);
    }
 }
@@ -67,7 +67,7 @@ nvc0_program_validate(struct nvc0_context *nvc0, struct nvc0_program *prog)
 void
 nvc0_vertprog_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *vp = nvc0->vertprog;
 
    if (!nvc0_program_validate(nvc0, vp))
@@ -87,7 +87,7 @@ nvc0_vertprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_fragprog_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *fp = nvc0->fragprog;
    struct pipe_rasterizer_state *rast = &nvc0->rast->pipe;
 
@@ -168,7 +168,7 @@ nvc0_fragprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_tctlprog_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *tp = nvc0->tctlprog;
 
    if (tp && nvc0_program_validate(nvc0, tp)) {
@@ -196,7 +196,7 @@ nvc0_tctlprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_tevlprog_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *tp = nvc0->tevlprog;
 
    if (tp && nvc0_program_validate(nvc0, tp)) {
@@ -220,7 +220,7 @@ nvc0_tevlprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *gp = nvc0->gmtyprog;
 
    /* we allow GPs with no code for specifying stream output state only */
@@ -241,7 +241,7 @@ nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_compprog_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *cp = nvc0->compprog;
 
    if (cp && !nvc0_program_validate(nvc0, cp))
@@ -254,7 +254,7 @@ nvc0_compprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_layer_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *last;
    bool prog_selects_layer = false;
 
@@ -275,7 +275,7 @@ nvc0_layer_validate(struct nvc0_context *nvc0)
 void
 nvc0_tfb_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_transform_feedback_state *tfb;
    unsigned b;
 
@@ -332,7 +332,7 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
 
       if (!targ->clean)
          nvc0_hw_query_fifo_wait(nvc0, nvc0_query(targ->pq));
-      nouveau_pushbuf_space(push, 0, 0, 1);
+      nouveau_ws_pushbuf_space(push, 0, 0, 1);
       BEGIN_NVC0(push, NVC0_3D(TFB_BUFFER_ENABLE(b)), 5);
       PUSH_DATA (push, 1);
       PUSH_DATAh(push, buf->address + targ->pipe.buffer_offset);

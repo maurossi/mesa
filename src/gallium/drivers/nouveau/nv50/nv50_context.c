@@ -46,7 +46,7 @@ nv50_flush(struct pipe_context *pipe,
 static void
 nv50_texture_barrier(struct pipe_context *pipe, unsigned flags)
 {
-   struct nouveau_pushbuf *push = nv50_context(pipe)->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50_context(pipe)->base.pushbuf;
 
    BEGIN_NV04(push, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
    PUSH_DATA (push, 0);
@@ -93,7 +93,7 @@ nv50_memory_barrier(struct pipe_context *pipe, unsigned flags)
 static void
 nv50_emit_string_marker(struct pipe_context *pipe, const char *str, int len)
 {
-   struct nouveau_pushbuf *push = nv50_context(pipe)->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50_context(pipe)->base.pushbuf;
    int string_words = len / 4;
    int data_words;
 
@@ -115,7 +115,7 @@ nv50_emit_string_marker(struct pipe_context *pipe, const char *str, int len)
 }
 
 void
-nv50_default_kick_notify(struct nouveau_pushbuf *push)
+nv50_default_kick_notify(struct nouveau_ws_pushbuf *push)
 {
    struct nv50_screen *screen = push->user_priv;
 
@@ -132,9 +132,9 @@ nv50_context_unreference_resources(struct nv50_context *nv50)
 {
    unsigned s, i;
 
-   nouveau_bufctx_del(&nv50->bufctx_3d);
-   nouveau_bufctx_del(&nv50->bufctx);
-   nouveau_bufctx_del(&nv50->bufctx_cp);
+   nouveau_ws_bufctx_del(&nv50->bufctx_3d);
+   nouveau_ws_bufctx_del(&nv50->bufctx);
+   nouveau_ws_bufctx_del(&nv50->bufctx_cp);
 
    util_unreference_framebuffer_state(&nv50->framebuffer);
 
@@ -175,8 +175,8 @@ nv50_destroy(struct pipe_context *pipe)
    if (nv50->base.pipe.stream_uploader)
       u_upload_destroy(nv50->base.pipe.stream_uploader);
 
-   nouveau_pushbuf_bufctx(nv50->base.pushbuf, NULL);
-   nouveau_pushbuf_kick(nv50->base.pushbuf, nv50->base.pushbuf->channel);
+   nouveau_ws_pushbuf_bufctx(nv50->base.pushbuf, NULL);
+   nouveau_ws_pushbuf_kick(nv50->base.pushbuf, nv50->base.pushbuf->channel);
 
    nv50_context_unreference_resources(nv50);
 
@@ -200,7 +200,7 @@ nv50_invalidate_resource_storage(struct nouveau_context *ctx,
          if (nv50->framebuffer.cbufs[i] &&
              nv50->framebuffer.cbufs[i]->texture == res) {
             nv50->dirty_3d |= NV50_NEW_3D_FRAMEBUFFER;
-            nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
+            nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
             if (!--ref)
                return ref;
          }
@@ -210,7 +210,7 @@ nv50_invalidate_resource_storage(struct nouveau_context *ctx,
       if (nv50->framebuffer.zsbuf &&
           nv50->framebuffer.zsbuf->texture == res) {
          nv50->dirty_3d |= NV50_NEW_3D_FRAMEBUFFER;
-         nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
+         nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
          if (!--ref)
             return ref;
       }
@@ -226,7 +226,7 @@ nv50_invalidate_resource_storage(struct nouveau_context *ctx,
       for (i = 0; i < nv50->num_vtxbufs; ++i) {
          if (nv50->vtxbuf[i].buffer.resource == res) {
             nv50->dirty_3d |= NV50_NEW_3D_ARRAYS;
-            nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_VERTEX);
+            nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_VERTEX);
             if (!--ref)
                return ref;
          }
@@ -238,7 +238,7 @@ nv50_invalidate_resource_storage(struct nouveau_context *ctx,
          if (nv50->textures[s][i] &&
              nv50->textures[s][i]->texture == res) {
             nv50->dirty_3d |= NV50_NEW_3D_TEXTURES;
-            nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TEXTURES);
+            nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TEXTURES);
             if (!--ref)
                return ref;
          }
@@ -253,7 +253,7 @@ nv50_invalidate_resource_storage(struct nouveau_context *ctx,
              nv50->constbuf[s][i].u.buf == res) {
             nv50->dirty_3d |= NV50_NEW_3D_CONSTBUF;
             nv50->constbuf_dirty[s] |= 1 << i;
-            nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_CB(s, i));
+            nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_CB(s, i));
             if (!--ref)
                return ref;
          }
@@ -288,12 +288,12 @@ nv50_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    nv50->base.pushbuf = screen->base.pushbuf;
    nv50->base.client = screen->base.client;
 
-   ret = nouveau_bufctx_new(screen->base.client, 2, &nv50->bufctx);
+   ret = nouveau_ws_bufctx_new(screen->base.client, 2, &nv50->bufctx);
    if (!ret)
-      ret = nouveau_bufctx_new(screen->base.client, NV50_BIND_3D_COUNT,
+      ret = nouveau_ws_bufctx_new(screen->base.client, NV50_BIND_3D_COUNT,
                                &nv50->bufctx_3d);
    if (!ret)
-      ret = nouveau_bufctx_new(screen->base.client, NV50_BIND_CP_COUNT,
+      ret = nouveau_ws_bufctx_new(screen->base.client, NV50_BIND_CP_COUNT,
                                &nv50->bufctx_cp);
    if (ret)
       goto out_err;
@@ -329,7 +329,7 @@ nv50_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
        */
       nv50->state = screen->save_state;
       screen->cur_ctx = nv50;
-      nouveau_pushbuf_bufctx(screen->base.pushbuf, nv50->bufctx);
+      nouveau_ws_pushbuf_bufctx(screen->base.pushbuf, nv50->bufctx);
    }
    nv50->base.pushbuf->kick_notify = nv50_default_kick_notify;
 
@@ -394,24 +394,22 @@ out_err:
    if (pipe->stream_uploader)
       u_upload_destroy(pipe->stream_uploader);
    if (nv50->bufctx_3d)
-      nouveau_bufctx_del(&nv50->bufctx_3d);
+      nouveau_ws_bufctx_del(&nv50->bufctx_3d);
    if (nv50->bufctx_cp)
-      nouveau_bufctx_del(&nv50->bufctx_cp);
+      nouveau_ws_bufctx_del(&nv50->bufctx_cp);
    if (nv50->bufctx)
-      nouveau_bufctx_del(&nv50->bufctx);
+      nouveau_ws_bufctx_del(&nv50->bufctx);
    FREE(nv50->blit);
    FREE(nv50);
    return NULL;
 }
 
 void
-nv50_bufctx_fence(struct nouveau_bufctx *bufctx, bool on_flush)
+nv50_bufctx_fence(struct nouveau_ws_bufctx *bufctx, bool on_flush)
 {
-   struct nouveau_list *list = on_flush ? &bufctx->current : &bufctx->pending;
-   struct nouveau_list *it;
+   struct list_head *list = on_flush ? &bufctx->current : &bufctx->pending;
 
-   for (it = list->next; it != list; it = it->next) {
-      struct nouveau_bufref *ref = (struct nouveau_bufref *)it;
+   list_for_each_entry(struct nouveau_ws_bufref, ref, list, thead) {
       struct nv04_resource *res = ref->priv;
       if (res)
          nv50_resource_validate(res, (unsigned)ref->priv_data);

@@ -34,7 +34,7 @@
 void
 nv50_constbufs_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    unsigned s;
 
    for (s = 0; s < 3; ++s) {
@@ -134,14 +134,14 @@ nv50_program_update_context_state(struct nv50_context *nv50,
 
    if (prog && prog->tls_space) {
       if (nv50->state.new_tls_space)
-         nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TLS);
+         nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TLS);
       if (!nv50->state.tls_required || nv50->state.new_tls_space)
          BCTX_REFN_bo(nv50->bufctx_3d, 3D_TLS, flags, nv50->screen->tls_bo);
       nv50->state.new_tls_space = false;
       nv50->state.tls_required |= 1 << stage;
    } else {
       if (nv50->state.tls_required == (1 << stage))
-         nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TLS);
+         nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TLS);
       nv50->state.tls_required &= ~(1 << stage);
    }
 }
@@ -149,7 +149,7 @@ nv50_program_update_context_state(struct nv50_context *nv50,
 void
 nv50_vertprog_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_program *vp = nv50->vertprog;
 
    if (!nv50_program_validate(nv50, vp))
@@ -170,7 +170,7 @@ nv50_vertprog_validate(struct nv50_context *nv50)
 void
 nv50_fragprog_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_program *fp = nv50->fragprog;
    struct pipe_rasterizer_state *rast = &nv50->rast->pipe;
 
@@ -257,7 +257,7 @@ nv50_fragprog_validate(struct nv50_context *nv50)
 void
 nv50_gmtyprog_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_program *gp = nv50->gmtyprog;
 
    if (gp) {
@@ -284,7 +284,7 @@ nv50_gmtyprog_validate(struct nv50_context *nv50)
 void
 nv50_compprog_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_program *cp = nv50->compprog;
 
    if (cp && !nv50_program_validate(nv50, cp))
@@ -297,7 +297,7 @@ nv50_compprog_validate(struct nv50_context *nv50)
 static void
 nv50_sprite_coords_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    uint32_t pntc[8], mode;
    struct nv50_program *fp = nv50->fragprog;
    unsigned i, c;
@@ -354,7 +354,7 @@ nv50_sprite_coords_validate(struct nv50_context *nv50)
 void
 nv50_validate_derived_rs(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    uint32_t color, psize;
 
    nv50_sprite_coords_validate(nv50);
@@ -419,7 +419,7 @@ nv50_vec4_map(uint8_t *map, int mid, uint32_t lin[4],
 void
 nv50_fp_linkage_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_program *vp = nv50->gmtyprog ? nv50->gmtyprog : nv50->vertprog;
    struct nv50_program *fp = nv50->fragprog;
    struct nv50_varying dummy;
@@ -629,7 +629,7 @@ nv50_vp_gp_mapping(uint8_t *map, int m,
 void
 nv50_gp_linkage_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_program *vp = nv50->vertprog;
    struct nv50_program *gp = nv50->gmtyprog;
    int m = 0;
@@ -657,7 +657,7 @@ nv50_gp_linkage_validate(struct nv50_context *nv50)
 void
 nv50_stream_output_validate(struct nv50_context *nv50)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_stream_output_state *so;
    uint32_t ctrl;
    unsigned i;

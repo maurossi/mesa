@@ -166,7 +166,7 @@ nv50_miptree_destroy(struct pipe_screen *pscreen, struct pipe_resource *pt)
    if (mt->base.fence && mt->base.fence->state < NOUVEAU_FENCE_STATE_FLUSHED)
       nouveau_fence_work(mt->base.fence, nouveau_fence_unref_bo, mt->base.bo);
    else
-      nouveau_bo_ref(NULL, &mt->base.bo);
+      nouveau_ws_bo_ref(NULL, &mt->base.bo);
 
    nouveau_fence_ref(NULL, &mt->base.fence);
    nouveau_fence_ref(NULL, &mt->base.fence_wr);
@@ -334,13 +334,13 @@ struct pipe_resource *
 nv50_miptree_create(struct pipe_screen *pscreen,
                     const struct pipe_resource *templ)
 {
-   struct nouveau_device *dev = nouveau_screen(pscreen)->device;
-   struct nouveau_drm *drm = nouveau_screen(pscreen)->drm;
+   struct nouveau_ws_device *dev = nouveau_screen(pscreen)->device;
+   struct nouveau_ws_drm *drm = nouveau_screen(pscreen)->drm;
    struct nv50_miptree *mt = CALLOC_STRUCT(nv50_miptree);
    struct pipe_resource *pt = &mt->base.base;
    bool compressed = drm->version >= 0x01000101;
    int ret;
-   union nouveau_bo_config bo_config;
+   struct nouveau_ws_bo_config bo_config;
    uint32_t bo_flags;
 
    if (!mt)
@@ -354,7 +354,7 @@ nv50_miptree_create(struct pipe_screen *pscreen,
    if (pt->bind & PIPE_BIND_LINEAR)
       pt->flags |= NOUVEAU_RESOURCE_FLAG_LINEAR;
 
-   bo_config.nv50.memtype = nv50_mt_choose_storage_type(mt, compressed);
+   bo_config.memtype = nv50_mt_choose_storage_type(mt, compressed);
 
    if (!nv50_miptree_init_ms_mode(mt)) {
       FREE(mt);
@@ -368,16 +368,16 @@ nv50_miptree_create(struct pipe_screen *pscreen,
          return pt;
       }
    } else
-   if (bo_config.nv50.memtype != 0) {
+   if (bo_config.memtype != 0) {
       nv50_miptree_init_layout_tiled(mt);
    } else
    if (!nv50_miptree_init_layout_linear(mt, 64)) {
       FREE(mt);
       return NULL;
    }
-   bo_config.nv50.tile_mode = mt->level[0].tile_mode;
+   bo_config.tile_mode = mt->level[0].tile_mode;
 
-   if (!bo_config.nv50.memtype && (pt->bind & PIPE_BIND_SHARED))
+   if (!bo_config.memtype && (pt->bind & PIPE_BIND_SHARED))
       mt->base.domain = NOUVEAU_BO_GART;
    else
       mt->base.domain = NV_VRAM_DOMAIN(nouveau_screen(pscreen));
@@ -386,7 +386,7 @@ nv50_miptree_create(struct pipe_screen *pscreen,
    if (mt->base.base.bind & (PIPE_BIND_CURSOR | PIPE_BIND_DISPLAY_TARGET))
       bo_flags |= NOUVEAU_BO_CONTIG;
 
-   ret = nouveau_bo_new(dev, bo_flags, 4096, mt->total_size, &bo_config,
+   ret = nouveau_ws_bo_new(dev, bo_flags, 4096, mt->total_size, &bo_config,
                         &mt->base.bo);
    if (ret) {
       FREE(mt);
@@ -431,7 +431,7 @@ nv50_miptree_from_handle(struct pipe_screen *pscreen,
    mt->base.base.screen = pscreen;
    mt->level[0].pitch = stride;
    mt->level[0].offset = 0;
-   mt->level[0].tile_mode = mt->base.bo->config.nv50.tile_mode;
+   mt->level[0].tile_mode = mt->base.bo->config.tile_mode;
 
    NOUVEAU_DRV_STAT(nouveau_screen(pscreen), tex_obj_current_count, 1);
 

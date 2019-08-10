@@ -47,7 +47,7 @@ nv50_hw_query_allocate(struct nv50_context *nv50, struct nv50_query *q,
    int ret;
 
    if (hq->bo) {
-      nouveau_bo_ref(NULL, &hq->bo);
+      nouveau_ws_bo_ref(NULL, &hq->bo);
       if (hq->mm) {
          if (hq->state == NV50_HW_QUERY_STATE_READY)
             nouveau_mm_free(hq->mm);
@@ -63,7 +63,7 @@ nv50_hw_query_allocate(struct nv50_context *nv50, struct nv50_query *q,
          return false;
       hq->offset = hq->base_offset;
 
-      ret = nouveau_bo_map(hq->bo, 0, screen->base.client);
+      ret = nouveau_ws_bo_map(hq->bo, 0, screen->base.client);
       if (ret) {
          nv50_hw_query_allocate(nv50, q, 0);
          return false;
@@ -74,7 +74,7 @@ nv50_hw_query_allocate(struct nv50_context *nv50, struct nv50_query *q,
 }
 
 static void
-nv50_hw_query_get(struct nouveau_pushbuf *push, struct nv50_query *q,
+nv50_hw_query_get(struct nouveau_ws_pushbuf *push, struct nv50_query *q,
                unsigned offset, uint32_t get)
 {
    struct nv50_hw_query *hq = nv50_hw_query(q);
@@ -122,7 +122,7 @@ nv50_hw_destroy_query(struct nv50_context *nv50, struct nv50_query *q)
 static bool
 nv50_hw_begin_query(struct nv50_context *nv50, struct nv50_query *q)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_hw_query *hq = nv50_hw_query(q);
 
    if (hq->funcs && hq->funcs->begin_query)
@@ -197,7 +197,7 @@ nv50_hw_begin_query(struct nv50_context *nv50, struct nv50_query *q)
 static void
 nv50_hw_end_query(struct nv50_context *nv50, struct nv50_query *q)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_hw_query *hq = nv50_hw_query(q);
 
    if (hq->funcs && hq->funcs->end_query) {
@@ -290,7 +290,7 @@ nv50_hw_get_query_result(struct nv50_context *nv50, struct nv50_query *q,
          }
          return false;
       }
-      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nv50->screen->base.client))
+      if (nouveau_ws_bo_wait(hq->bo, NOUVEAU_BO_RD, nv50->screen->base.client))
          return false;
    }
    hq->state = NV50_HW_QUERY_STATE_READY;
@@ -431,14 +431,14 @@ nv50_hw_get_driver_query_info(struct nv50_screen *screen, unsigned id,
 }
 
 void
-nv50_hw_query_pushbuf_submit(struct nouveau_pushbuf *push, uint16_t method,
+nv50_hw_query_pushbuf_submit(struct nouveau_ws_pushbuf *push, uint16_t method,
                              struct nv50_query *q, unsigned result_offset)
 {
    struct nv50_hw_query *hq = nv50_hw_query(q);
 
    nv50_hw_query_update(q);
    if (hq->state != NV50_HW_QUERY_STATE_READY)
-      nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, push->client);
+      nouveau_ws_bo_wait(hq->bo, NOUVEAU_BO_RD, push->client);
    hq->state = NV50_HW_QUERY_STATE_READY;
 
    BEGIN_NV04(push, SUBC_3D(method), 1);
@@ -446,7 +446,7 @@ nv50_hw_query_pushbuf_submit(struct nouveau_pushbuf *push, uint16_t method,
 }
 
 void
-nv84_hw_query_fifo_wait(struct nouveau_pushbuf *push, struct nv50_query *q)
+nv84_hw_query_fifo_wait(struct nouveau_ws_pushbuf *push, struct nv50_query *q)
 {
    struct nv50_hw_query *hq = nv50_hw_query(q);
    unsigned offset = hq->offset;
