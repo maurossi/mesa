@@ -39,7 +39,7 @@ static void *
 nv30_blend_state_create(struct pipe_context *pipe,
                         const struct pipe_blend_state *cso)
 {
-   struct nouveau_object *eng3d = nv30_context(pipe)->screen->eng3d;
+   struct nouveau_ws_object *eng3d = nv30_context(pipe)->screen->eng3d;
    struct nv30_blend_stateobj *so;
    uint32_t blend[2], cmask[2];
    int i;
@@ -211,7 +211,7 @@ static void *
 nv30_zsa_state_create(struct pipe_context *pipe,
                       const struct pipe_depth_stencil_alpha_state *cso)
 {
-   struct nouveau_object *eng3d = nv30_context(pipe)->screen->eng3d;
+   struct nouveau_ws_object *eng3d = nv30_context(pipe)->screen->eng3d;
    struct nv30_zsa_stateobj *so;
 
    so = CALLOC_STRUCT(nv30_zsa_stateobj);
@@ -366,7 +366,7 @@ nv30_set_framebuffer_state(struct pipe_context *pipe,
 {
     struct nv30_context *nv30 = nv30_context(pipe);
 
-    nouveau_bufctx_reset(nv30->bufctx, BUFCTX_FB);
+    nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_FB);
 
     nv30->framebuffer = *fb;
     nv30->dirty |= NV30_NEW_FRAMEBUFFER;
@@ -430,7 +430,7 @@ nv30_set_vertex_buffers(struct pipe_context *pipe,
 {
     struct nv30_context *nv30 = nv30_context(pipe);
 
-    nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VTXBUF);
+    nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_VTXBUF);
 
     util_set_vertex_buffers_count(nv30->vtxbuf, &nv30->num_vtxbufs,
                                   vb, start_slot, count);

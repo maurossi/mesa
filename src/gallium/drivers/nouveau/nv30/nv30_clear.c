@@ -54,7 +54,7 @@ nv30_clear(struct pipe_context *pipe, unsigned buffers,
            const union pipe_color_union *color, double depth, unsigned stencil)
 {
    struct nv30_context *nv30 = nv30_context(pipe);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    struct pipe_framebuffer_state *fb = &nv30->framebuffer;
    uint32_t colr = 0, zeta = 0, mode = 0;
 
@@ -107,9 +107,9 @@ nv30_clear_render_target(struct pipe_context *pipe, struct pipe_surface *ps,
    struct nv30_context *nv30 = nv30_context(pipe);
    struct nv30_surface *sf = nv30_surface(ps);
    struct nv30_miptree *mt = nv30_miptree(ps->texture);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_object *eng3d = nv30->screen->eng3d;
-   struct nouveau_pushbuf_refn refn;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_object *eng3d = nv30->screen->eng3d;
+   struct nouveau_ws_pushbuf_refn refn;
    uint32_t rt_format;
 
    rt_format = nv30_format(pipe->screen, ps->format)->hw;
@@ -128,8 +128,8 @@ nv30_clear_render_target(struct pipe_context *pipe, struct pipe_surface *ps,
 
    refn.bo = mt->base.bo;
    refn.flags = NOUVEAU_BO_VRAM | NOUVEAU_BO_WR;
-   if (nouveau_pushbuf_space(push, 32, 1, 0) ||
-       nouveau_pushbuf_refn (push, &refn, 1))
+   if (nouveau_ws_pushbuf_space(push, 32, 1, 0) ||
+       nouveau_ws_pushbuf_refn (push, &refn, 1))
       return;
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
@@ -167,9 +167,9 @@ nv30_clear_depth_stencil(struct pipe_context *pipe, struct pipe_surface *ps,
    struct nv30_context *nv30 = nv30_context(pipe);
    struct nv30_surface *sf = nv30_surface(ps);
    struct nv30_miptree *mt = nv30_miptree(ps->texture);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_object *eng3d = nv30->screen->eng3d;
-   struct nouveau_pushbuf_refn refn;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_object *eng3d = nv30->screen->eng3d;
+   struct nouveau_ws_pushbuf_refn refn;
    uint32_t rt_format, mode = 0;
 
    rt_format = nv30_format(pipe->screen, ps->format)->hw;
@@ -193,8 +193,8 @@ nv30_clear_depth_stencil(struct pipe_context *pipe, struct pipe_surface *ps,
 
    refn.bo = mt->base.bo;
    refn.flags = NOUVEAU_BO_VRAM | NOUVEAU_BO_WR;
-   if (nouveau_pushbuf_space(push, 32, 1, 0) ||
-       nouveau_pushbuf_refn (push, &refn, 1))
+   if (nouveau_ws_pushbuf_space(push, 32, 1, 0) ||
+       nouveau_ws_pushbuf_refn (push, &refn, 1))
       return;
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);

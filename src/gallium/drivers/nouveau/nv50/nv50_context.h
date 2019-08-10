@@ -115,9 +115,9 @@ struct nv50_context {
 
    struct nv50_screen *screen;
 
-   struct nouveau_bufctx *bufctx_3d;
-   struct nouveau_bufctx *bufctx;
-   struct nouveau_bufctx *bufctx_cp;
+   struct nouveau_ws_bufctx *bufctx_3d;
+   struct nouveau_ws_bufctx *bufctx;
+   struct nouveau_ws_bufctx *bufctx_cp;
 
    uint32_t dirty_3d; /* dirty flags for 3d state */
    uint32_t dirty_cp; /* dirty flags for compute state */
@@ -214,9 +214,9 @@ nv50_context_shader_stage(unsigned pipe)
 /* nv50_context.c */
 struct pipe_context *nv50_create(struct pipe_screen *, void *, unsigned flags);
 
-void nv50_bufctx_fence(struct nouveau_bufctx *, bool on_flush);
+void nv50_bufctx_fence(struct nouveau_ws_bufctx *, bool on_flush);
 
-void nv50_default_kick_notify(struct nouveau_pushbuf *);
+void nv50_default_kick_notify(struct nouveau_ws_pushbuf *);
 
 /* nv50_draw.c */
 extern struct draw_stage *nv50_draw_render_stage(struct nv50_context *);
@@ -243,7 +243,7 @@ struct nv50_state_validate {
 
 bool nv50_state_validate(struct nv50_context *, uint32_t,
                          struct nv50_state_validate *, int, uint32_t *,
-                         struct nouveau_bufctx *);
+                         struct nouveau_ws_bufctx *);
 bool nv50_state_validate_3d(struct nv50_context *, uint32_t);
 
 /* nv50_surface.c */
@@ -255,7 +255,7 @@ extern void nv50_init_surface_functions(struct nv50_context *);
 /* nv50_tex.c */
 void nv50_validate_textures(struct nv50_context *);
 void nv50_validate_samplers(struct nv50_context *);
-void nv50_upload_ms_info(struct nouveau_pushbuf *);
+void nv50_upload_ms_info(struct nouveau_ws_pushbuf *);
 void nv50_upload_tsc0(struct nv50_context *);
 
 struct pipe_sampler_view *
@@ -277,12 +277,12 @@ nv50_m2mf_transfer_rect(struct nv50_context *,
                         uint32_t nblocksx, uint32_t nblocksy);
 void
 nv50_sifc_linear_u8(struct nouveau_context *pipe,
-                    struct nouveau_bo *dst, unsigned offset, unsigned domain,
+                    struct nouveau_ws_bo *dst, unsigned offset, unsigned domain,
                     unsigned size, const void *data);
 void
 nv50_m2mf_copy_linear(struct nouveau_context *pipe,
-                      struct nouveau_bo *dst, unsigned dstoff, unsigned dstdom,
-                      struct nouveau_bo *src, unsigned srcoff, unsigned srcdom,
+                      struct nouveau_ws_bo *dst, unsigned dstoff, unsigned dstdom,
+                      struct nouveau_ws_bo *src, unsigned srcoff, unsigned srcdom,
                       unsigned size);
 void
 nv50_cb_push(struct nouveau_context *nv,
