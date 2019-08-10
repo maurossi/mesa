@@ -22,6 +22,7 @@ inc_wsnouveau = include_directories(['./include'])
 
 libwsnouveau_files = files(
   'include/ws/nouveau.h',
+  'ws/abi16.c',
   'ws/bo.c',
   'ws/bufctx.c',
   'ws/client.c',
