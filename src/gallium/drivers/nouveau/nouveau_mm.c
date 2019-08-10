@@ -32,16 +32,16 @@ struct mm_bucket {
 };
 
 struct nouveau_mman {
-   struct nouveau_device *dev;
+   struct nouveau_ws_device *dev;
    struct mm_bucket bucket[MM_NUM_BUCKETS];
    uint32_t domain;
-   union nouveau_bo_config config;
+   struct nouveau_ws_bo_config config;
    uint64_t allocated;
 };
 
 struct mm_slab {
    struct list_head head;
-   struct nouveau_bo *bo;
+   struct nouveau_ws_bo *bo;
    struct nouveau_mman *cache;
    int order;
    int count;
@@ -135,7 +135,7 @@ mm_slab_new(struct nouveau_mman *cache, int chunk_order)
 
    slab->bo = NULL;
 
-   ret = nouveau_bo_new(cache->dev, cache->domain, 0, size, &cache->config,
+   ret = nouveau_ws_bo_new(cache->dev, cache->domain, 0, size, &cache->config,
                         &slab->bo);
    if (ret) {
       FREE(slab);
@@ -162,7 +162,7 @@ mm_slab_new(struct nouveau_mman *cache, int chunk_order)
 /* @return token to identify slab or NULL if we just allocated a new bo */
 struct nouveau_mm_allocation *
 nouveau_mm_allocate(struct nouveau_mman *cache,
-                    uint32_t size, struct nouveau_bo **bo, uint32_t *offset)
+                    uint32_t size, struct nouveau_ws_bo **bo, uint32_t *offset)
 {
    struct mm_bucket *bucket;
    struct mm_slab *slab;
@@ -171,11 +171,11 @@ nouveau_mm_allocate(struct nouveau_mman *cache,
 
    bucket = mm_bucket_by_size(cache, size);
    if (!bucket) {
-      ret = nouveau_bo_new(cache->dev, cache->domain, 0, size, &cache->config,
+      ret = nouveau_ws_bo_new(cache->dev, cache->domain, 0, size, &cache->config,
                            bo);
       if (ret)
          debug_printf("bo_new(%x, %x): %i\n",
-                      size, cache->config.nv50.memtype, ret);
+                      size, cache->config.memtype, ret);
 
       *offset = 0;
       return NULL;
@@ -199,7 +199,7 @@ nouveau_mm_allocate(struct nouveau_mman *cache,
    if (!alloc)
       return NULL;
 
-   nouveau_bo_ref(slab->bo, bo);
+   nouveau_ws_bo_ref(slab->bo, bo);
 
    if (slab->free == 0) {
       LIST_DEL(&slab->head);
@@ -240,8 +240,8 @@ nouveau_mm_free_work(void *data)
 }
 
 struct nouveau_mman *
-nouveau_mm_create(struct nouveau_device *dev, uint32_t domain,
-                  union nouveau_bo_config *config)
+nouveau_mm_create(struct nouveau_ws_device *dev, uint32_t domain,
+                  struct nouveau_ws_bo_config *config)
 {
    struct nouveau_mman *cache = MALLOC_STRUCT(nouveau_mman);
    int i;
@@ -270,7 +270,7 @@ nouveau_mm_free_slabs(struct list_head *head)
 
    LIST_FOR_EACH_ENTRY_SAFE(slab, next, head, head) {
       LIST_DEL(&slab->head);
-      nouveau_bo_ref(NULL, &slab->bo);
+      nouveau_ws_bo_ref(NULL, &slab->bo);
       FREE(slab);
    }
 }

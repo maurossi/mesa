@@ -57,8 +57,8 @@ nv50_m2mf_transfer_rect(struct nv50_context *nv50,
                         const struct nv50_m2mf_rect *src,
                         uint32_t nblocksx, uint32_t nblocksy)
 {
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
-   struct nouveau_bufctx *bctx = nv50->bufctx;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_bufctx *bctx = nv50->bufctx;
    const int cpp = dst->cpp;
    uint32_t src_ofst = src->base;
    uint32_t dst_ofst = dst->base;
@@ -68,10 +68,10 @@ nv50_m2mf_transfer_rect(struct nv50_context *nv50,
 
    assert(dst->cpp == src->cpp);
 
-   nouveau_bufctx_refn(bctx, 0, src->bo, src->domain | NOUVEAU_BO_RD);
-   nouveau_bufctx_refn(bctx, 0, dst->bo, dst->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, bctx);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_bufctx_refn(bctx, 0, src->bo, src->domain | NOUVEAU_BO_RD);
+   nouveau_ws_bufctx_refn(bctx, 0, dst->bo, dst->domain | NOUVEAU_BO_WR);
+   nouveau_ws_pushbuf_bufctx(push, bctx);
+   nouveau_ws_pushbuf_validate(push);
 
    if (nouveau_bo_memtype(src->bo)) {
       BEGIN_NV04(push, NV50_M2MF(LINEAR_IN), 6);
@@ -142,23 +142,23 @@ nv50_m2mf_transfer_rect(struct nv50_context *nv50,
       dy += line_count;
    }
 
-   nouveau_bufctx_reset(bctx, 0);
+   nouveau_ws_bufctx_reset(bctx, 0);
 }
 
 void
 nv50_sifc_linear_u8(struct nouveau_context *nv,
-                    struct nouveau_bo *dst, unsigned offset, unsigned domain,
+                    struct nouveau_ws_bo *dst, unsigned offset, unsigned domain,
                     unsigned size, const void *data)
 {
    struct nv50_context *nv50 = nv50_context(&nv->pipe);
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    uint32_t *src = (uint32_t *)data;
    unsigned count = (size + 3) / 4;
    unsigned xcoord = offset & 0xff;
 
-   nouveau_bufctx_refn(nv50->bufctx, 0, dst, domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nv50->bufctx);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_bufctx_refn(nv50->bufctx, 0, dst, domain | NOUVEAU_BO_WR);
+   nouveau_ws_pushbuf_bufctx(push, nv50->bufctx);
+   nouveau_ws_pushbuf_validate(push);
 
    offset &= ~0xff;
 
@@ -196,22 +196,22 @@ nv50_sifc_linear_u8(struct nouveau_context *nv,
       count -= nr;
    }
 
-   nouveau_bufctx_reset(nv50->bufctx, 0);
+   nouveau_ws_bufctx_reset(nv50->bufctx, 0);
 }
 
 void
 nv50_m2mf_copy_linear(struct nouveau_context *nv,
-                      struct nouveau_bo *dst, unsigned dstoff, unsigned dstdom,
-                      struct nouveau_bo *src, unsigned srcoff, unsigned srcdom,
+                      struct nouveau_ws_bo *dst, unsigned dstoff, unsigned dstdom,
+                      struct nouveau_ws_bo *src, unsigned srcoff, unsigned srcdom,
                       unsigned size)
 {
-   struct nouveau_pushbuf *push = nv->pushbuf;
-   struct nouveau_bufctx *bctx = nv50_context(&nv->pipe)->bufctx;
+   struct nouveau_ws_pushbuf *push = nv->pushbuf;
+   struct nouveau_ws_bufctx *bctx = nv50_context(&nv->pipe)->bufctx;
 
-   nouveau_bufctx_refn(bctx, 0, src, srcdom | NOUVEAU_BO_RD);
-   nouveau_bufctx_refn(bctx, 0, dst, dstdom | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, bctx);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_bufctx_refn(bctx, 0, src, srcdom | NOUVEAU_BO_RD);
+   nouveau_ws_bufctx_refn(bctx, 0, dst, dstdom | NOUVEAU_BO_WR);
+   nouveau_ws_pushbuf_bufctx(push, bctx);
+   nouveau_ws_pushbuf_validate(push);
 
    BEGIN_NV04(push, NV50_M2MF(LINEAR_IN), 1);
    PUSH_DATA (push, 1);
@@ -238,7 +238,7 @@ nv50_m2mf_copy_linear(struct nouveau_context *nv,
       size -= bytes;
    }
 
-   nouveau_bufctx_reset(bctx, 0);
+   nouveau_ws_bufctx_reset(bctx, 0);
 }
 
 void *
@@ -251,7 +251,7 @@ nv50_miptree_transfer_map(struct pipe_context *pctx,
 {
    struct nv50_screen *screen = nv50_screen(pctx->screen);
    struct nv50_context *nv50 = nv50_context(pctx);
-   struct nouveau_device *dev = nv50->screen->base.device;
+   struct nouveau_ws_device *dev = nv50->screen->base.device;
    const struct nv50_miptree *mt = nv50_miptree(res);
    struct nv50_transfer *tx;
    uint32_t size;
@@ -286,7 +286,7 @@ nv50_miptree_transfer_map(struct pipe_context *pctx,
 
    size = tx->base.layer_stride;
 
-   ret = nouveau_bo_new(dev, NOUVEAU_BO_GART | NOUVEAU_BO_MAP, 0,
+   ret = nouveau_ws_bo_new(dev, NOUVEAU_BO_GART | NOUVEAU_BO_MAP, 0,
                         size * tx->base.box.depth, NULL, &tx->rect[1].bo);
    if (ret) {
       FREE(tx);
@@ -328,9 +328,9 @@ nv50_miptree_transfer_map(struct pipe_context *pctx,
    if (usage & PIPE_TRANSFER_WRITE)
       flags |= NOUVEAU_BO_WR;
 
-   ret = nouveau_bo_map(tx->rect[1].bo, flags, screen->base.client);
+   ret = nouveau_ws_bo_map(tx->rect[1].bo, flags, screen->base.client);
    if (ret) {
-      nouveau_bo_ref(NULL, &tx->rect[1].bo);
+      nouveau_ws_bo_ref(NULL, &tx->rect[1].bo);
       FREE(tx);
       return NULL;
    }
@@ -363,7 +363,7 @@ nv50_miptree_transfer_unmap(struct pipe_context *pctx,
       nouveau_fence_work(nv50->screen->base.fence.current,
                          nouveau_fence_unref_bo, tx->rect[1].bo);
    } else {
-      nouveau_bo_ref(NULL, &tx->rect[1].bo);
+      nouveau_ws_bo_ref(NULL, &tx->rect[1].bo);
    }
 
    pipe_resource_reference(&transfer->resource, NULL);
@@ -373,12 +373,12 @@ nv50_miptree_transfer_unmap(struct pipe_context *pctx,
 
 static void
 nv50_cb_bo_push(struct nouveau_context *nv,
-                struct nouveau_bo *bo, unsigned domain,
+                struct nouveau_ws_bo *bo, unsigned domain,
                 unsigned bufid,
                 unsigned offset, unsigned words,
                 const uint32_t *data)
 {
-   struct nouveau_pushbuf *push = nv->pushbuf;
+   struct nouveau_ws_pushbuf *push = nv->pushbuf;
 
    assert(!(offset & 3));
 

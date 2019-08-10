@@ -35,10 +35,10 @@ static void gp100_compute_dump_launch_desc(const struct gp100_cp_launch_desc *);
 
 int
 nve4_screen_compute_setup(struct nvc0_screen *screen,
-                          struct nouveau_pushbuf *push)
+                          struct nouveau_ws_pushbuf *push)
 {
-   struct nouveau_device *dev = screen->base.device;
-   struct nouveau_object *chan = screen->base.channel;
+   struct nouveau_ws_device *dev = screen->base.device;
+   struct nouveau_ws_object *chan = screen->base.channel;
    int i;
    int ret;
    uint32_t obj_class;
@@ -67,7 +67,7 @@ nve4_screen_compute_setup(struct nvc0_screen *screen,
       return -1;
    }
 
-   ret = nouveau_object_new(chan, 0xbeef00c0, obj_class, NULL, 0,
+   ret = nouveau_ws_object_new(chan, 0xbeef00c0, obj_class, NULL, 0,
                             &screen->compute);
    if (ret) {
       NOUVEAU_ERR("Failed to allocate compute object: %d\n", ret);
@@ -197,9 +197,9 @@ gm107_compute_validate_surfaces(struct nvc0_context *nvc0,
                                 struct pipe_image_view *view, int slot)
 {
    struct nv04_resource *res = nv04_resource(view->resource);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_bo *txc = nvc0->screen->txc;
+   struct nouveau_ws_bo *txc = nvc0->screen->txc;
    struct nv50_tic_entry *tic;
    uint64_t address;
    const int s = 5;
@@ -258,7 +258,7 @@ gm107_compute_validate_surfaces(struct nvc0_context *nvc0,
 static void
 nve4_compute_validate_surfaces(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    uint64_t address;
    const int s = 5;
    int i, j;
@@ -327,7 +327,7 @@ static void nve4_compute_validate_textures(struct nvc0_context *);
 static void
 nve4_compute_set_tex_handles(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    uint64_t address;
    const unsigned s = nvc0_shader_stage(PIPE_SHADER_COMPUTE);
@@ -362,7 +362,7 @@ nve4_compute_set_tex_handles(struct nvc0_context *nvc0)
 static void
 nve4_compute_validate_constbufs(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    const int s = 5;
 
    while (nvc0->constbuf_dirty[s]) {
@@ -370,7 +370,7 @@ nve4_compute_validate_constbufs(struct nvc0_context *nvc0)
       nvc0->constbuf_dirty[s] &= ~(1 << i);
 
       if (nvc0->constbuf[s][i].user) {
-         struct nouveau_bo *bo = nvc0->screen->uniform_bo;
+         struct nouveau_ws_bo *bo = nvc0->screen->uniform_bo;
          const unsigned base = NVC0_CB_USR_INFO(s);
          const unsigned size = nvc0->constbuf[s][0].size;
          assert(i == 0); /* we really only want OpenGL uniforms here */
@@ -423,7 +423,7 @@ nve4_compute_validate_constbufs(struct nvc0_context *nvc0)
 static void
 nve4_compute_validate_buffers(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    uint64_t address;
    const int s = 5;
    int i;
@@ -493,7 +493,7 @@ nve4_compute_upload_input(struct nvc0_context *nvc0,
                           const struct pipe_grid_info *info)
 {
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *cp = nvc0->compprog;
    uint64_t address;
 
@@ -521,13 +521,13 @@ nve4_compute_upload_input(struct nvc0_context *nvc0,
       struct nv04_resource *res = nv04_resource(info->indirect);
       uint32_t offset = res->offset + info->indirect_offset;
 
-      nouveau_pushbuf_space(push, 32, 0, 1);
+      nouveau_ws_pushbuf_space(push, 32, 0, 1);
       PUSH_REFN(push, res->bo, NOUVEAU_BO_RD | res->domain);
 
       BEGIN_1IC0(push, NVE4_CP(UPLOAD_EXEC), 1 + 8);
       PUSH_DATA (push, NVE4_COMPUTE_UPLOAD_EXEC_LINEAR | (0x20 << 1));
       PUSH_DATAp(push, info->block, 3);
-      nouveau_pushbuf_data(push, res->bo, offset,
+      nouveau_ws_pushbuf_data(push, res->bo, offset,
                            NVC0_IB_ENTRY_1_NO_PREFETCH | 3 * 4);
    } else {
       BEGIN_1IC0(push, NVE4_CP(UPLOAD_EXEC), 1 + 8);
@@ -667,7 +667,7 @@ gp100_compute_setup_launch_desc(struct nvc0_context *nvc0,
 
 static inline void *
 nve4_compute_alloc_launch_desc(struct nouveau_context *nv,
-                               struct nouveau_bo **pbo, uint64_t *pgpuaddr)
+                               struct nouveau_ws_bo **pbo, uint64_t *pgpuaddr)
 {
    uint8_t *ptr = nouveau_scratch_get(nv, 512, pgpuaddr, pbo);
    if (!ptr)
@@ -681,7 +681,7 @@ nve4_compute_alloc_launch_desc(struct nouveau_context *nv,
 }
 
 static void
-nve4_upload_indirect_desc(struct nouveau_pushbuf *push,
+nve4_upload_indirect_desc(struct nouveau_ws_pushbuf *push,
                           struct nv04_resource *res,  uint64_t gpuaddr,
                           uint32_t length, uint32_t bo_offset)
 {
@@ -692,12 +692,12 @@ nve4_upload_indirect_desc(struct nouveau_pushbuf *push,
    PUSH_DATA (push, length);
    PUSH_DATA (push, 1);
 
-   nouveau_pushbuf_space(push, 32, 0, 1);
+   nouveau_ws_pushbuf_space(push, 32, 0, 1);
    PUSH_REFN(push, res->bo, NOUVEAU_BO_RD | res->domain);
 
    BEGIN_1IC0(push, NVE4_CP(UPLOAD_EXEC), 1 + (length / 4));
    PUSH_DATA (push, NVE4_COMPUTE_UPLOAD_EXEC_LINEAR | (0x08 << 1));
-   nouveau_pushbuf_data(push, res->bo, bo_offset,
+   nouveau_ws_pushbuf_data(push, res->bo, bo_offset,
                         NVC0_IB_ENTRY_1_NO_PREFETCH | length);
 }
 
@@ -706,10 +706,10 @@ nve4_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    void *desc;
    uint64_t desc_gpuaddr;
-   struct nouveau_bo *desc_bo;
+   struct nouveau_ws_bo *desc_bo;
    int ret;
 
    desc = nve4_compute_alloc_launch_desc(&nvc0->base, &desc_bo, &desc_gpuaddr);
@@ -779,7 +779,7 @@ nve4_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    }
 
    /* upload descriptor and flush */
-   nouveau_pushbuf_space(push, 32, 1, 0);
+   nouveau_ws_pushbuf_space(push, 32, 1, 0);
    PUSH_REFN(push, screen->text, NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD);
    BEGIN_NVC0(push, NVE4_CP(LAUNCH_DESC_ADDRESS), 1);
    PUSH_DATA (push, desc_gpuaddr >> 8);
@@ -794,8 +794,8 @@ out:
    if (ret)
       NOUVEAU_ERR("Failed to launch grid !\n");
    nouveau_scratch_done(&nvc0->base);
-   nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_DESC);
-   nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_BINDLESS);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_DESC);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_BINDLESS);
 }
 
 
@@ -804,8 +804,8 @@ out:
 static void
 nve4_compute_validate_textures(struct nvc0_context *nvc0)
 {
-   struct nouveau_bo *txc = nvc0->screen->txc;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_bo *txc = nvc0->screen->txc;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    const unsigned s = 5;
    unsigned i;
    uint32_t commands[2][32];
@@ -871,7 +871,7 @@ nve4_compute_validate_textures(struct nvc0_context *nvc0)
    /* Invalidate all 3D textures because they are aliased. */
    for (int s = 0; s < 5; s++) {
       for (int i = 0; i < nvc0->num_textures[s]; i++)
-         nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
+         nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
       nvc0->textures_dirty[s] = ~0;
    }
    nvc0->dirty_3d |= NVC0_NEW_3D_TEXTURES;
@@ -991,12 +991,12 @@ static void
 nve4_compute_trap_info(struct nvc0_context *nvc0)
 {
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_bo *bo = screen->parm;
+   struct nouveau_ws_bo *bo = screen->parm;
    int ret, i;
    volatile struct nve4_mp_trap_info *info;
    uint8_t *map;
 
-   ret = nouveau_bo_map(bo, NOUVEAU_BO_RDWR, nvc0->base.client);
+   ret = nouveau_ws_bo_map(bo, NOUVEAU_BO_RDWR, nvc0->base.client);
    if (ret)
       return;
    map = (uint8_t *)bo->map;

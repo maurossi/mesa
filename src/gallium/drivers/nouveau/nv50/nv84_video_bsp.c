@@ -95,15 +95,15 @@ nv84_decoder_bsp(struct nv84_decoder *dec,
    int i;
    static const uint32_t end[] = {0x0b010000, 0, 0x0b010000, 0};
    char indexes[17] = {0};
-   struct nouveau_pushbuf *push = dec->bsp_pushbuf;
-   struct nouveau_pushbuf_refn bo_refs[] = {
+   struct nouveau_ws_pushbuf *push = dec->bsp_pushbuf;
+   struct nouveau_ws_pushbuf_refn bo_refs[] = {
       { dec->vpring, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
       { dec->mbring, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
       { dec->bitstream, NOUVEAU_BO_RDWR | NOUVEAU_BO_GART },
       { dec->fence, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
    };
 
-   nouveau_bo_wait(dec->fence, NOUVEAU_BO_RDWR, dec->client);
+   nouveau_ws_bo_wait(dec->fence, NOUVEAU_BO_RDWR, dec->client);
 
    STATIC_ASSERT(sizeof(struct iparm) == 0x530);
 
@@ -200,7 +200,7 @@ nv84_decoder_bsp(struct nv84_decoder *dec,
    memcpy(dec->bitstream->map + 0x600, more_params, sizeof(more_params));
 
    PUSH_SPACE(push, 5 + 21 + 3 + 2 + 4 + 2);
-   nouveau_pushbuf_refn(push, bo_refs, ARRAY_SIZE(bo_refs));
+   nouveau_ws_pushbuf_refn(push, bo_refs, ARRAY_SIZE(bo_refs));
 
    /* Wait for the fence = 1 */
    BEGIN_NV04(push, SUBC_BSP(0x10), 4);

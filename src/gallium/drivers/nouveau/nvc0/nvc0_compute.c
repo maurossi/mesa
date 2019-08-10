@@ -28,10 +28,10 @@
 
 int
 nvc0_screen_compute_setup(struct nvc0_screen *screen,
-                          struct nouveau_pushbuf *push)
+                          struct nouveau_ws_pushbuf *push)
 {
-   struct nouveau_object *chan = screen->base.channel;
-   struct nouveau_device *dev = screen->base.device;
+   struct nouveau_ws_object *chan = screen->base.channel;
+   struct nouveau_ws_device *dev = screen->base.device;
    uint32_t obj_class;
    int ret;
    int i;
@@ -48,7 +48,7 @@ nvc0_screen_compute_setup(struct nvc0_screen *screen,
       return -1;
    }
 
-   ret = nouveau_object_new(chan, 0xbeef90c0, obj_class, NULL, 0,
+   ret = nouveau_ws_object_new(chan, 0xbeef90c0, obj_class, NULL, 0,
                             &screen->compute);
    if (ret) {
       NOUVEAU_ERR("Failed to allocate compute object: %d\n", ret);
@@ -167,7 +167,7 @@ nvc0_compute_validate_textures(struct nvc0_context *nvc0)
    /* Invalidate all 3D textures because they are aliased. */
    for (int s = 0; s < 5; s++) {
       for (int i = 0; i < nvc0->num_textures[s]; i++)
-         nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
+         nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
       nvc0->textures_dirty[s] = ~0;
    }
    nvc0->dirty_3d |= NVC0_NEW_3D_TEXTURES;
@@ -189,7 +189,7 @@ nvc0_compute_invalidate_constbufs(struct nvc0_context *nvc0)
 static void
 nvc0_compute_validate_constbufs(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    const int s = 5;
 
    while (nvc0->constbuf_dirty[s]) {
@@ -197,7 +197,7 @@ nvc0_compute_validate_constbufs(struct nvc0_context *nvc0)
       nvc0->constbuf_dirty[s] &= ~(1 << i);
 
       if (nvc0->constbuf[s][i].user) {
-         struct nouveau_bo *bo = nvc0->screen->uniform_bo;
+         struct nouveau_ws_bo *bo = nvc0->screen->uniform_bo;
          const unsigned base = NVC0_CB_USR_INFO(s);
          const unsigned size = nvc0->constbuf[s][0].size;
          assert(i == 0); /* we really only want OpenGL uniforms here */
@@ -248,7 +248,7 @@ nvc0_compute_validate_constbufs(struct nvc0_context *nvc0)
 static void
 nvc0_compute_validate_driverconst(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
 
    BEGIN_NVC0(push, NVC0_CP(CB_SIZE), 3);
@@ -264,7 +264,7 @@ nvc0_compute_validate_driverconst(struct nvc0_context *nvc0)
 static void
 nvc0_compute_validate_buffers(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    const int s = 5;
    int i;
@@ -316,7 +316,7 @@ nvc0_compute_validate_globals(struct nvc0_context *nvc0)
 static inline void
 nvc0_compute_invalidate_surfaces(struct nvc0_context *nvc0, const int s)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    int i;
 
    for (i = 0; i < NVC0_MAX_IMAGES; ++i) {
@@ -348,7 +348,7 @@ nvc0_compute_validate_surfaces(struct nvc0_context *nvc0)
    nvc0_validate_suf(nvc0, 5);
 
    /* Invalidate all FRAGMENT images because they are aliased with COMPUTE. */
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_SUF);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_SUF);
    nvc0->dirty_3d |= NVC0_NEW_3D_SURFACES;
    nvc0->images_dirty[4] |= nvc0->images_valid[4];
 }
@@ -383,12 +383,12 @@ static void
 nvc0_compute_upload_input(struct nvc0_context *nvc0,
                           const struct pipe_grid_info *info)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    struct nvc0_program *cp = nvc0->compprog;
 
    if (cp->parm_size) {
-      struct nouveau_bo *bo = screen->uniform_bo;
+      struct nouveau_ws_bo *bo = screen->uniform_bo;
       const unsigned base = NVC0_CB_USR_INFO(5);
 
       BEGIN_NVC0(push, NVC0_CP(CB_SIZE), 3);
@@ -424,7 +424,7 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *cp = nvc0->compprog;
    int ret;
 
@@ -464,7 +464,7 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    PUSH_DATA (push, (info->block[1] << 16) | info->block[0]);
    PUSH_DATA (push, info->block[2]);
 
-   nouveau_pushbuf_space(push, 32, 2, 1);
+   nouveau_ws_pushbuf_space(push, 32, 2, 1);
    PUSH_REFN(push, screen->text, NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD);
 
    if (unlikely(info->indirect)) {
@@ -474,7 +474,7 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 
       PUSH_REFN(push, res->bo, NOUVEAU_BO_RD | res->domain);
       PUSH_DATA(push, NVC0_FIFO_PKHDR_1I(1, macro, 3));
-      nouveau_pushbuf_data(push, res->bo, offset,
+      nouveau_ws_pushbuf_data(push, res->bo, offset,
                            NVC0_IB_ENTRY_1_NO_PREFETCH | 3 * 4);
    } else {
       /* grid setup */
@@ -497,7 +497,7 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 
    /* TODO: Not sure if this is really necessary. */
    nvc0_compute_invalidate_surfaces(nvc0, 5);
-   nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
    nvc0->dirty_cp |= NVC0_NEW_CP_SURFACES;
    nvc0->images_dirty[5] |= nvc0->images_valid[5];
 
@@ -507,18 +507,18 @@ nvc0_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 static void
 nvc0_compute_update_indirect_invocations(struct nvc0_context *nvc0,
                                          const struct pipe_grid_info *info) {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv04_resource *res = nv04_resource(info->indirect);
    uint32_t offset = res->offset + info->indirect_offset;
 
-   nouveau_pushbuf_space(push, 16, 0, 8);
+   nouveau_ws_pushbuf_space(push, 16, 0, 8);
    PUSH_REFN(push, res->bo, NOUVEAU_BO_RD | res->domain);
    BEGIN_1IC0(push, NVC0_3D(MACRO_COMPUTE_COUNTER), 7);
    PUSH_DATA(push, 6);
    PUSH_DATA(push, info->block[0]);
    PUSH_DATA(push, info->block[1]);
    PUSH_DATA(push, info->block[2]);
-   nouveau_pushbuf_data(push, res->bo, offset,
+   nouveau_ws_pushbuf_data(push, res->bo, offset,
                         NVC0_IB_ENTRY_1_NO_PREFETCH | 3 * 4);
 }
 
