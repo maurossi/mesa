@@ -5,8 +5,14 @@ nouveau_ws_bufctx_new(struct nouveau_ws_client *client,
                       int bins,
                       struct nouveau_ws_bufctx **bctx)
 {
-   assert(false);
-   return -1;
+   assert(client && bctx);
+
+   struct nouveau_ws_bufctx_priv *priv = CALLOC_STRUCT(nouveau_ws_bufctx_priv);
+   if (!priv)
+      return -ENOMEM;
+
+   *bctx = &priv->base;
+   return 0;
 }
 
 void

@@ -82,9 +82,6 @@ nouveau_ws_client_del(struct nouveau_ws_client **);
 
 int
 nouveau_ws_device_new(struct nouveau_ws_drm *,
-                      int32_t oclass,
-                      void *data,
-                      uint32_t size,
                       struct nouveau_ws_device **);
 void
 nouveau_ws_device_del(struct nouveau_ws_device **);
