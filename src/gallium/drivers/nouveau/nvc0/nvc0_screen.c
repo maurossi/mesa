@@ -20,8 +20,6 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include <xf86drm.h>
-#include <nouveau_drm.h>
 #include <nvif/class.h>
 #include "util/u_format.h"
 #include "util/u_format_s3tc.h"
@@ -108,7 +106,7 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
 {
    const uint16_t class_3d = nouveau_screen(pscreen)->class_3d;
    const struct nouveau_screen *screen = nouveau_screen(pscreen);
-   struct nouveau_device *dev = screen->device;
+   struct nouveau_ws_device *dev = screen->device;
 
    switch (param) {
    /* non-boolean caps */
@@ -371,8 +369,8 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0x10de;
    case PIPE_CAP_DEVICE_ID: {
       uint64_t device_id;
-      if (nouveau_getparam(dev, NOUVEAU_GETPARAM_PCI_DEVICE, &device_id)) {
-         NOUVEAU_ERR("NOUVEAU_GETPARAM_PCI_DEVICE failed.\n");
+      if (nouveau_ws_getparam(dev, NOUVEAU_GETPARAM_PCI_DEVICE, &device_id)) {
+         NOUVEAU_ERR("nouveau_ws_getparam_PCI_DEVICE failed.\n");
          return -1;
       }
       return device_id;
@@ -652,23 +650,23 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
       FREE(screen->pm.prog);
    }
 
-   nouveau_bo_ref(NULL, &screen->text);
-   nouveau_bo_ref(NULL, &screen->uniform_bo);
-   nouveau_bo_ref(NULL, &screen->tls);
-   nouveau_bo_ref(NULL, &screen->txc);
-   nouveau_bo_ref(NULL, &screen->fence.bo);
-   nouveau_bo_ref(NULL, &screen->poly_cache);
+   nouveau_ws_bo_ref(NULL, &screen->text);
+   nouveau_ws_bo_ref(NULL, &screen->uniform_bo);
+   nouveau_ws_bo_ref(NULL, &screen->tls);
+   nouveau_ws_bo_ref(NULL, &screen->txc);
+   nouveau_ws_bo_ref(NULL, &screen->fence.bo);
+   nouveau_ws_bo_ref(NULL, &screen->poly_cache);
 
    nouveau_heap_destroy(&screen->lib_code);
    nouveau_heap_destroy(&screen->text_heap);
 
    FREE(screen->tic.entries);
 
-   nouveau_object_del(&screen->eng3d);
-   nouveau_object_del(&screen->eng2d);
-   nouveau_object_del(&screen->m2mf);
-   nouveau_object_del(&screen->compute);
-   nouveau_object_del(&screen->nvsw);
+   nouveau_ws_object_del(&screen->eng3d);
+   nouveau_ws_object_del(&screen->eng2d);
+   nouveau_ws_object_del(&screen->m2mf);
+   nouveau_ws_object_del(&screen->compute);
+   nouveau_ws_object_del(&screen->nvsw);
 
    nouveau_screen_fini(&screen->base);
 
@@ -679,7 +677,7 @@ static int
 nvc0_graph_set_macro(struct nvc0_screen *screen, uint32_t m, unsigned pos,
                      unsigned size, const uint32_t *data)
 {
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = screen->base.pushbuf;
 
    size /= 4;
 
@@ -696,7 +694,7 @@ nvc0_graph_set_macro(struct nvc0_screen *screen, uint32_t m, unsigned pos,
 }
 
 static void
-nvc0_magic_3d_init(struct nouveau_pushbuf *push, uint16_t obj_class)
+nvc0_magic_3d_init(struct nouveau_ws_pushbuf *push, uint16_t obj_class)
 {
    BEGIN_NVC0(push, SUBC_3D(0x10cc), 1);
    PUSH_DATA (push, 0xff);
@@ -764,12 +762,12 @@ static void
 nvc0_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
 {
    struct nvc0_screen *screen = nvc0_screen(pscreen);
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = screen->base.pushbuf;
 
    /* we need to do it after possible flush in MARK_RING */
    *sequence = ++screen->base.fence.sequence;
 
-   assert(PUSH_AVAIL(push) + push->rsvd_kick >= 5);
+   assert(PUSH_AVAIL(push) >= 0);
    PUSH_DATA (push, NVC0_FIFO_PKHDR_SQ(NVC0_3D(QUERY_ADDRESS_HIGH), 4));
    PUSH_DATAh(push, screen->fence.bo->offset);
    PUSH_DATA (push, screen->fence.bo->offset);
@@ -811,7 +809,7 @@ static int
 nvc0_screen_resize_tls_area(struct nvc0_screen *screen,
                             uint32_t lpos, uint32_t lneg, uint32_t cstack)
 {
-   struct nouveau_bo *bo = NULL;
+   struct nouveau_ws_bo *bo = NULL;
    int ret;
    uint64_t size = (lpos + lneg) * 32 + cstack;
 
@@ -826,7 +824,7 @@ nvc0_screen_resize_tls_area(struct nvc0_screen *screen,
 
    size = align(size, 1 << 17);
 
-   ret = nouveau_bo_new(screen->base.device, NV_VRAM_DOMAIN(&screen->base), 1 << 17, size,
+   ret = nouveau_ws_bo_new(screen->base.device, NV_VRAM_DOMAIN(&screen->base), 1 << 17, size,
                         NULL, &bo);
    if (ret)
       return ret;
@@ -837,7 +835,7 @@ nvc0_screen_resize_tls_area(struct nvc0_screen *screen,
    if (screen->tls)
       PUSH_REFN(screen->base.pushbuf, screen->tls,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RDWR);
-   nouveau_bo_ref(NULL, &screen->tls);
+   nouveau_ws_bo_ref(NULL, &screen->tls);
    screen->tls = bo;
    return 0;
 }
@@ -845,11 +843,11 @@ nvc0_screen_resize_tls_area(struct nvc0_screen *screen,
 int
 nvc0_screen_resize_text_area(struct nvc0_screen *screen, uint64_t size)
 {
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
-   struct nouveau_bo *bo;
+   struct nouveau_ws_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_ws_bo *bo;
    int ret;
 
-   ret = nouveau_bo_new(screen->base.device, NV_VRAM_DOMAIN(&screen->base),
+   ret = nouveau_ws_bo_new(screen->base.device, NV_VRAM_DOMAIN(&screen->base),
                         1 << 17, size, NULL, &bo);
    if (ret)
       return ret;
@@ -860,7 +858,7 @@ nvc0_screen_resize_text_area(struct nvc0_screen *screen, uint64_t size)
    if (screen->text)
       PUSH_REFN(push, screen->text,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD);
-   nouveau_bo_ref(NULL, &screen->text);
+   nouveau_ws_bo_ref(NULL, &screen->text);
    screen->text = bo;
 
    nouveau_heap_destroy(&screen->lib_code);
@@ -890,7 +888,7 @@ nvc0_screen_bind_cb_3d(struct nvc0_screen *screen, bool *can_serialize,
 {
    assert(stage != 5);
 
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = screen->base.pushbuf;
 
    if (screen->base.class_3d >= GM107_3D_CLASS) {
       struct nvc0_cb_binding *binding = &screen->cb_bindings[stage][index];
@@ -995,12 +993,12 @@ nvc0_screen_get_compiler_options(struct pipe_screen *pscreen,
    } while(0)
 
 struct nouveau_screen *
-nvc0_screen_create(struct nouveau_device *dev)
+nvc0_screen_create(struct nouveau_ws_device *dev)
 {
    struct nvc0_screen *screen;
    struct pipe_screen *pscreen;
-   struct nouveau_object *chan;
-   struct nouveau_pushbuf *push;
+   struct nouveau_ws_object *chan;
+   struct nouveau_ws_pushbuf *push;
    uint64_t value;
    uint32_t obj_class;
    uint32_t flags;
@@ -1033,7 +1031,6 @@ nvc0_screen_create(struct nouveau_device *dev)
    chan = screen->base.channel;
    push = screen->base.pushbuf;
    push->user_priv = screen;
-   push->rsvd_kick = 5;
 
    /* TODO: could this be higher on Kepler+? how does reclocking vs no
     * reclocking affect performance?
@@ -1074,15 +1071,15 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (screen->base.drm->version >= 0x01000202)
       flags |= NOUVEAU_BO_COHERENT;
 
-   ret = nouveau_bo_new(dev, flags, 0, 4096, NULL, &screen->fence.bo);
+   ret = nouveau_ws_bo_new(dev, flags, 0, 4096, NULL, &screen->fence.bo);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating fence BO: %d\n", ret);
-   nouveau_bo_map(screen->fence.bo, 0, NULL);
+   nouveau_ws_bo_map(screen->fence.bo, 0, NULL);
    screen->base.fence.emit = nvc0_screen_fence_emit;
    screen->base.fence.update = nvc0_screen_fence_update;
 
 
-   ret = nouveau_object_new(chan, (dev->chipset < 0xe0) ? 0x1f906e : 0x906e,
+   ret = nouveau_ws_object_new(chan, (dev->chipset < 0xe0) ? 0x1f906e : 0x906e,
                             NVIF_CLASS_SW_GF100, NULL, 0, &screen->nvsw);
    if (ret)
       FAIL_SCREEN_INIT("Error creating SW object: %d\n", ret);
@@ -1105,7 +1102,7 @@ nvc0_screen_create(struct nouveau_device *dev)
       obj_class = NVC0_M2MF_CLASS;
       break;
    }
-   ret = nouveau_object_new(chan, 0xbeef323f, obj_class, NULL, 0,
+   ret = nouveau_ws_object_new(chan, 0xbeef323f, obj_class, NULL, 0,
                             &screen->m2mf);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating PGRAPH context for M2MF: %d\n", ret);
@@ -1117,7 +1114,7 @@ nvc0_screen_create(struct nouveau_device *dev)
       PUSH_DATA (push, 0xa0b5);
    }
 
-   ret = nouveau_object_new(chan, 0xbeef902d, NVC0_2D_CLASS, NULL, 0,
+   ret = nouveau_ws_object_new(chan, 0xbeef902d, NVC0_2D_CLASS, NULL, 0,
                             &screen->eng2d);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating PGRAPH context for 2D: %d\n", ret);
@@ -1193,7 +1190,7 @@ nvc0_screen_create(struct nouveau_device *dev)
       }
       break;
    }
-   ret = nouveau_object_new(chan, 0xbeef003d, obj_class, NULL, 0,
+   ret = nouveau_ws_object_new(chan, 0xbeef003d, obj_class, NULL, 0,
                             &screen->eng3d);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating PGRAPH context for 3D: %d\n", ret);
@@ -1260,7 +1257,7 @@ nvc0_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("Error allocating TEXT area: %d\n", ret);
 
    /* 6 user uniform areas, 6 driver areas, and 1 for the runout */
-   ret = nouveau_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 12, 13 << 16, NULL,
+   ret = nouveau_ws_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 12, 13 << 16, NULL,
                         &screen->uniform_bo);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating uniform BO: %d\n", ret);
@@ -1283,9 +1280,9 @@ nvc0_screen_create(struct nouveau_device *dev)
    PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
 
    if (screen->base.drm->version >= 0x01000101) {
-      ret = nouveau_getparam(dev, NOUVEAU_GETPARAM_GRAPH_UNITS, &value);
+      ret = nouveau_ws_getparam(dev, NOUVEAU_GETPARAM_GRAPH_UNITS, &value);
       if (ret)
-         FAIL_SCREEN_INIT("NOUVEAU_GETPARAM_GRAPH_UNITS failed: %d\n", ret);
+         FAIL_SCREEN_INIT("nouveau_ws_getparam_GRAPH_UNITS failed: %d\n", ret);
    } else {
       if (dev->chipset >= 0xe0 && dev->chipset < 0xf0)
          value = (8 << 8) | 4;
@@ -1315,7 +1312,7 @@ nvc0_screen_create(struct nouveau_device *dev)
    PUSH_DATA (push, 0xff << 24);
 
    if (screen->eng3d->oclass < GM107_3D_CLASS) {
-      ret = nouveau_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 17, 1 << 20, NULL,
+      ret = nouveau_ws_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 17, 1 << 20, NULL,
                            &screen->poly_cache);
       if (ret)
          FAIL_SCREEN_INIT("Error allocating poly cache BO: %d\n", ret);
@@ -1326,7 +1323,7 @@ nvc0_screen_create(struct nouveau_device *dev)
       PUSH_DATA (push, 3);
    }
 
-   ret = nouveau_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 17, 1 << 17, NULL,
+   ret = nouveau_ws_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 17, 1 << 17, NULL,
                         &screen->txc);
    if (ret)
       FAIL_SCREEN_INIT("Error allocating txc BO: %d\n", ret);

@@ -213,17 +213,18 @@ libnouveau = static_library(
   'nouveau',
   files_libnouveau,
   include_directories : [
-    inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_common,
+    inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_common, inc_wsnouveau
   ],
   c_args : [c_vis_args],
   cpp_args : [cpp_vis_args],
   dependencies : [dep_libdrm, dep_libdrm_nouveau, idep_nir_headers],
+  link_with : [libwsnouveau],
 )
 
 nouveau_compiler = executable(
   'nouveau_compiler',
   'nouveau_compiler.c',
-  include_directories : [inc_src, inc_include, inc_gallium, inc_gallium_aux],
+  include_directories : [inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_wsnouveau],
   dependencies : [dep_libdrm, dep_libdrm_nouveau, idep_mesautil],
   link_with : [libnouveau, libgallium, libnir],
   build_by_default : with_tools.contains('nouveau'),

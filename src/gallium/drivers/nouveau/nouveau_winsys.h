@@ -7,7 +7,7 @@
 #include "pipe/p_defines.h"
 
 #include "drm-uapi/drm.h"
-#include <nouveau.h>
+#include <ws/nouveau.h>
 
 #ifndef NV04_PFIFO_MAX_PACKET_LEN
 #define NV04_PFIFO_MAX_PACKET_LEN 2047
@@ -17,36 +17,36 @@
 #define NOUVEAU_MIN_BUFFER_MAP_ALIGN_MASK (NOUVEAU_MIN_BUFFER_MAP_ALIGN - 1)
 
 static inline uint32_t
-PUSH_AVAIL(struct nouveau_pushbuf *push)
+PUSH_AVAIL(struct nouveau_ws_pushbuf *push)
 {
    return push->end - push->cur;
 }
 
 static inline bool
-PUSH_SPACE(struct nouveau_pushbuf *push, uint32_t size)
+PUSH_SPACE(struct nouveau_ws_pushbuf *push, uint32_t size)
 {
    /* Provide a buffer so that fences always have room to be emitted */
    size += 8;
    if (PUSH_AVAIL(push) < size)
-      return nouveau_pushbuf_space(push, size, 0, 0) == 0;
+      return nouveau_ws_pushbuf_space(push, size, 0, 0) == 0;
    return true;
 }
 
 static inline void
-PUSH_DATA(struct nouveau_pushbuf *push, uint32_t data)
+PUSH_DATA(struct nouveau_ws_pushbuf *push, uint32_t data)
 {
    *push->cur++ = data;
 }
 
 static inline void
-PUSH_DATAp(struct nouveau_pushbuf *push, const void *data, uint32_t size)
+PUSH_DATAp(struct nouveau_ws_pushbuf *push, const void *data, uint32_t size)
 {
    memcpy(push->cur, data, size * 4);
    push->cur += size;
 }
 
 static inline void
-PUSH_DATAf(struct nouveau_pushbuf *push, float f)
+PUSH_DATAf(struct nouveau_ws_pushbuf *push, float f)
 {
    union { float f; uint32_t i; } u;
    u.f = f;
@@ -54,9 +54,9 @@ PUSH_DATAf(struct nouveau_pushbuf *push, float f)
 }
 
 static inline void
-PUSH_KICK(struct nouveau_pushbuf *push)
+PUSH_KICK(struct nouveau_ws_pushbuf *push)
 {
-   nouveau_pushbuf_kick(push, push->channel);
+   nouveau_ws_pushbuf_kick(push, push->channel);
 }
 
 
@@ -81,12 +81,12 @@ nouveau_screen_transfer_flags(unsigned pipe)
 }
 
 extern struct nouveau_screen *
-nv30_screen_create(struct nouveau_device *);
+nv30_screen_create(struct nouveau_ws_device *);
 
 extern struct nouveau_screen *
-nv50_screen_create(struct nouveau_device *);
+nv50_screen_create(struct nouveau_ws_device *);
 
 extern struct nouveau_screen *
-nvc0_screen_create(struct nouveau_device *);
+nvc0_screen_create(struct nouveau_ws_device *);
 
 #endif

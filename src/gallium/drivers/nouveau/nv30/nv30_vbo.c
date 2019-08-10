@@ -39,7 +39,7 @@ nv30_emit_vtxattr(struct nv30_context *nv30, struct pipe_vertex_buffer *vb,
                   struct pipe_vertex_element *ve, unsigned attr)
 {
    const unsigned nc = util_format_get_nr_components(ve->src_format);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    struct nv04_resource *res = nv04_resource(vb->buffer.resource);
    const struct util_format_description *desc =
       util_format_description(ve->src_format);
@@ -129,7 +129,7 @@ nv30_prevalidate_vbufs(struct nv30_context *nv30)
 static void
 nv30_update_user_vbufs(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    uint32_t base, offset, size;
    int i;
    uint32_t written = 0;
@@ -176,19 +176,19 @@ nv30_release_user_vbufs(struct nv30_context *nv30)
       nouveau_buffer_release_gpu_storage(nv04_resource(nv30->vtxbuf[i].buffer.resource));
    }
 
-   nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VTXTMP);
+   nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_VTXTMP);
 }
 
 void
 nv30_vbo_validate(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    struct nv30_vertex_stateobj *vertex = nv30->vertex;
    struct pipe_vertex_element *ve;
    struct pipe_vertex_buffer *vb;
    unsigned i, redefine;
 
-   nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VTXBUF);
+   nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_VTXBUF);
    if (!nv30->vertex || nv30->draw_flags)
       return;
 
@@ -338,7 +338,7 @@ nv30_draw_arrays(struct nv30_context *nv30,
                  unsigned mode, unsigned start, unsigned count,
                  unsigned instance_count)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    unsigned prim;
 
    prim = nv30_prim_gl(mode);
@@ -367,7 +367,7 @@ nv30_draw_arrays(struct nv30_context *nv30,
 }
 
 static void
-nv30_draw_elements_inline_u08(struct nouveau_pushbuf *push, const uint8_t *map,
+nv30_draw_elements_inline_u08(struct nouveau_ws_pushbuf *push, const uint8_t *map,
                               unsigned start, unsigned count)
 {
    map += start;
@@ -392,7 +392,7 @@ nv30_draw_elements_inline_u08(struct nouveau_pushbuf *push, const uint8_t *map,
 }
 
 static void
-nv30_draw_elements_inline_u16(struct nouveau_pushbuf *push, const uint16_t *map,
+nv30_draw_elements_inline_u16(struct nouveau_ws_pushbuf *push, const uint16_t *map,
                               unsigned start, unsigned count)
 {
    map += start;
@@ -416,7 +416,7 @@ nv30_draw_elements_inline_u16(struct nouveau_pushbuf *push, const uint16_t *map,
 }
 
 static void
-nv30_draw_elements_inline_u32(struct nouveau_pushbuf *push, const uint32_t *map,
+nv30_draw_elements_inline_u32(struct nouveau_ws_pushbuf *push, const uint32_t *map,
                               unsigned start, unsigned count)
 {
    map += start;
@@ -433,7 +433,7 @@ nv30_draw_elements_inline_u32(struct nouveau_pushbuf *push, const uint32_t *map,
 }
 
 static void
-nv30_draw_elements_inline_u32_short(struct nouveau_pushbuf *push,
+nv30_draw_elements_inline_u32_short(struct nouveau_ws_pushbuf *push,
                                     const uint32_t *map,
                                     unsigned start, unsigned count)
 {
@@ -464,8 +464,8 @@ nv30_draw_elements(struct nv30_context *nv30, bool shorten,
                    unsigned instance_count, int32_t index_bias,
 		   unsigned index_size)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_object *eng3d = nv30->screen->eng3d;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_object *eng3d = nv30->screen->eng3d;
    unsigned prim = nv30_prim_gl(mode);
 
    if (eng3d->oclass >= NV40_3D_CLASS && index_bias != nv30->state.index_bias) {
@@ -549,7 +549,7 @@ static void
 nv30_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 {
    struct nv30_context *nv30 = nv30_context(pipe);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    int i;
 
    if (!info->primitive_restart &&
