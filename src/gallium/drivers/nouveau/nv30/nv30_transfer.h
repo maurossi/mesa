@@ -2,7 +2,7 @@
 #define __NV30_TRANSFER_H__
 
 struct nv30_rect {
-   struct nouveau_bo *bo;
+   struct nouveau_ws_bo *bo;
    unsigned offset;
    unsigned domain;
    unsigned pitch;
@@ -28,13 +28,13 @@ nv30_transfer_rect(struct nv30_context *, enum nv30_transfer_filter filter,
 
 void
 nv30_transfer_push_data(struct nouveau_context *,
-                        struct nouveau_bo *, unsigned offset, unsigned domain,
+                        struct nouveau_ws_bo *, unsigned offset, unsigned domain,
                         unsigned size, void *data);
 
 void
 nv30_transfer_copy_data(struct nouveau_context *,
-                        struct nouveau_bo *, unsigned dstoff, unsigned dstdom,
-                        struct nouveau_bo *, unsigned srcoff, unsigned srcdom,
+                        struct nouveau_ws_bo *, unsigned dstoff, unsigned dstdom,
+                        struct nouveau_ws_bo *, unsigned srcoff, unsigned srcdom,
                         unsigned size);
 
 #endif

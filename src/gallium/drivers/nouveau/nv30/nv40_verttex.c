@@ -29,7 +29,7 @@
 void
 nv40_verttex_validate(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    unsigned dirty = nv30->vertprog.dirty_samplers;
 
    while (dirty) {
@@ -78,13 +78,13 @@ nv40_verttex_set_sampler_views(struct pipe_context *pipe, unsigned nr,
    unsigned i;
 
    for (i = 0; i < nr; i++) {
-      nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VERTTEX(i));
+      nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_VERTTEX(i));
       pipe_sampler_view_reference(&nv30->vertprog.textures[i], views[i]);
       nv30->vertprog.dirty_samplers |= (1 << i);
    }
 
    for (; i < nv30->vertprog.num_textures; i++) {
-      nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VERTTEX(i));
+      nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_VERTTEX(i));
       pipe_sampler_view_reference(&nv30->vertprog.textures[i], NULL);
       nv30->vertprog.dirty_samplers |= (1 << i);
    }

@@ -98,7 +98,7 @@ nve4_cp_launch_desc_init_default(struct nve4_cp_launch_desc *desc)
 static inline void
 nve4_cp_launch_desc_set_cb(struct nve4_cp_launch_desc *desc,
                            unsigned index,
-                           struct nouveau_bo *bo,
+                           struct nouveau_ws_bo *bo,
                            uint32_t base, uint32_t size)
 {
    uint64_t address = bo->offset + base;
@@ -125,7 +125,7 @@ gp100_cp_launch_desc_init_default(struct gp100_cp_launch_desc *desc)
 static inline void
 gp100_cp_launch_desc_set_cb(struct gp100_cp_launch_desc *desc,
                             unsigned index,
-                            struct nouveau_bo *bo,
+                            struct nouveau_ws_bo *bo,
                             uint32_t base, uint32_t size)
 {
    uint64_t address = bo->offset + base;

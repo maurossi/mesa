@@ -24,7 +24,7 @@
 
 static void
 nv98_decoder_setup_ppp(struct nouveau_vp3_decoder *dec, struct nouveau_vp3_video_buffer *target, uint32_t low700) {
-   struct nouveau_pushbuf *push = dec->pushbuf[2];
+   struct nouveau_ws_pushbuf *push = dec->pushbuf[2];
 
    uint32_t stride_in = mb(dec->base.width);
    uint32_t stride_out = mb(target->resources[0]->width0);
@@ -32,7 +32,7 @@ nv98_decoder_setup_ppp(struct nouveau_vp3_decoder *dec, struct nouveau_vp3_video
    uint32_t dec_w = mb(dec->base.width);
    uint64_t in_addr;
    uint32_t y2, cbcr, cbcr2, i;
-   struct nouveau_pushbuf_refn bo_refs[] = {
+   struct nouveau_ws_pushbuf_refn bo_refs[] = {
       { NULL, NOUVEAU_BO_WR | NOUVEAU_BO_VRAM },
       { NULL, NOUVEAU_BO_WR | NOUVEAU_BO_VRAM },
       { dec->ref_bo, NOUVEAU_BO_RD | NOUVEAU_BO_VRAM },
@@ -47,7 +47,7 @@ nv98_decoder_setup_ppp(struct nouveau_vp3_decoder *dec, struct nouveau_vp3_video
       bo_refs[i].bo = mt->base.bo;
    }
 
-   nouveau_pushbuf_refn(push, bo_refs, num_refs);
+   nouveau_ws_pushbuf_refn(push, bo_refs, num_refs);
    nouveau_vp3_ycbcr_offsets(dec, &y2, &cbcr, &cbcr2);
 
    BEGIN_NV04(push, SUBC_PPP(0x700), 10);
@@ -74,7 +74,7 @@ nv98_decoder_setup_ppp(struct nouveau_vp3_decoder *dec, struct nouveau_vp3_video
 
 static uint32_t
 nv98_decoder_vc1_ppp(struct nouveau_vp3_decoder *dec, struct pipe_vc1_picture_desc *desc, struct nouveau_vp3_video_buffer *target) {
-   struct nouveau_pushbuf *push = dec->pushbuf[2];
+   struct nouveau_ws_pushbuf *push = dec->pushbuf[2];
 
    nv98_decoder_setup_ppp(dec, target, 0x1412);
    assert(!desc->deblockEnable);
@@ -91,10 +91,10 @@ nv98_decoder_vc1_ppp(struct nouveau_vp3_decoder *dec, struct pipe_vc1_picture_de
 void
 nv98_decoder_ppp(struct nouveau_vp3_decoder *dec, union pipe_desc desc, struct nouveau_vp3_video_buffer *target, unsigned comm_seq) {
    enum pipe_video_format codec = u_reduce_video_profile(dec->base.profile);
-   struct nouveau_pushbuf *push = dec->pushbuf[2];
+   struct nouveau_ws_pushbuf *push = dec->pushbuf[2];
    unsigned ppp_caps = 0x10;
 
-   nouveau_pushbuf_space(push, 32, 4, 0);
+   nouveau_ws_pushbuf_space(push, 32, 4, 0);
 
    switch (codec) {
    case PIPE_VIDEO_FORMAT_MPEG12: {

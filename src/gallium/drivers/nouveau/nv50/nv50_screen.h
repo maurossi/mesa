@@ -65,11 +65,11 @@ struct nv50_screen {
 
    int num_occlusion_queries_active;
 
-   struct nouveau_bo *code;
-   struct nouveau_bo *uniforms;
-   struct nouveau_bo *txc; /* TIC (offset 0) and TSC (65536) */
-   struct nouveau_bo *stack_bo;
-   struct nouveau_bo *tls_bo;
+   struct nouveau_ws_bo *code;
+   struct nouveau_ws_bo *uniforms;
+   struct nouveau_ws_bo *txc; /* TIC (offset 0) and TSC (65536) */
+   struct nouveau_ws_bo *stack_bo;
+   struct nouveau_ws_bo *tls_bo;
 
    unsigned TPs;
    unsigned MPsInTP;
@@ -96,7 +96,7 @@ struct nv50_screen {
    } tsc;
 
    struct {
-      struct nouveau_bo *bo;
+      struct nouveau_ws_bo *bo;
    } fence;
 
    struct {
@@ -105,12 +105,12 @@ struct nv50_screen {
       uint8_t num_hw_sm_active;
    } pm;
 
-   struct nouveau_object *sync;
+   struct nouveau_ws_object *sync;
 
-   struct nouveau_object *tesla;
-   struct nouveau_object *compute;
-   struct nouveau_object *eng2d;
-   struct nouveau_object *m2mf;
+   struct nouveau_ws_object *tesla;
+   struct nouveau_ws_object *compute;
+   struct nouveau_ws_object *eng2d;
+   struct nouveau_ws_object *m2mf;
 };
 
 static inline struct nv50_screen *
@@ -130,7 +130,7 @@ void nv50_blitter_destroy(struct nv50_screen *);
 int nv50_screen_tic_alloc(struct nv50_screen *, void *);
 int nv50_screen_tsc_alloc(struct nv50_screen *, void *);
 
-int nv50_screen_compute_setup(struct nv50_screen *, struct nouveau_pushbuf *);
+int nv50_screen_compute_setup(struct nv50_screen *, struct nouveau_ws_pushbuf *);
 
 static inline void
 nv50_resource_fence(struct nv04_resource *res, uint32_t flags)

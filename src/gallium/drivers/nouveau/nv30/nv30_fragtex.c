@@ -34,8 +34,8 @@ void
 nv30_fragtex_validate(struct nv30_context *nv30)
 {
    struct pipe_screen *pscreen = &nv30->screen->base.base;
-   struct nouveau_object *eng3d = nv30->screen->eng3d;
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_object *eng3d = nv30->screen->eng3d;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
    unsigned dirty = nv30->fragprog.dirty_samplers;
 
    while (dirty) {
@@ -179,13 +179,13 @@ nv30_fragtex_set_sampler_views(struct pipe_context *pipe, unsigned nr,
    unsigned i;
 
    for (i = 0; i < nr; i++) {
-      nouveau_bufctx_reset(nv30->bufctx, BUFCTX_FRAGTEX(i));
+      nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_FRAGTEX(i));
       pipe_sampler_view_reference(&nv30->fragprog.textures[i], views[i]);
       nv30->fragprog.dirty_samplers |= (1 << i);
    }
 
    for (; i < nv30->fragprog.num_textures; i++) {
-      nouveau_bufctx_reset(nv30->bufctx, BUFCTX_FRAGTEX(i));
+      nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_FRAGTEX(i));
       pipe_sampler_view_reference(&nv30->fragprog.textures[i], NULL);
       nv30->fragprog.dirty_samplers |= (1 << i);
    }

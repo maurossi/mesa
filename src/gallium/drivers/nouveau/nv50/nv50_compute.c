@@ -31,10 +31,10 @@
 
 int
 nv50_screen_compute_setup(struct nv50_screen *screen,
-                          struct nouveau_pushbuf *push)
+                          struct nouveau_ws_pushbuf *push)
 {
-   struct nouveau_device *dev = screen->base.device;
-   struct nouveau_object *chan = screen->base.channel;
+   struct nouveau_ws_device *dev = screen->base.device;
+   struct nouveau_ws_object *chan = screen->base.channel;
    struct nv04_fifo *fifo = (struct nv04_fifo *)chan->data;
    unsigned obj_class;
    int i, ret;
@@ -62,8 +62,8 @@ nv50_screen_compute_setup(struct nv50_screen *screen,
       return -1;
    }
 
-   ret = nouveau_object_new(chan, 0xbeef50c0, obj_class, NULL, 0,
-                            &screen->compute);
+   ret = nouveau_ws_object_new(chan, 0xbeef50c0, obj_class, NULL, 0,
+                               &screen->compute);
    if (ret)
       return ret;
 
@@ -195,7 +195,7 @@ static void
 nv50_compute_upload_input(struct nv50_context *nv50, const uint32_t *input)
 {
    struct nv50_screen *screen = nv50->screen;
-   struct nouveau_pushbuf *push = screen->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = screen->base.pushbuf;
    unsigned size = align(nv50->compprog->parm_size, 0x4);
 
    BEGIN_NV04(push, NV50_CP(USER_PARAM_COUNT), 1);
@@ -203,25 +203,25 @@ nv50_compute_upload_input(struct nv50_context *nv50, const uint32_t *input)
 
    if (size) {
       struct nouveau_mm_allocation *mm;
-      struct nouveau_bo *bo = NULL;
+      struct nouveau_ws_bo *bo = NULL;
       unsigned offset;
 
       mm = nouveau_mm_allocate(screen->base.mm_GART, size, &bo, &offset);
       assert(mm);
 
-      nouveau_bo_map(bo, 0, screen->base.client);
+      nouveau_ws_bo_map(bo, 0, screen->base.client);
       memcpy(bo->map + offset, input, size);
 
-      nouveau_bufctx_refn(nv50->bufctx, 0, bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
-      nouveau_pushbuf_bufctx(push, nv50->bufctx);
-      nouveau_pushbuf_validate(push);
+      nouveau_ws_bufctx_refn(nv50->bufctx, 0, bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
+      nouveau_ws_pushbuf_bufctx(push, nv50->bufctx);
+      nouveau_ws_pushbuf_validate(push);
 
       BEGIN_NV04(push, NV50_CP(USER_PARAM(0)), size / 4);
-      nouveau_pushbuf_data(push, bo, offset, size);
+      nouveau_ws_pushbuf_data(push, bo, offset, size);
 
       nouveau_fence_work(screen->base.fence.current, nouveau_mm_free_work, mm);
-      nouveau_bo_ref(NULL, &bo);
-      nouveau_bufctx_reset(nv50->bufctx, 0);
+      nouveau_ws_bo_ref(NULL, &bo);
+      nouveau_ws_bufctx_reset(nv50->bufctx, 0);
    }
 }
 
@@ -244,7 +244,7 @@ void
 nv50_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
 {
    struct nv50_context *nv50 = nv50_context(pipe);
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    unsigned block_size = info->block[0] * info->block[1] * info->block[2];
    struct nv50_program *cp = nv50->compprog;
    bool ret;

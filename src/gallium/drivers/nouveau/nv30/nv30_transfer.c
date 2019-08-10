@@ -87,7 +87,7 @@ nv30_transfer_rect_vertprog(struct nv30_context *nv30)
 
       vp = nv30->blit_vp;
       if (vp) {
-         struct nouveau_pushbuf *push = nv30->base.pushbuf;
+         struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
          BEGIN_NV04(push, NV30_3D(VP_UPLOAD_FROM_ID), 1);
          PUSH_DATA (push, vp->start);
@@ -146,8 +146,8 @@ nv30_transfer_rect_blit(XFER_ARGS)
 {
    struct nv04_resource *fp = nv30_transfer_rect_fragprog(nv30);
    struct nouveau_heap *vp = nv30_transfer_rect_vertprog(nv30);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_pushbuf_refn refs[] = {
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf_refn refs[] = {
       { fp->bo, fp->domain | NOUVEAU_BO_RD },
       { src->bo, src->domain | NOUVEAU_BO_RD },
       { dst->bo, NOUVEAU_BO_VRAM | NOUVEAU_BO_WR },
@@ -155,8 +155,8 @@ nv30_transfer_rect_blit(XFER_ARGS)
    u32 texfmt, texswz;
    u32 format, stride;
 
-   if (nouveau_pushbuf_space(push, 512, 8, 0) ||
-       nouveau_pushbuf_refn (push, refs, ARRAY_SIZE(refs)))
+   if (nouveau_ws_pushbuf_space(push, 512, 8, 0) ||
+       nouveau_ws_pushbuf_refn (push, refs, ARRAY_SIZE(refs)))
       return;
 
    /* various switches depending on cpp of the transfer */
@@ -398,8 +398,8 @@ static void
 nv30_transfer_rect_sifm(XFER_ARGS)
 
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_pushbuf_refn refs[] = {
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf_refn refs[] = {
       { src->bo, src->domain | NOUVEAU_BO_RD },
       { dst->bo, dst->domain | NOUVEAU_BO_WR },
    };
@@ -431,8 +431,8 @@ nv30_transfer_rect_sifm(XFER_ARGS)
       si_arg |= NV03_SIFM_FORMAT_FILTER_BILINEAR;
    }
 
-   if (nouveau_pushbuf_space(push, 64, 6, 0) ||
-       nouveau_pushbuf_refn (push, refs, 2))
+   if (nouveau_ws_pushbuf_space(push, 64, 6, 0) ||
+       nouveau_ws_pushbuf_refn (push, refs, 2))
       return;
 
    if (dst->pitch) {
@@ -495,8 +495,8 @@ nv30_transfer_m2mf(XFER_ARGS)
 static void
 nv30_transfer_rect_m2mf(XFER_ARGS)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_pushbuf_refn refs[] = {
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf_refn refs[] = {
       { src->bo, src->domain | NOUVEAU_BO_RD },
       { dst->bo, dst->domain | NOUVEAU_BO_WR },
    };
@@ -516,8 +516,8 @@ nv30_transfer_rect_m2mf(XFER_ARGS)
    while (h) {
       unsigned lines = (h > 2047) ? 2047 : h;
 
-      if (nouveau_pushbuf_space(push, 32, 2, 0) ||
-          nouveau_pushbuf_refn (push, refs, 2))
+      if (nouveau_ws_pushbuf_space(push, 32, 2, 0) ||
+          nouveau_ws_pushbuf_refn (push, refs, 2))
          return;
 
       BEGIN_NV04(push, NV03_M2MF(OFFSET_IN), 8);
@@ -635,8 +635,8 @@ nv30_transfer_rect_cpu(XFER_ARGS)
    char *srcmap, *dstmap;
    int x, y;
 
-   nouveau_bo_map(src->bo, NOUVEAU_BO_RD, nv30->base.client);
-   nouveau_bo_map(dst->bo, NOUVEAU_BO_WR, nv30->base.client);
+   nouveau_ws_bo_map(src->bo, NOUVEAU_BO_RD, nv30->base.client);
+   nouveau_ws_bo_map(dst->bo, NOUVEAU_BO_WR, nv30->base.client);
    srcmap = src->bo->map + src->offset;
    dstmap = dst->bo->map + dst->offset;
 
@@ -676,7 +676,7 @@ nv30_transfer_rect(struct nv30_context *nv30, enum nv30_transfer_filter filter,
 
 void
 nv30_transfer_push_data(struct nouveau_context *nv,
-                        struct nouveau_bo *bo, unsigned offset, unsigned domain,
+                        struct nouveau_ws_bo *bo, unsigned offset, unsigned domain,
                         unsigned size, void *data)
 {
    /* use ifc, or scratch + copy_data? */
@@ -685,16 +685,16 @@ nv30_transfer_push_data(struct nouveau_context *nv,
 
 void
 nv30_transfer_copy_data(struct nouveau_context *nv,
-                        struct nouveau_bo *dst, unsigned d_off, unsigned d_dom,
-                        struct nouveau_bo *src, unsigned s_off, unsigned s_dom,
+                        struct nouveau_ws_bo *dst, unsigned d_off, unsigned d_dom,
+                        struct nouveau_ws_bo *src, unsigned s_off, unsigned s_dom,
                         unsigned size)
 {
    struct nv04_fifo *fifo = nv->screen->channel->data;
-   struct nouveau_pushbuf_refn refs[] = {
+   struct nouveau_ws_pushbuf_refn refs[] = {
       { src, s_dom | NOUVEAU_BO_RD },
       { dst, d_dom | NOUVEAU_BO_WR },
    };
-   struct nouveau_pushbuf *push = nv->pushbuf;
+   struct nouveau_ws_pushbuf *push = nv->pushbuf;
    unsigned pages, lines;
 
    pages = size >> 12;
@@ -708,8 +708,8 @@ nv30_transfer_copy_data(struct nouveau_context *nv,
       lines  = (pages > 2047) ? 2047 : pages;
       pages -= lines;
 
-      if (nouveau_pushbuf_space(push, 32, 2, 0) ||
-          nouveau_pushbuf_refn (push, refs, 2))
+      if (nouveau_ws_pushbuf_space(push, 32, 2, 0) ||
+          nouveau_ws_pushbuf_refn (push, refs, 2))
          return;
 
       BEGIN_NV04(push, NV03_M2MF(OFFSET_IN), 8);
@@ -732,8 +732,8 @@ nv30_transfer_copy_data(struct nouveau_context *nv,
    }
 
    if (size) {
-      if (nouveau_pushbuf_space(push, 32, 2, 0) ||
-          nouveau_pushbuf_refn (push, refs, 2))
+      if (nouveau_ws_pushbuf_space(push, 32, 2, 0) ||
+          nouveau_ws_pushbuf_refn (push, refs, 2))
          return;
 
       BEGIN_NV04(push, NV03_M2MF(OFFSET_IN), 8);

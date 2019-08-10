@@ -61,9 +61,9 @@ static int compare_fd(void *key1, void *key2)
 PUBLIC struct pipe_screen *
 nouveau_drm_screen_create(int fd)
 {
-	struct nouveau_drm *drm = NULL;
-	struct nouveau_device *dev = NULL;
-	struct nouveau_screen *(*init)(struct nouveau_device *);
+	struct nouveau_ws_drm *drm = NULL;
+	struct nouveau_ws_device *dev = NULL;
+	struct nouveau_screen *(*init)(struct nouveau_ws_device *);
 	struct nouveau_screen *screen = NULL;
 	int ret, dupfd;
 
@@ -95,14 +95,14 @@ nouveau_drm_screen_create(int fd)
 	 */
 	dupfd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
 
-	ret = nouveau_drm_new(dupfd, &drm);
+	ret = nouveau_ws_drm_new(dupfd, &drm);
 	if (ret)
 		goto err;
 
-	ret = nouveau_device_new(&drm->client, NV_DEVICE,
-				 &(struct nv_device_v0) {
+	ret = nouveau_ws_device_new(drm, NV_DEVICE,
+				    &(struct nv_device_v0) {
 					.device = ~0ULL,
-				 }, sizeof(struct nv_device_v0), &dev);
+				    }, sizeof(struct nv_device_v0), &dev);
 	if (ret)
 		goto err;
 
@@ -152,8 +152,8 @@ err:
 	if (screen) {
 		screen->base.destroy(&screen->base);
 	} else {
-		nouveau_device_del(&dev);
-		nouveau_drm_del(&drm);
+		nouveau_ws_device_del(&dev);
+		nouveau_ws_drm_del(&drm);
 		close(dupfd);
 	}
 	mtx_unlock(&nouveau_screen_mutex);
