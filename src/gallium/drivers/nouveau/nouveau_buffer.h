@@ -7,7 +7,7 @@
 
 struct pipe_resource;
 struct nouveau_context;
-struct nouveau_bo;
+struct nouveau_ws_bo;
 
 /* DIRTY: buffer was (or will be after the next flush) written to by GPU and
  *  resource->data has not been updated to reflect modified VRAM contents
@@ -25,7 +25,7 @@ struct nouveau_bo;
 /* Resources, if mapped into the GPU's address space, are guaranteed to
  * have constant virtual addresses (nv50+).
  *
- * The address of a resource will lie within the nouveau_bo referenced,
+ * The address of a resource will lie within the nouveau_ws_bo referenced,
  * and this bo should be added to the memory manager's validation list.
  */
 struct nv04_resource {
@@ -35,7 +35,7 @@ struct nv04_resource {
    uint64_t address; /* virtual address (nv50+) */
 
    uint8_t *data; /* resource's contents, if domain == 0, or cached */
-   struct nouveau_bo *bo;
+   struct nouveau_ws_bo *bo;
    uint32_t offset; /* offset into the data/bo */
 
    uint8_t status;
@@ -109,6 +109,6 @@ nouveau_buffer_invalidate(struct pipe_context *pipe,
 uint64_t
 nouveau_scratch_data(struct nouveau_context *,
                      const void *data, unsigned base, unsigned size,
-                     struct nouveau_bo **);
+                     struct nouveau_ws_bo **);
 
 #endif

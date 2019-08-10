@@ -63,12 +63,12 @@ filesize(const char *path)
    return statbuf.st_size;
 }
 
-static struct nouveau_bo *
-nv84_load_firmwares(struct nouveau_device *dev, struct nv84_decoder *dec,
+static struct nouveau_ws_bo *
+nv84_load_firmwares(struct nouveau_ws_device *dev, struct nv84_decoder *dec,
                     const char *fw1, const char *fw2)
 {
    int ret, size1, size2 = 0;
-   struct nouveau_bo *fw;
+   struct nouveau_ws_bo *fw;
 
    size1 = filesize(fw1);
    if (fw2)
@@ -78,10 +78,10 @@ nv84_load_firmwares(struct nouveau_device *dev, struct nv84_decoder *dec,
 
    dec->vp_fw2_offset = align(size1, 0x100);
 
-   ret = nouveau_bo_new(dev, NOUVEAU_BO_VRAM, 0, dec->vp_fw2_offset + size2, NULL, &fw);
+   ret = nouveau_ws_bo_new(dev, NOUVEAU_BO_VRAM, 0, dec->vp_fw2_offset + size2, NULL, &fw);
    if (ret)
       return NULL;
-   ret = nouveau_bo_map(fw, NOUVEAU_BO_WR, dec->client);
+   ret = nouveau_ws_bo_map(fw, NOUVEAU_BO_WR, dec->client);
    if (ret)
       goto error;
 
@@ -93,19 +93,19 @@ nv84_load_firmwares(struct nouveau_device *dev, struct nv84_decoder *dec,
    if (!ret)
       return fw;
 error:
-   nouveau_bo_ref(NULL, &fw);
+   nouveau_ws_bo_ref(NULL, &fw);
    return NULL;
 }
 
-static struct nouveau_bo *
-nv84_load_bsp_firmware(struct nouveau_device *dev, struct nv84_decoder *dec)
+static struct nouveau_ws_bo *
+nv84_load_bsp_firmware(struct nouveau_ws_device *dev, struct nv84_decoder *dec)
 {
    return nv84_load_firmwares(
          dev, dec, "/lib/firmware/nouveau/nv84_bsp-h264", NULL);
 }
 
-static struct nouveau_bo *
-nv84_load_vp_firmware(struct nouveau_device *dev, struct nv84_decoder *dec)
+static struct nouveau_ws_bo *
+nv84_load_vp_firmware(struct nouveau_ws_device *dev, struct nv84_decoder *dec)
 {
    return nv84_load_firmwares(
          dev, dec,
@@ -113,8 +113,8 @@ nv84_load_vp_firmware(struct nouveau_device *dev, struct nv84_decoder *dec)
          "/lib/firmware/nouveau/nv84_vp-h264-2");
 }
 
-static struct nouveau_bo *
-nv84_load_vp_firmware_mpeg(struct nouveau_device *dev, struct nv84_decoder *dec)
+static struct nouveau_ws_bo *
+nv84_load_vp_firmware_mpeg(struct nouveau_ws_device *dev, struct nv84_decoder *dec)
 {
    return nv84_load_firmwares(
          dev, dec, "/lib/firmware/nouveau/nv84_vp-mpeg12", NULL);
@@ -187,7 +187,7 @@ nv84_decoder_begin_frame_mpeg12(struct pipe_video_codec *decoder,
    struct pipe_mpeg12_picture_desc *desc = (struct pipe_mpeg12_picture_desc *)picture;
    int i;
 
-   nouveau_bo_wait(dec->mpeg12_bo, NOUVEAU_BO_RDWR, dec->client);
+   nouveau_ws_bo_wait(dec->mpeg12_bo, NOUVEAU_BO_RDWR, dec->client);
    dec->mpeg12_mb_info = dec->mpeg12_bo->map + 0x100;
    dec->mpeg12_data = dec->mpeg12_bo->map + 0x100 +
       align(0x20 * mb(dec->base.width) * mb(dec->base.height), 0x100);
@@ -233,28 +233,28 @@ nv84_decoder_destroy(struct pipe_video_codec *decoder)
 {
    struct nv84_decoder *dec = (struct nv84_decoder *)decoder;
 
-   nouveau_bo_ref(NULL, &dec->bsp_fw);
-   nouveau_bo_ref(NULL, &dec->bsp_data);
-   nouveau_bo_ref(NULL, &dec->vp_fw);
-   nouveau_bo_ref(NULL, &dec->vp_data);
-   nouveau_bo_ref(NULL, &dec->mbring);
-   nouveau_bo_ref(NULL, &dec->vpring);
-   nouveau_bo_ref(NULL, &dec->bitstream);
-   nouveau_bo_ref(NULL, &dec->vp_params);
-   nouveau_bo_ref(NULL, &dec->fence);
+   nouveau_ws_bo_ref(NULL, &dec->bsp_fw);
+   nouveau_ws_bo_ref(NULL, &dec->bsp_data);
+   nouveau_ws_bo_ref(NULL, &dec->vp_fw);
+   nouveau_ws_bo_ref(NULL, &dec->vp_data);
+   nouveau_ws_bo_ref(NULL, &dec->mbring);
+   nouveau_ws_bo_ref(NULL, &dec->vpring);
+   nouveau_ws_bo_ref(NULL, &dec->bitstream);
+   nouveau_ws_bo_ref(NULL, &dec->vp_params);
+   nouveau_ws_bo_ref(NULL, &dec->fence);
 
-   nouveau_object_del(&dec->bsp);
-   nouveau_object_del(&dec->vp);
+   nouveau_ws_object_del(&dec->bsp);
+   nouveau_ws_object_del(&dec->vp);
 
-   nouveau_bufctx_del(&dec->bsp_bufctx);
-   nouveau_pushbuf_del(&dec->bsp_pushbuf);
-   nouveau_object_del(&dec->bsp_channel);
+   nouveau_ws_bufctx_del(&dec->bsp_bufctx);
+   nouveau_ws_pushbuf_del(&dec->bsp_pushbuf);
+   nouveau_ws_object_del(&dec->bsp_channel);
 
-   nouveau_bufctx_del(&dec->vp_bufctx);
-   nouveau_pushbuf_del(&dec->vp_pushbuf);
-   nouveau_object_del(&dec->vp_channel);
+   nouveau_ws_bufctx_del(&dec->vp_bufctx);
+   nouveau_ws_pushbuf_del(&dec->vp_pushbuf);
+   nouveau_ws_object_del(&dec->vp_channel);
 
-   nouveau_client_del(&dec->client);
+   nouveau_ws_client_del(&dec->client);
 
    FREE(dec->mpeg12_bs);
    FREE(dec);
@@ -267,7 +267,7 @@ nv84_create_decoder(struct pipe_context *context,
    struct nv50_context *nv50 = (struct nv50_context *)context;
    struct nouveau_screen *screen = &nv50->screen->base;
    struct nv84_decoder *dec;
-   struct nouveau_pushbuf *bsp_push, *vp_push;
+   struct nouveau_ws_pushbuf *bsp_push, *vp_push;
    struct nv50_surface surf;
    struct nv50_miptree mip;
    union pipe_color_union color;
@@ -324,38 +324,38 @@ nv84_create_decoder(struct pipe_context *context,
       goto fail;
    }
 
-   ret = nouveau_client_new(screen->device, &dec->client);
+   ret = nouveau_ws_client_new(screen->device, &dec->client);
    if (ret)
       goto fail;
 
    if (is_h264) {
-      ret = nouveau_object_new(&screen->device->object, 0,
-                               NOUVEAU_FIFO_CHANNEL_CLASS,
-                               &nv04_data, sizeof(nv04_data), &dec->bsp_channel);
+      ret = nouveau_ws_object_new(screen->device->object, 0,
+                                  NOUVEAU_FIFO_CHANNEL_CLASS,
+                                  &nv04_data, sizeof(nv04_data), &dec->bsp_channel);
       if (ret)
          goto fail;
 
-      ret = nouveau_pushbuf_new(dec->client, dec->bsp_channel, 4,
+      ret = nouveau_ws_pushbuf_new(dec->client, dec->bsp_channel, 4,
                                 32 * 1024, true, &dec->bsp_pushbuf);
       if (ret)
          goto fail;
 
-      ret = nouveau_bufctx_new(dec->client, 1, &dec->bsp_bufctx);
+      ret = nouveau_ws_bufctx_new(dec->client, 1, &dec->bsp_bufctx);
       if (ret)
          goto fail;
    }
 
-   ret = nouveau_object_new(&screen->device->object, 0,
-                            NOUVEAU_FIFO_CHANNEL_CLASS,
-                            &nv04_data, sizeof(nv04_data), &dec->vp_channel);
+   ret = nouveau_ws_object_new(screen->device->object, 0,
+                               NOUVEAU_FIFO_CHANNEL_CLASS,
+                               &nv04_data, sizeof(nv04_data), &dec->vp_channel);
    if (ret)
       goto fail;
-   ret = nouveau_pushbuf_new(dec->client, dec->vp_channel, 4,
+   ret = nouveau_ws_pushbuf_new(dec->client, dec->vp_channel, 4,
                              32 * 1024, true, &dec->vp_pushbuf);
    if (ret)
       goto fail;
 
-   ret = nouveau_bufctx_new(dec->client, 1, &dec->vp_bufctx);
+   ret = nouveau_ws_bufctx_new(dec->client, 1, &dec->vp_bufctx);
    if (ret)
       goto fail;
 
@@ -375,17 +375,17 @@ nv84_create_decoder(struct pipe_context *context,
    }
 
    if (is_h264) {
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
                            0, 0x40000, NULL, &dec->bsp_data);
       if (ret)
          goto fail;
    }
-   ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
+   ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
                         0, 0x40000, NULL, &dec->vp_data);
    if (ret)
       goto fail;
    if (is_h264) {
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
                            0,
                            2 * (dec->vpring_deblock +
                                 dec->vpring_residual +
@@ -394,71 +394,71 @@ nv84_create_decoder(struct pipe_context *context,
                            NULL, &dec->vpring);
       if (ret)
          goto fail;
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP,
                            0,
                            (templ->max_references + 1) * dec->frame_mbs * 0x40 +
                            dec->frame_size + 0x2000,
                            NULL, &dec->mbring);
       if (ret)
          goto fail;
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_GART,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_GART,
                            0, 2 * (0x700 + MAX2(0x40000, 0x800 + 0x180 * dec->frame_mbs)),
                            NULL, &dec->bitstream);
       if (ret)
          goto fail;
-      ret = nouveau_bo_map(dec->bitstream, NOUVEAU_BO_WR, dec->client);
+      ret = nouveau_ws_bo_map(dec->bitstream, NOUVEAU_BO_WR, dec->client);
       if (ret)
          goto fail;
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_GART,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_GART,
                            0, 0x2000, NULL, &dec->vp_params);
       if (ret)
          goto fail;
-      ret = nouveau_bo_map(dec->vp_params, NOUVEAU_BO_WR, dec->client);
+      ret = nouveau_ws_bo_map(dec->vp_params, NOUVEAU_BO_WR, dec->client);
       if (ret)
          goto fail;
    }
    if (is_mpeg12) {
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_GART,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_GART,
                            0,
                            align(0x20 * mb(templ->width) * mb(templ->height), 0x100) +
                            (6 * 64 * 8) * mb(templ->width) * mb(templ->height) + 0x100,
                            NULL, &dec->mpeg12_bo);
       if (ret)
          goto fail;
-      ret = nouveau_bo_map(dec->mpeg12_bo, NOUVEAU_BO_WR, dec->client);
+      ret = nouveau_ws_bo_map(dec->mpeg12_bo, NOUVEAU_BO_WR, dec->client);
       if (ret)
          goto fail;
    }
 
-   ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM,
+   ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM,
                         0, 0x1000, NULL, &dec->fence);
    if (ret)
       goto fail;
-   ret = nouveau_bo_map(dec->fence, NOUVEAU_BO_WR, dec->client);
+   ret = nouveau_ws_bo_map(dec->fence, NOUVEAU_BO_WR, dec->client);
    if (ret)
       goto fail;
    *(uint32_t *)dec->fence->map = 0;
 
    if (is_h264) {
-      nouveau_pushbuf_bufctx(bsp_push, dec->bsp_bufctx);
-      nouveau_bufctx_refn(dec->bsp_bufctx, 0,
+      nouveau_ws_pushbuf_bufctx(bsp_push, dec->bsp_bufctx);
+      nouveau_ws_bufctx_refn(dec->bsp_bufctx, 0,
                           dec->bsp_fw, NOUVEAU_BO_VRAM | NOUVEAU_BO_RD);
-      nouveau_bufctx_refn(dec->bsp_bufctx, 0,
+      nouveau_ws_bufctx_refn(dec->bsp_bufctx, 0,
                           dec->bsp_data, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
    }
 
-   nouveau_pushbuf_bufctx(vp_push, dec->vp_bufctx);
-   nouveau_bufctx_refn(dec->vp_bufctx, 0, dec->vp_fw,
+   nouveau_ws_pushbuf_bufctx(vp_push, dec->vp_bufctx);
+   nouveau_ws_bufctx_refn(dec->vp_bufctx, 0, dec->vp_fw,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RD);
-   nouveau_bufctx_refn(dec->vp_bufctx, 0, dec->vp_data,
+   nouveau_ws_bufctx_refn(dec->vp_bufctx, 0, dec->vp_data,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
 
    if (is_h264 && !ret)
-      ret = nouveau_object_new(dec->bsp_channel, 0xbeef74b0, 0x74b0,
+      ret = nouveau_ws_object_new(dec->bsp_channel, 0xbeef74b0, 0x74b0,
                                NULL, 0, &dec->bsp);
 
    if (!ret)
-      ret = nouveau_object_new(dec->vp_channel, 0xbeef7476, 0x7476,
+      ret = nouveau_ws_object_new(dec->vp_channel, 0xbeef7476, 0x7476,
                                NULL, 0, &dec->vp);
 
    if (ret)
@@ -592,8 +592,8 @@ nv84_video_buffer_destroy(struct pipe_video_buffer *buffer)
       pipe_surface_reference(&buf->surfaces[i * 2 + 1], NULL);
    }
 
-   nouveau_bo_ref(NULL, &buf->interlaced);
-   nouveau_bo_ref(NULL, &buf->full);
+   nouveau_ws_bo_ref(NULL, &buf->interlaced);
+   nouveau_ws_bo_ref(NULL, &buf->full);
 
    FREE(buffer);
 }
@@ -609,7 +609,7 @@ nv84_video_buffer_create(struct pipe_context *pipe,
    struct pipe_surface surf_templ;
    struct nv50_miptree *mt0, *mt1;
    struct nouveau_screen *screen = &((struct nv50_context *)pipe)->screen->base;
-   union nouveau_bo_config cfg;
+   struct nouveau_ws_bo_config cfg;
    unsigned bo_size;
 
    if (getenv("XVMC_VL") || template->buffer_format != PIPE_FORMAT_NV12)
@@ -656,8 +656,8 @@ nv84_video_buffer_create(struct pipe_context *pipe,
    templ.flags = NV50_RESOURCE_FLAG_VIDEO | NV50_RESOURCE_FLAG_NOALLOC;
    templ.array_size = 2;
 
-   cfg.nv50.tile_mode = 0x20;
-   cfg.nv50.memtype = 0x70;
+   cfg.tile_mode = 0x20;
+   cfg.memtype = 0x70;
 
    buffer->resources[0] = pipe->screen->resource_create(pipe->screen, &templ);
    if (!buffer->resources[0])
@@ -674,20 +674,20 @@ nv84_video_buffer_create(struct pipe_context *pipe,
    mt1 = nv50_miptree(buffer->resources[1]);
 
    bo_size = mt0->total_size + mt1->total_size;
-   if (nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP, 0,
+   if (nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP, 0,
                       bo_size, &cfg, &buffer->interlaced))
       goto error;
    /* XXX Change reference frame management so that this is only allocated in
     * the decoder when necessary. */
-   if (nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP, 0,
+   if (nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM | NOUVEAU_BO_NOSNOOP, 0,
                       bo_size, &cfg, &buffer->full))
       goto error;
 
-   nouveau_bo_ref(buffer->interlaced, &mt0->base.bo);
+   nouveau_ws_bo_ref(buffer->interlaced, &mt0->base.bo);
    mt0->base.domain = NOUVEAU_BO_VRAM;
    mt0->base.address = buffer->interlaced->offset;
 
-   nouveau_bo_ref(buffer->interlaced, &mt1->base.bo);
+   nouveau_ws_bo_ref(buffer->interlaced, &mt1->base.bo);
    mt1->base.domain = NOUVEAU_BO_VRAM;
    mt1->base.offset = mt0->total_size;
    mt1->base.address = buffer->interlaced->offset + mt0->total_size;
@@ -750,25 +750,25 @@ static int
 firmware_present(struct pipe_screen *pscreen, enum pipe_video_format codec)
 {
    struct nouveau_screen *screen = nouveau_screen(pscreen);
-   struct nouveau_object *obj = NULL;
+   struct nouveau_ws_object *obj = NULL;
    struct stat s;
    int checked = screen->firmware_info.profiles_checked;
    int present, ret;
 
    if (!FIRMWARE_PRESENT(checked, VP_KERN)) {
-      ret = nouveau_object_new(screen->channel, 0, 0x7476, NULL, 0, &obj);
+      ret = nouveau_ws_object_new(screen->channel, 0, 0x7476, NULL, 0, &obj);
       if (!ret)
          screen->firmware_info.profiles_present |= FIRMWARE_VP_KERN;
-      nouveau_object_del(&obj);
+      nouveau_ws_object_del(&obj);
       screen->firmware_info.profiles_checked |= FIRMWARE_VP_KERN;
    }
 
    if (codec == PIPE_VIDEO_FORMAT_MPEG4_AVC) {
       if (!FIRMWARE_PRESENT(checked, BSP_KERN)) {
-         ret = nouveau_object_new(screen->channel, 0, 0x74b0, NULL, 0, &obj);
+         ret = nouveau_ws_object_new(screen->channel, 0, 0x74b0, NULL, 0, &obj);
          if (!ret)
             screen->firmware_info.profiles_present |= FIRMWARE_BSP_KERN;
-         nouveau_object_del(&obj);
+         nouveau_ws_object_del(&obj);
          screen->firmware_info.profiles_checked |= FIRMWARE_BSP_KERN;
       }
 

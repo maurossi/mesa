@@ -98,7 +98,7 @@ nvc0_render_condition(struct pipe_context *pipe,
                       bool condition, enum pipe_render_cond_flag mode)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_query *q = nvc0_query(pq);
    struct nvc0_hw_query *hq = nvc0_hw_query(q);
    uint32_t cond;
