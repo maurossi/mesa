@@ -238,19 +238,19 @@ nvc0_miptree_init_layout_tiled(struct nv50_miptree *mt)
 
 static uint64_t nvc0_miptree_get_modifier(struct nv50_miptree *mt)
 {
-   union nouveau_bo_config *config = &mt->base.bo->config;
+   struct nouveau_ws_bo_config *config = &mt->base.bo->config;
    uint64_t modifier;
 
    if (mt->layout_3d)
       return DRM_FORMAT_MOD_INVALID;
 
-   switch (config->nvc0.memtype) {
+   switch (config->memtype) {
    case 0x00:
       modifier = DRM_FORMAT_MOD_LINEAR;
       break;
 
    case 0xfe:
-      switch (NVC0_TILE_MODE_Y(config->nvc0.tile_mode)) {
+      switch (NVC0_TILE_MODE_Y(config->tile_mode)) {
       case 0:
          modifier = DRM_FORMAT_MOD_NVIDIA_16BX2_BLOCK_ONE_GOB;
          break;
@@ -320,13 +320,13 @@ nvc0_miptree_create(struct pipe_screen *pscreen,
                     const struct pipe_resource *templ,
                     const uint64_t *modifiers, unsigned int count)
 {
-   struct nouveau_device *dev = nouveau_screen(pscreen)->device;
-   struct nouveau_drm *drm = nouveau_screen(pscreen)->drm;
+   struct nouveau_ws_device *dev = nouveau_screen(pscreen)->device;
+   struct nouveau_ws_drm *drm = nouveau_screen(pscreen)->drm;
    struct nv50_miptree *mt = CALLOC_STRUCT(nv50_miptree);
    struct pipe_resource *pt = &mt->base.base;
    bool compressed = drm->version >= 0x01000101;
    int ret;
-   union nouveau_bo_config bo_config;
+   struct nouveau_ws_bo_config bo_config;
    uint32_t bo_flags;
 
    if (!mt)
@@ -357,7 +357,7 @@ nvc0_miptree_create(struct pipe_screen *pscreen,
    if (pt->bind & PIPE_BIND_LINEAR)
       pt->flags |= NOUVEAU_RESOURCE_FLAG_LINEAR;
 
-   bo_config.nvc0.memtype = nvc0_mt_choose_storage_type(mt, compressed);
+   bo_config.memtype = nvc0_mt_choose_storage_type(mt, compressed);
 
    if (!nvc0_miptree_init_ms_mode(mt)) {
       FREE(mt);
@@ -367,16 +367,16 @@ nvc0_miptree_create(struct pipe_screen *pscreen,
    if (unlikely(pt->flags & NVC0_RESOURCE_FLAG_VIDEO)) {
       nvc0_miptree_init_layout_video(mt);
    } else
-   if (likely(bo_config.nvc0.memtype)) {
+   if (likely(bo_config.memtype)) {
       nvc0_miptree_init_layout_tiled(mt);
    } else
    if (!nv50_miptree_init_layout_linear(mt, 128)) {
       FREE(mt);
       return NULL;
    }
-   bo_config.nvc0.tile_mode = mt->level[0].tile_mode;
+   bo_config.tile_mode = mt->level[0].tile_mode;
 
-   if (!bo_config.nvc0.memtype && (pt->usage == PIPE_USAGE_STAGING || pt->bind & PIPE_BIND_SHARED))
+   if (!bo_config.memtype && (pt->usage == PIPE_USAGE_STAGING || pt->bind & PIPE_BIND_SHARED))
       mt->base.domain = NOUVEAU_BO_GART;
    else
       mt->base.domain = NV_VRAM_DOMAIN(nouveau_screen(pscreen));
@@ -386,7 +386,7 @@ nvc0_miptree_create(struct pipe_screen *pscreen,
    if (mt->base.base.bind & (PIPE_BIND_CURSOR | PIPE_BIND_DISPLAY_TARGET))
       bo_flags |= NOUVEAU_BO_CONTIG;
 
-   ret = nouveau_bo_new(dev, bo_flags, 4096, mt->total_size, &bo_config,
+   ret = nouveau_ws_bo_new(dev, bo_flags, 4096, mt->total_size, &bo_config,
                         &mt->base.bo);
    if (ret) {
       FREE(mt);

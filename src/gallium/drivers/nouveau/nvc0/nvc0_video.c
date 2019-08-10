@@ -93,12 +93,12 @@ nvc0_create_decoder(struct pipe_context *context,
 {
    struct nouveau_screen *screen = &((struct nvc0_context *)context)->screen->base;
    struct nouveau_vp3_decoder *dec;
-   struct nouveau_pushbuf **push;
-   union nouveau_bo_config cfg;
+   struct nouveau_ws_pushbuf **push;
+   struct nouveau_ws_bo_config cfg;
    bool kepler = screen->device->chipset >= 0xe0;
 
-   cfg.nvc0.tile_mode = 0x10;
-   cfg.nvc0.memtype = 0xfe;
+   cfg.tile_mode = 0x10;
+   cfg.memtype = 0xfe;
 
    int ret, i;
    uint32_t codec = 1, ppp_codec = 3;
@@ -155,12 +155,12 @@ nvc0_create_decoder(struct pipe_context *context,
             data = &nve0_args;
          }
 
-         ret = nouveau_object_new(&screen->device->object, 0,
-                                  NOUVEAU_FIFO_CHANNEL_CLASS,
-                                  data, size, &dec->channel[i]);
+         ret = nouveau_ws_object_new(screen->device->object, 0,
+                                     NOUVEAU_FIFO_CHANNEL_CLASS,
+                                     data, size, &dec->channel[i]);
 
          if (!ret)
-            ret = nouveau_pushbuf_new(screen->client, dec->channel[i], 4,
+            ret = nouveau_ws_pushbuf_new(screen->client, dec->channel[i], 4,
                                    32 * 1024, true, &dec->pushbuf[i]);
          if (ret)
             break;
@@ -169,18 +169,18 @@ nvc0_create_decoder(struct pipe_context *context,
 
    if (!kepler) {
       if (!ret)
-         ret = nouveau_object_new(dec->channel[0], 0x390b1, 0x90b1, NULL, 0, &dec->bsp);
+         ret = nouveau_ws_object_new(dec->channel[0], 0x390b1, 0x90b1, NULL, 0, &dec->bsp);
       if (!ret)
-         ret = nouveau_object_new(dec->channel[1], 0x190b2, 0x90b2, NULL, 0, &dec->vp);
+         ret = nouveau_ws_object_new(dec->channel[1], 0x190b2, 0x90b2, NULL, 0, &dec->vp);
       if (!ret)
-         ret = nouveau_object_new(dec->channel[2], 0x290b3, 0x90b3, NULL, 0, &dec->ppp);
+         ret = nouveau_ws_object_new(dec->channel[2], 0x290b3, 0x90b3, NULL, 0, &dec->ppp);
    } else {
       if (!ret)
-         ret = nouveau_object_new(dec->channel[0], 0x95b1, 0x95b1, NULL, 0, &dec->bsp);
+         ret = nouveau_ws_object_new(dec->channel[0], 0x95b1, 0x95b1, NULL, 0, &dec->bsp);
       if (!ret)
-         ret = nouveau_object_new(dec->channel[1], 0x95b2, 0x95b2, NULL, 0, &dec->vp);
+         ret = nouveau_ws_object_new(dec->channel[1], 0x95b2, 0x95b2, NULL, 0, &dec->vp);
       if (!ret)
-         ret = nouveau_object_new(dec->channel[2], 0x90b3, 0x90b3, NULL, 0, &dec->ppp);
+         ret = nouveau_ws_object_new(dec->channel[2], 0x90b3, 0x90b3, NULL, 0, &dec->ppp);
    }
    if (ret)
       goto fail;
@@ -200,16 +200,16 @@ nvc0_create_decoder(struct pipe_context *context,
    dec->base.end_frame = nvc0_decoder_end_frame;
 
    for (i = 0; i < NOUVEAU_VP3_VIDEO_QDEPTH && !ret; ++i)
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM,
                            0, 1 << 20, &cfg, &dec->bsp_bo[i]);
    if (!ret) {
       /* total fudge factor... just has to be bigger for higher bitrates? */
       unsigned inter_size = align(templ->width * templ->height * 2, 4 << 20);
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM,
                            0x100, inter_size, &cfg, &dec->inter_bo[0]);
    }
    if (!ret) {
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM,
                            0x100, dec->inter_bo[0]->size, &cfg,
                            &dec->inter_bo[1]);
    }
@@ -246,7 +246,7 @@ nvc0_create_decoder(struct pipe_context *context,
    }
 
    if (screen->device->chipset < 0xd0) {
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
                            0x4000, &cfg, &dec->fw_bo);
       if (ret)
          goto fail;
@@ -257,14 +257,14 @@ nvc0_create_decoder(struct pipe_context *context,
    }
 
    if (codec != 3) {
-      ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
+      ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
                            0x400, &cfg, &dec->bitplane_bo);
       if (ret)
          goto fail;
    }
 
    dec->ref_stride = mb(templ->width)*16 * (mb_half(templ->height)*32 + nouveau_vp3_video_align(templ->height)/2);
-   ret = nouveau_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
+   ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_VRAM, 0,
                         dec->ref_stride * (templ->max_references+2) + tmp_size,
                         &cfg, &dec->ref_bo);
    if (ret)
@@ -287,18 +287,18 @@ nvc0_create_decoder(struct pipe_context *context,
    ++dec->fence_seq;
 
 #if NOUVEAU_VP3_DEBUG_FENCE
-   ret = nouveau_bo_new(screen->device, NOUVEAU_BO_GART|NOUVEAU_BO_MAP,
+   ret = nouveau_ws_bo_new(screen->device, NOUVEAU_BO_GART|NOUVEAU_BO_MAP,
                         0, 0x1000, NULL, &dec->fence_bo);
    if (ret)
       goto fail;
 
-   nouveau_bo_map(dec->fence_bo, NOUVEAU_BO_RDWR, screen->client);
+   nouveau_ws_bo_map(dec->fence_bo, NOUVEAU_BO_RDWR, screen->client);
    dec->fence_map = dec->fence_bo->map;
    dec->fence_map[0] = dec->fence_map[4] = dec->fence_map[8] = 0;
    dec->comm = (struct comm *)(dec->fence_map + (COMM_OFFSET/sizeof(*dec->fence_map)));
 
    /* So lets test if the fence is working? */
-   nouveau_pushbuf_space(push[0], 16, 1, 0);
+   nouveau_ws_pushbuf_space(push[0], 16, 1, 0);
    PUSH_REFN (push[0], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NVC0(push[0], SUBC_BSP(0x240), 3);
    PUSH_DATAh(push[0], dec->fence_bo->offset);
@@ -309,7 +309,7 @@ nvc0_create_decoder(struct pipe_context *context,
    PUSH_DATA (push[0], 0);
    PUSH_KICK (push[0]);
 
-   nouveau_pushbuf_space(push[1], 16, 1, 0);
+   nouveau_ws_pushbuf_space(push[1], 16, 1, 0);
    PUSH_REFN (push[1], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NVC0(push[1], SUBC_VP(0x240), 3);
    PUSH_DATAh(push[1], (dec->fence_bo->offset + 0x10));
@@ -320,7 +320,7 @@ nvc0_create_decoder(struct pipe_context *context,
    PUSH_DATA (push[1], 0);
    PUSH_KICK (push[1]);
 
-   nouveau_pushbuf_space(push[2], 16, 1, 0);
+   nouveau_ws_pushbuf_space(push[2], 16, 1, 0);
    PUSH_REFN (push[2], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NVC0(push[2], SUBC_PPP(0x240), 3);
    PUSH_DATAh(push[2], (dec->fence_bo->offset + 0x20));

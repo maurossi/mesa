@@ -2232,7 +2232,7 @@ static const struct nvc0_hw_sm_query_cfg *sm21_hw_sm_queries[] =
 static inline const struct nvc0_hw_sm_query_cfg **
 nvc0_hw_sm_get_queries(struct nvc0_screen *screen)
 {
-   struct nouveau_device *dev = screen->base.device;
+   struct nouveau_ws_device *dev = screen->base.device;
 
    switch (screen->base.class_3d) {
    case GM200_3D_CLASS:
@@ -2255,7 +2255,7 @@ nvc0_hw_sm_get_queries(struct nvc0_screen *screen)
 unsigned
 nvc0_hw_sm_get_num_queries(struct nvc0_screen *screen)
 {
-   struct nouveau_device *dev = screen->base.device;
+   struct nouveau_ws_device *dev = screen->base.device;
 
    switch (screen->base.class_3d) {
    case GM200_3D_CLASS:
@@ -2307,7 +2307,7 @@ static bool
 nve4_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 {
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_hw_sm_query *hsq = nvc0_hw_sm_query(hq);
    const struct nvc0_hw_sm_query_cfg *cfg;
    unsigned i, c;
@@ -2392,7 +2392,7 @@ static bool
 nvc0_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 {
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_hw_sm_query *hsq = nvc0_hw_sm_query(hq);
    const struct nvc0_hw_sm_query_cfg *cfg;
    unsigned i, c;
@@ -2496,7 +2496,7 @@ nvc0_hw_sm_get_program(struct nvc0_screen *screen)
 static inline void
 nvc0_hw_sm_upload_input(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    uint64_t address;
    const int s = 5;
@@ -2532,7 +2532,7 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 {
    struct nvc0_screen *screen = nvc0->screen;
    struct pipe_context *pipe = &nvc0->base.pipe;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    const bool is_nve4 = screen->base.class_3d >= NVE4_3D_CLASS;
    struct nvc0_hw_sm_query *hsq = nvc0_hw_sm_query(hq);
    struct nvc0_program *old = nvc0->compprog;
@@ -2587,7 +2587,7 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
    pipe->launch_grid(pipe, &info);
    pipe->bind_compute_state(pipe, old);
 
-   nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_QUERY);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_QUERY);
 
    /* re-activate other counters */
    PUSH_SPACE(push, 16);
@@ -2632,7 +2632,7 @@ nvc0_hw_sm_query_read_data(uint32_t count[32][8],
          if (hq->data[b + 8] != hq->sequence) {
             if (!wait)
                return false;
-            if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->base.client))
+            if (nouveau_ws_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->base.client))
                return false;
          }
          count[p][c] = hq->data[b + hsq->ctr[c]] * (1 << c);
@@ -2660,7 +2660,7 @@ nve4_hw_sm_query_read_data(uint32_t count[32][8],
             if (hq->data[b + 20 + d] != hq->sequence) {
                if (!wait)
                   return false;
-               if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->base.client))
+               if (nouveau_ws_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->base.client))
                   return false;
             }
             if (hsq->ctr[c] & ~0x3)
