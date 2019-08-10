@@ -99,10 +99,7 @@ nouveau_drm_screen_create(int fd)
 	if (ret)
 		goto err;
 
-	ret = nouveau_ws_device_new(drm, NV_DEVICE,
-				    &(struct nv_device_v0) {
-					.device = ~0ULL,
-				    }, sizeof(struct nv_device_v0), &dev);
+	ret = nouveau_ws_device_new(drm, &dev);
 	if (ret)
 		goto err;
 
