@@ -162,7 +162,7 @@ static bool
 nv50_hw_sm_begin_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
 {
    struct nv50_screen *screen = nv50->screen;
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_hw_sm_query *hsq = nv50_hw_sm_query(hq);
    const struct nv50_hw_sm_query_cfg *cfg;
    uint16_t func;
@@ -216,7 +216,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
 {
    struct nv50_screen *screen = nv50->screen;
    struct pipe_context *pipe = &nv50->base.pipe;
-   struct nouveau_pushbuf *push = nv50->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv50->base.pushbuf;
    struct nv50_hw_sm_query *hsq = nv50_hw_sm_query(hq);
    struct nv50_program *old = nv50->compprog;
    struct pipe_grid_info info = {};
@@ -274,7 +274,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
    pipe->launch_grid(pipe, &info);
    pipe->bind_compute_state(pipe, old);
 
-   nouveau_bufctx_reset(nv50->bufctx_cp, NV50_BIND_CP_QUERY);
+   nouveau_ws_bufctx_reset(nv50->bufctx_cp, NV50_BIND_CP_QUERY);
 
    /* re-active other counters */
    PUSH_SPACE(push, 8);
@@ -321,7 +321,7 @@ nv50_hw_sm_query_read_data(uint32_t count[32][4],
          if (hq->data[b + 4] != hq->sequence) {
             if (!wait)
                return false;
-            if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nv50->base.client))
+            if (nouveau_ws_bo_wait(hq->bo, NOUVEAU_BO_RD, nv50->base.client))
                return false;
          }
          count[p][c] = hq->data[b + hsq->ctr[c]];

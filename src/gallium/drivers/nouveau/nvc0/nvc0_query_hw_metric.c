@@ -397,7 +397,7 @@ static const struct nvc0_hw_metric_query_cfg *sm50_hw_metric_queries[] =
 static inline const struct nvc0_hw_metric_query_cfg **
 nvc0_hw_metric_get_queries(struct nvc0_screen *screen)
 {
-   struct nouveau_device *dev = screen->base.device;
+   struct nouveau_ws_device *dev = screen->base.device;
 
    switch (screen->base.class_3d) {
    case GM200_3D_CLASS:
@@ -419,7 +419,7 @@ nvc0_hw_metric_get_queries(struct nvc0_screen *screen)
 unsigned
 nvc0_hw_metric_get_num_queries(struct nvc0_screen *screen)
 {
-   struct nouveau_device *dev = screen->base.device;
+   struct nouveau_ws_device *dev = screen->base.device;
 
    switch (screen->base.class_3d) {
    case GM200_3D_CLASS:
@@ -666,7 +666,7 @@ nvc0_hw_metric_get_query_result(struct nvc0_context *nvc0,
 {
    struct nvc0_hw_metric_query *hmq = nvc0_hw_metric_query(hq);
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_device *dev = screen->base.device;
+   struct nouveau_ws_device *dev = screen->base.device;
    union pipe_query_result results[8] = {};
    uint64_t res64[8] = {};
    uint64_t value = 0;

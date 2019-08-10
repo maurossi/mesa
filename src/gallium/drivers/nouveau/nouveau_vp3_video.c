@@ -196,30 +196,30 @@ nouveau_vp3_decoder_destroy(struct pipe_video_codec *decoder)
    struct nouveau_vp3_decoder *dec = (struct nouveau_vp3_decoder *)decoder;
    int i;
 
-   nouveau_bo_ref(NULL, &dec->ref_bo);
-   nouveau_bo_ref(NULL, &dec->bitplane_bo);
-   nouveau_bo_ref(NULL, &dec->inter_bo[0]);
-   nouveau_bo_ref(NULL, &dec->inter_bo[1]);
+   nouveau_ws_bo_ref(NULL, &dec->ref_bo);
+   nouveau_ws_bo_ref(NULL, &dec->bitplane_bo);
+   nouveau_ws_bo_ref(NULL, &dec->inter_bo[0]);
+   nouveau_ws_bo_ref(NULL, &dec->inter_bo[1]);
 #if NOUVEAU_VP3_DEBUG_FENCE
-   nouveau_bo_ref(NULL, &dec->fence_bo);
+   nouveau_ws_bo_ref(NULL, &dec->fence_bo);
 #endif
-   nouveau_bo_ref(NULL, &dec->fw_bo);
+   nouveau_ws_bo_ref(NULL, &dec->fw_bo);
 
    for (i = 0; i < NOUVEAU_VP3_VIDEO_QDEPTH; ++i)
-      nouveau_bo_ref(NULL, &dec->bsp_bo[i]);
+      nouveau_ws_bo_ref(NULL, &dec->bsp_bo[i]);
 
-   nouveau_object_del(&dec->bsp);
-   nouveau_object_del(&dec->vp);
-   nouveau_object_del(&dec->ppp);
+   nouveau_ws_object_del(&dec->bsp);
+   nouveau_ws_object_del(&dec->vp);
+   nouveau_ws_object_del(&dec->ppp);
 
    if (dec->channel[0] != dec->channel[1]) {
       for (i = 0; i < 3; ++i) {
-         nouveau_pushbuf_del(&dec->pushbuf[i]);
-         nouveau_object_del(&dec->channel[i]);
+         nouveau_ws_pushbuf_del(&dec->pushbuf[i]);
+         nouveau_ws_object_del(&dec->channel[i]);
       }
    } else {
-      nouveau_pushbuf_del(dec->pushbuf);
-      nouveau_object_del(dec->channel);
+      nouveau_ws_pushbuf_del(dec->pushbuf);
+      nouveau_ws_object_del(dec->channel);
    }
 
    FREE(dec);
@@ -291,7 +291,7 @@ nouveau_vp3_load_firmware(struct nouveau_vp3_decoder *dec,
    else
       vp3_getpath(profile, path);
 
-   if (nouveau_bo_map(dec->fw_bo, NOUVEAU_BO_WR, dec->client))
+   if (nouveau_ws_bo_map(dec->fw_bo, NOUVEAU_BO_WR, dec->client))
       return 1;
 
    fd = open(path, O_RDONLY | O_CLOEXEC);
@@ -375,7 +375,7 @@ firmware_present(struct pipe_screen *pscreen, enum pipe_video_profile profile)
    /* For all chipsets, try to create a BSP objects. Assume that if firmware
     * is present for it, firmware is also present for VP/PPP */
    if (!(screen->firmware_info.profiles_checked & 1)) {
-      struct nouveau_object *channel = NULL, *bsp = NULL;
+      struct nouveau_ws_object *channel = NULL, *bsp = NULL;
       struct nv04_fifo nv04_data = {.vram = 0xbeef0201, .gart = 0xbeef0202};
       struct nvc0_fifo nvc0_args = {};
       struct nve0_fifo nve0_args = {.engine = NVE0_FIFO_ENGINE_BSP};
@@ -394,19 +394,19 @@ firmware_present(struct pipe_screen *pscreen, enum pipe_video_profile profile)
       }
 
       /* kepler must have its own channel, so just do this for everyone */
-      nouveau_object_new(&screen->device->object, 0,
-                         NOUVEAU_FIFO_CHANNEL_CLASS,
-                         data, size, &channel);
+      nouveau_ws_object_new(screen->device->object, 0,
+                            NOUVEAU_FIFO_CHANNEL_CLASS,
+                            data, size, &channel);
 
       if (channel) {
-         ret = nouveau_object_mclass(channel, nouveau_decoder_msvld);
+         ret = nouveau_ws_object_mclass(channel, nouveau_decoder_msvld);
          if (ret >= 0)
-            nouveau_object_new(channel, 0, nouveau_decoder_msvld[ret].oclass,
-                               NULL, 0, &bsp);
+            nouveau_ws_object_new(channel, 0, nouveau_decoder_msvld[ret].oclass,
+                                  NULL, 0, &bsp);
          if (bsp)
             screen->firmware_info.profiles_present |= 1;
-         nouveau_object_del(&bsp);
-         nouveau_object_del(&channel);
+         nouveau_ws_object_del(&bsp);
+         nouveau_ws_object_del(&channel);
       }
       screen->firmware_info.profiles_checked |= 1;
    }

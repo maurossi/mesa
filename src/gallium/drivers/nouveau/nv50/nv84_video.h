@@ -52,21 +52,21 @@ struct nv84_video_buffer {
    struct pipe_sampler_view *sampler_view_components[VL_NUM_COMPONENTS];
    struct pipe_surface *surfaces[VL_NUM_COMPONENTS * 2];
 
-   struct nouveau_bo *interlaced, *full;
+   struct nouveau_ws_bo *interlaced, *full;
    int mvidx;
    unsigned frame_num, frame_num_max;
 };
 
 struct nv84_decoder {
    struct pipe_video_codec base;
-   struct nouveau_client *client;
-   struct nouveau_object *bsp_channel, *vp_channel, *bsp, *vp;
-   struct nouveau_pushbuf *bsp_pushbuf, *vp_pushbuf;
-   struct nouveau_bufctx *bsp_bufctx, *vp_bufctx;
+   struct nouveau_ws_client *client;
+   struct nouveau_ws_object *bsp_channel, *vp_channel, *bsp, *vp;
+   struct nouveau_ws_pushbuf *bsp_pushbuf, *vp_pushbuf;
+   struct nouveau_ws_bufctx *bsp_bufctx, *vp_bufctx;
 
-   struct nouveau_bo *bsp_fw, *bsp_data;
-   struct nouveau_bo *vp_fw, *vp_data;
-   struct nouveau_bo *mbring, *vpring;
+   struct nouveau_ws_bo *bsp_fw, *bsp_data;
+   struct nouveau_ws_bo *vp_fw, *vp_data;
+   struct nouveau_ws_bo *mbring, *vpring;
 
    /*
     * states:
@@ -75,10 +75,10 @@ struct nv84_decoder {
     *  2: bsp is done, vp is ready
     * and then vp it back to 1
     */
-   struct nouveau_bo *fence;
+   struct nouveau_ws_bo *fence;
 
-   struct nouveau_bo *bitstream;
-   struct nouveau_bo *vp_params;
+   struct nouveau_ws_bo *bitstream;
+   struct nouveau_ws_bo *vp_params;
 
    size_t vp_fw2_offset;
 
@@ -94,7 +94,7 @@ struct nv84_decoder {
 
    struct vl_mpg12_bs *mpeg12_bs;
 
-   struct nouveau_bo *mpeg12_bo;
+   struct nouveau_ws_bo *mpeg12_bo;
    void *mpeg12_mb_info;
    uint16_t *mpeg12_data;
    const int *zscan;

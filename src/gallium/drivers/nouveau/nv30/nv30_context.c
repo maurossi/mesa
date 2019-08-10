@@ -35,7 +35,7 @@
 #include "nv30/nv30_state.h"
 
 static void
-nv30_context_kick_notify(struct nouveau_pushbuf *push)
+nv30_context_kick_notify(struct nouveau_ws_pushbuf *push)
 {
    struct nouveau_screen *screen;
    struct nv30_context *nv30;
@@ -49,7 +49,7 @@ nv30_context_kick_notify(struct nouveau_pushbuf *push)
    nouveau_fence_update(screen, true);
 
    if (push->bufctx) {
-      struct nouveau_bufref *bref;
+      struct nouveau_ws_bufref *bref;
       LIST_FOR_EACH_ENTRY(bref, &push->bufctx->current, thead) {
          struct nv04_resource *res = bref->priv;
          if (res && res->mm) {
@@ -73,7 +73,7 @@ nv30_context_flush(struct pipe_context *pipe, struct pipe_fence_handle **fence,
                    unsigned flags)
 {
    struct nv30_context *nv30 = nv30_context(pipe);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    if (fence)
       nouveau_fence_ref(nv30->screen->base.fence.current,
@@ -97,7 +97,7 @@ nv30_invalidate_resource_storage(struct nouveau_context *nv,
          if (nv30->framebuffer.cbufs[i] &&
              nv30->framebuffer.cbufs[i]->texture == res) {
             nv30->dirty |= NV30_NEW_FRAMEBUFFER;
-            nouveau_bufctx_reset(nv30->bufctx, BUFCTX_FB);
+            nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_FB);
             if (!--ref)
                return ref;
          }
@@ -107,7 +107,7 @@ nv30_invalidate_resource_storage(struct nouveau_context *nv,
       if (nv30->framebuffer.zsbuf &&
           nv30->framebuffer.zsbuf->texture == res) {
             nv30->dirty |= NV30_NEW_FRAMEBUFFER;
-            nouveau_bufctx_reset(nv30->bufctx, BUFCTX_FB);
+            nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_FB);
             if (!--ref)
                return ref;
       }
@@ -117,7 +117,7 @@ nv30_invalidate_resource_storage(struct nouveau_context *nv,
       for (i = 0; i < nv30->num_vtxbufs; ++i) {
          if (nv30->vtxbuf[i].buffer.resource == res) {
             nv30->dirty |= NV30_NEW_ARRAYS;
-            nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VTXBUF);
+            nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_VTXBUF);
             if (!--ref)
                return ref;
          }
@@ -129,7 +129,7 @@ nv30_invalidate_resource_storage(struct nouveau_context *nv,
          if (nv30->fragprog.textures[i] &&
              nv30->fragprog.textures[i]->texture == res) {
             nv30->dirty |= NV30_NEW_FRAGTEX;
-            nouveau_bufctx_reset(nv30->bufctx, BUFCTX_FRAGTEX(i));
+            nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_FRAGTEX(i));
             if (!--ref)
                return ref;
          }
@@ -138,7 +138,7 @@ nv30_invalidate_resource_storage(struct nouveau_context *nv,
          if (nv30->vertprog.textures[i] &&
              nv30->vertprog.textures[i]->texture == res) {
             nv30->dirty |= NV30_NEW_VERTTEX;
-            nouveau_bufctx_reset(nv30->bufctx, BUFCTX_VERTTEX(i));
+            nouveau_ws_bufctx_reset(nv30->bufctx, BUFCTX_VERTTEX(i));
             if (!--ref)
                return ref;
          }
@@ -171,7 +171,7 @@ nv30_context_destroy(struct pipe_context *pipe)
    if (nv30->screen->base.pushbuf->user_priv == &nv30->bufctx)
       nv30->screen->base.pushbuf->user_priv = NULL;
 
-   nouveau_bufctx_del(&nv30->bufctx);
+   nouveau_ws_bufctx_del(&nv30->bufctx);
 
    if (nv30->screen->cur_ctx == nv30)
       nv30->screen->cur_ctx = NULL;
@@ -191,7 +191,7 @@ nv30_context_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
 {
    struct nv30_screen *screen = nv30_screen(pscreen);
    struct nv30_context *nv30 = CALLOC_STRUCT(nv30_context);
-   struct nouveau_pushbuf *push;
+   struct nouveau_ws_pushbuf *push;
    struct pipe_context *pipe;
    int ret;
 
@@ -225,7 +225,7 @@ nv30_context_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
 
    nv30->base.invalidate_resource_storage = nv30_invalidate_resource_storage;
 
-   ret = nouveau_bufctx_new(nv30->base.client, 64, &nv30->bufctx);
+   ret = nouveau_ws_bufctx_new(nv30->base.client, 64, &nv30->bufctx);
    if (ret) {
       nv30_context_destroy(pipe);
       return NULL;
