@@ -170,7 +170,7 @@ nvc0_vertex_state_create(struct pipe_context *pipe,
 static void
 nvc0_set_constant_vertex_attrib(struct nvc0_context *nvc0, const unsigned a)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct pipe_vertex_element *ve = &nvc0->vertex->element[a].pipe;
    struct pipe_vertex_buffer *vb = &nvc0->vtxbuf[ve->vertex_buffer_index];
    uint32_t mode;
@@ -222,7 +222,7 @@ static inline void
 nvc0_release_user_vbufs(struct nvc0_context *nvc0)
 {
    if (nvc0->vbo_user) {
-      nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX_TMP);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX_TMP);
       nouveau_scratch_done(&nvc0->base);
    }
 }
@@ -231,7 +231,7 @@ static void
 nvc0_update_user_vbufs(struct nvc0_context *nvc0)
 {
    uint64_t address[PIPE_MAX_ATTRIBS];
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    int i;
    uint32_t written = 0;
 
@@ -251,7 +251,7 @@ nvc0_update_user_vbufs(struct nvc0_context *nvc0)
       nvc0_user_vbuf_range(nvc0, b, &base, &size);
 
       if (!(written & (1 << b))) {
-         struct nouveau_bo *bo;
+         struct nouveau_ws_bo *bo;
          const uint32_t bo_flags = NOUVEAU_BO_RD | NOUVEAU_BO_GART;
          written |= 1 << b;
          address[b] = nouveau_scratch_data(&nvc0->base, vb->buffer.user,
@@ -275,12 +275,12 @@ nvc0_update_user_vbufs(struct nvc0_context *nvc0)
 static void
 nvc0_update_user_vbufs_shared(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    uint32_t mask = nvc0->vbo_user & ~nvc0->constant_vbos;
 
    PUSH_SPACE(push, nvc0->num_vtxbufs * 8);
    while (mask) {
-      struct nouveau_bo *bo;
+      struct nouveau_ws_bo *bo;
       const uint32_t bo_flags = NOUVEAU_BO_RD | NOUVEAU_BO_GART;
       uint64_t address;
       uint32_t base, size;
@@ -315,7 +315,7 @@ nvc0_update_user_vbufs_shared(struct nvc0_context *nvc0)
 static void
 nvc0_validate_vertex_buffers(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    const struct nvc0_vertex_stateobj *vertex = nvc0->vertex;
    uint32_t refd = 0;
    unsigned i;
@@ -378,7 +378,7 @@ nvc0_validate_vertex_buffers(struct nvc0_context *nvc0)
 static void
 nvc0_validate_vertex_buffers_shared(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    unsigned b;
    const uint32_t mask = nvc0->vbo_user;
 
@@ -427,7 +427,7 @@ nvc0_validate_vertex_buffers_shared(struct nvc0_context *nvc0)
 void
 nvc0_vertex_arrays_validate(struct nvc0_context *nvc0)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_vertex_stateobj *vertex = nvc0->vertex;
    struct nvc0_vertex_element *ve;
    uint32_t const_vbos;
@@ -435,7 +435,7 @@ nvc0_vertex_arrays_validate(struct nvc0_context *nvc0)
    uint8_t vbo_mode;
    bool update_vertex;
 
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX);
 
    assert(vertex);
    if (unlikely(vertex->need_conversion) ||
@@ -550,7 +550,7 @@ nvc0_prim_gl(unsigned prim)
 }
 
 static void
-nvc0_draw_vbo_kick_notify(struct nouveau_pushbuf *push)
+nvc0_draw_vbo_kick_notify(struct nouveau_ws_pushbuf *push)
 {
    struct nvc0_screen *screen = push->user_priv;
 
@@ -564,7 +564,7 @@ nvc0_draw_arrays(struct nvc0_context *nvc0,
                  unsigned mode, unsigned start, unsigned count,
                  unsigned instance_count)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    unsigned prim;
 
    if (nvc0->state.index_bias) {
@@ -593,7 +593,7 @@ nvc0_draw_arrays(struct nvc0_context *nvc0,
 }
 
 static void
-nvc0_draw_elements_inline_u08(struct nouveau_pushbuf *push, const uint8_t *map,
+nvc0_draw_elements_inline_u08(struct nouveau_ws_pushbuf *push, const uint8_t *map,
                               unsigned start, unsigned count)
 {
    map += start;
@@ -621,7 +621,7 @@ nvc0_draw_elements_inline_u08(struct nouveau_pushbuf *push, const uint8_t *map,
 }
 
 static void
-nvc0_draw_elements_inline_u16(struct nouveau_pushbuf *push, const uint16_t *map,
+nvc0_draw_elements_inline_u16(struct nouveau_ws_pushbuf *push, const uint16_t *map,
                               unsigned start, unsigned count)
 {
    map += start;
@@ -646,7 +646,7 @@ nvc0_draw_elements_inline_u16(struct nouveau_pushbuf *push, const uint16_t *map,
 }
 
 static void
-nvc0_draw_elements_inline_u32(struct nouveau_pushbuf *push, const uint32_t *map,
+nvc0_draw_elements_inline_u32(struct nouveau_ws_pushbuf *push, const uint32_t *map,
                               unsigned start, unsigned count)
 {
    map += start;
@@ -664,7 +664,7 @@ nvc0_draw_elements_inline_u32(struct nouveau_pushbuf *push, const uint32_t *map,
 }
 
 static void
-nvc0_draw_elements_inline_u32_short(struct nouveau_pushbuf *push,
+nvc0_draw_elements_inline_u32_short(struct nouveau_ws_pushbuf *push,
                                     const uint32_t *map,
                                     unsigned start, unsigned count)
 {
@@ -696,7 +696,7 @@ nvc0_draw_elements(struct nvc0_context *nvc0, bool shorten,
                    unsigned instance_count, int32_t index_bias,
 		   unsigned index_size)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    unsigned prim;
 
    prim = nvc0_prim_gl(mode);
@@ -762,7 +762,7 @@ static void
 nvc0_draw_stream_output(struct nvc0_context *nvc0,
                         const struct pipe_draw_info *info)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_so_target *so = nvc0_so_target(info->count_from_stream_output);
    struct nv04_resource *res = nv04_resource(so->pipe.buffer);
    unsigned mode = nvc0_prim_gl(info->mode);
@@ -780,7 +780,7 @@ nvc0_draw_stream_output(struct nvc0_context *nvc0,
    }
 
    while (num_instances--) {
-      nouveau_pushbuf_space(push, 16, 0, 1);
+      nouveau_ws_pushbuf_space(push, 16, 0, 1);
       BEGIN_NVC0(push, NVC0_3D(VERTEX_BEGIN_GL), 1);
       PUSH_DATA (push, mode);
       BEGIN_NVC0(push, NVC0_3D(DRAW_TFB_BASE), 1);
@@ -798,7 +798,7 @@ nvc0_draw_stream_output(struct nvc0_context *nvc0,
 static void
 nvc0_draw_indirect(struct nvc0_context *nvc0, const struct pipe_draw_info *info)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv04_resource *buf = nv04_resource(info->indirect->buffer);
    struct nv04_resource *buf_count = nv04_resource(info->indirect->indirect_draw_count);
    unsigned size, macro, count = info->indirect->draw_count, drawid = info->drawid;
@@ -859,7 +859,7 @@ nvc0_draw_indirect(struct nvc0_context *nvc0, const struct pipe_draw_info *info)
          pushes = draws;
       }
 
-      nouveau_pushbuf_space(push, 16, 0, pushes + !!buf_count);
+      nouveau_ws_pushbuf_space(push, 16, 0, pushes + !!buf_count);
       PUSH_REFN(push, buf->bo, NOUVEAU_BO_RD | buf->domain);
       if (buf_count)
          PUSH_REFN(push, buf_count->bo, NOUVEAU_BO_RD | buf_count->domain);
@@ -869,19 +869,19 @@ nvc0_draw_indirect(struct nvc0_context *nvc0, const struct pipe_draw_info *info)
       PUSH_DATA(push, drawid);
       PUSH_DATA(push, draws);
       if (buf_count) {
-         nouveau_pushbuf_data(push,
+         nouveau_ws_pushbuf_data(push,
                               buf_count->bo,
                               buf_count->offset + info->indirect->indirect_draw_count_offset,
                               NVC0_IB_ENTRY_1_NO_PREFETCH | 4);
       }
       if (pushes == 1) {
-         nouveau_pushbuf_data(push,
+         nouveau_ws_pushbuf_data(push,
                               buf->bo, offset,
                               NVC0_IB_ENTRY_1_NO_PREFETCH | (size * 4 * draws));
          offset += draws * info->indirect->stride;
       } else {
          for (i = 0; i < pushes; i++) {
-            nouveau_pushbuf_data(push,
+            nouveau_ws_pushbuf_data(push,
                                  buf->bo, offset,
                                  NVC0_IB_ENTRY_1_NO_PREFETCH | (size * 4));
             offset += info->indirect->stride;
@@ -895,7 +895,7 @@ nvc0_draw_indirect(struct nvc0_context *nvc0, const struct pipe_draw_info *info)
 static inline void
 nvc0_update_prim_restart(struct nvc0_context *nvc0, bool en, uint32_t index)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
 
    if (en != nvc0->state.prim_restart) {
       if (en) {
@@ -917,7 +917,7 @@ void
 nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_screen *screen = nvc0->screen;
    unsigned vram_domain = NV_VRAM_DOMAIN(&screen->base);
    int s;
@@ -1097,9 +1097,9 @@ cleanup:
 
    nvc0_release_user_vbufs(nvc0);
 
-   nouveau_pushbuf_bufctx(push, NULL);
+   nouveau_ws_pushbuf_bufctx(push, NULL);
 
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEXT);
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_IDX);
-   nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_BINDLESS);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEXT);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_IDX);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_BINDLESS);
 }

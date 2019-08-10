@@ -544,9 +544,9 @@ nvc0_stage_set_sampler_views(struct nvc0_context *nvc0, int s,
 
       if (old) {
          if (s == 5)
-            nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_TEX(i));
+            nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_TEX(i));
          else
-            nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
+            nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
          nvc0_screen_tic_unlock(nvc0->screen, old);
       }
 
@@ -557,9 +557,9 @@ nvc0_stage_set_sampler_views(struct nvc0_context *nvc0, int s,
       struct nv50_tic_entry *old = nv50_tic_entry(nvc0->textures[s][i]);
       if (old) {
          if (s == 5)
-            nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_TEX(i));
+            nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_TEX(i));
          else
-            nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
+            nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEX(s, i));
          nvc0_screen_tic_unlock(nvc0->screen, old);
          pipe_sampler_view_reference(&nvc0->textures[s][i], NULL);
       }
@@ -777,7 +777,7 @@ nvc0_set_constant_buffer(struct pipe_context *pipe,
          nvc0->constbuf[s][i].u.buf = NULL;
       else
       if (nvc0->constbuf[s][i].u.buf)
-         nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_CB(i));
+         nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_CB(i));
 
       nvc0->dirty_cp |= NVC0_NEW_CP_CONSTBUF;
    } else {
@@ -785,7 +785,7 @@ nvc0_set_constant_buffer(struct pipe_context *pipe,
          nvc0->constbuf[s][i].u.buf = NULL;
       else
       if (nvc0->constbuf[s][i].u.buf)
-         nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_CB(s, i));
+         nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_CB(s, i));
 
       nvc0->dirty_3d |= NVC0_NEW_3D_CONSTBUF;
    }
@@ -877,7 +877,7 @@ nvc0_set_framebuffer_state(struct pipe_context *pipe,
 {
     struct nvc0_context *nvc0 = nvc0_context(pipe);
 
-    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_FB);
+    nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_FB);
 
     util_copy_framebuffer_state(&nvc0->framebuffer, fb);
 
@@ -985,7 +985,7 @@ nvc0_set_vertex_buffers(struct pipe_context *pipe,
     struct nvc0_context *nvc0 = nvc0_context(pipe);
     unsigned i;
 
-    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX);
+    nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX);
     nvc0->dirty_3d |= NVC0_NEW_3D_ARRAYS;
 
     util_set_vertex_buffers_count(nvc0->vtxbuf, &nvc0->num_vtxbufs, vb,
@@ -1126,7 +1126,7 @@ nvc0_set_transform_feedback_targets(struct pipe_context *pipe,
    nvc0->num_tfbbufs = num_targets;
 
    if (nvc0->tfbbuf_dirty) {
-      nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TFB);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TFB);
       nvc0->dirty_3d |= NVC0_NEW_3D_TFB_TARGETS;
    }
 }
@@ -1157,9 +1157,9 @@ nvc0_bind_surfaces_range(struct nvc0_context *nvc0, const unsigned t,
    nvc0->surfaces_dirty[t] |= mask;
 
    if (t == 0)
-      nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_SUF);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_SUF);
    else
-      nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
 }
 
 static void
@@ -1254,9 +1254,9 @@ nvc0_bind_images_range(struct nvc0_context *nvc0, const unsigned s,
    nvc0->images_dirty[s] |= mask;
 
    if (s == 5)
-      nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_SUF);
    else
-      nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_SUF);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_SUF);
 
    return true;
 }
@@ -1319,9 +1319,9 @@ nvc0_bind_buffers_range(struct nvc0_context *nvc0, const unsigned t,
    nvc0->buffers_dirty[t] |= mask;
 
    if (t == 5)
-      nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_BUF);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_BUF);
    else
-      nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_BUF);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_BUF);
 
    return true;
 }
@@ -1393,7 +1393,7 @@ nvc0_set_global_bindings(struct pipe_context *pipe,
          pipe_resource_reference(&ptr[i], NULL);
    }
 
-   nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_GLOBAL);
+   nouveau_ws_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_GLOBAL);
 
    nvc0->dirty_cp |= NVC0_NEW_CP_GLOBALS;
 }

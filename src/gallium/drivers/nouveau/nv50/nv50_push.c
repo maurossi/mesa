@@ -11,7 +11,7 @@
 #include "nv50/nv50_3d.xml.h"
 
 struct push_context {
-   struct nouveau_pushbuf *push;
+   struct nouveau_ws_pushbuf *push;
 
    const void *idxbuf;
 

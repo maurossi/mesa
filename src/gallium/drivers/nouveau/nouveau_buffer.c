@@ -15,7 +15,7 @@ struct nouveau_transfer {
    struct pipe_transfer base;
 
    uint8_t *map;
-   struct nouveau_bo *bo;
+   struct nouveau_ws_bo *bo;
    struct nouveau_mm_allocation *mm;
    uint32_t offset;
 };
@@ -82,7 +82,7 @@ nouveau_buffer_release_gpu_storage(struct nv04_resource *buf)
       nouveau_fence_work(buf->fence, nouveau_fence_unref_bo, buf->bo);
       buf->bo = NULL;
    } else {
-      nouveau_bo_ref(NULL, &buf->bo);
+      nouveau_ws_bo_ref(NULL, &buf->bo);
    }
 
    if (buf->mm)
@@ -154,7 +154,7 @@ nouveau_transfer_staging(struct nouveau_context *nv,
          nouveau_mm_allocate(nv->screen->mm_GART, size, &tx->bo, &tx->offset);
       if (tx->bo) {
          tx->offset += adj;
-         if (!nouveau_bo_map(tx->bo, 0, NULL))
+         if (!nouveau_ws_bo_map(tx->bo, 0, NULL))
             tx->map = (uint8_t *)tx->bo->map + tx->offset;
       }
    }
@@ -177,7 +177,7 @@ nouveau_transfer_read(struct nouveau_context *nv, struct nouveau_transfer *tx)
    nv->copy_data(nv, tx->bo, tx->offset, NOUVEAU_BO_GART,
                  buf->bo, buf->offset + base, buf->domain, size);
 
-   if (nouveau_bo_wait(tx->bo, NOUVEAU_BO_RD, nv->client))
+   if (nouveau_ws_bo_wait(tx->bo, NOUVEAU_BO_RD, nv->client))
       return false;
 
    if (buf->data)
@@ -447,13 +447,13 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
          nv->invalidate_resource_storage(nv, &buf->base, ref);
    }
 
-   /* Note that nouveau_bo_map ends up doing a nouveau_bo_wait with the
+   /* Note that nouveau_ws_bo_map ends up doing a nouveau_bo_wait with the
     * relevant flags. If buf->mm is set, that means this resource is part of a
     * larger slab bo that holds multiple resources. So in that case, don't
     * wait on the whole slab and instead use the logic below to return a
     * reasonable buffer for that case.
     */
-   ret = nouveau_bo_map(buf->bo,
+   ret = nouveau_ws_bo_map(buf->bo,
                         buf->mm ? 0 : nouveau_screen_transfer_flags(usage),
                         nv->client);
    if (ret) {
@@ -613,10 +613,10 @@ nouveau_resource_map_offset(struct nouveau_context *nv,
       unsigned rw;
       rw = (flags & NOUVEAU_BO_WR) ? PIPE_TRANSFER_WRITE : PIPE_TRANSFER_READ;
       nouveau_buffer_sync(nv, res, rw);
-      if (nouveau_bo_map(res->bo, 0, NULL))
+      if (nouveau_ws_bo_map(res->bo, 0, NULL))
          return NULL;
    } else {
-      if (nouveau_bo_map(res->bo, flags, nv->client))
+      if (nouveau_ws_bo_map(res->bo, flags, nv->client))
          return NULL;
    }
    return (uint8_t *)res->bo->map + res->offset + offset;
@@ -732,11 +732,11 @@ nouveau_user_buffer_create(struct pipe_screen *pscreen, void *ptr,
 
 static inline bool
 nouveau_buffer_data_fetch(struct nouveau_context *nv, struct nv04_resource *buf,
-                          struct nouveau_bo *bo, unsigned offset, unsigned size)
+                          struct nouveau_ws_bo *bo, unsigned offset, unsigned size)
 {
    if (!nouveau_buffer_malloc(buf))
       return false;
-   if (nouveau_bo_map(bo, NOUVEAU_BO_RD, nv->client))
+   if (nouveau_ws_bo_map(bo, NOUVEAU_BO_RD, nv->client))
       return false;
    memcpy(buf->data, (uint8_t *)bo->map + offset, size);
    return true;
@@ -748,7 +748,7 @@ nouveau_buffer_migrate(struct nouveau_context *nv,
                        struct nv04_resource *buf, const unsigned new_domain)
 {
    struct nouveau_screen *screen = nv->screen;
-   struct nouveau_bo *bo;
+   struct nouveau_ws_bo *bo;
    const unsigned old_domain = buf->domain;
    unsigned size = buf->base.width0;
    unsigned offset;
@@ -759,7 +759,7 @@ nouveau_buffer_migrate(struct nouveau_context *nv,
    if (new_domain == NOUVEAU_BO_GART && old_domain == 0) {
       if (!nouveau_buffer_allocate(screen, buf, new_domain))
          return false;
-      ret = nouveau_bo_map(buf->bo, 0, nv->client);
+      ret = nouveau_ws_bo_map(buf->bo, 0, nv->client);
       if (ret)
          return ret;
       memcpy((uint8_t *)buf->bo->map + buf->offset, buf->data, size);
@@ -827,7 +827,7 @@ nouveau_user_buffer_upload(struct nouveau_context *nv,
    if (!nouveau_buffer_reallocate(screen, buf, NOUVEAU_BO_GART))
       return false;
 
-   ret = nouveau_bo_map(buf->bo, 0, nv->client);
+   ret = nouveau_ws_bo_map(buf->bo, 0, nv->client);
    if (ret)
       return false;
    memcpy((uint8_t *)buf->bo->map + buf->offset + base, buf->data + base, size);
@@ -872,10 +872,10 @@ nouveau_buffer_invalidate(struct pipe_context *pipe,
 /* Scratch data allocation. */
 
 static inline int
-nouveau_scratch_bo_alloc(struct nouveau_context *nv, struct nouveau_bo **pbo,
+nouveau_scratch_bo_alloc(struct nouveau_context *nv, struct nouveau_ws_bo **pbo,
                          unsigned size)
 {
-   return nouveau_bo_new(nv->screen->device, NOUVEAU_BO_GART | NOUVEAU_BO_MAP,
+   return nouveau_ws_bo_new(nv->screen->device, NOUVEAU_BO_GART | NOUVEAU_BO_MAP,
                          4096, size, NULL, pbo);
 }
 
@@ -886,7 +886,7 @@ nouveau_scratch_unref_bos(void *d)
    int i;
 
    for (i = 0; i < b->nr; ++i)
-      nouveau_bo_ref(NULL, &b->bo[i]);
+      nouveau_ws_bo_ref(NULL, &b->bo[i]);
 
    FREE(b);
 }
@@ -926,9 +926,9 @@ nouveau_scratch_runout(struct nouveau_context *nv, unsigned size)
 
    ret = nouveau_scratch_bo_alloc(nv, &nv->scratch.runout->bo[n], size);
    if (!ret) {
-      ret = nouveau_bo_map(nv->scratch.runout->bo[n], 0, NULL);
+      ret = nouveau_ws_bo_map(nv->scratch.runout->bo[n], 0, NULL);
       if (ret)
-         nouveau_bo_ref(NULL, &nv->scratch.runout->bo[--nv->scratch.runout->nr]);
+         nouveau_ws_bo_ref(NULL, &nv->scratch.runout->bo[--nv->scratch.runout->nr]);
    }
    if (!ret) {
       nv->scratch.current = nv->scratch.runout->bo[n];
@@ -945,7 +945,7 @@ nouveau_scratch_runout(struct nouveau_context *nv, unsigned size)
 static inline bool
 nouveau_scratch_next(struct nouveau_context *nv, unsigned size)
 {
-   struct nouveau_bo *bo;
+   struct nouveau_ws_bo *bo;
    int ret;
    const unsigned i = (nv->scratch.id + 1) % NOUVEAU_MAX_SCRATCH_BUFS;
 
@@ -964,7 +964,7 @@ nouveau_scratch_next(struct nouveau_context *nv, unsigned size)
    nv->scratch.offset = 0;
    nv->scratch.end = nv->scratch.bo_size;
 
-   ret = nouveau_bo_map(bo, NOUVEAU_BO_WR, nv->client);
+   ret = nouveau_ws_bo_map(bo, NOUVEAU_BO_WR, nv->client);
    if (!ret)
       nv->scratch.map = bo->map;
    return !ret;
@@ -986,7 +986,7 @@ nouveau_scratch_more(struct nouveau_context *nv, unsigned min_size)
 uint64_t
 nouveau_scratch_data(struct nouveau_context *nv,
                      const void *data, unsigned base, unsigned size,
-                     struct nouveau_bo **bo)
+                     struct nouveau_ws_bo **bo)
 {
    unsigned bgn = MAX2(base, nv->scratch.offset);
    unsigned end = bgn + size;
@@ -1007,7 +1007,7 @@ nouveau_scratch_data(struct nouveau_context *nv,
 
 void *
 nouveau_scratch_get(struct nouveau_context *nv,
-                    unsigned size, uint64_t *gpu_addr, struct nouveau_bo **pbo)
+                    unsigned size, uint64_t *gpu_addr, struct nouveau_ws_bo **pbo)
 {
    unsigned bgn = nv->scratch.offset;
    unsigned end = nv->scratch.offset + size;

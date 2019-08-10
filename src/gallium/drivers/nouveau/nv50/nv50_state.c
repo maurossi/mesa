@@ -717,7 +717,7 @@ nv50_stage_set_sampler_views(struct nv50_context *nv50, int s,
 
    nv50->num_textures[s] = nr;
 
-   nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TEXTURES);
+   nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_TEXTURES);
 
    nv50->dirty_3d |= NV50_NEW_3D_TEXTURES;
 }
@@ -905,7 +905,7 @@ nv50_set_constant_buffer(struct pipe_context *pipe,
       nv50->constbuf[s][i].u.buf = NULL;
    else
    if (nv50->constbuf[s][i].u.buf) {
-      nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_CB(s, i));
+      nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_CB(s, i));
       nv04_resource(nv50->constbuf[s][i].u.buf)->cb_bindings[s] &= ~(1 << i);
    }
    pipe_resource_reference(&nv50->constbuf[s][i].u.buf, res);
@@ -994,7 +994,7 @@ nv50_set_framebuffer_state(struct pipe_context *pipe,
 {
    struct nv50_context *nv50 = nv50_context(pipe);
 
-   nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
+   nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
 
    util_copy_framebuffer_state(&nv50->framebuffer, fb);
 
@@ -1073,7 +1073,7 @@ nv50_set_vertex_buffers(struct pipe_context *pipe,
    struct nv50_context *nv50 = nv50_context(pipe);
    unsigned i;
 
-   nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_VERTEX);
+   nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_VERTEX);
    nv50->dirty_3d |= NV50_NEW_3D_ARRAYS;
 
    util_set_vertex_buffers_count(nv50->vtxbuf, &nv50->num_vtxbufs, vb,
@@ -1161,7 +1161,7 @@ nva0_so_target_save_offset(struct pipe_context *pipe,
    struct nv50_so_target *targ = nv50_so_target(ptarg);
 
    if (serialize) {
-      struct nouveau_pushbuf *push = nv50_context(pipe)->base.pushbuf;
+      struct nouveau_ws_pushbuf *push = nv50_context(pipe)->base.pushbuf;
       PUSH_SPACE(push, 2);
       BEGIN_NV04(push, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
       PUSH_DATA (push, 0);
@@ -1223,7 +1223,7 @@ nv50_set_stream_output_targets(struct pipe_context *pipe,
    nv50->num_so_targets = num_targets;
 
    if (nv50->so_targets_dirty) {
-      nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_SO);
+      nouveau_ws_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_SO);
       nv50->dirty_3d |= NV50_NEW_3D_STRMOUT;
    }
 }
@@ -1286,7 +1286,7 @@ nv50_set_global_bindings(struct pipe_context *pipe,
          pipe_resource_reference(&ptr[i], NULL);
    }
 
-   nouveau_bufctx_reset(nv50->bufctx_cp, NV50_BIND_CP_GLOBAL);
+   nouveau_ws_bufctx_reset(nv50->bufctx_cp, NV50_BIND_CP_GLOBAL);
 
    nv50->dirty_cp |= NV50_NEW_CP_GLOBALS;
 }
