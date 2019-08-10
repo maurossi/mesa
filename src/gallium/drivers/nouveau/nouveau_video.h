@@ -19,12 +19,12 @@ struct nouveau_video_buffer {
 struct nouveau_decoder {
    struct pipe_video_codec base;
    struct nouveau_screen *screen;
-   struct nouveau_pushbuf *push;
-   struct nouveau_object *chan;
-   struct nouveau_client *client;
-   struct nouveau_bufctx *bufctx;
-   struct nouveau_object *mpeg;
-   struct nouveau_bo *cmd_bo, *data_bo, *fence_bo;
+   struct nouveau_ws_pushbuf *push;
+   struct nouveau_ws_object *chan;
+   struct nouveau_ws_client *client;
+   struct nouveau_ws_bufctx *bufctx;
+   struct nouveau_ws_object *mpeg;
+   struct nouveau_ws_bo *cmd_bo, *data_bo, *fence_bo;
 
    unsigned *fence_map;
    unsigned fence_seq;
@@ -67,28 +67,28 @@ NV04_FIFO_PKHDR_NI(int subc, int mthd, unsigned size)
 }
 
 static inline void
-BEGIN_NV04(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
+BEGIN_NV04(struct nouveau_ws_pushbuf *push, int subc, int mthd, unsigned size)
 {
    PUSH_SPACE(push, size + 1);
    PUSH_DATA (push, NV04_FIFO_PKHDR(subc, mthd, size));
 }
 
 static inline void
-BEGIN_NI04(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
+BEGIN_NI04(struct nouveau_ws_pushbuf *push, int subc, int mthd, unsigned size)
 {
    PUSH_SPACE(push, size + 1);
    PUSH_DATA (push, NV04_FIFO_PKHDR_NI(subc, mthd, size));
 }
 
 static inline void
-PUSH_MTHDl(struct nouveau_pushbuf *push, int subc, int mthd,
-           struct nouveau_bo *bo, uint32_t offset,
-           struct nouveau_bufctx *ctx, int bin, uint32_t rw)
+PUSH_MTHDl(struct nouveau_ws_pushbuf *push, int subc, int mthd,
+           struct nouveau_ws_bo *bo, uint32_t offset,
+           struct nouveau_ws_bufctx *ctx, int bin, uint32_t rw)
 {
-   nouveau_bufctx_mthd(ctx, bin, NV04_FIFO_PKHDR(subc, mthd, 1),
-                       bo, offset,
-                       NOUVEAU_BO_LOW | (bo->flags & NOUVEAU_BO_APER) | rw,
-                       0, 0);
+   nouveau_ws_bufctx_mthd(ctx, bin, NV04_FIFO_PKHDR(subc, mthd, 1),
+                          bo, offset,
+                          NOUVEAU_BO_LOW | (bo->flags & NOUVEAU_BO_APER) | rw,
+                          0, 0);
 
    PUSH_DATA(push, bo->offset + offset);
 }

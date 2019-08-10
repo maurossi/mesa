@@ -11,7 +11,7 @@
 #include "nvc0/nvc0_3d.xml.h"
 
 struct push_context {
-   struct nouveau_pushbuf *push;
+   struct nouveau_ws_pushbuf *push;
 
    struct translate *translate;
    void *dest;
@@ -218,8 +218,8 @@ ef_toggle_search_seq(struct push_context *ctx, unsigned start, unsigned n)
 static inline void *
 nvc0_push_setup_vertex_array(struct nvc0_context *nvc0, const unsigned count)
 {
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
-   struct nouveau_bo *bo;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_bo *bo;
    uint64_t va;
    const unsigned size = count * nvc0->vertex->size;
 
@@ -234,7 +234,7 @@ nvc0_push_setup_vertex_array(struct nvc0_context *nvc0, const unsigned count)
 
    BCTX_REFN_bo(nvc0->bufctx_3d, 3D_VTX_TMP, NOUVEAU_BO_GART | NOUVEAU_BO_RD,
                 bo);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_pushbuf_validate(push);
 
    return dest;
 }
@@ -242,7 +242,7 @@ nvc0_push_setup_vertex_array(struct nvc0_context *nvc0, const unsigned count)
 static void
 disp_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
 {
-   struct nouveau_pushbuf *push = ctx->push;
+   struct nouveau_ws_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    const uint8_t *restrict elts = (uint8_t *)ctx->idxbuf + start;
    unsigned pos = 0;
@@ -299,7 +299,7 @@ disp_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
 static void
 disp_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
 {
-   struct nouveau_pushbuf *push = ctx->push;
+   struct nouveau_ws_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    const uint16_t *restrict elts = (uint16_t *)ctx->idxbuf + start;
    unsigned pos = 0;
@@ -356,7 +356,7 @@ disp_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
 static void
 disp_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
 {
-   struct nouveau_pushbuf *push = ctx->push;
+   struct nouveau_ws_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    const uint32_t *restrict elts = (uint32_t *)ctx->idxbuf + start;
    unsigned pos = 0;
@@ -413,7 +413,7 @@ disp_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
 static void
 disp_vertices_seq(struct push_context *ctx, unsigned start, unsigned count)
 {
-   struct nouveau_pushbuf *push = ctx->push;
+   struct nouveau_ws_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    unsigned pos = 0;
 
@@ -493,7 +493,7 @@ nvc0_push_vbo_indirect(struct nvc0_context *nvc0, const struct pipe_draw_info *i
     * that conversion is required for FIXED or DOUBLE inputs.
     */
    struct nvc0_screen *screen = nvc0->screen;
-   struct nouveau_pushbuf *push = nvc0->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nvc0->base.pushbuf;
    struct nv04_resource *buf = nv04_resource(info->indirect->buffer);
    struct nv04_resource *buf_count = nv04_resource(info->indirect->indirect_draw_count);
    unsigned i;
@@ -642,7 +642,7 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info)
          prim |= NVC0_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
          ++ctx.instance_id;
       }
-      nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX_TMP);
+      nouveau_ws_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_VTX_TMP);
       nouveau_scratch_done(&nvc0->base);
    } while (inst_count);
 
@@ -703,8 +703,8 @@ nvc0_push_upload_vertex_ids(struct push_context *ctx,
                             const struct pipe_draw_info *info)
 
 {
-   struct nouveau_pushbuf *push = ctx->push;
-   struct nouveau_bo *bo;
+   struct nouveau_ws_pushbuf *push = ctx->push;
+   struct nouveau_ws_bo *bo;
    uint64_t va;
    uint32_t *data;
    uint32_t format;
@@ -719,7 +719,7 @@ nvc0_push_upload_vertex_ids(struct push_context *ctx,
 
    BCTX_REFN_bo(nvc0->bufctx_3d, 3D_VTX_TMP, NOUVEAU_BO_GART | NOUVEAU_BO_RD,
                 bo);
-   nouveau_pushbuf_validate(push);
+   nouveau_ws_pushbuf_validate(push);
 
    if (info->index_size) {
       if (!info->index_bias) {

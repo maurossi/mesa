@@ -40,7 +40,7 @@ static volatile void *
 nv30_ntfy(struct nv30_screen *screen, struct nv30_query_object *qo)
 {
    struct nv04_notify *query = screen->query->data;
-   struct nouveau_bo *notify = screen->notify;
+   struct nouveau_ws_bo *notify = screen->notify;
    volatile void *ntfy = NULL;
 
    if (qo && qo->hw)
@@ -151,7 +151,7 @@ nv30_query_begin(struct pipe_context *pipe, struct pipe_query *pq)
 {
    struct nv30_context *nv30 = nv30_context(pipe);
    struct nv30_query *q = nv30_query(pq);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    switch (q->type) {
    case PIPE_QUERY_TIME_ELAPSED:
@@ -182,7 +182,7 @@ nv30_query_end(struct pipe_context *pipe, struct pipe_query *pq)
    struct nv30_context *nv30 = nv30_context(pipe);
    struct nv30_screen *screen = nv30->screen;
    struct nv30_query *q = nv30_query(pq);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    q->qo[1] = nv30_query_object_new(screen);
    if (q->qo[1]) {
@@ -244,7 +244,7 @@ nv40_query_render_condition(struct pipe_context *pipe,
 {
    struct nv30_context *nv30 = nv30_context(pipe);
    struct nv30_query *q = nv30_query(pq);
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
 
    nv30->render_cond_query = pq;
    nv30->render_cond_mode = mode;
@@ -274,7 +274,7 @@ nv30_set_active_query_state(struct pipe_context *pipe, bool enable)
 void
 nv30_query_init(struct pipe_context *pipe)
 {
-   struct nouveau_object *eng3d = nv30_context(pipe)->screen->eng3d;
+   struct nouveau_ws_object *eng3d = nv30_context(pipe)->screen->eng3d;
 
    pipe->create_query = nv30_query_create;
    pipe->destroy_query = nv30_query_destroy;

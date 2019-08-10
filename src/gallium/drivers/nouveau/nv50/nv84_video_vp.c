@@ -72,8 +72,8 @@ nv84_decoder_vp_h264(struct nv84_decoder *dec,
    int i, width = align(dest->base.width, 16),
       height = align(dest->base.height, 16);
 
-   struct nouveau_pushbuf *push = dec->vp_pushbuf;
-   struct nouveau_pushbuf_refn bo_refs[] = {
+   struct nouveau_ws_pushbuf *push = dec->vp_pushbuf;
+   struct nouveau_ws_pushbuf_refn bo_refs[] = {
       { dest->interlaced, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
       { dest->full, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
       { dec->vpring, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
@@ -121,11 +121,11 @@ nv84_decoder_vp_h264(struct nv84_decoder *dec,
 
    PUSH_SPACE(push, 5 + 16 + 3 + 2 + 6 + (is_ref ? 2 : 0) + 3 + 2 + 4 + 2);
 
-   struct nouveau_bo *ref2_default = dest->full;
+   struct nouveau_ws_bo *ref2_default = dest->full;
 
    for (i = 0; i < 16; i++) {
       struct nv84_video_buffer *buf = (struct nv84_video_buffer *)desc->ref[i];
-      struct nouveau_bo *bo1, *bo2;
+      struct nouveau_ws_bo *bo1, *bo2;
       if (buf) {
          bo1 = buf->interlaced;
          bo2 = buf->full;
@@ -137,17 +137,17 @@ nv84_decoder_vp_h264(struct nv84_decoder *dec,
       }
       param1.ref1_addrs[i] = bo1->offset;
       param1.ref2_addrs[i] = bo2->offset;
-      struct nouveau_pushbuf_refn bo_refs[] = {
+      struct nouveau_ws_pushbuf_refn bo_refs[] = {
          { bo1, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
          { bo2, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
       };
-      nouveau_pushbuf_refn(push, bo_refs, ARRAY_SIZE(bo_refs));
+      nouveau_ws_pushbuf_refn(push, bo_refs, ARRAY_SIZE(bo_refs));
    }
 
    memcpy(dec->vp_params->map, &param1, sizeof(param1));
    memcpy(dec->vp_params->map + 0x400, &param2, sizeof(param2));
 
-   nouveau_pushbuf_refn(push, bo_refs, num_refs);
+   nouveau_ws_pushbuf_refn(push, bo_refs, num_refs);
 
    /* Wait for BSP to have completed */
    BEGIN_NV04(push, SUBC_VP(0x10), 4);
@@ -481,10 +481,10 @@ nv84_decoder_vp_mpeg12(struct nv84_decoder *dec,
                        struct pipe_mpeg12_picture_desc *desc,
                        struct nv84_video_buffer *dest)
 {
-   struct nouveau_pushbuf *push = dec->vp_pushbuf;
+   struct nouveau_ws_pushbuf *push = dec->vp_pushbuf;
    struct nv84_video_buffer *ref1 = (struct nv84_video_buffer *)desc->ref[0];
    struct nv84_video_buffer *ref2 = (struct nv84_video_buffer *)desc->ref[1];
-   struct nouveau_pushbuf_refn bo_refs[] = {
+   struct nouveau_ws_pushbuf_refn bo_refs[] = {
       { dest->interlaced, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
       { NULL, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
       { NULL, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
@@ -522,7 +522,7 @@ nv84_decoder_vp_mpeg12(struct nv84_decoder *dec,
 
    PUSH_SPACE(push, 10 + 3 + 2);
 
-   nouveau_pushbuf_refn(push, bo_refs, num_refs);
+   nouveau_ws_pushbuf_refn(push, bo_refs, num_refs);
 
    BEGIN_NV04(push, SUBC_VP(0x400), 9);
    PUSH_DATA (push, 0x543210); /* each nibble possibly a dma index */

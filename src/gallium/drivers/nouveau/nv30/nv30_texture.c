@@ -128,7 +128,7 @@ static void *
 nv30_sampler_state_create(struct pipe_context *pipe,
                           const struct pipe_sampler_state *cso)
 {
-   struct nouveau_object *eng3d = nv30_context(pipe)->screen->eng3d;
+   struct nouveau_ws_object *eng3d = nv30_context(pipe)->screen->eng3d;
    struct nv30_sampler_state *so;
    const float max_lod = 15.0 + (255.0 / 256.0);
 
@@ -220,7 +220,7 @@ nv30_sampler_view_create(struct pipe_context *pipe, struct pipe_resource *pt,
                          const struct pipe_sampler_view *tmpl)
 {
    const struct nv30_texfmt *fmt = nv30_texfmt(pipe->screen, tmpl->format);
-   struct nouveau_object *eng3d = nv30_context(pipe)->screen->eng3d;
+   struct nouveau_ws_object *eng3d = nv30_context(pipe)->screen->eng3d;
    struct nv30_miptree *mt = nv30_miptree(pt);
    struct nv30_sampler_view *so;
 
