@@ -233,7 +233,7 @@ nouveau_vp3_fill_picparm_h264_bsp(struct nouveau_vp3_decoder *dec,
 static inline struct strparm_bsp *strparm_bsp(struct nouveau_vp3_decoder *dec)
 {
    unsigned comm_seq = dec->fence_seq;
-   struct nouveau_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
+   struct nouveau_ws_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
    return (struct strparm_bsp *)(bsp_bo->map + 0x100);
 }
 
@@ -260,7 +260,7 @@ nouveau_vp3_bsp_next(struct nouveau_vp3_decoder *dec, unsigned num_buffers,
 {
 #ifndef NDEBUG
    unsigned comm_seq = dec->fence_seq;
-   struct nouveau_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
+   struct nouveau_ws_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
 #endif
    struct strparm_bsp *str_bsp = strparm_bsp(dec);
    int i;
@@ -280,7 +280,7 @@ nouveau_vp3_bsp_end(struct nouveau_vp3_decoder *dec, union pipe_desc desc)
 {
    enum pipe_video_format codec = u_reduce_video_profile(dec->base.profile);
    unsigned comm_seq = dec->fence_seq;
-   struct nouveau_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
+   struct nouveau_ws_bo *bsp_bo = dec->bsp_bo[comm_seq % NOUVEAU_VP3_VIDEO_QDEPTH];
    uint32_t endmarker, caps;
    struct strparm_bsp *str_bsp = strparm_bsp(dec);
    char *bsp = bsp_bo->map;

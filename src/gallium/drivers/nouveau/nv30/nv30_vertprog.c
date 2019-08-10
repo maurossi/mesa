@@ -54,8 +54,8 @@ nv30_vertprog_destroy(struct nv30_vertprog *vp)
 void
 nv30_vertprog_validate(struct nv30_context *nv30)
 {
-   struct nouveau_pushbuf *push = nv30->base.pushbuf;
-   struct nouveau_object *eng3d = nv30->screen->eng3d;
+   struct nouveau_ws_pushbuf *push = nv30->base.pushbuf;
+   struct nouveau_ws_object *eng3d = nv30->screen->eng3d;
    struct nv30_vertprog *vp = nv30->vertprog.program;
    struct nv30_fragprog *fp = nv30->fragprog.program;
    bool upload_code = false;

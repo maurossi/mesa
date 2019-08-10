@@ -67,7 +67,7 @@ nv30_miptree_destroy(struct pipe_screen *pscreen, struct pipe_resource *pt)
 {
    struct nv30_miptree *mt = nv30_miptree(pt);
 
-   nouveau_bo_ref(NULL, &mt->base.bo);
+   nouveau_ws_bo_ref(NULL, &mt->base.bo);
    FREE(mt);
 }
 
@@ -278,7 +278,7 @@ nv30_miptree_transfer_map(struct pipe_context *pipe, struct pipe_resource *pt,
                           struct pipe_transfer **ptransfer)
 {
    struct nv30_context *nv30 = nv30_context(pipe);
-   struct nouveau_device *dev = nv30->screen->base.device;
+   struct nouveau_ws_device *dev = nv30->screen->base.device;
    struct nv30_miptree *mt = nv30_miptree(pt);
    struct nv30_transfer *tx;
    unsigned access = 0;
@@ -302,7 +302,7 @@ nv30_miptree_transfer_map(struct pipe_context *pipe, struct pipe_resource *pt,
    define_rect(pt, level, box->z, box->x, box->y,
                box->width, box->height, &tx->img);
 
-   ret = nouveau_bo_new(dev, NOUVEAU_BO_GART | NOUVEAU_BO_MAP, 0,
+   ret = nouveau_ws_bo_new(dev, NOUVEAU_BO_GART | NOUVEAU_BO_MAP, 0,
                         tx->base.layer_stride * tx->base.box.depth, NULL,
                         &tx->tmp.bo);
    if (ret) {
@@ -354,7 +354,7 @@ nv30_miptree_transfer_map(struct pipe_context *pipe, struct pipe_resource *pt,
    if (usage & PIPE_TRANSFER_WRITE)
       access |= NOUVEAU_BO_WR;
 
-   ret = nouveau_bo_map(tx->tmp.bo, access, nv30->base.client);
+   ret = nouveau_ws_bo_map(tx->tmp.bo, access, nv30->base.client);
    if (ret) {
       pipe_resource_reference(&tx->base.resource, NULL);
       FREE(tx);
@@ -391,7 +391,7 @@ nv30_miptree_transfer_unmap(struct pipe_context *pipe,
       nouveau_fence_work(nv30->screen->base.fence.current,
                          nouveau_fence_unref_bo, tx->tmp.bo);
    } else {
-      nouveau_bo_ref(NULL, &tx->tmp.bo);
+      nouveau_ws_bo_ref(NULL, &tx->tmp.bo);
    }
    pipe_resource_reference(&ptx->resource, NULL);
    FREE(tx);
@@ -409,7 +409,7 @@ struct pipe_resource *
 nv30_miptree_create(struct pipe_screen *pscreen,
                     const struct pipe_resource *tmpl)
 {
-   struct nouveau_device *dev = nouveau_screen(pscreen)->device;
+   struct nouveau_ws_device *dev = nouveau_screen(pscreen)->device;
    struct nv30_miptree *mt = CALLOC_STRUCT(nv30_miptree);
    struct pipe_resource *pt = &mt->base.base;
    unsigned blocksz, size;
@@ -497,7 +497,7 @@ nv30_miptree_create(struct pipe_screen *pscreen,
       size = mt->layer_size * 6;
    }
 
-   ret = nouveau_bo_new(dev, NOUVEAU_BO_VRAM, 256, size, NULL, &mt->base.bo);
+   ret = nouveau_ws_bo_new(dev, NOUVEAU_BO_VRAM, 256, size, NULL, &mt->base.bo);
    if (ret) {
       FREE(mt);
       return NULL;

@@ -176,7 +176,7 @@ nouveau_fence_kick(struct nouveau_fence *fence)
    }
 
    if (fence->state < NOUVEAU_FENCE_STATE_FLUSHED)
-      if (nouveau_pushbuf_kick(screen->pushbuf, screen->pushbuf->channel))
+      if (nouveau_ws_pushbuf_kick(screen->pushbuf, screen->pushbuf->channel))
          return false;
 
    if (fence == screen->fence.current)
@@ -244,9 +244,9 @@ nouveau_fence_next(struct nouveau_screen *screen)
 void
 nouveau_fence_unref_bo(void *data)
 {
-   struct nouveau_bo *bo = data;
+   struct nouveau_ws_bo *bo = data;
 
-   nouveau_bo_ref(NULL, &bo);
+   nouveau_ws_bo_ref(NULL, &bo);
 }
 
 bool
