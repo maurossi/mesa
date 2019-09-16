@@ -1,0 +1,13 @@
+C_SOURCES := \
+	include/ws/nouveau.h \
+	nv_object.xml.h \
+	ws/abi16.c \
+	ws/bo.c \
+	ws/bufctx.c \
+	ws/client.c \
+	ws/device.c \
+	ws/drm.c \
+	ws/object.c \
+	ws/param.c \
+	ws/priv.h \
+	ws/pushbuf.c
