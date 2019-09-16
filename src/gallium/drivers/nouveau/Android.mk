@@ -43,7 +43,7 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
 	$(MESA_TOP)/src/mesa
 
-LOCAL_STATIC_LIBRARIES := libmesa_nir
+LOCAL_STATIC_LIBRARIES := libmesa_nir libmesa_ws_nouveau
 LOCAL_SHARED_LIBRARIES := libdrm_nouveau
 LOCAL_MODULE := libmesa_pipe_nouveau
 
@@ -52,6 +52,6 @@ include $(BUILD_STATIC_LIBRARY)
 
 ifneq ($(HAVE_GALLIUM_NOUVEAU),)
 GALLIUM_TARGET_DRIVERS += nouveau
-$(eval GALLIUM_LIBS += $(LOCAL_MODULE) libmesa_winsys_nouveau)
+$(eval GALLIUM_LIBS += $(LOCAL_MODULE) libmesa_winsys_nouveau libmesa_ws_nouveau)
 $(eval GALLIUM_SHARED_LIBS += $(LOCAL_SHARED_LIBRARIES))
 endif
