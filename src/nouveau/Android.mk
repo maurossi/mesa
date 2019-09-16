@@ -1,7 +1,7 @@
 # Mesa 3-D graphics library
 #
-# Copyright (C) 2011 Chia-I Wu <olvaffe@gmail.com>
-# Copyright (C) 2011 LunarG Inc.
+# Copyright (C) 2019 Red Hat
+# Copyright (C) 2019 Mauro Rossi <issor.oruam@gmail.com>
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -28,11 +28,19 @@ include $(LOCAL_PATH)/Makefile.sources
 
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(C_SOURCES)
+LOCAL_SRC_FILES := \
+	$(C_SOURCES)
 
-LOCAL_STATIC_LIBRARIES := libmesa_ws_nouveau
-LOCAL_SHARED_LIBRARIES := libdrm_nouveau
-LOCAL_MODULE := libmesa_winsys_nouveau
+LOCAL_C_INCLUDES := \
+	$(MESA_TOP)/src/nouveau/include \
+	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/gallium/include \
+	external/libdrm/nouveau
 
-include $(GALLIUM_COMMON_MK)
+LOCAL_EXPORT_C_INCLUDE_DIRS += \
+	$(MESA_TOP)/src/nouveau/include
+
+LOCAL_MODULE := libmesa_ws_nouveau
+
+include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
