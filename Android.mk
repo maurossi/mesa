@@ -97,8 +97,8 @@ endif
 define mesa-build-with-llvm
   $(if $(filter $(MESA_ANDROID_MAJOR_VERSION), 4 5 6 7), \
     $(warning Unsupported LLVM version in Android $(MESA_ANDROID_MAJOR_VERSION)),) \
-  $(eval LOCAL_CFLAGS += -DLLVM_AVAILABLE -DDRAW_LLVM_AVAILABLE -DLLVM_IS_SHARED=1 -DMESA_LLVM_VERSION_STRING=\"3.9\") \
-  $(eval LOCAL_SHARED_LIBRARIES += libLLVM)
+  $(eval LOCAL_CFLAGS += -DLLVM_AVAILABLE -DDRAW_LLVM_AVAILABLE -DLLVM_IS_SHARED=1 -DMESA_LLVM_VERSION_STRING=\"9.0\") \
+  $(eval LOCAL_SHARED_LIBRARIES += libLLVM90)
 endef
 
 # add subdirectories
