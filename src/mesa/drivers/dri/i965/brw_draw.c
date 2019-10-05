@@ -394,7 +394,7 @@ brw_disable_rb_aux_buffer(struct brw_context *brw,
       const struct brw_renderbuffer *irb =
          brw_renderbuffer(fb->_ColorDrawBuffers[i]);
 
-      if (irb && irb->mt->bo == tex_mt->bo &&
+      if (irb && irb->mt && irb->mt->bo == tex_mt->bo &&
           irb->mt_level >= min_level &&
           irb->mt_level < min_level + num_levels) {
          found = draw_aux_buffer_disabled[i] = true;
