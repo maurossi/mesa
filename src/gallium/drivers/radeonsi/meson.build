@@ -129,7 +129,7 @@ driver_radeonsi = declare_dependency(
   compile_args : '-DGALLIUM_RADEONSI',
   sources : si_driinfo_h,
   link_with : [
-    libradeonsi, libradeonwinsys, libamdgpuwinsys, libamd_common, libamd_common_llvm, libgalliumvl
+    libradeonsi, libradeonwinsys, libamdgpuwinsys, libamd_common, libamd_common_llvm
   ],
   dependencies : idep_nir,
 )
