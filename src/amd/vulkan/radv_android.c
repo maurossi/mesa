@@ -530,7 +530,7 @@ radv_ahb_usage_from_vk_usage(const VkImageCreateFlags vk_create, const VkImageUs
       ahb_usage |= AHARDWAREBUFFER_USAGE_GPU_COLOR_OUTPUT;
 
    if (vk_create & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
-      ahb_usage |= AHARDWAREBUFFER_USAGE_GPU_CUBE_MAP;
+      ahb_usage |= 1UL << 25;
 
    if (vk_create & VK_IMAGE_CREATE_PROTECTED_BIT)
       ahb_usage |= AHARDWAREBUFFER_USAGE_PROTECTED_CONTENT;
