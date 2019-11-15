@@ -78,20 +78,7 @@ LOCAL_CFLAGS += \
 	-fvisibility=hidden \
 	-fno-math-errno \
 	-fno-trapping-math \
-	-Werror \
-	-Wno-\#warnings \
-	-Wno-constant-logical-operand \
-	-Wno-enum-conversion \
-	-Wno-gnu-variable-sized-type-not-at-end \
-	-Wno-implicit-fallthrough \
-	-Wno-missing-braces \
-	-Wno-overloaded-virtual \
-	-Wno-self-assign \
-	-Wno-shift-negative-value \
-	-Wno-sign-compare \
-	-Wno-sometimes-uninitialized \
-	-Wno-switch \
-	-Wno-uninitialized \
+	-Wno-sign-compare
 
 LOCAL_CPPFLAGS += \
 	-D__STDC_CONSTANT_MACROS \
