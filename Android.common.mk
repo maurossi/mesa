@@ -78,7 +78,25 @@ LOCAL_CFLAGS += \
 	-fvisibility=hidden \
 	-fno-math-errno \
 	-fno-trapping-math \
-	-Wno-sign-compare
+	-Werror \
+	-Wno-\#warnings \
+	-Wno-asm-operand-widths \
+	-Wno-cast-calling-convention \
+	-Wno-constant-logical-operand \
+	-Wno-enum-conversion \
+	-Wno-format \
+	-Wno-gnu-variable-sized-type-not-at-end \
+	-Wno-implicit-fallthrough \
+	-Wno-incompatible-pointer-types \
+	-Wno-missing-braces \
+	-Wno-overloaded-virtual \
+	-Wno-self-assign \
+	-Wno-shift-negative-value \
+	-Wno-sign-compare \
+	-Wno-sometimes-uninitialized \
+	-Wno-switch \
+	-Wno-typedef-redefinition \
+	-Wno-uninitialized \
 
 LOCAL_CPPFLAGS += \
 	-D__STDC_CONSTANT_MACROS \
