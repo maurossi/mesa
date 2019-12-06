@@ -338,14 +338,14 @@
 
   <struct name="SAMPLER_STATE" length="4">
     <field name="Shadow Function" start="0" end="2" type="uint">
-      <value name="PREFILTEROP_ALWAYS" value="0"/>
-      <value name="PREFILTEROP_NEVER" value="1"/>
-      <value name="PREFILTEROP_LESS" value="2"/>
-      <value name="PREFILTEROP_EQUAL" value="3"/>
-      <value name="PREFILTEROP_LEQUAL" value="4"/>
-      <value name="PREFILTEROP_GREATER" value="5"/>
-      <value name="PREFILTEROP_NOTEQUAL" value="6"/>
-      <value name="PREFILTEROP_GEQUAL" value="7"/>
+      <value name="PREFILTEROP ALWAYS" value="0"/>
+      <value name="PREFILTEROP NEVER" value="1"/>
+      <value name="PREFILTEROP LESS" value="2"/>
+      <value name="PREFILTEROP EQUAL" value="3"/>
+      <value name="PREFILTEROP LEQUAL" value="4"/>
+      <value name="PREFILTEROP GREATER" value="5"/>
+      <value name="PREFILTEROP NOTEQUAL" value="6"/>
+      <value name="PREFILTEROP GEQUAL" value="7"/>
     </field>
     <field name="Texture LOD Bias" start="3" end="13" type="s4.6"/>
     <field name="Min Mode Filter" start="14" end="16" type="uint" prefix="MAPFILTER"/>
