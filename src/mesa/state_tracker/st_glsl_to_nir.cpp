@@ -999,6 +999,7 @@ st_nir_lower_uniforms(struct st_context *st, nir_shader *nir)
       NIR_PASS_V(nir, nir_lower_io, nir_var_uniform,
                  st_unpacked_uniforms_type_size,
                  (nir_lower_io_options)0);
+      NIR_PASS_V(nir, nir_lower_uniforms_to_ubo, 16);
    }
 
    if (nir->options->lower_uniforms_to_ubo)

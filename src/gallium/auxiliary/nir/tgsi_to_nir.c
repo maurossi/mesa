@@ -200,7 +200,7 @@ ttn_translate_interp_mode(unsigned tgsi_interp)
    case TGSI_INTERPOLATE_CONSTANT:
       return INTERP_MODE_FLAT;
    case TGSI_INTERPOLATE_LINEAR:
-      return INTERP_MODE_NOPERSPECTIVE;
+//      return INTERP_MODE_NOPERSPECTIVE;
    case TGSI_INTERPOLATE_PERSPECTIVE:
       return INTERP_MODE_SMOOTH;
    case TGSI_INTERPOLATE_COLOR:

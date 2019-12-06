@@ -1,0 +1,777 @@
+/*
+ * Copyright © 2017 Intel Corporation
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included
+ * in all copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+ * OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+ * DEALINGS IN THE SOFTWARE.
+ */
+
+/**
+ * @file crocus_batch.c
+ *
+ * Batchbuffer and command submission module.
+ *
+ * Every API draw call results in a number of GPU commands, which we
+ * collect into a "batch buffer".  Typically, many draw calls are grouped
+ * into a single batch to amortize command submission overhead.
+ *
+ * We submit batches to the kernel using the I915_GEM_EXECBUFFER2 ioctl.
+ * One critical piece of data is the "validation list", which contains a
+ * list of the buffer objects (BOs) which the commands in the GPU need.
+ * The kernel will make sure these are resident and pinned at the correct
+ * virtual memory address before executing our batch.  If a BO is not in
+ * the validation list, it effectively does not exist, so take care.
+ */
+
+#include "crocus_batch.h"
+#include "crocus_bufmgr.h"
+#include "crocus_context.h"
+#include "crocus_fence.h"
+
+#include "drm-uapi/i915_drm.h"
+
+#include "intel/common/intel_gem.h"
+#include "util/hash_table.h"
+#include "util/set.h"
+#include "main/macros.h"
+
+#include <errno.h>
+#include <xf86drm.h>
+
+#if HAVE_VALGRIND
+#include <valgrind.h>
+#include <memcheck.h>
+#define VG(x) x
+#else
+#define VG(x)
+#endif
+
+#define FILE_DEBUG_FLAG DEBUG_BUFMGR
+
+/* Terminating the batch takes either 4 bytes for MI_BATCH_BUFFER_END
+ * or 12 bytes for MI_BATCH_BUFFER_START (when chaining).  Plus, we may
+ * need an extra 4 bytes to pad out to the nearest QWord.  So reserve 16.
+ */
+#define BATCH_RESERVED(devinfo) ((devinfo)->is_haswell ? 32 : 16)
+
+static void
+crocus_batch_reset(struct crocus_batch *batch);
+
+static unsigned
+num_fences(struct crocus_batch *batch)
+{
+   return util_dynarray_num_elements(&batch->exec_fences,
+                                     struct drm_i915_gem_exec_fence);
+}
+
+/**
+ * Debugging code to dump the fence list, used by INTEL_DEBUG=submit.
+ */
+static void
+dump_fence_list(struct crocus_batch *batch)
+{
+   fprintf(stderr, "Fence list (length %u):      ", num_fences(batch));
+
+   util_dynarray_foreach(&batch->exec_fences,
+                         struct drm_i915_gem_exec_fence, f) {
+      fprintf(stderr, "%s%u%s ",
+              (f->flags & I915_EXEC_FENCE_WAIT) ? "..." : "",
+              f->handle,
+              (f->flags & I915_EXEC_FENCE_SIGNAL) ? "!" : "");
+   }
+
+   fprintf(stderr, "\n");
+}
+
+/**
+ * Debugging code to dump the validation list, used by INTEL_DEBUG=submit.
+ */
+static void
+dump_validation_list(struct crocus_batch *batch)
+{
+   fprintf(stderr, "Validation list (length %d):\n", batch->exec_count);
+
+   for (int i = 0; i < batch->exec_count; i++) {
+      uint64_t flags = batch->validation_list[i].flags;
+      assert(batch->validation_list[i].handle ==
+             batch->exec_bos[i]->gem_handle);
+      fprintf(stderr, "[%2d]: %2d %-14s @ 0x%016llx (%"PRIu64"B)\t %2d refs %s\n",
+              i,
+              batch->validation_list[i].handle,
+              batch->exec_bos[i]->name,
+              batch->validation_list[i].offset,
+              batch->exec_bos[i]->size,
+              batch->exec_bos[i]->refcount,
+              (flags & EXEC_OBJECT_WRITE) ? " (write)" : "");
+   }
+}
+
+/**
+ * Return BO information to the batch decoder (for debugging).
+ */
+static struct intel_batch_decode_bo
+decode_get_bo(void *v_batch, bool ppgtt, uint64_t address)
+{
+   struct crocus_batch *batch = v_batch;
+
+   assert(ppgtt);
+
+   for (int i = 0; i < batch->exec_count; i++) {
+      struct crocus_bo *bo = batch->exec_bos[i];
+      /* The decoder zeroes out the top 16 bits, so we need to as well */
+      uint64_t bo_address = bo->gtt_offset & (~0ull >> 16);
+
+      if (address >= bo_address && address < bo_address + bo->size) {
+         return (struct intel_batch_decode_bo) {
+            .addr = address,
+            .size = bo->size,
+            .map = crocus_bo_map(batch->dbg, bo, MAP_READ) +
+                   (address - bo_address),
+         };
+      }
+   }
+
+   return (struct intel_batch_decode_bo) { };
+}
+
+static unsigned
+decode_get_state_size(void *v_batch, uint64_t address,
+                      UNUSED uint64_t base_address)
+{
+   struct crocus_batch *batch = v_batch;
+
+   /* The decoder gives us offsets from a base address, which is not great.
+    * Binding tables are relative to surface state base address, and other
+    * state is relative to dynamic state base address.  These could alias,
+    * but in practice it's unlikely because surface offsets are always in
+    * the [0, 64K) range, and we assign dynamic state addresses starting at
+    * the top of the 4GB range.  We should fix this but it's likely good
+    * enough for now.
+    */
+   unsigned size = (uintptr_t)
+      _mesa_hash_table_u64_search(batch->state_sizes, address);
+
+   return size;
+}
+
+/**
+ * Decode the current batch.
+ */
+static void
+decode_batch(struct crocus_batch *batch)
+{
+   void *map = crocus_bo_map(batch->dbg, batch->exec_bos[0], MAP_READ);
+   intel_print_batch(&batch->decoder, map, batch->primary_batch_size,
+                   batch->exec_bos[0]->gtt_offset, false);
+}
+
+void
+crocus_init_batch(struct crocus_batch *batch,
+		  struct crocus_context *ice,
+                struct crocus_vtable *vtbl,
+                struct pipe_debug_callback *dbg,
+                struct pipe_device_reset_callback *reset,
+                struct hash_table_u64 *state_sizes,
+                struct crocus_batch *all_batches,
+                enum crocus_batch_name name,
+                uint8_t engine,
+                int priority)
+{
+   struct crocus_screen *screen = (struct crocus_screen*)ice->ctx.screen;
+   struct gen_device_info *devinfo = &screen->devinfo;
+   batch->ice = ice;
+   batch->screen = screen;
+   batch->vtbl = vtbl;
+   batch->dbg = dbg;
+   batch->reset = reset;
+   batch->state_sizes = state_sizes;
+   batch->name = name;
+
+   /* engine should be one of I915_EXEC_RENDER, I915_EXEC_BLT, etc. */
+   assert((engine & ~I915_EXEC_RING_MASK) == 0);
+   assert(util_bitcount(engine) == 1);
+   batch->engine = engine;
+
+   batch->hw_ctx_id = crocus_create_hw_context(screen->bufmgr);
+   assert(batch->hw_ctx_id);
+
+   crocus_hw_context_set_priority(screen->bufmgr, batch->hw_ctx_id, priority);
+
+   batch->valid_reloc_flags = EXEC_OBJECT_WRITE;
+   if (devinfo->gen == 6)
+      batch->valid_reloc_flags |= EXEC_OBJECT_NEEDS_GTT;
+   batch->use_shadow_copy = !devinfo->has_llc;
+
+   util_dynarray_init(&batch->exec_fences, ralloc_context(NULL));
+   util_dynarray_init(&batch->syncpts, ralloc_context(NULL));
+
+   batch->exec_count = 0;
+   batch->exec_array_size = 100;
+   batch->exec_bos =
+      malloc(batch->exec_array_size * sizeof(batch->exec_bos[0]));
+   batch->validation_list =
+      malloc(batch->exec_array_size * sizeof(batch->validation_list[0]));
+
+   batch->cache.render = _mesa_hash_table_create(NULL, _mesa_hash_pointer,
+                                                 _mesa_key_pointer_equal);
+   batch->cache.depth = _mesa_set_create(NULL, _mesa_hash_pointer,
+                                         _mesa_key_pointer_equal);
+
+   memset(batch->other_batches, 0, sizeof(batch->other_batches));
+
+   for (int i = 0, j = 0; i < CROCUS_BATCH_COUNT; i++) {
+      if (&all_batches[i] != batch)
+         batch->other_batches[j++] = &all_batches[i];
+   }
+
+   if (unlikely(INTEL_DEBUG)) {
+      const unsigned decode_flags =
+         INTEL_BATCH_DECODE_FULL |
+         ((INTEL_DEBUG & DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
+         INTEL_BATCH_DECODE_OFFSETS |
+         INTEL_BATCH_DECODE_FLOATS;
+
+      intel_batch_decode_ctx_init(&batch->decoder, &screen->devinfo,
+                                stderr, decode_flags, NULL,
+                                decode_get_bo, decode_get_state_size, batch);
+      batch->decoder.max_vbo_decoded_lines = 32;
+   }
+
+   crocus_batch_reset(batch);
+}
+
+static struct drm_i915_gem_exec_object2 *
+find_validation_entry(struct crocus_batch *batch, struct crocus_bo *bo)
+{
+   unsigned index = READ_ONCE(bo->index);
+
+   if (index < batch->exec_count && batch->exec_bos[index] == bo)
+      return &batch->validation_list[index];
+
+   /* May have been shared between multiple active batches */
+   for (index = 0; index < batch->exec_count; index++) {
+      if (batch->exec_bos[index] == bo)
+         return &batch->validation_list[index];
+   }
+
+   return NULL;
+}
+
+static void
+ensure_exec_obj_space(struct crocus_batch *batch, uint32_t count)
+{
+   while (batch->exec_count + count > batch->exec_array_size) {
+      batch->exec_array_size *= 2;
+      batch->exec_bos =
+         realloc(batch->exec_bos,
+                 batch->exec_array_size * sizeof(batch->exec_bos[0]));
+      batch->validation_list =
+         realloc(batch->validation_list,
+                 batch->exec_array_size * sizeof(batch->validation_list[0]));
+   }
+}
+
+static struct drm_i915_gem_exec_object2 *
+crocus_use_bo(struct crocus_batch *batch, struct crocus_bo *bo, bool writable)
+{
+   assert(bo->bufmgr == batch->command.bo->bufmgr);
+
+   struct drm_i915_gem_exec_object2 *existing_entry =
+      find_validation_entry(batch, bo);
+
+   if (existing_entry)
+      return existing_entry;
+
+   /* Bump the ref count since the batch is now using this bo. */
+   crocus_bo_reference(bo);
+
+   ensure_exec_obj_space(batch, 1);
+
+   batch->validation_list[batch->exec_count] =
+      (struct drm_i915_gem_exec_object2) {
+         .handle = bo->gem_handle,
+         .offset = bo->gtt_offset,
+         .flags = bo->kflags | (writable ? EXEC_OBJECT_WRITE : 0),
+      };
+
+   bo->index = batch->exec_count;
+   batch->exec_bos[batch->exec_count] = bo;
+   batch->aperture_space += bo->size;
+
+   batch->exec_count++;
+
+   return &batch->validation_list[batch->exec_count - 1];
+}
+
+static void
+init_reloc_list(struct crocus_reloc_list *rlist, int count)
+{
+   rlist->reloc_count = 0;
+   rlist->reloc_array_size = count;
+   rlist->relocs = malloc(rlist->reloc_array_size *
+                          sizeof(struct drm_i915_gem_relocation_entry));
+}
+
+static uint64_t
+emit_reloc(struct crocus_batch *batch,
+           struct crocus_reloc_list *rlist, uint32_t offset,
+           struct crocus_bo *target, int32_t target_offset,
+           unsigned int reloc_flags)
+{
+   assert(target != NULL);
+
+   bool writable = reloc_flags & RELOC_WRITE;
+
+   struct drm_i915_gem_exec_object2 *entry =
+      crocus_use_bo(batch, target, writable);
+
+   if (rlist->reloc_count == rlist->reloc_array_size) {
+      rlist->reloc_array_size *= 2;
+      rlist->relocs = realloc(rlist->relocs,
+                              rlist->reloc_array_size *
+                              sizeof(struct drm_i915_gem_relocation_entry));
+   }
+
+   if (reloc_flags & RELOC_32BIT) {
+      /* Restrict this buffer to the low 32 bits of the address space.
+       *
+       * Altering the validation list flags restricts it for this batch,
+       * but we also alter the BO's kflags to restrict it permanently
+       * (until the BO is destroyed and put back in the cache).  Buffers
+       * may stay bound across batches, and we want keep it constrained.
+       */
+      target->kflags &= ~EXEC_OBJECT_SUPPORTS_48B_ADDRESS;
+      entry->flags &= ~EXEC_OBJECT_SUPPORTS_48B_ADDRESS;
+
+      /* RELOC_32BIT is not an EXEC_OBJECT_* flag, so get rid of it. */
+      reloc_flags &= ~RELOC_32BIT;
+   }
+
+   if (reloc_flags)
+      entry->flags |= reloc_flags & batch->valid_reloc_flags;
+
+   rlist->relocs[rlist->reloc_count++] =
+      (struct drm_i915_gem_relocation_entry) {
+         .offset = offset,
+         .delta = target_offset,
+         .target_handle = target->index,
+         .presumed_offset = entry->offset,
+      };
+
+   /* Using the old buffer offset, write in what the right data would be, in
+    * case the buffer doesn't move and we can short-circuit the relocation
+    * processing in the kernel
+    */
+   return entry->offset + target_offset;
+}
+
+uint64_t
+crocus_command_reloc(struct crocus_batch *batch, uint32_t batch_offset,
+		     struct crocus_bo *target, uint32_t target_offset,
+		     unsigned int reloc_flags)
+{
+   assert(batch_offset <= batch->command.bo->size - sizeof(uint32_t));
+
+   return emit_reloc(batch, &batch->command.relocs, batch_offset,
+                     target, target_offset, reloc_flags);
+}
+
+uint64_t
+crocus_state_reloc(struct crocus_batch *batch, uint32_t state_offset,
+                   struct crocus_bo *target, uint32_t target_offset,
+                   unsigned int reloc_flags)
+{
+   assert(state_offset <= batch->state.bo->size - sizeof(uint32_t));
+
+   return emit_reloc(batch, &batch->state.relocs, state_offset,
+                     target, target_offset, reloc_flags);
+}
+
+static void
+create_batch(struct crocus_batch *batch)
+{
+   struct crocus_screen *screen = batch->screen;
+   struct crocus_bufmgr *bufmgr = screen->bufmgr;
+
+   batch->command.bo = crocus_bo_alloc(bufmgr, "command buffer",
+				       BATCH_SZ + BATCH_RESERVED(&screen->devinfo));
+   batch->command.bo->kflags |= EXEC_OBJECT_CAPTURE;
+   batch->command.map = crocus_bo_map(NULL, batch->command.bo, MAP_READ | MAP_WRITE);
+   batch->command.map_next = batch->command.map;
+   init_reloc_list(&batch->command.relocs, 250);
+
+   crocus_use_bo(batch, batch->command.bo, false);
+
+
+   batch->state.bo = crocus_bo_alloc(bufmgr, "state buffer",
+				     BATCH_SZ + BATCH_RESERVED(&screen->devinfo));
+   batch->state.bo->kflags |= EXEC_OBJECT_CAPTURE;
+   batch->state.map = crocus_bo_map(NULL, batch->state.bo, MAP_READ | MAP_WRITE);
+   batch->state.map_next = batch->state.map;
+   init_reloc_list(&batch->state.relocs, 250);
+
+
+   batch->state.used = 1;
+   crocus_use_bo(batch, batch->state.bo, false);
+}
+
+static void
+crocus_batch_reset(struct crocus_batch *batch)
+{
+   struct crocus_screen *screen = batch->screen;
+
+   crocus_bo_unreference(batch->command.bo);
+   crocus_bo_unreference(batch->state.bo);
+   batch->primary_batch_size = 0;
+   batch->contains_draw = false;
+   batch->state_base_address_emitted = false;
+   batch->ice->state.dirty |= CROCUS_ALL_DIRTY_BINDINGS;
+
+   create_batch(batch);
+   assert(batch->command.bo->index == 0);
+
+   struct crocus_syncpt *syncpt = crocus_create_syncpt(screen);
+   crocus_batch_add_syncpt(batch, syncpt, I915_EXEC_FENCE_SIGNAL);
+   crocus_syncpt_reference(screen, &syncpt, NULL);
+
+   crocus_cache_sets_clear(batch);
+}
+
+void
+crocus_batch_free(struct crocus_batch *batch)
+{
+   struct crocus_screen *screen = batch->screen;
+   struct crocus_bufmgr *bufmgr = screen->bufmgr;
+
+   for (int i = 0; i < batch->exec_count; i++) {
+      crocus_bo_unreference(batch->exec_bos[i]);
+   }
+   free(batch->exec_bos);
+   free(batch->validation_list);
+
+   ralloc_free(batch->exec_fences.mem_ctx);
+
+   util_dynarray_foreach(&batch->syncpts, struct crocus_syncpt *, s)
+      crocus_syncpt_reference(screen, s, NULL);
+   ralloc_free(batch->syncpts.mem_ctx);
+
+   crocus_syncpt_reference(screen, &batch->last_syncpt, NULL);
+
+   crocus_bo_unreference(batch->command.bo);
+   batch->command.bo = NULL;
+   batch->command.map = NULL;
+   batch->command.map_next = NULL;
+
+   crocus_destroy_hw_context(bufmgr, batch->hw_ctx_id);
+
+   _mesa_hash_table_destroy(batch->cache.render, NULL);
+   _mesa_set_destroy(batch->cache.depth, NULL);
+
+   if (unlikely(INTEL_DEBUG))
+      intel_batch_decode_ctx_finish(&batch->decoder);
+}
+
+/**
+ * If we've chained to a secondary batch, or are getting near to the end,
+ * then flush.  This should only be called between draws.
+ */
+void
+crocus_batch_maybe_flush(struct crocus_batch *batch, unsigned estimate)
+{
+   if (batch->command.bo != batch->exec_bos[0] ||
+       crocus_batch_bytes_used(batch) + estimate >= BATCH_SZ) {
+      crocus_batch_flush(batch);
+   }
+}
+
+/**
+ * Terminate a batch with MI_BATCH_BUFFER_END.
+ */
+static void
+crocus_finish_batch(struct crocus_batch *batch)
+{
+
+   if (batch->vtbl->finish_batch)
+      batch->vtbl->finish_batch(batch);
+
+   /* Emit MI_BATCH_BUFFER_END to finish our batch. */
+   uint32_t *map = batch->command.map_next;
+
+   map[0] = (0xA << 23);
+
+   batch->command.map_next += 4;
+   VG(VALGRIND_CHECK_MEM_IS_DEFINED(batch->command.map, crocus_batch_bytes_used(batch)));
+
+   if (batch->command.bo == batch->exec_bos[0])
+      batch->primary_batch_size = crocus_batch_bytes_used(batch);
+}
+
+/**
+ * Replace our current GEM context with a new one (in case it got banned).
+ */
+static bool
+replace_hw_ctx(struct crocus_batch *batch)
+{
+   struct crocus_screen *screen = batch->screen;
+   struct crocus_bufmgr *bufmgr = screen->bufmgr;
+
+   uint32_t new_ctx = crocus_clone_hw_context(bufmgr, batch->hw_ctx_id);
+   if (!new_ctx)
+      return false;
+
+   crocus_destroy_hw_context(bufmgr, batch->hw_ctx_id);
+   batch->hw_ctx_id = new_ctx;
+
+   /* Notify the context that state must be re-initialized. */
+   crocus_lost_context_state(batch);
+
+   return true;
+}
+
+enum pipe_reset_status
+crocus_batch_check_for_reset(struct crocus_batch *batch)
+{
+   struct crocus_screen *screen = batch->screen;
+   enum pipe_reset_status status = PIPE_NO_RESET;
+   struct drm_i915_reset_stats stats = { .ctx_id = batch->hw_ctx_id };
+
+   if (drmIoctl(screen->fd, DRM_IOCTL_I915_GET_RESET_STATS, &stats))
+      DBG("DRM_IOCTL_I915_GET_RESET_STATS failed: %s\n", strerror(errno));
+
+   if (stats.batch_active != 0) {
+      /* A reset was observed while a batch from this hardware context was
+       * executing.  Assume that this context was at fault.
+       */
+      status = PIPE_GUILTY_CONTEXT_RESET;
+   } else if (stats.batch_pending != 0) {
+      /* A reset was observed while a batch from this context was in progress,
+       * but the batch was not executing.  In this case, assume that the
+       * context was not at fault.
+       */
+      status = PIPE_INNOCENT_CONTEXT_RESET;
+   }
+
+   if (status != PIPE_NO_RESET) {
+      /* Our context is likely banned, or at least in an unknown state.
+       * Throw it away and start with a fresh context.  Ideally this may
+       * catch the problem before our next execbuf fails with -EIO.
+       */
+      replace_hw_ctx(batch);
+   }
+
+   return status;
+}
+
+/**
+ * Submit the batch to the GPU via execbuffer2.
+ */
+static int
+submit_batch(struct crocus_batch *batch)
+{
+   crocus_bo_unmap(batch->command.bo);
+   crocus_bo_unmap(batch->state.bo);
+
+   /* The requirement for using I915_EXEC_NO_RELOC are:
+    *
+    *   The addresses written in the objects must match the corresponding
+    *   reloc.gtt_offset which in turn must match the corresponding
+    *   execobject.offset.
+    *
+    *   Any render targets written to in the batch must be flagged with
+    *   EXEC_OBJECT_WRITE.
+    *
+    *   To avoid stalling, execobject.offset should match the current
+    *   address of that object within the active context.
+    */
+   /* Set statebuffer relocations */
+   const unsigned state_index = batch->state.bo->index;
+   if (state_index < batch->exec_count &&
+       batch->exec_bos[state_index] == batch->state.bo) {
+     struct drm_i915_gem_exec_object2 *entry =
+       &batch->validation_list[state_index];
+     assert(entry->handle == batch->state.bo->gem_handle);
+     entry->relocation_count = batch->state.relocs.reloc_count;
+     entry->relocs_ptr = (uintptr_t) batch->state.relocs.relocs;
+   }
+
+   /* Set batchbuffer relocations */
+   struct drm_i915_gem_exec_object2 *entry = &batch->validation_list[0];
+   assert(entry->handle == batch->command.bo->gem_handle);
+   entry->relocation_count = batch->command.relocs.reloc_count;
+   entry->relocs_ptr = (uintptr_t) batch->command.relocs.relocs;
+   
+   struct drm_i915_gem_execbuffer2 execbuf = {
+      .buffers_ptr = (uintptr_t) batch->validation_list,
+      .buffer_count = batch->exec_count,
+      .batch_start_offset = 0,
+      /* This must be QWord aligned. */
+      .batch_len = ALIGN(batch->primary_batch_size, 8),
+      .flags = batch->engine |
+               I915_EXEC_NO_RELOC |
+               I915_EXEC_BATCH_FIRST |
+               I915_EXEC_HANDLE_LUT,
+      .rsvd1 = batch->hw_ctx_id, /* rsvd1 is actually the context ID */
+   };
+
+   if (num_fences(batch)) {
+      execbuf.flags |= I915_EXEC_FENCE_ARRAY;
+      execbuf.num_cliprects = num_fences(batch);
+      execbuf.cliprects_ptr =
+         (uintptr_t)util_dynarray_begin(&batch->exec_fences);
+   }
+
+   int ret = 0;
+   if (!batch->screen->no_hw &&
+       intel_ioctl(batch->screen->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, &execbuf))
+      ret = -errno;
+
+   for (int i = 0; i < batch->exec_count; i++) {
+      struct crocus_bo *bo = batch->exec_bos[i];
+
+      bo->idle = false;
+      bo->index = -1;
+
+      /* Update brw_bo::gtt_offset */
+      if (batch->validation_list[i].offset != bo->gtt_offset) {
+         DBG("BO %d migrated: 0x%" PRIx64 " -> 0x%llx\n",
+             bo->gem_handle, bo->gtt_offset,
+             batch->validation_list[i].offset);
+         assert(!(bo->kflags & EXEC_OBJECT_PINNED));
+         bo->gtt_offset = batch->validation_list[i].offset;
+      }
+      crocus_bo_unreference(bo);
+   }
+
+   return ret;
+}
+
+static const char *
+batch_name_to_string(enum crocus_batch_name name)
+{
+   const char *names[CROCUS_BATCH_COUNT] = {
+      [CROCUS_BATCH_RENDER]  = "render",
+      [CROCUS_BATCH_COMPUTE] = "compute",
+   };
+   return names[name];
+}
+
+/**
+ * Flush the batch buffer, submitting it to the GPU and resetting it so
+ * we're ready to emit the next batch.
+ *
+ * \param in_fence_fd is ignored if -1.  Otherwise, this function takes
+ * ownership of the fd.
+ *
+ * \param out_fence_fd is ignored if NULL.  Otherwise, the caller must
+ * take ownership of the returned fd.
+ */
+void
+_crocus_batch_flush(struct crocus_batch *batch, const char *file, int line)
+{
+   struct crocus_screen *screen = batch->screen;
+
+   if (crocus_batch_bytes_used(batch) == 0)
+      return;
+
+   crocus_finish_batch(batch);
+
+   int ret = submit_batch(batch);
+
+   if (unlikely(INTEL_DEBUG &
+                (DEBUG_BATCH | DEBUG_SUBMIT | DEBUG_PIPE_CONTROL))) {
+      int bytes_for_commands = crocus_batch_bytes_used(batch);
+      int second_bytes = 0;
+      if (batch->command.bo != batch->exec_bos[0]) {
+         second_bytes = bytes_for_commands;
+         bytes_for_commands += batch->primary_batch_size;
+      }
+      fprintf(stderr, "%19s:%-3d: %s batch [%u] flush with %5d+%5db (%0.1f%%) "
+              "(cmds), %4d BOs (%0.1fMb aperture),"
+	      " %4d command relocs, %4d state relocs\n",
+              file, line, batch_name_to_string(batch->name), batch->hw_ctx_id,
+              batch->primary_batch_size, second_bytes,
+              100.0f * bytes_for_commands / BATCH_SZ,
+              batch->exec_count,
+              (float) batch->aperture_space / (1024 * 1024),
+	      batch->command.relocs.reloc_count,
+	      batch->state.relocs.reloc_count);
+
+      if (INTEL_DEBUG & (DEBUG_BATCH | DEBUG_SUBMIT)) {
+         dump_fence_list(batch);
+         dump_validation_list(batch);
+      }
+
+      if (INTEL_DEBUG & DEBUG_BATCH) {
+         decode_batch(batch);
+      }
+   }
+
+   batch->exec_count = 0;
+   batch->aperture_space = 0;
+
+   struct crocus_syncpt *syncpt =
+      ((struct crocus_syncpt **) util_dynarray_begin(&batch->syncpts))[0];
+   crocus_syncpt_reference(screen, &batch->last_syncpt, syncpt);
+
+   util_dynarray_foreach(&batch->syncpts, struct crocus_syncpt *, s)
+      crocus_syncpt_reference(screen, s, NULL);
+   util_dynarray_clear(&batch->syncpts);
+
+   util_dynarray_clear(&batch->exec_fences);
+
+   if (unlikely(INTEL_DEBUG & DEBUG_SYNC)) {
+      dbg_printf("waiting for idle\n");
+      crocus_bo_wait_rendering(batch->command.bo); /* if execbuf failed; this is a nop */
+   }
+
+   /* Start a new batch buffer. */
+   crocus_batch_reset(batch);
+
+   /* EIO means our context is banned.  In this case, try and replace it
+    * with a new logical context, and inform crocus_context that all state
+    * has been lost and needs to be re-initialized.  If this succeeds,
+    * dubiously claim success...
+    */
+   if (ret == -EIO && replace_hw_ctx(batch)) {
+      if (batch->reset->reset) {
+         /* Tell the state tracker the device is lost and it was our fault. */
+         batch->reset->reset(batch->reset->data, PIPE_GUILTY_CONTEXT_RESET);
+      }
+
+      ret = 0;
+   }
+
+   if (ret < 0) {
+#ifdef DEBUG
+      const bool color = INTEL_DEBUG & DEBUG_COLOR;
+      fprintf(stderr, "%scrocus: Failed to submit batchbuffer: %-80s%s\n",
+              color ? "\e[1;41m" : "", strerror(-ret), color ? "\e[0m" : "");
+#endif
+      abort();
+   }
+}
+
+/**
+ * Does the current batch refer to the given BO?
+ *
+ * (In other words, is the BO in the current batch's validation list?)
+ */
+bool
+crocus_batch_references(struct crocus_batch *batch, struct crocus_bo *bo)
+{
+   return find_validation_entry(batch, bo) != NULL;
+}

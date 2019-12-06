@@ -1237,13 +1237,15 @@ brw_nir_apply_sampler_key(nir_shader *nir,
    }
 
    /* Prior to Haswell, we have to fake texture swizzle */
-   for (unsigned s = 0; s < MAX_SAMPLERS; s++) {
-      if (key_tex->swizzles[s] == SWIZZLE_NOOP)
-         continue;
+   if (!key_tex->frontend_swizzles) {
+      for (unsigned s = 0; s < MAX_SAMPLERS; s++) {
+         if (key_tex->swizzles[s] == SWIZZLE_NOOP)
+            continue;
 
-      tex_options.swizzle_result |= BITFIELD_BIT(s);
-      for (unsigned c = 0; c < 4; c++)
-         tex_options.swizzles[s][c] = GET_SWZ(key_tex->swizzles[s], c);
+         tex_options.swizzle_result |= BITFIELD_BIT(s);
+         for (unsigned c = 0; c < 4; c++)
+            tex_options.swizzles[s][c] = GET_SWZ(key_tex->swizzles[s], c);
+      }
    }
 
    /* Prior to Haswell, we have to lower gradients on shadow samplers */

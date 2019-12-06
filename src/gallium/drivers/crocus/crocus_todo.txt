@@ -1,0 +1,17 @@
+Quick TODO list from what I can see:
+
+Get first triangle on all supported GENs
+
+4 - 965g/965gm - works
+4.5 - gm45
+5 - ilk - works
+6 - snb
+7 - ivy - draws pink but crashes
+7.5 - hsw - draws pink but crashes
+
+Work out state dirty handling
+- some sort of per GEN dirty handling?
+
+Work out batchbuffer growing/state cycling
+
+

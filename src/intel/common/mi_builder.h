@@ -443,7 +443,9 @@ _mi_copy_no_unref(struct mi_builder *b,
 #if GEN_GEN >= 12
             sdi.ForceWriteCompletionCheck = true;
 #endif
+#if GEN_GEN >= 6
             sdi.ImmediateData = src.imm;
+#endif
          }
          break;
 

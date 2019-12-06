@@ -232,6 +232,8 @@ struct brw_sampler_prog_key_data {
 
    /* Scale factor for each texture. */
    float scale_factors[32];
+
+   bool frontend_swizzles;
 };
 
 /** An enum representing what kind of input gl_SubgroupSize is. */

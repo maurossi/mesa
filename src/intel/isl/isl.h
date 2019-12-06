@@ -1424,6 +1424,9 @@ struct isl_surf_fill_state_info {
 
    /* Intra-tile offset */
    uint16_t x_offset_sa, y_offset_sa;
+
+   /* blend enable boolean for gen4-5 */
+   bool blend_enable;
 };
 
 struct isl_buffer_fill_state_info {
