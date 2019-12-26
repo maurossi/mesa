@@ -79,15 +79,15 @@ POT := $(intermediates)/xmlpool.pot
 
 $(POT): $(LOCAL_PATH)/xmlpool/t_options.h
 	@mkdir -p $(dir $@)
-	xgettext -L C --from-code utf-8 -o $@ $<
+	/usr/bin/xgettext -L C --from-code utf-8 -o $@ $<
 
 $(MESA_DRI_OPTIONS_LANGS:%=$(intermediates)/xmlpool/%.po): $(intermediates)/xmlpool/%.po: $(LOCAL_PATH)/xmlpool/%.po $(POT)
 	lang=$(basename $(notdir $@)); \
 	mkdir -p $(dir $@); \
 	if [ -f $< ]; then \
-		msgmerge -o $@ $^; \
+		/usr/bin/msgmerge -o $@ $^; \
 	else \
-		msginit -i $(POT) \
+		/usr/bin/msginit -i $(POT) \
 			-o $@ \
 			--locale=$$lang \
 			--no-translator; \
@@ -105,7 +105,7 @@ $(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON2)
 
 $(PRIVATE_MO_FILES): $(intermediates)/xmlpool/%.gmo: $(intermediates)/xmlpool/%.po
 	mkdir -p $(dir $@)
-	msgfmt -o $@ $<
+	/usr/bin/msgfmt -o $@ $<
 
 $(UTIL_GENERATED_SOURCES): PRIVATE_CUSTOM_TOOL = $(PRIVATE_PYTHON) $^ > $@
 $(UTIL_GENERATED_SOURCES): $(intermediates)/%.c: $(LOCAL_PATH)/%.py $(LOCAL_PATH)/format/u_format.csv
