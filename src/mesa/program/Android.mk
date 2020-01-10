@@ -20,18 +20,6 @@
 
 LOCAL_PATH := $(call my-dir)
 
-define local-l-to-c
-	@mkdir -p $(dir $@)
-	@echo "Mesa Lex: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(LEX) -o$@ $<
-endef
-
-define mesa_local-y-to-c-and-h
-	@mkdir -p $(dir $@)
-	@echo "Mesa Yacc: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(YACC) -o $@ -p "_mesa_program_" $<
-endef
-
 # ----------------------------------------------------------------------
 # libmesa_program.a
 # ----------------------------------------------------------------------
@@ -58,19 +46,17 @@ generated_sources_basenames := \
 
 LOCAL_SRC_FILES := \
 	$(filter-out $(generated_sources_basenames),$(subst program/,,$(PROGRAM_FILES))) \
-	$(subst program/,,$(PROGRAM_NIR_FILES))
+	$(subst program/,,$(PROGRAM_NIR_FILES)) \
+	program_lexer.l
 
 LOCAL_GENERATED_SOURCES := \
-	$(addprefix $(intermediates)/program/,$(generated_sources_basenames))
+	$(intermediates)/program/program_parse.tab.c \
+	$(intermediates)/program/program_parse.tab.h
 
-$(intermediates)/program/program_parse.tab.c: $(LOCAL_PATH)/program_parse.y
-	$(mesa_local-y-to-c-and-h)
-
-$(intermediates)/program/program_parse.tab.h: $(intermediates)/program/program_parse.tab.c
-	@
-
-$(intermediates)/program/lex.yy.c: $(LOCAL_PATH)/program_lexer.l
-	$(local-l-to-c)
+$(intermediates)/program/program_parse.tab.c: .KATI_IMPLICIT_OUTPUTS := $(intermediates)/program/program_parse.tab.h
+$(intermediates)/program/program_parse.tab.c: PRIVATE_YACCFLAGS := -p "_mesa_program_"
+$(intermediates)/program/program_parse.tab.c: $(LOCAL_PATH)/program_parse.y $(BISON) $(BISON_DATA) $(M4)
+	$(transform-y-to-c-or-cpp)
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi \
