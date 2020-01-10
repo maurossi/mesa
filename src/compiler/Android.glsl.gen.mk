@@ -54,42 +54,24 @@ MESA_GEN_GLSL_H := $(addprefix $(call local-generated-sources-dir)/, \
 define local-l-or-ll-to-c-or-cpp
 	@mkdir -p $(dir $@)
 	@echo "Mesa Lex: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(LEX) --nounistd -o$@ $<
+	$(hide) M4=$(M4) $(LEX) --nounistd -o$@ $<
 endef
 
-define glsl_local-y-to-c-and-h
-	@mkdir -p $(dir $@)
-	@echo "Mesa Yacc: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(YACC) -o $@ -p "glcpp_parser_" $<
-endef
-
-YACC_HEADER_SUFFIX := .hpp
-
-define local-yy-to-cpp-and-h
-	@mkdir -p $(dir $@)
-	@echo "Mesa Yacc: $(PRIVATE_MODULE) <= $<"
-	$(hide) $(YACC) -p "_mesa_glsl_" -o $@ $<
-	touch $(@:$1=$(YACC_HEADER_SUFFIX))
-	echo '#ifndef '$(@F:$1=_h) > $(@:$1=.h)
-	echo '#define '$(@F:$1=_h) >> $(@:$1=.h)
-	cat $(@:$1=$(YACC_HEADER_SUFFIX)) >> $(@:$1=.h)
-	echo '#endif' >> $(@:$1=.h)
-	rm -f $(@:$1=$(YACC_HEADER_SUFFIX))
-endef
-
-$(intermediates)/glsl/glsl_lexer.cpp: $(LOCAL_PATH)/glsl/glsl_lexer.ll
+$(intermediates)/glsl/glsl_lexer.cpp: $(LOCAL_PATH)/glsl/glsl_lexer.ll $(LEX) $(M4)
 	$(call local-l-or-ll-to-c-or-cpp)
 
-$(intermediates)/glsl/glsl_parser.cpp: $(LOCAL_PATH)/glsl/glsl_parser.yy
-	$(call local-yy-to-cpp-and-h,.cpp)
+$(intermediates)/glsl/glsl_parser.cpp: PRIVATE_YACCFLAGS := -p "_mesa_glsl_"
+$(intermediates)/glsl/glsl_parser.cpp: .KATI_IMPLICIT_OUTPUTS := $(intermediates)/glsl/glsl_parser.h
+$(intermediates)/glsl/glsl_parser.cpp: $(LOCAL_PATH)/glsl/glsl_parser.yy $(BISON) $(BISON_DATA) $(M4)
+	$(transform-y-to-c-or-cpp)
 
-$(intermediates)/glsl/glsl_parser.h: $(intermediates)/glsl/glsl_parser.cpp
-
-$(intermediates)/glsl/glcpp/glcpp-lex.c: $(LOCAL_PATH)/glsl/glcpp/glcpp-lex.l
+$(intermediates)/glsl/glcpp/glcpp-lex.c: $(LOCAL_PATH)/glsl/glcpp/glcpp-lex.l $(LEX) $(M4)
 	$(call local-l-or-ll-to-c-or-cpp)
 
-$(intermediates)/glsl/glcpp/glcpp-parse.c: $(LOCAL_PATH)/glsl/glcpp/glcpp-parse.y
-	$(call glsl_local-y-to-c-and-h)
+$(intermediates)/glsl/glcpp/glcpp-parse.c: PRIVATE_YACCFLAGS := -p "glcpp_parser_"
+$(intermediates)/glsl/glcpp/glcpp-parse.c: .KATI_IMPLICIT_OUTPUTS := $(intermediates)/glsl/glcpp/glcpp-parse.h
+$(intermediates)/glsl/glcpp/glcpp-parse.c: $(LOCAL_PATH)/glsl/glcpp/glcpp-parse.y $(BISON) $(BISON_DATA) $(M4)
+	$(transform-y-to-c-or-cpp)
 
 $(intermediates)/glsl/ir_expression_operation.h: $(prebuilt_intermediates)/glsl/ir_expression_operation.h
 	cp -a $< $@
