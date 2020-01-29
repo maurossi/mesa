@@ -18,3 +18,14 @@ cc_library_headers {
     vendor: true,
     visibility: [":__subpackages__"],
 }
+
+cc_library_headers {
+    name: "libmesa_sse41_includes",
+    export_include_dirs: [
+        "mapi",
+        "gallium/include",
+        "gallium/auxiliary",
+    ],
+    vendor: true,
+    visibility: [":__subpackages__"],
+}
