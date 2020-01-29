@@ -162,3 +162,16 @@ cc_defaults {
         },
     },
 }
+
+genrule {
+    name: "mesa_genxml_genX",
+    cmd: "cp $(in) $(genDir)/genxml/",
+    srcs: [
+        "prebuilt-intermediates/genxml/genX_bits.h",
+        "prebuilt-intermediates/genxml/genX_xml.h",
+    ],
+    out: [
+        "genxml/genX_bits.h",
+        "genxml/genX_xml.h",
+    ],
+}

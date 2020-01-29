@@ -53,7 +53,7 @@ $(intermediates)/compiler/brw_nir_trig_workarounds.c: $(prebuilt_intermediates)/
 	@mkdir -p $(dir $@)
 	@cp -f $< $@
 
-LOCAL_STATIC_LIBRARIES = libmesa_genxml
+LOCAL_HEADER_LIBRARIES = libmesa_genxml
 
 LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
 	$(COMPILER_GENERATED_FILES))
