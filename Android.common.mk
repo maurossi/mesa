@@ -21,6 +21,9 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
+# ! Whenever updating this file, make sure to keep mesa_common_defaults in the
+# ! Android.bp up to date.
+
 ifeq ($(LOCAL_IS_HOST_MODULE),true)
 LOCAL_CFLAGS += -D_GNU_SOURCE
 endif
