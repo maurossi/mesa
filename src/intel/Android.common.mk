@@ -49,7 +49,7 @@ LOCAL_SHARED_LIBRARIES += \
 	libexpat
 endif
 
-LOCAL_WHOLE_STATIC_LIBRARIES := libmesa_genxml
+LOCAL_HEADER_LIBRARIES := libmesa_genxml
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
