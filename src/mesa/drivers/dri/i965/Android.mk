@@ -290,7 +290,8 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_isl \
 	libmesa_blorp \
 	libmesa_intel_compiler \
-	libmesa_intel_perf
+	libmesa_intel_perf \
+	libmesa_genxml
 
 ifeq ($(ARCH_X86_HAVE_SSE4_1),true)
 LOCAL_CFLAGS += \
