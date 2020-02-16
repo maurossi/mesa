@@ -419,7 +419,6 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
    if (type == EGL_WINDOW_BIT) {
       int format;
       int buffer_count;
-      const int min_buffers = 3;
 
       if (window->common.magic != ANDROID_NATIVE_WINDOW_MAGIC) {
          _eglError(EGL_BAD_NATIVE_WINDOW, "droid_create_surface");
@@ -438,20 +437,17 @@ droid_create_surface(_EGLDriver *drv, _EGLDisplay *disp, EGLint type,
          _eglError(EGL_BAD_NATIVE_WINDOW, "droid_create_surface");
          goto cleanup_surface;
       }
-
-      if (buffer_count < min_buffers)
-         buffer_count = min_buffers;
-      if (native_window_set_buffer_count(window, buffer_count)) {
+      if (native_window_set_buffer_count(window, buffer_count+1)) {
          _eglError(EGL_BAD_NATIVE_WINDOW, "droid_create_surface");
          goto cleanup_surface;
       }
-      dri2_surf->color_buffers = calloc(buffer_count,
+      dri2_surf->color_buffers = calloc(buffer_count+1,
                                         sizeof(*dri2_surf->color_buffers));
       if (!dri2_surf->color_buffers) {
          _eglError(EGL_BAD_ALLOC, "droid_create_surface");
          goto cleanup_surface;
       }
-      dri2_surf->color_buffers_count = buffer_count;
+      dri2_surf->color_buffers_count = buffer_count+1;
 
       if (format != dri2_conf->base.NativeVisualID) {
          _eglLog(_EGL_WARNING, "Native format mismatch: 0x%x != 0x%x",
