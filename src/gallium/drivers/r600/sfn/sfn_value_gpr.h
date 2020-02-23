@@ -28,6 +28,7 @@
 #define SFN_GPRARRAY_H
 
 #include "sfn_value.h"
+#include <array>
 #include <vector>
 
 namespace r600 {
