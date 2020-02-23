@@ -662,15 +662,11 @@ int r600_shader_from_nir(struct r600_context *rctx,
    // For learning we print out the complete failed shader
    // and instead of asserts we use exceptions
    bool r;
-   try {
-      struct r600_shader* gs_shader = nullptr;
-      if (rctx->gs_shader)
-         gs_shader = &rctx->gs_shader->current->shader;
-      r = convert.lower(sel->nir, pipeshader, sel, *key, gs_shader);
+   struct r600_shader* gs_shader = nullptr;
+   if (rctx->gs_shader)
+      gs_shader = &rctx->gs_shader->current->shader;
+   r = convert.lower(sel->nir, pipeshader, sel, *key, gs_shader);
 
-   } catch (std::logic_error& x) {
-      r = false;
-   }
    if (!r || rctx->screen->b.debug_flags & DBG_ALL_SHADERS) {
       static int shnr = 0;
 
