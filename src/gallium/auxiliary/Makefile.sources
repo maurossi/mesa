@@ -159,7 +159,6 @@ C_SOURCES := \
 	tessellator/p_tessellator.cpp \
 	tessellator/p_tessellator.h \
 	tessellator/tessellator.cpp \
-	tessellator/tessellator.hpp \
 	tgsi/tgsi_aa_point.c \
 	tgsi/tgsi_aa_point.h \
 	tgsi/tgsi_build.c \
