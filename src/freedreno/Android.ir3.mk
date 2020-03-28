@@ -36,6 +36,7 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary \
 	$(MESA_TOP)/prebuilt-intermediates/nir \
+	$(MESA_TOP)/src/mesa
 
 # We need libmesa_nir to get NIR's generated include directories.
 LOCAL_STATIC_LIBRARIES := \
