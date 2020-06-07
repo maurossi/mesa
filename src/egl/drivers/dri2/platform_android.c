@@ -185,6 +185,14 @@ get_native_buffer_fds(struct ANativeWindowBuffer *buf, int fds[3])
    return handle->numFds;
 }
 
+#ifdef HAVE_GRALLOC1
+static bool
+is_gralloc1(const hw_module_t *gralloc)
+{
+   return gralloc->module_api_version == HARDWARE_MODULE_API_VERSION(1, 0);
+}
+#endif
+
 #ifdef HAVE_DRM_GRALLOC
 static int
 get_native_buffer_name(struct ANativeWindowBuffer *buf)
@@ -203,7 +211,7 @@ droid_resolve_format(struct dri2_egl_display *dri2_dpy,
    if (buf->format != HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED)
       return buf->format;
 #ifdef HAVE_GRALLOC1
-   if (dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
+   if (is_gralloc1(dri2_dpy->gralloc)) {
       if (!dri2_dpy->pfn_getFormat) {
           _eglLog(_EGL_WARNING, "gralloc does not support getFormat");
           return -1;
@@ -288,7 +296,7 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp,
 
    memset(&ycbcr, 0, sizeof(ycbcr));
 #ifdef HAVE_GRALLOC1
-   if(dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
+   if (is_gralloc1(dri2_dpy->gralloc)) {
       struct android_flex_layout outFlexLayout;
       int ignored_outReleaseFence = 0;
       gralloc1_rect_t accessRegion;
@@ -1746,9 +1754,7 @@ dri2_initialize_android(_EGLDisplay *disp)
       goto cleanup;
    }
 #ifdef HAVE_GRALLOC1
-   dri2_dpy->gralloc_version = dri2_dpy->gralloc->module_api_version;
-
-   if (dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
+   if (is_gralloc1(dri2_dpy->gralloc)) {
       hw_device_t *device;
       ret = dri2_dpy->gralloc->methods->open(
          dri2_dpy->gralloc, GRALLOC_HARDWARE_MODULE_ID, &device);
