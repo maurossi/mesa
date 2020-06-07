@@ -242,16 +242,19 @@ struct dri2_egl_display
 #endif
 
 #ifdef HAVE_ANDROID_PLATFORM
+   union {
+      struct {
+         const hw_module_t *gralloc;
 #ifdef HAVE_GRALLOC1
-   const hw_module_t *gralloc;
-   uint16_t gralloc_version;
-   gralloc1_device_t *gralloc1_dev;
-   GRALLOC1_PFN_LOCK_FLEX pfn_lockflex;
-   GRALLOC1_PFN_GET_FORMAT pfn_getFormat;
-   GRALLOC1_PFN_UNLOCK pfn_unlock;
-#else
-   const gralloc_module_t *gralloc;
+         uint16_t gralloc_version;
+         gralloc1_device_t *gralloc1_dev;
+         GRALLOC1_PFN_LOCK_FLEX pfn_lockflex;
+         GRALLOC1_PFN_GET_FORMAT pfn_getFormat;
+         GRALLOC1_PFN_UNLOCK pfn_unlock;
 #endif
+      };
+      const gralloc_module_t *gralloc0;
+   };
 #endif
 
    bool                      is_render_node;
