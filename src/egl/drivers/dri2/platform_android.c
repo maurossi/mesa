@@ -1623,11 +1623,10 @@ droid_probe_device(_EGLDisplay *disp, bool swrast)
 
 #ifdef HAVE_DRM_GRALLOC
 static EGLBoolean
-droid_open_device(_EGLDisplay *disp, bool swrast)
+droid_open_device_legacy(_EGLDisplay *disp, bool swrast)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    int fd = -1, err = -EINVAL;
-   char buf[PROPERTY_VALUE_MAX];
 
    if (swrast)
       return EGL_FALSE;
@@ -1642,20 +1641,15 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
       return EGL_FALSE;
    }
 
-   if (!strcmp(gralloc0->common.name, "DRM Memory Allocator") ||
-       property_get("ro.hardware.hwcomposer", buf, NULL) > 0) {
-      dri2_dpy->fd = os_dupfd_cloexec(fd);
-   } else {
-      char *device_name = drmGetRenderDeviceNameFromFd(fd);
-      dri2_dpy->fd = loader_open_device(device_name);
-      free(device_name);
-   }
+   dri2_dpy->fd = os_dupfd_cloexec(fd);
+
    if (dri2_dpy->fd < 0)
       return EGL_FALSE;
 
    return droid_probe_device(disp, swrast);
 }
-#else
+#endif /* HAVE_DRM_GRALLOC */
+
 static EGLBoolean
 droid_open_device(_EGLDisplay *disp, bool swrast)
 {
@@ -1666,6 +1660,12 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
 
    char *vendor_name = NULL;
    char vendor_buf[PROPERTY_VALUE_MAX];
+
+#ifdef HAVE_DRM_GRALLOC
+   /* is drm_gralloc? */
+   if (!strcmp(dri2_dpy->gralloc->name, "DRM Memory Allocator"))
+      return droid_open_device_legacy(disp, swrast);
+#endif /* HAVE_DRM_GRALLOC */
 
 #ifdef EGL_FORCE_RENDERNODE
    const unsigned node_type = DRM_NODE_RENDER;
@@ -1731,8 +1731,6 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
    return EGL_TRUE;
 #undef MAX_DRM_DEVICES
 }
-
-#endif
 
 EGLBoolean
 dri2_initialize_android(_EGLDisplay *disp)
