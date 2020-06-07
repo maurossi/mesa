@@ -246,7 +246,6 @@ struct dri2_egl_display
       struct {
          const hw_module_t *gralloc;
 #ifdef HAVE_GRALLOC1
-         uint16_t gralloc_version;
          gralloc1_device_t *gralloc1_dev;
          GRALLOC1_PFN_LOCK_FLEX pfn_lockflex;
          GRALLOC1_PFN_GET_FORMAT pfn_getFormat;
