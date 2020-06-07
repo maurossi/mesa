@@ -256,7 +256,6 @@ struct dri2_egl_display
          /* gralloc vendor usage bit for front rendering */
          uint32_t front_rendering_usage;
 #ifdef HAVE_GRALLOC1
-         uint16_t gralloc_version;
          gralloc1_device_t *gralloc1_dev;
          GRALLOC1_PFN_LOCK_FLEX pfn_lockflex;
          GRALLOC1_PFN_GET_FORMAT pfn_getFormat;
