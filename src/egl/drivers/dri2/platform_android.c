@@ -1396,13 +1396,23 @@ droid_load_driver(_EGLDisplay *disp, bool swrast)
       return false;
 
 #ifdef HAVE_DRM_GRALLOC
-   /* Handle control nodes using __DRI_DRI2_LOADER extension and GEM names
-    * for backwards compatibility with drm_gralloc. (Do not use on new
-    * systems.) */
-   dri2_dpy->loader_extensions = droid_dri2_loader_extensions;
-   if (!dri2_load_driver(disp)) {
-      err = "DRI2: failed to load driver";
-      goto error;
+   dri2_dpy->is_render_node = drmGetNodeTypeFromFd(dri2_dpy->fd) == DRM_NODE_RENDER;
+
+   if (!dri2_dpy->is_render_node) {
+      /* Handle control nodes using __DRI_DRI2_LOADER extension and GEM names
+       * for backwards compatibility with drm_gralloc. (Do not use on new
+       * systems.) */
+      dri2_dpy->loader_extensions = droid_dri2_loader_extensions;
+      if (!dri2_load_driver(disp)) {
+         err = "DRI2: failed to load driver";
+         goto error;
+      }
+   } else {
+       dri2_dpy->loader_extensions = droid_image_loader_extensions;
+       if (!dri2_load_driver_dri3(disp)) {
+          err = "DRI3: failed to load driver";
+          goto error;
+       }
    }
 #else
    if (swrast) {
@@ -1486,6 +1496,7 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
 {
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    int fd = -1, err = -EINVAL;
+   char buf[PROPERTY_VALUE_MAX];
 
    if (swrast)
       return EGL_FALSE;
@@ -1499,11 +1510,15 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
       return EGL_FALSE;
    }
 
-   dri2_dpy->fd = os_dupfd_cloexec(fd);
+   if (!strcmp(dri2_dpy->gralloc->common.name, "DRM Memory Allocator") ||
+       property_get("ro.hardware.hwcomposer", buf, NULL) > 0) {
+      dri2_dpy->fd = os_dupfd_cloexec(fd);
+   } else {
+      const char *device_name = drmGetRenderDeviceNameFromFd(fd);
+      dri2_dpy->fd = loader_open_device(device_name);
+      free(device_name);
+   }
    if (dri2_dpy->fd < 0)
-      return EGL_FALSE;
-
-   if (drmGetNodeTypeFromFd(dri2_dpy->fd) == DRM_NODE_RENDER)
       return EGL_FALSE;
 
    return droid_probe_device(disp, swrast);
