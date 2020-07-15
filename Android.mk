@@ -42,8 +42,8 @@ MESA_DRI_MODULE_UNSTRIPPED_PATH := $(TARGET_OUT_SHARED_LIBRARIES_UNSTRIPPED)/$(M
 MESA_DRI_LDFLAGS := -Wl,--build-id=sha1
 
 MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
-MESA_PYTHON2 := python
-MESA_PYTHON3 := python3
+MESA_PYTHON2 := /usr/bin/python
+MESA_PYTHON3 := /usr/bin/python3
 ifeq ($(filter 5 6 7 8 9 10, $(MESA_ANDROID_MAJOR_VERSION)),)
 MESA_LEX     := M4=$(M4) $(LEX)
 else
