@@ -40,7 +40,8 @@ LOCAL_CFLAGS += \
 	-Wno-initializer-overrides \
 	-Wno-mismatched-tags \
 	-DPACKAGE_VERSION=\"$(MESA_VERSION)\" \
-	-DPACKAGE_BUGREPORT=\"https://gitlab.freedesktop.org/mesa/mesa/-/issues\"
+	-DPACKAGE_BUGREPORT=\"https://gitlab.freedesktop.org/mesa/mesa/-/issues\" \
+	-DPREFER_IRIS
 
 # XXX: The following __STDC_*_MACROS defines should not be needed.
 # It's likely due to a bug elsewhere, but let's temporarily add them
