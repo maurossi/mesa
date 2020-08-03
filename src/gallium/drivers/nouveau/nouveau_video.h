@@ -69,15 +69,15 @@ NV04_FIFO_PKHDR_NI(int subc, int mthd, unsigned size)
 static inline void
 BEGIN_NV04(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 {
-   PUSH_SPACE(push, size + 1);
-   PUSH_DATA (push, NV04_FIFO_PKHDR(subc, mthd, size));
+   PUSH_SPACE(NULL, push, size + 1);
+   PUSH_DATA (NULL, push, NV04_FIFO_PKHDR(subc, mthd, size));
 }
 
 static inline void
 BEGIN_NI04(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 {
-   PUSH_SPACE(push, size + 1);
-   PUSH_DATA (push, NV04_FIFO_PKHDR_NI(subc, mthd, size));
+   PUSH_SPACE(NULL, push, size + 1);
+   PUSH_DATA (NULL, push, NV04_FIFO_PKHDR_NI(subc, mthd, size));
 }
 
 static inline void
@@ -90,7 +90,7 @@ PUSH_MTHDl(struct nouveau_pushbuf *push, int subc, int mthd,
                        NOUVEAU_BO_LOW | (bo->flags & NOUVEAU_BO_APER) | rw,
                        0, 0);
 
-   PUSH_DATA(push, bo->offset + offset);
+   PUSH_DATA(NULL, push, bo->offset + offset);
 }
 
 #endif

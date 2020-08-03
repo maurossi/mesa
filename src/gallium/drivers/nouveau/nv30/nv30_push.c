@@ -107,7 +107,7 @@ emit_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
 
       if (nr != push) {
          BEGIN_NV04(ctx->push, NV30_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (ctx->push, ctx->restart_index);
+         PUSH_DATA (NULL, ctx->push, ctx->restart_index);
          count--;
          elts++;
       }
@@ -139,7 +139,7 @@ emit_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
 
       if (nr != push) {
          BEGIN_NV04(ctx->push, NV30_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (ctx->push, ctx->restart_index);
+         PUSH_DATA (NULL, ctx->push, ctx->restart_index);
          count--;
          elts++;
       }
@@ -171,7 +171,7 @@ emit_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
 
       if (nr != push) {
          BEGIN_NV04(ctx->push, NV30_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (ctx->push, ctx->restart_index);
+         PUSH_DATA (NULL, ctx->push, ctx->restart_index);
          count--;
          elts++;
       }
@@ -247,8 +247,8 @@ nv30_push_vbo(struct nv30_context *nv30, const struct pipe_draw_info *info)
 
    if (nv30->screen->eng3d->oclass >= NV40_3D_CLASS) {
       BEGIN_NV04(ctx.push, NV40_3D(PRIM_RESTART_ENABLE), 2);
-      PUSH_DATA (ctx.push, info->primitive_restart);
-      PUSH_DATA (ctx.push, info->restart_index);
+      PUSH_DATA (NULL, ctx.push, info->primitive_restart);
+      PUSH_DATA (NULL, ctx.push, info->restart_index);
       nv30->state.prim_restart = info->primitive_restart;
    }
 
@@ -256,7 +256,7 @@ nv30_push_vbo(struct nv30_context *nv30, const struct pipe_draw_info *info)
 
    PUSH_RESET(ctx.push, BUFCTX_IDXBUF);
    BEGIN_NV04(ctx.push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (ctx.push, ctx.prim);
+   PUSH_DATA (NULL, ctx.push, ctx.prim);
    switch (index_size) {
    case 0:
       emit_vertices_seq(&ctx, info->start, info->count);
@@ -275,7 +275,7 @@ nv30_push_vbo(struct nv30_context *nv30, const struct pipe_draw_info *info)
       break;
    }
    BEGIN_NV04(ctx.push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (ctx.push, NV30_3D_VERTEX_BEGIN_END_STOP);
+   PUSH_DATA (NULL, ctx.push, NV30_3D_VERTEX_BEGIN_END_STOP);
 
    if (info->index_size && !info->has_user_indices)
       nouveau_resource_unmap(nv04_resource(info->index.resource));

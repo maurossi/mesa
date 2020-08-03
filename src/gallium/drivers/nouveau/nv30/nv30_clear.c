@@ -76,8 +76,8 @@ nv30_clear(struct pipe_context *pipe, unsigned buffers, const struct pipe_scisso
       if (buffers & PIPE_CLEAR_STENCIL) {
          mode |= NV30_3D_CLEAR_BUFFERS_STENCIL;
          BEGIN_NV04(push, NV30_3D(STENCIL_ENABLE(0)), 2);
-         PUSH_DATA (push, 0);
-         PUSH_DATA (push, 0x000000ff);
+         PUSH_DATA (NULL, push, 0);
+         PUSH_DATA (NULL, push, 0x000000ff);
          nv30->dirty |= NV30_NEW_ZSA;
       }
    }
@@ -85,15 +85,15 @@ nv30_clear(struct pipe_context *pipe, unsigned buffers, const struct pipe_scisso
    /*XXX: wtf? fixes clears sometimes not clearing on nv3x... */
    if (nv30->screen->eng3d->oclass < NV40_3D_CLASS) {
       BEGIN_NV04(push, NV30_3D(CLEAR_DEPTH_VALUE), 3);
-      PUSH_DATA (push, zeta);
-      PUSH_DATA (push, colr);
-      PUSH_DATA (push, mode);
+      PUSH_DATA (NULL, push, zeta);
+      PUSH_DATA (NULL, push, colr);
+      PUSH_DATA (NULL, push, mode);
    }
 
    BEGIN_NV04(push, NV30_3D(CLEAR_DEPTH_VALUE), 3);
-   PUSH_DATA (push, zeta);
-   PUSH_DATA (push, colr);
-   PUSH_DATA (push, mode);
+   PUSH_DATA (NULL, push, zeta);
+   PUSH_DATA (NULL, push, colr);
+   PUSH_DATA (NULL, push, mode);
 
    nv30_state_release(nv30);
 }
@@ -133,24 +133,24 @@ nv30_clear_render_target(struct pipe_context *pipe, struct pipe_surface *ps,
       return;
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
-   PUSH_DATA (push, NV30_3D_RT_ENABLE_COLOR0);
+   PUSH_DATA (NULL, push, NV30_3D_RT_ENABLE_COLOR0);
    BEGIN_NV04(push, NV30_3D(RT_HORIZ), 3);
-   PUSH_DATA (push, sf->width << 16);
-   PUSH_DATA (push, sf->height << 16);
-   PUSH_DATA (push, rt_format);
+   PUSH_DATA (NULL, push, sf->width << 16);
+   PUSH_DATA (NULL, push, sf->height << 16);
+   PUSH_DATA (NULL, push, rt_format);
    BEGIN_NV04(push, NV30_3D(COLOR0_PITCH), 2);
    if (eng3d->oclass < NV40_3D_CLASS)
-      PUSH_DATA (push, (sf->pitch << 16) | sf->pitch);
+      PUSH_DATA (NULL, push, (sf->pitch << 16) | sf->pitch);
    else
-      PUSH_DATA (push, sf->pitch);
+      PUSH_DATA (NULL, push, sf->pitch);
    PUSH_RELOC(push, mt->base.bo, sf->offset, NOUVEAU_BO_LOW, 0, 0);
    BEGIN_NV04(push, NV30_3D(SCISSOR_HORIZ), 2);
-   PUSH_DATA (push, (w << 16) | x);
-   PUSH_DATA (push, (h << 16) | y);
+   PUSH_DATA (NULL, push, (w << 16) | x);
+   PUSH_DATA (NULL, push, (h << 16) | y);
 
    BEGIN_NV04(push, NV30_3D(CLEAR_COLOR_VALUE), 2);
-   PUSH_DATA (push, pack_rgba(ps->format, color->f));
-   PUSH_DATA (push, NV30_3D_CLEAR_BUFFERS_COLOR_R |
+   PUSH_DATA (NULL, push, pack_rgba(ps->format, color->f));
+   PUSH_DATA (NULL, push, NV30_3D_CLEAR_BUFFERS_COLOR_R |
                     NV30_3D_CLEAR_BUFFERS_COLOR_G |
                     NV30_3D_CLEAR_BUFFERS_COLOR_B |
                     NV30_3D_CLEAR_BUFFERS_COLOR_A);
@@ -198,28 +198,28 @@ nv30_clear_depth_stencil(struct pipe_context *pipe, struct pipe_surface *ps,
       return;
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(RT_HORIZ), 3);
-   PUSH_DATA (push, sf->width << 16);
-   PUSH_DATA (push, sf->height << 16);
-   PUSH_DATA (push, rt_format);
+   PUSH_DATA (NULL, push, sf->width << 16);
+   PUSH_DATA (NULL, push, sf->height << 16);
+   PUSH_DATA (NULL, push, rt_format);
    if (eng3d->oclass < NV40_3D_CLASS) {
       BEGIN_NV04(push, NV30_3D(COLOR0_PITCH), 1);
-      PUSH_DATA (push, (sf->pitch << 16) | sf->pitch);
+      PUSH_DATA (NULL, push, (sf->pitch << 16) | sf->pitch);
    } else {
       BEGIN_NV04(push, NV40_3D(ZETA_PITCH), 1);
-      PUSH_DATA (push, sf->pitch);
+      PUSH_DATA (NULL, push, sf->pitch);
    }
    BEGIN_NV04(push, NV30_3D(ZETA_OFFSET), 1);
    PUSH_RELOC(push, mt->base.bo, sf->offset, NOUVEAU_BO_LOW, 0, 0);
    BEGIN_NV04(push, NV30_3D(SCISSOR_HORIZ), 2);
-   PUSH_DATA (push, (w << 16) | x);
-   PUSH_DATA (push, (h << 16) | y);
+   PUSH_DATA (NULL, push, (w << 16) | x);
+   PUSH_DATA (NULL, push, (h << 16) | y);
 
    BEGIN_NV04(push, NV30_3D(CLEAR_DEPTH_VALUE), 1);
-   PUSH_DATA (push, pack_zeta(ps->format, depth, stencil));
+   PUSH_DATA (NULL, push, pack_zeta(ps->format, depth, stencil));
    BEGIN_NV04(push, NV30_3D(CLEAR_BUFFERS), 1);
-   PUSH_DATA (push, mode);
+   PUSH_DATA (NULL, push, mode);
 
    nv30->dirty |= NV30_NEW_FRAMEBUFFER | NV30_NEW_SCISSOR;
 }

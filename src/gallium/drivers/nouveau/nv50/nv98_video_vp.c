@@ -128,28 +128,28 @@ nv98_decoder_vp(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
       ucode_addr = 0;
 
    BEGIN_NV04(push, SUBC_VP(0x700), 7);
-   PUSH_DATA (push, caps); // 700
-   PUSH_DATA (push, comm_seq); // 704
-   PUSH_DATA (push, 0); // 708 fuc targets, ignored for nv98
-   PUSH_DATA (push, dec->fw_sizes); // 70c
-   PUSH_DATA (push, bsp_addr+(VP_OFFSET>>8)); // 710 picparm_addr
-   PUSH_DATA (push, inter_addr); // 714 inter_parm
-   PUSH_DATA (push, inter_addr + slice_size + bucket_size); // 718 inter_data_ofs
+   PUSH_DATA (NULL, push, caps); // 700
+   PUSH_DATA (NULL, push, comm_seq); // 704
+   PUSH_DATA (NULL, push, 0); // 708 fuc targets, ignored for nv98
+   PUSH_DATA (NULL, push, dec->fw_sizes); // 70c
+   PUSH_DATA (NULL, push, bsp_addr+(VP_OFFSET>>8)); // 710 picparm_addr
+   PUSH_DATA (NULL, push, inter_addr); // 714 inter_parm
+   PUSH_DATA (NULL, push, inter_addr + slice_size + bucket_size); // 718 inter_data_ofs
 
    if (bucket_size) {
       uint64_t tmpimg_addr = dec->ref_bo->offset + dec->ref_stride * (dec->base.max_references+2);
 
       BEGIN_NV04(push, SUBC_VP(0x71c), 2);
-      PUSH_DATA (push, tmpimg_addr >> 8); // 71c
-      PUSH_DATA (push, inter_addr + slice_size); // 720 bucket_ofs
+      PUSH_DATA (NULL, push, tmpimg_addr >> 8); // 71c
+      PUSH_DATA (NULL, push, inter_addr + slice_size); // 720 bucket_ofs
    }
 
    BEGIN_NV04(push, SUBC_VP(0x724), 5);
-   PUSH_DATA (push, comm_addr); // 724
-   PUSH_DATA (push, ucode_addr); // 728
-   PUSH_DATA (push, pic_addr[16]); // 734
-   PUSH_DATA (push, pic_addr[0]); // 72c
-   PUSH_DATA (push, pic_addr[1]); // 730
+   PUSH_DATA (NULL, push, comm_addr); // 724
+   PUSH_DATA (NULL, push, ucode_addr); // 728
+   PUSH_DATA (NULL, push, pic_addr[16]); // 734
+   PUSH_DATA (NULL, push, pic_addr[0]); // 72c
+   PUSH_DATA (NULL, push, pic_addr[1]); // 730
 
    if (dec->base.max_references > 2) {
       int i;
@@ -157,13 +157,13 @@ nv98_decoder_vp(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
       BEGIN_NV04(push, SUBC_VP(0x400), dec->base.max_references - 2);
       for (i = 2; i < dec->base.max_references; ++i) {
          assert(0x400 + (i - 2) * 4 < 0x438);
-         PUSH_DATA (push, pic_addr[i]);
+         PUSH_DATA (NULL, push, pic_addr[i]);
       }
    }
 
    if (codec == PIPE_VIDEO_FORMAT_MPEG4_AVC) {
       BEGIN_NV04(push, SUBC_VP(0x438), 1);
-      PUSH_DATA (push, desc.h264->slice_count);
+      PUSH_DATA (NULL, push, desc.h264->slice_count);
    }
 
    //debug_printf("Decoding %08lx with %08lx and %08lx\n", pic_addr[16], pic_addr[0], pic_addr[1]);
@@ -171,11 +171,11 @@ nv98_decoder_vp(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
 #if NOUVEAU_VP3_DEBUG_FENCE
    BEGIN_NV04(push, SUBC_VP(0x240), 3);
    PUSH_DATAh(push, (dec->fence_bo->offset + 0x10));
-   PUSH_DATA (push, (dec->fence_bo->offset + 0x10));
-   PUSH_DATA (push, dec->fence_seq);
+   PUSH_DATA (NULL, push, (dec->fence_bo->offset + 0x10));
+   PUSH_DATA (NULL, push, dec->fence_seq);
 
    BEGIN_NV04(push, SUBC_VP(0x300), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    PUSH_KICK(push);
 
    {
@@ -191,7 +191,7 @@ nv98_decoder_vp(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
    dump_comm_vp(dec, dec->comm, comm_seq, inter_bo, slice_size << 8);
 #else
    BEGIN_NV04(push, SUBC_VP(0x300), 1);
-   PUSH_DATA (push, 0);
-   PUSH_KICK (push);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_KICK (NULL, push);
 #endif
 }

@@ -610,11 +610,11 @@ nv50_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
    *sequence = ++screen->base.fence.sequence;
 
    assert(PUSH_AVAIL(push) + push->rsvd_kick >= 5);
-   PUSH_DATA (push, NV50_FIFO_PKHDR(NV50_3D(QUERY_ADDRESS_HIGH), 4));
+   PUSH_DATA (NULL, push, NV50_FIFO_PKHDR(NV50_3D(QUERY_ADDRESS_HIGH), 4));
    PUSH_DATAh(push, screen->fence.bo->offset);
-   PUSH_DATA (push, screen->fence.bo->offset);
-   PUSH_DATA (push, *sequence);
-   PUSH_DATA (push, NV50_3D_QUERY_GET_MODE_WRITE_UNK0 |
+   PUSH_DATA (NULL, push, screen->fence.bo->offset);
+   PUSH_DATA (NULL, push, *sequence);
+   PUSH_DATA (NULL, push, NV50_3D_QUERY_GET_MODE_WRITE_UNK0 |
                     NV50_3D_QUERY_GET_UNK4 |
                     NV50_3D_QUERY_GET_UNIT_CROP |
                     NV50_3D_QUERY_GET_TYPE_QUERY |
@@ -638,234 +638,234 @@ nv50_screen_init_hwctx(struct nv50_screen *screen)
    fifo = (struct nv04_fifo *)screen->base.channel->data;
 
    BEGIN_NV04(push, SUBC_M2MF(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push, screen->m2mf->handle);
+   PUSH_DATA (NULL, push, screen->m2mf->handle);
    BEGIN_NV04(push, SUBC_M2MF(NV03_M2MF_DMA_NOTIFY), 3);
-   PUSH_DATA (push, screen->sync->handle);
-   PUSH_DATA (push, fifo->vram);
-   PUSH_DATA (push, fifo->vram);
+   PUSH_DATA (NULL, push, screen->sync->handle);
+   PUSH_DATA (NULL, push, fifo->vram);
+   PUSH_DATA (NULL, push, fifo->vram);
 
    BEGIN_NV04(push, SUBC_2D(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push, screen->eng2d->handle);
+   PUSH_DATA (NULL, push, screen->eng2d->handle);
    BEGIN_NV04(push, NV50_2D(DMA_NOTIFY), 4);
-   PUSH_DATA (push, screen->sync->handle);
-   PUSH_DATA (push, fifo->vram);
-   PUSH_DATA (push, fifo->vram);
-   PUSH_DATA (push, fifo->vram);
+   PUSH_DATA (NULL, push, screen->sync->handle);
+   PUSH_DATA (NULL, push, fifo->vram);
+   PUSH_DATA (NULL, push, fifo->vram);
+   PUSH_DATA (NULL, push, fifo->vram);
    BEGIN_NV04(push, NV50_2D(OPERATION), 1);
-   PUSH_DATA (push, NV50_2D_OPERATION_SRCCOPY);
+   PUSH_DATA (NULL, push, NV50_2D_OPERATION_SRCCOPY);
    BEGIN_NV04(push, NV50_2D(CLIP_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_2D(COLOR_KEY_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_2D(SET_PIXELS_FROM_MEMORY_SAFE_OVERLAP), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_2D(COND_MODE), 1);
-   PUSH_DATA (push, NV50_2D_COND_MODE_ALWAYS);
+   PUSH_DATA (NULL, push, NV50_2D_COND_MODE_ALWAYS);
 
    BEGIN_NV04(push, SUBC_3D(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push, screen->tesla->handle);
+   PUSH_DATA (NULL, push, screen->tesla->handle);
 
    BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-   PUSH_DATA (push, NV50_3D_COND_MODE_ALWAYS);
+   PUSH_DATA (NULL, push, NV50_3D_COND_MODE_ALWAYS);
 
    BEGIN_NV04(push, NV50_3D(DMA_NOTIFY), 1);
-   PUSH_DATA (push, screen->sync->handle);
+   PUSH_DATA (NULL, push, screen->sync->handle);
    BEGIN_NV04(push, NV50_3D(DMA_ZETA), 11);
    for (i = 0; i < 11; ++i)
-      PUSH_DATA(push, fifo->vram);
+      PUSH_DATA(NULL, push, fifo->vram);
    BEGIN_NV04(push, NV50_3D(DMA_COLOR(0)), NV50_3D_DMA_COLOR__LEN);
    for (i = 0; i < NV50_3D_DMA_COLOR__LEN; ++i)
-      PUSH_DATA(push, fifo->vram);
+      PUSH_DATA(NULL, push, fifo->vram);
 
    BEGIN_NV04(push, NV50_3D(REG_MODE), 1);
-   PUSH_DATA (push, NV50_3D_REG_MODE_STRIPED);
+   PUSH_DATA (NULL, push, NV50_3D_REG_MODE_STRIPED);
    BEGIN_NV04(push, NV50_3D(UNK1400_LANES), 1);
-   PUSH_DATA (push, 0xf);
+   PUSH_DATA (NULL, push, 0xf);
 
    if (debug_get_bool_option("NOUVEAU_SHADER_WATCHDOG", true)) {
       BEGIN_NV04(push, NV50_3D(WATCHDOG_TIMER), 1);
-      PUSH_DATA (push, 0x18);
+      PUSH_DATA (NULL, push, 0x18);
    }
 
    BEGIN_NV04(push, NV50_3D(ZETA_COMP_ENABLE), 1);
-   PUSH_DATA(push, screen->base.drm->version >= 0x01000101);
+   PUSH_DATA(NULL, push, screen->base.drm->version >= 0x01000101);
 
    BEGIN_NV04(push, NV50_3D(RT_COMP_ENABLE(0)), 8);
    for (i = 0; i < 8; ++i)
-      PUSH_DATA(push, screen->base.drm->version >= 0x01000101);
+      PUSH_DATA(NULL, push, screen->base.drm->version >= 0x01000101);
 
    BEGIN_NV04(push, NV50_3D(RT_CONTROL), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    BEGIN_NV04(push, NV50_3D(CSAA_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_MODE), 1);
-   PUSH_DATA (push, NV50_3D_MULTISAMPLE_MODE_MS1);
+   PUSH_DATA (NULL, push, NV50_3D_MULTISAMPLE_MODE_MS1);
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_CTRL), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(PRIM_RESTART_WITH_DRAW_ARRAYS), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_3D(BLEND_SEPARATE_ALPHA), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    if (screen->tesla->oclass >= NVA0_3D_CLASS) {
       BEGIN_NV04(push, SUBC_3D(NVA0_3D_TEX_MISC), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    BEGIN_NV04(push, NV50_3D(SCREEN_Y_CONTROL), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(WINDOW_OFFSET_X), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(ZCULL_REGION), 1);
-   PUSH_DATA (push, 0x3f);
+   PUSH_DATA (NULL, push, 0x3f);
 
    BEGIN_NV04(push, NV50_3D(VP_ADDRESS_HIGH), 2);
    PUSH_DATAh(push, screen->code->offset + (0 << NV50_CODE_BO_SIZE_LOG2));
-   PUSH_DATA (push, screen->code->offset + (0 << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATA (NULL, push, screen->code->offset + (0 << NV50_CODE_BO_SIZE_LOG2));
 
    BEGIN_NV04(push, NV50_3D(FP_ADDRESS_HIGH), 2);
    PUSH_DATAh(push, screen->code->offset + (1 << NV50_CODE_BO_SIZE_LOG2));
-   PUSH_DATA (push, screen->code->offset + (1 << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATA (NULL, push, screen->code->offset + (1 << NV50_CODE_BO_SIZE_LOG2));
 
    BEGIN_NV04(push, NV50_3D(GP_ADDRESS_HIGH), 2);
    PUSH_DATAh(push, screen->code->offset + (2 << NV50_CODE_BO_SIZE_LOG2));
-   PUSH_DATA (push, screen->code->offset + (2 << NV50_CODE_BO_SIZE_LOG2));
+   PUSH_DATA (NULL, push, screen->code->offset + (2 << NV50_CODE_BO_SIZE_LOG2));
 
    BEGIN_NV04(push, NV50_3D(LOCAL_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->tls_bo->offset);
-   PUSH_DATA (push, screen->tls_bo->offset);
-   PUSH_DATA (push, util_logbase2(screen->cur_tls_space / 8));
+   PUSH_DATA (NULL, push, screen->tls_bo->offset);
+   PUSH_DATA (NULL, push, util_logbase2(screen->cur_tls_space / 8));
 
    BEGIN_NV04(push, NV50_3D(STACK_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->stack_bo->offset);
-   PUSH_DATA (push, screen->stack_bo->offset);
-   PUSH_DATA (push, 4);
+   PUSH_DATA (NULL, push, screen->stack_bo->offset);
+   PUSH_DATA (NULL, push, 4);
 
    BEGIN_NV04(push, NV50_3D(CB_DEF_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->uniforms->offset + (0 << 16));
-   PUSH_DATA (push, screen->uniforms->offset + (0 << 16));
-   PUSH_DATA (push, (NV50_CB_PVP << 16) | 0x0000);
+   PUSH_DATA (NULL, push, screen->uniforms->offset + (0 << 16));
+   PUSH_DATA (NULL, push, (NV50_CB_PVP << 16) | 0x0000);
 
    BEGIN_NV04(push, NV50_3D(CB_DEF_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->uniforms->offset + (1 << 16));
-   PUSH_DATA (push, screen->uniforms->offset + (1 << 16));
-   PUSH_DATA (push, (NV50_CB_PGP << 16) | 0x0000);
+   PUSH_DATA (NULL, push, screen->uniforms->offset + (1 << 16));
+   PUSH_DATA (NULL, push, (NV50_CB_PGP << 16) | 0x0000);
 
    BEGIN_NV04(push, NV50_3D(CB_DEF_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->uniforms->offset + (2 << 16));
-   PUSH_DATA (push, screen->uniforms->offset + (2 << 16));
-   PUSH_DATA (push, (NV50_CB_PFP << 16) | 0x0000);
+   PUSH_DATA (NULL, push, screen->uniforms->offset + (2 << 16));
+   PUSH_DATA (NULL, push, (NV50_CB_PFP << 16) | 0x0000);
 
    BEGIN_NV04(push, NV50_3D(CB_DEF_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->uniforms->offset + (3 << 16));
-   PUSH_DATA (push, screen->uniforms->offset + (3 << 16));
-   PUSH_DATA (push, (NV50_CB_AUX << 16) | (NV50_CB_AUX_SIZE & 0xffff));
+   PUSH_DATA (NULL, push, screen->uniforms->offset + (3 << 16));
+   PUSH_DATA (NULL, push, (NV50_CB_AUX << 16) | (NV50_CB_AUX_SIZE & 0xffff));
 
    BEGIN_NI04(push, NV50_3D(SET_PROGRAM_CB), 3);
-   PUSH_DATA (push, (NV50_CB_AUX << 12) | 0xf01);
-   PUSH_DATA (push, (NV50_CB_AUX << 12) | 0xf21);
-   PUSH_DATA (push, (NV50_CB_AUX << 12) | 0xf31);
+   PUSH_DATA (NULL, push, (NV50_CB_AUX << 12) | 0xf01);
+   PUSH_DATA (NULL, push, (NV50_CB_AUX << 12) | 0xf21);
+   PUSH_DATA (NULL, push, (NV50_CB_AUX << 12) | 0xf31);
 
    /* return { 0.0, 0.0, 0.0, 0.0 } on out-of-bounds vtxbuf access */
    BEGIN_NV04(push, NV50_3D(CB_ADDR), 1);
-   PUSH_DATA (push, (NV50_CB_AUX_RUNOUT_OFFSET << (8 - 2)) | NV50_CB_AUX);
+   PUSH_DATA (NULL, push, (NV50_CB_AUX_RUNOUT_OFFSET << (8 - 2)) | NV50_CB_AUX);
    BEGIN_NI04(push, NV50_3D(CB_DATA(0)), 4);
-   PUSH_DATAf(push, 0.0f);
-   PUSH_DATAf(push, 0.0f);
-   PUSH_DATAf(push, 0.0f);
-   PUSH_DATAf(push, 0.0f);
+   PUSH_DATAf(NULL, push, 0.0f);
+   PUSH_DATAf(NULL, push, 0.0f);
+   PUSH_DATAf(NULL, push, 0.0f);
+   PUSH_DATAf(NULL, push, 0.0f);
    BEGIN_NV04(push, NV50_3D(VERTEX_RUNOUT_ADDRESS_HIGH), 2);
    PUSH_DATAh(push, screen->uniforms->offset + (3 << 16) + NV50_CB_AUX_RUNOUT_OFFSET);
-   PUSH_DATA (push, screen->uniforms->offset + (3 << 16) + NV50_CB_AUX_RUNOUT_OFFSET);
+   PUSH_DATA (NULL, push, screen->uniforms->offset + (3 << 16) + NV50_CB_AUX_RUNOUT_OFFSET);
 
    nv50_upload_ms_info(push);
 
    /* max TIC (bits 4:8) & TSC bindings, per program type */
    for (i = 0; i < 3; ++i) {
       BEGIN_NV04(push, NV50_3D(TEX_LIMITS(i)), 1);
-      PUSH_DATA (push, 0x54);
+      PUSH_DATA (NULL, push, 0x54);
    }
 
    BEGIN_NV04(push, NV50_3D(TIC_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->txc->offset);
-   PUSH_DATA (push, screen->txc->offset);
-   PUSH_DATA (push, NV50_TIC_MAX_ENTRIES - 1);
+   PUSH_DATA (NULL, push, screen->txc->offset);
+   PUSH_DATA (NULL, push, NV50_TIC_MAX_ENTRIES - 1);
 
    BEGIN_NV04(push, NV50_3D(TSC_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->txc->offset + 65536);
-   PUSH_DATA (push, screen->txc->offset + 65536);
-   PUSH_DATA (push, NV50_TSC_MAX_ENTRIES - 1);
+   PUSH_DATA (NULL, push, screen->txc->offset + 65536);
+   PUSH_DATA (NULL, push, NV50_TSC_MAX_ENTRIES - 1);
 
    BEGIN_NV04(push, NV50_3D(LINKED_TSC), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    BEGIN_NV04(push, NV50_3D(CLIP_RECTS_EN), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(CLIP_RECTS_MODE), 1);
-   PUSH_DATA (push, NV50_3D_CLIP_RECTS_MODE_INSIDE_ANY);
+   PUSH_DATA (NULL, push, NV50_3D_CLIP_RECTS_MODE_INSIDE_ANY);
    BEGIN_NV04(push, NV50_3D(CLIP_RECT_HORIZ(0)), 8 * 2);
    for (i = 0; i < 8 * 2; ++i)
-      PUSH_DATA(push, 0);
+      PUSH_DATA(NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(CLIPID_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    BEGIN_NV04(push, NV50_3D(VIEWPORT_TRANSFORM_EN), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    for (i = 0; i < NV50_MAX_VIEWPORTS; i++) {
       BEGIN_NV04(push, NV50_3D(DEPTH_RANGE_NEAR(i)), 2);
-      PUSH_DATAf(push, 0.0f);
-      PUSH_DATAf(push, 1.0f);
+      PUSH_DATAf(NULL, push, 0.0f);
+      PUSH_DATAf(NULL, push, 1.0f);
       BEGIN_NV04(push, NV50_3D(VIEWPORT_HORIZ(i)), 2);
-      PUSH_DATA (push, 8192 << 16);
-      PUSH_DATA (push, 8192 << 16);
+      PUSH_DATA (NULL, push, 8192 << 16);
+      PUSH_DATA (NULL, push, 8192 << 16);
    }
 
    BEGIN_NV04(push, NV50_3D(VIEW_VOLUME_CLIP_CTRL), 1);
 #ifdef NV50_SCISSORS_CLIPPING
-   PUSH_DATA (push, 0x0000);
+   PUSH_DATA (NULL, push, 0x0000);
 #else
-   PUSH_DATA (push, 0x1080);
+   PUSH_DATA (NULL, push, 0x1080);
 #endif
 
    BEGIN_NV04(push, NV50_3D(CLEAR_FLAGS), 1);
-   PUSH_DATA (push, NV50_3D_CLEAR_FLAGS_CLEAR_RECT_VIEWPORT);
+   PUSH_DATA (NULL, push, NV50_3D_CLEAR_FLAGS_CLEAR_RECT_VIEWPORT);
 
    /* We use scissors instead of exact view volume clipping,
     * so they're always enabled.
     */
    for (i = 0; i < NV50_MAX_VIEWPORTS; i++) {
       BEGIN_NV04(push, NV50_3D(SCISSOR_ENABLE(i)), 3);
-      PUSH_DATA (push, 1);
-      PUSH_DATA (push, 8192 << 16);
-      PUSH_DATA (push, 8192 << 16);
+      PUSH_DATA (NULL, push, 1);
+      PUSH_DATA (NULL, push, 8192 << 16);
+      PUSH_DATA (NULL, push, 8192 << 16);
    }
 
    BEGIN_NV04(push, NV50_3D(RASTERIZE_ENABLE), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_3D(POINT_RASTER_RULES), 1);
-   PUSH_DATA (push, NV50_3D_POINT_RASTER_RULES_OGL);
+   PUSH_DATA (NULL, push, NV50_3D_POINT_RASTER_RULES_OGL);
    BEGIN_NV04(push, NV50_3D(FRAG_COLOR_CLAMP_EN), 1);
-   PUSH_DATA (push, 0x11111111);
+   PUSH_DATA (NULL, push, 0x11111111);
    BEGIN_NV04(push, NV50_3D(EDGEFLAG), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    BEGIN_NV04(push, NV50_3D(VB_ELEMENT_BASE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    if (screen->base.class_3d >= NV84_3D_CLASS) {
       BEGIN_NV04(push, NV84_3D(VERTEX_ID_BASE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    BEGIN_NV04(push, NV50_3D(UNK0FDC), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_3D(UNK19C0), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
-   PUSH_KICK (push);
+   PUSH_KICK (&screen->base, push);
 }
 
 static int nv50_tls_alloc(struct nv50_screen *screen, unsigned tls_space,
@@ -916,8 +916,8 @@ int nv50_tls_realloc(struct nv50_screen *screen, unsigned tls_space)
 
    BEGIN_NV04(push, NV50_3D(LOCAL_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, screen->tls_bo->offset);
-   PUSH_DATA (push, screen->tls_bo->offset);
-   PUSH_DATA (push, util_logbase2(screen->cur_tls_space / 8));
+   PUSH_DATA (NULL, push, screen->tls_bo->offset);
+   PUSH_DATA (NULL, push, util_logbase2(screen->cur_tls_space / 8));
 
    return 1;
 }

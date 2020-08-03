@@ -53,21 +53,21 @@ nv98_decoder_setup_ppp(struct nouveau_vp3_decoder *dec, struct nouveau_vp3_video
    BEGIN_NV04(push, SUBC_PPP(0x700), 10);
    in_addr = nouveau_vp3_video_addr(dec, target) >> 8;
 
-   PUSH_DATA (push, (stride_out << 24) | (stride_out << 16) | low700); // 700
-   PUSH_DATA (push, (stride_in << 24) | (stride_in << 16) | (dec_h << 8) | dec_w); // 704
+   PUSH_DATA (NULL, push, (stride_out << 24) | (stride_out << 16) | low700); // 700
+   PUSH_DATA (NULL, push, (stride_in << 24) | (stride_in << 16) | (dec_h << 8) | dec_w); // 704
    assert(dec_w == stride_in);
 
    /* Input: */
-   PUSH_DATA (push, in_addr); // 708
-   PUSH_DATA (push, in_addr + y2); // 70c
-   PUSH_DATA (push, in_addr + cbcr); // 710
-   PUSH_DATA (push, in_addr + cbcr2); // 714
+   PUSH_DATA (NULL, push, in_addr); // 708
+   PUSH_DATA (NULL, push, in_addr + y2); // 70c
+   PUSH_DATA (NULL, push, in_addr + cbcr); // 710
+   PUSH_DATA (NULL, push, in_addr + cbcr2); // 714
 
    for (i = 0; i < 2; ++i) {
       struct nv50_miptree *mt = (struct nv50_miptree *)target->resources[i];
 
-      PUSH_DATA (push, mt->base.address >> 8);
-      PUSH_DATA (push, (mt->base.address + mt->total_size/2) >> 8);
+      PUSH_DATA (NULL, push, mt->base.address >> 8);
+      PUSH_DATA (NULL, push, (mt->base.address + mt->total_size/2) >> 8);
       mt->base.status |= NOUVEAU_BUFFER_STATUS_GPU_WRITING;
    }
 }
@@ -82,7 +82,7 @@ nv98_decoder_vc1_ppp(struct nouveau_vp3_decoder *dec, struct pipe_vc1_picture_de
    assert(!(dec->base.height & 0xf));
 
    BEGIN_NV04(push, SUBC_PPP(0x400), 1);
-   PUSH_DATA (push, desc->pquant << 11);
+   PUSH_DATA (NULL, push, desc->pquant << 11);
 
    // 728 = wtf?
    return 0x10;
@@ -108,17 +108,17 @@ nv98_decoder_ppp(struct nouveau_vp3_decoder *dec, union pipe_desc desc, struct n
    default: assert(0);
    }
    BEGIN_NV04(push, SUBC_PPP(0x734), 2);
-   PUSH_DATA (push, comm_seq);
-   PUSH_DATA (push, ppp_caps);
+   PUSH_DATA (NULL, push, comm_seq);
+   PUSH_DATA (NULL, push, ppp_caps);
 
 #if NOUVEAU_VP3_DEBUG_FENCE
    BEGIN_NV04(push, SUBC_PPP(0x240), 3);
    PUSH_DATAh(push, (dec->fence_bo->offset + 0x20));
-   PUSH_DATA (push, (dec->fence_bo->offset + 0x20));
-   PUSH_DATA (push, dec->fence_seq);
+   PUSH_DATA (NULL, push, (dec->fence_bo->offset + 0x20));
+   PUSH_DATA (NULL, push, dec->fence_seq);
 
    BEGIN_NV04(push, SUBC_PPP(0x300), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    PUSH_KICK (push);
 
    {
@@ -132,7 +132,7 @@ nv98_decoder_ppp(struct nouveau_vp3_decoder *dec, union pipe_desc desc, struct n
    }
 #else
    BEGIN_NV04(push, SUBC_PPP(0x300), 1);
-   PUSH_DATA (push, 0);
-   PUSH_KICK (push);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_KICK (NULL, push);
 #endif
 }

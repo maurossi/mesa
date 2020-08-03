@@ -17,6 +17,7 @@ nvc0_m2mf_transfer_rect(struct nvc0_context *nvc0,
                         const struct nv50_m2mf_rect *src,
                         uint32_t nblocksx, uint32_t nblocksy)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nouveau_bufctx *bctx = nvc0->bufctx;
    const int cpp = dst->cpp;
@@ -35,33 +36,33 @@ nvc0_m2mf_transfer_rect(struct nvc0_context *nvc0,
    nouveau_pushbuf_validate(push);
 
    if (nouveau_bo_memtype(src->bo)) {
-      BEGIN_NVC0(push, NVC0_M2MF(TILING_MODE_IN), 5);
-      PUSH_DATA (push, src->tile_mode);
-      PUSH_DATA (push, src->width * cpp);
-      PUSH_DATA (push, src->height);
-      PUSH_DATA (push, src->depth);
-      PUSH_DATA (push, src->z);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(TILING_MODE_IN), 5);
+      PUSH_DATA (&screen->base, push, src->tile_mode);
+      PUSH_DATA (&screen->base, push, src->width * cpp);
+      PUSH_DATA (&screen->base, push, src->height);
+      PUSH_DATA (&screen->base, push, src->depth);
+      PUSH_DATA (&screen->base, push, src->z);
    } else {
       src_ofst += src->y * src->pitch + src->x * cpp;
 
-      BEGIN_NVC0(push, NVC0_M2MF(PITCH_IN), 1);
-      PUSH_DATA (push, src->width * cpp);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(PITCH_IN), 1);
+      PUSH_DATA (&screen->base, push, src->width * cpp);
 
       exec |= NVC0_M2MF_EXEC_LINEAR_IN;
    }
 
    if (nouveau_bo_memtype(dst->bo)) {
-      BEGIN_NVC0(push, NVC0_M2MF(TILING_MODE_OUT), 5);
-      PUSH_DATA (push, dst->tile_mode);
-      PUSH_DATA (push, dst->width * cpp);
-      PUSH_DATA (push, dst->height);
-      PUSH_DATA (push, dst->depth);
-      PUSH_DATA (push, dst->z);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(TILING_MODE_OUT), 5);
+      PUSH_DATA (&screen->base, push, dst->tile_mode);
+      PUSH_DATA (&screen->base, push, dst->width * cpp);
+      PUSH_DATA (&screen->base, push, dst->height);
+      PUSH_DATA (&screen->base, push, dst->depth);
+      PUSH_DATA (&screen->base, push, dst->z);
    } else {
       dst_ofst += dst->y * dst->pitch + dst->x * cpp;
 
-      BEGIN_NVC0(push, NVC0_M2MF(PITCH_OUT), 1);
-      PUSH_DATA (push, dst->width * cpp);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(PITCH_OUT), 1);
+      PUSH_DATA (&screen->base, push, dst->width * cpp);
 
       exec |= NVC0_M2MF_EXEC_LINEAR_OUT;
    }
@@ -69,34 +70,34 @@ nvc0_m2mf_transfer_rect(struct nvc0_context *nvc0,
    while (height) {
       int line_count = height > 2047 ? 2047 : height;
 
-      BEGIN_NVC0(push, NVC0_M2MF(OFFSET_IN_HIGH), 2);
-      PUSH_DATAh(push, src->bo->offset + src_ofst);
-      PUSH_DATA (push, src->bo->offset + src_ofst);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(OFFSET_IN_HIGH), 2);
+      PUSH_DATAh(&screen->base, push, src->bo->offset + src_ofst);
+      PUSH_DATA (&screen->base, push, src->bo->offset + src_ofst);
 
-      BEGIN_NVC0(push, NVC0_M2MF(OFFSET_OUT_HIGH), 2);
-      PUSH_DATAh(push, dst->bo->offset + dst_ofst);
-      PUSH_DATA (push, dst->bo->offset + dst_ofst);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(OFFSET_OUT_HIGH), 2);
+      PUSH_DATAh(&screen->base, push, dst->bo->offset + dst_ofst);
+      PUSH_DATA (&screen->base, push, dst->bo->offset + dst_ofst);
 
       if (!(exec & NVC0_M2MF_EXEC_LINEAR_IN)) {
-         BEGIN_NVC0(push, NVC0_M2MF(TILING_POSITION_IN_X), 2);
-         PUSH_DATA (push, src->x * cpp);
-         PUSH_DATA (push, sy);
+         BEGIN_NVC0(&screen->base, push, NVC0_M2MF(TILING_POSITION_IN_X), 2);
+         PUSH_DATA (&screen->base, push, src->x * cpp);
+         PUSH_DATA (&screen->base, push, sy);
       } else {
          src_ofst += line_count * src->pitch;
       }
       if (!(exec & NVC0_M2MF_EXEC_LINEAR_OUT)) {
-         BEGIN_NVC0(push, NVC0_M2MF(TILING_POSITION_OUT_X), 2);
-         PUSH_DATA (push, dst->x * cpp);
-         PUSH_DATA (push, dy);
+         BEGIN_NVC0(&screen->base, push, NVC0_M2MF(TILING_POSITION_OUT_X), 2);
+         PUSH_DATA (&screen->base, push, dst->x * cpp);
+         PUSH_DATA (&screen->base, push, dy);
       } else {
          dst_ofst += line_count * dst->pitch;
       }
 
-      BEGIN_NVC0(push, NVC0_M2MF(LINE_LENGTH_IN), 2);
-      PUSH_DATA (push, nblocksx * cpp);
-      PUSH_DATA (push, line_count);
-      BEGIN_NVC0(push, NVC0_M2MF(EXEC), 1);
-      PUSH_DATA (push, exec);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(LINE_LENGTH_IN), 2);
+      PUSH_DATA (&screen->base, push, nblocksx * cpp);
+      PUSH_DATA (&screen->base, push, line_count);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(EXEC), 1);
+      PUSH_DATA (&screen->base, push, exec);
 
       height -= line_count;
       sy += line_count;
@@ -126,6 +127,7 @@ nve4_m2mf_transfer_rect(struct nvc0_context *nvc0,
       [12] = { 3, 4 },
       [16] = { 4, 4 },
    };
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nouveau_bufctx *bctx = nvc0->bufctx;
    uint32_t exec;
@@ -142,8 +144,8 @@ nve4_m2mf_transfer_rect(struct nvc0_context *nvc0,
 
    exec = NVE4_COPY_EXEC_SWIZZLE_ENABLE | NVE4_COPY_EXEC_2D_ENABLE | NVE4_COPY_EXEC_FLUSH | NVE4_COPY_EXEC_COPY_MODE_NON_PIPELINED;
 
-   BEGIN_NVC0(push, NVE4_COPY(SWIZZLE), 1);
-   PUSH_DATA (push, (cpbs[dst->cpp].nc - 1) << 24 |
+   BEGIN_NVC0(&screen->base, push, NVE4_COPY(SWIZZLE), 1);
+   PUSH_DATA (&screen->base, push, (cpbs[dst->cpp].nc - 1) << 24 |
                     (cpbs[src->cpp].nc - 1) << 20 |
                     (cpbs[src->cpp].cs - 1) << 16 |
                     3 << 12 /* DST_W = SRC_W */ |
@@ -152,13 +154,13 @@ nve4_m2mf_transfer_rect(struct nvc0_context *nvc0,
                     0 <<  0 /* DST_X = SRC_X */);
 
    if (nouveau_bo_memtype(dst->bo)) {
-      BEGIN_NVC0(push, NVE4_COPY(DST_BLOCK_DIMENSIONS), 6);
-      PUSH_DATA (push, dst->tile_mode | NVE4_COPY_SRC_BLOCK_DIMENSIONS_GOB_HEIGHT_FERMI_8);
-      PUSH_DATA (push, dst->width);
-      PUSH_DATA (push, dst->height);
-      PUSH_DATA (push, dst->depth);
-      PUSH_DATA (push, dst->z);
-      PUSH_DATA (push, (dst->y << 16) | dst->x);
+      BEGIN_NVC0(&screen->base, push, NVE4_COPY(DST_BLOCK_DIMENSIONS), 6);
+      PUSH_DATA (&screen->base, push, dst->tile_mode | NVE4_COPY_SRC_BLOCK_DIMENSIONS_GOB_HEIGHT_FERMI_8);
+      PUSH_DATA (&screen->base, push, dst->width);
+      PUSH_DATA (&screen->base, push, dst->height);
+      PUSH_DATA (&screen->base, push, dst->depth);
+      PUSH_DATA (&screen->base, push, dst->z);
+      PUSH_DATA (&screen->base, push, (dst->y << 16) | dst->x);
    } else {
       assert(!dst->z);
       dst_base += dst->y * dst->pitch + dst->x * dst->cpp;
@@ -166,31 +168,31 @@ nve4_m2mf_transfer_rect(struct nvc0_context *nvc0,
    }
 
    if (nouveau_bo_memtype(src->bo)) {
-      BEGIN_NVC0(push, NVE4_COPY(SRC_BLOCK_DIMENSIONS), 6);
-      PUSH_DATA (push, src->tile_mode | NVE4_COPY_SRC_BLOCK_DIMENSIONS_GOB_HEIGHT_FERMI_8);
-      PUSH_DATA (push, src->width);
-      PUSH_DATA (push, src->height);
-      PUSH_DATA (push, src->depth);
-      PUSH_DATA (push, src->z);
-      PUSH_DATA (push, (src->y << 16) | src->x);
+      BEGIN_NVC0(&screen->base, push, NVE4_COPY(SRC_BLOCK_DIMENSIONS), 6);
+      PUSH_DATA (&screen->base, push, src->tile_mode | NVE4_COPY_SRC_BLOCK_DIMENSIONS_GOB_HEIGHT_FERMI_8);
+      PUSH_DATA (&screen->base, push, src->width);
+      PUSH_DATA (&screen->base, push, src->height);
+      PUSH_DATA (&screen->base, push, src->depth);
+      PUSH_DATA (&screen->base, push, src->z);
+      PUSH_DATA (&screen->base, push, (src->y << 16) | src->x);
    } else {
       assert(!src->z);
       src_base += src->y * src->pitch + src->x * src->cpp;
       exec |= NVE4_COPY_EXEC_SRC_LAYOUT_BLOCKLINEAR;
    }
 
-   BEGIN_NVC0(push, NVE4_COPY(SRC_ADDRESS_HIGH), 8);
-   PUSH_DATAh(push, src->bo->offset + src_base);
-   PUSH_DATA (push, src->bo->offset + src_base);
-   PUSH_DATAh(push, dst->bo->offset + dst_base);
-   PUSH_DATA (push, dst->bo->offset + dst_base);
-   PUSH_DATA (push, src->pitch);
-   PUSH_DATA (push, dst->pitch);
-   PUSH_DATA (push, nblocksx);
-   PUSH_DATA (push, nblocksy);
+   BEGIN_NVC0(&screen->base, push, NVE4_COPY(SRC_ADDRESS_HIGH), 8);
+   PUSH_DATAh(&screen->base, push, src->bo->offset + src_base);
+   PUSH_DATA (&screen->base, push, src->bo->offset + src_base);
+   PUSH_DATAh(&screen->base, push, dst->bo->offset + dst_base);
+   PUSH_DATA (&screen->base, push, dst->bo->offset + dst_base);
+   PUSH_DATA (&screen->base, push, src->pitch);
+   PUSH_DATA (&screen->base, push, dst->pitch);
+   PUSH_DATA (&screen->base, push, nblocksx);
+   PUSH_DATA (&screen->base, push, nblocksy);
 
-   BEGIN_NVC0(push, NVE4_COPY(EXEC), 1);
-   PUSH_DATA (push, exec);
+   BEGIN_NVC0(&screen->base, push, NVE4_COPY(EXEC), 1);
+   PUSH_DATA (&screen->base, push, exec);
 
    nouveau_bufctx_reset(bctx, 0);
 }
@@ -201,6 +203,7 @@ nvc0_m2mf_push_linear(struct nouveau_context *nv,
                       unsigned size, const void *data)
 {
    struct nvc0_context *nvc0 = nvc0_context(&nv->pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nv->pushbuf;
    uint32_t *src = (uint32_t *)data;
    unsigned count = (size + 3) / 4;
@@ -212,21 +215,21 @@ nvc0_m2mf_push_linear(struct nouveau_context *nv,
    while (count) {
       unsigned nr = MIN2(count, NV04_PFIFO_MAX_PACKET_LEN);
 
-      if (!PUSH_SPACE(push, nr + 9))
+      if (!PUSH_SPACE(&screen->base, push, nr + 9))
          break;
 
-      BEGIN_NVC0(push, NVC0_M2MF(OFFSET_OUT_HIGH), 2);
-      PUSH_DATAh(push, dst->offset + offset);
-      PUSH_DATA (push, dst->offset + offset);
-      BEGIN_NVC0(push, NVC0_M2MF(LINE_LENGTH_IN), 2);
-      PUSH_DATA (push, MIN2(size, nr * 4));
-      PUSH_DATA (push, 1);
-      BEGIN_NVC0(push, NVC0_M2MF(EXEC), 1);
-      PUSH_DATA (push, 0x100111);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(OFFSET_OUT_HIGH), 2);
+      PUSH_DATAh(&screen->base, push, dst->offset + offset);
+      PUSH_DATA (&screen->base, push, dst->offset + offset);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(LINE_LENGTH_IN), 2);
+      PUSH_DATA (&screen->base, push, MIN2(size, nr * 4));
+      PUSH_DATA (&screen->base, push, 1);
+      BEGIN_NVC0(&screen->base, push, NVC0_M2MF(EXEC), 1);
+      PUSH_DATA (&screen->base, push, 0x100111);
 
       /* must not be interrupted (trap on QUERY fence, 0x50 works however) */
-      BEGIN_NIC0(push, NVC0_M2MF(DATA), nr);
-      PUSH_DATAp(push, src, nr);
+      BEGIN_NIC0(&screen->base, push, NVC0_M2MF(DATA), nr);
+      PUSH_DATAp(&screen->base, push, src, nr);
 
       count -= nr;
       src += nr;
@@ -243,30 +246,31 @@ nve4_p2mf_push_linear(struct nouveau_context *nv,
                       unsigned size, const void *data)
 {
    struct nvc0_context *nvc0 = nvc0_context(&nv->pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nv->pushbuf;
    uint32_t *src = (uint32_t *)data;
    unsigned count = (size + 3) / 4;
 
+
    nouveau_bufctx_refn(nvc0->bufctx, 0, dst, domain | NOUVEAU_BO_WR);
    nouveau_pushbuf_bufctx(push, nvc0->bufctx);
-   nouveau_pushbuf_validate(push);
 
    while (count) {
       unsigned nr = MIN2(count, (NV04_PFIFO_MAX_PACKET_LEN - 1));
 
-      if (!PUSH_SPACE(push, nr + 10))
+      if (!PUSH_SPACE(&screen->base, push, nr + 10))
          break;
 
-      BEGIN_NVC0(push, NVE4_P2MF(UPLOAD_DST_ADDRESS_HIGH), 2);
-      PUSH_DATAh(push, dst->offset + offset);
-      PUSH_DATA (push, dst->offset + offset);
-      BEGIN_NVC0(push, NVE4_P2MF(UPLOAD_LINE_LENGTH_IN), 2);
-      PUSH_DATA (push, MIN2(size, nr * 4));
-      PUSH_DATA (push, 1);
+      BEGIN_NVC0(&screen->base, push, NVE4_P2MF(UPLOAD_DST_ADDRESS_HIGH), 2);
+      PUSH_DATAh(&screen->base, push, dst->offset + offset);
+      PUSH_DATA (&screen->base, push, dst->offset + offset);
+      BEGIN_NVC0(&screen->base, push, NVE4_P2MF(UPLOAD_LINE_LENGTH_IN), 2);
+      PUSH_DATA (&screen->base, push, MIN2(size, nr * 4));
+      PUSH_DATA (&screen->base, push, 1);
       /* must not be interrupted (trap on QUERY fence, 0x50 works however) */
-      BEGIN_1IC0(push, NVE4_P2MF(UPLOAD_EXEC), nr + 1);
-      PUSH_DATA (push, 0x1001);
-      PUSH_DATAp(push, src, nr);
+      BEGIN_1IC0(&screen->base, push, NVE4_P2MF(UPLOAD_EXEC), nr + 1);
+      PUSH_DATA (&screen->base, push, 0x1001);
+      PUSH_DATAp(&screen->base, push, src, nr);
 
       count -= nr;
       src += nr;
@@ -294,17 +298,17 @@ nvc0_m2mf_copy_linear(struct nouveau_context *nv,
    while (size) {
       unsigned bytes = MIN2(size, 1 << 17);
 
-      BEGIN_NVC0(push, NVC0_M2MF(OFFSET_OUT_HIGH), 2);
-      PUSH_DATAh(push, dst->offset + dstoff);
-      PUSH_DATA (push, dst->offset + dstoff);
-      BEGIN_NVC0(push, NVC0_M2MF(OFFSET_IN_HIGH), 2);
-      PUSH_DATAh(push, src->offset + srcoff);
-      PUSH_DATA (push, src->offset + srcoff);
-      BEGIN_NVC0(push, NVC0_M2MF(LINE_LENGTH_IN), 2);
-      PUSH_DATA (push, bytes);
-      PUSH_DATA (push, 1);
-      BEGIN_NVC0(push, NVC0_M2MF(EXEC), 1);
-      PUSH_DATA (push, NVC0_M2MF_EXEC_QUERY_SHORT |
+      BEGIN_NVC0(nv->screen, push, NVC0_M2MF(OFFSET_OUT_HIGH), 2);
+      PUSH_DATAh(nv->screen, push, dst->offset + dstoff);
+      PUSH_DATA (nv->screen, push, dst->offset + dstoff);
+      BEGIN_NVC0(nv->screen, push, NVC0_M2MF(OFFSET_IN_HIGH), 2);
+      PUSH_DATAh(nv->screen, push, src->offset + srcoff);
+      PUSH_DATA (nv->screen, push, src->offset + srcoff);
+      BEGIN_NVC0(nv->screen, push, NVC0_M2MF(LINE_LENGTH_IN), 2);
+      PUSH_DATA (nv->screen, push, bytes);
+      PUSH_DATA (nv->screen, push, 1);
+      BEGIN_NVC0(nv->screen, push, NVC0_M2MF(EXEC), 1);
+      PUSH_DATA (nv->screen, push, NVC0_M2MF_EXEC_QUERY_SHORT |
                  NVC0_M2MF_EXEC_LINEAR_IN | NVC0_M2MF_EXEC_LINEAR_OUT);
 
       srcoff += bytes;
@@ -329,15 +333,15 @@ nve4_m2mf_copy_linear(struct nouveau_context *nv,
    nouveau_pushbuf_bufctx(push, bctx);
    nouveau_pushbuf_validate(push);
 
-   BEGIN_NVC0(push, NVE4_COPY(SRC_ADDRESS_HIGH), 4);
-   PUSH_DATAh(push, src->offset + srcoff);
-   PUSH_DATA (push, src->offset + srcoff);
-   PUSH_DATAh(push, dst->offset + dstoff);
-   PUSH_DATA (push, dst->offset + dstoff);
-   BEGIN_NVC0(push, NVE4_COPY(X_COUNT), 1);
-   PUSH_DATA (push, size);
-   BEGIN_NVC0(push, NVE4_COPY(EXEC), 1);
-   PUSH_DATA (push, NVE4_COPY_EXEC_COPY_MODE_NON_PIPELINED |
+   BEGIN_NVC0(nv->screen, push, NVE4_COPY(SRC_ADDRESS_HIGH), 4);
+   PUSH_DATAh(nv->screen, push, src->offset + srcoff);
+   PUSH_DATA (nv->screen, push, src->offset + srcoff);
+   PUSH_DATAh(nv->screen, push, dst->offset + dstoff);
+   PUSH_DATA (nv->screen, push, dst->offset + dstoff);
+   BEGIN_NVC0(nv->screen, push, NVE4_COPY(X_COUNT), 1);
+   PUSH_DATA (nv->screen, push, size);
+   BEGIN_NVC0(nv->screen, push, NVE4_COPY(EXEC), 1);
+   PUSH_DATA (nv->screen, push, NVE4_COPY_EXEC_COPY_MODE_NON_PIPELINED |
 		    NVE4_COPY_EXEC_FLUSH |
 		    NVE4_COPY_EXEC_SRC_LAYOUT_BLOCKLINEAR |
 		    NVE4_COPY_EXEC_DST_LAYOUT_BLOCKLINEAR);
@@ -509,6 +513,7 @@ nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
    }
 
    if (tx->base.usage & PIPE_MAP_WRITE) {
+      PUSH_ACQ(&nvc0->screen->base, nvc0->screen->base.pushbuf);
       for (i = 0; i < tx->nlayers; ++i) {
          nvc0->m2mf_copy_rect(nvc0, &tx->rect[0], &tx->rect[1],
                               tx->nblocksx, tx->nblocksy);
@@ -518,6 +523,7 @@ nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
             tx->rect[0].base += mt->layer_stride;
          tx->rect[1].base += tx->nblocksy * tx->base.stride;
       }
+      PUSH_DONE(&nvc0->screen->base, nvc0->screen->base.pushbuf);
       NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_transfers_wr, 1);
 
       /* Allow the copies above to finish executing before freeing the source */
@@ -589,19 +595,19 @@ nvc0_cb_bo_push(struct nouveau_context *nv,
    assert(offset < size);
    assert(offset + words * 4 <= size);
 
-   BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-   PUSH_DATA (push, size);
-   PUSH_DATAh(push, bo->offset + base);
-   PUSH_DATA (push, bo->offset + base);
+   BEGIN_NVC0(nv->screen, push, NVC0_3D(CB_SIZE), 3);
+   PUSH_DATA (nv->screen, push, size);
+   PUSH_DATAh(nv->screen, push, bo->offset + base);
+   PUSH_DATA (nv->screen, push, bo->offset + base);
 
    while (words) {
       unsigned nr = MIN2(words, NV04_PFIFO_MAX_PACKET_LEN - 1);
 
-      PUSH_SPACE(push, nr + 2);
-      PUSH_REFN (push, bo, NOUVEAU_BO_WR | domain);
-      BEGIN_1IC0(push, NVC0_3D(CB_POS), nr + 1);
-      PUSH_DATA (push, offset);
-      PUSH_DATAp(push, data, nr);
+      PUSH_SPACE(nv->screen, push, nr + 2);
+      PUSH_REFN (nv->screen, push, bo, NOUVEAU_BO_WR | domain);
+      BEGIN_1IC0(nv->screen, push, NVC0_3D(CB_POS), nr + 1);
+      PUSH_DATA (nv->screen, push, offset);
+      PUSH_DATAp(nv->screen, push, data, nr);
 
       words -= nr;
       data += nr;

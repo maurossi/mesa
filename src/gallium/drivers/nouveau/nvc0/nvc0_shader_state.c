@@ -69,21 +69,23 @@ void
 nvc0_program_sp_start_id(struct nvc0_context *nvc0, int stage,
                          struct nvc0_program *prog)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
 
    if (nvc0->screen->eng3d->oclass < GV100_3D_CLASS) {
-      BEGIN_NVC0(push, NVC0_3D(SP_START_ID(stage)), 1);
-      PUSH_DATA (push, prog->code_base);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_START_ID(stage)), 1);
+      PUSH_DATA (&screen->base, push, prog->code_base);
    } else {
-      BEGIN_NVC0(push, SUBC_3D(GV100_3D_SP_ADDRESS_HIGH(stage)), 2);
-      PUSH_DATAh(push, nvc0->screen->text->offset + prog->code_base);
-      PUSH_DATA (push, nvc0->screen->text->offset + prog->code_base);
+      BEGIN_NVC0(&screen->base, push, SUBC_3D(GV100_3D_SP_ADDRESS_HIGH(stage)), 2);
+      PUSH_DATAh(&screen->base, push, nvc0->screen->text->offset + prog->code_base);
+      PUSH_DATA (&screen->base, push, nvc0->screen->text->offset + prog->code_base);
    }
 }
 
 void
 nvc0_vertprog_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *vp = nvc0->vertprog;
 
@@ -91,19 +93,20 @@ nvc0_vertprog_validate(struct nvc0_context *nvc0)
          return;
    nvc0_program_update_context_state(nvc0, vp, 0);
 
-   BEGIN_NVC0(push, NVC0_3D(SP_SELECT(1)), 1);
-   PUSH_DATA (push, 0x11);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_SELECT(1)), 1);
+   PUSH_DATA (&screen->base, push, 0x11);
    nvc0_program_sp_start_id(nvc0, 1, vp);
-   BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(1)), 1);
-   PUSH_DATA (push, vp->num_gprs);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_GPR_ALLOC(1)), 1);
+   PUSH_DATA (&screen->base, push, vp->num_gprs);
 
-   // BEGIN_NVC0(push, NVC0_3D_(0x163c), 1);
-   // PUSH_DATA (push, 0);
+   // BEGIN_NVC0(&screen->base, push, NVC0_3D_(0x163c), 1);
+   // PUSH_DATA (&screen->base, push, 0);
 }
 
 void
 nvc0_fragprog_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *fp = nvc0->fragprog;
    struct pipe_rasterizer_state *rast = &nvc0->rast->pipe;
@@ -146,8 +149,8 @@ nvc0_fragprog_validate(struct nvc0_context *nvc0)
 
    if (hwflatshade != nvc0->state.flatshade) {
       nvc0->state.flatshade = hwflatshade;
-      BEGIN_NVC0(push, NVC0_3D(SHADE_MODEL), 1);
-      PUSH_DATA (push, hwflatshade ? NVC0_3D_SHADE_MODEL_FLAT :
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SHADE_MODEL), 1);
+      PUSH_DATA (&screen->base, push, hwflatshade ? NVC0_3D_SHADE_MODEL_FLAT :
                                      NVC0_3D_SHADE_MODEL_SMOOTH);
    }
 
@@ -161,50 +164,51 @@ nvc0_fragprog_validate(struct nvc0_context *nvc0)
 
    if (fp->fp.early_z != nvc0->state.early_z_forced) {
       nvc0->state.early_z_forced = fp->fp.early_z;
-      IMMED_NVC0(push, NVC0_3D(FORCE_EARLY_FRAGMENT_TESTS), fp->fp.early_z);
+      IMMED_NVC0(&screen->base, push, NVC0_3D(FORCE_EARLY_FRAGMENT_TESTS), fp->fp.early_z);
    }
    if (fp->fp.post_depth_coverage != nvc0->state.post_depth_coverage) {
       nvc0->state.post_depth_coverage = fp->fp.post_depth_coverage;
-      IMMED_NVC0(push, NVC0_3D(POST_DEPTH_COVERAGE),
+      IMMED_NVC0(&screen->base, push, NVC0_3D(POST_DEPTH_COVERAGE),
                  fp->fp.post_depth_coverage);
    }
 
-   BEGIN_NVC0(push, NVC0_3D(SP_SELECT(5)), 1);
-   PUSH_DATA (push, 0x51);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_SELECT(5)), 1);
+   PUSH_DATA (&screen->base, push, 0x51);
    nvc0_program_sp_start_id(nvc0, 5, fp);
-   BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(5)), 1);
-   PUSH_DATA (push, fp->num_gprs);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_GPR_ALLOC(5)), 1);
+   PUSH_DATA (&screen->base, push, fp->num_gprs);
 
-   BEGIN_NVC0(push, SUBC_3D(0x0360), 2);
-   PUSH_DATA (push, 0x20164010);
-   PUSH_DATA (push, 0x20);
-   BEGIN_NVC0(push, NVC0_3D(ZCULL_TEST_MASK), 1);
-   PUSH_DATA (push, fp->flags[0]);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x0360), 2);
+   PUSH_DATA (&screen->base, push, 0x20164010);
+   PUSH_DATA (&screen->base, push, 0x20);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(ZCULL_TEST_MASK), 1);
+   PUSH_DATA (&screen->base, push, fp->flags[0]);
 }
 
 void
 nvc0_tctlprog_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *tp = nvc0->tctlprog;
 
    if (tp && nvc0_program_validate(nvc0, tp)) {
       if (tp->tp.tess_mode != ~0) {
-         BEGIN_NVC0(push, NVC0_3D(TESS_MODE), 1);
-         PUSH_DATA (push, tp->tp.tess_mode);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(TESS_MODE), 1);
+         PUSH_DATA (&screen->base, push, tp->tp.tess_mode);
       }
-      BEGIN_NVC0(push, NVC0_3D(SP_SELECT(2)), 1);
-      PUSH_DATA (push, 0x21);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_SELECT(2)), 1);
+      PUSH_DATA (&screen->base, push, 0x21);
       nvc0_program_sp_start_id(nvc0, 2, tp);
-      BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(2)), 1);
-      PUSH_DATA (push, tp->num_gprs);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_GPR_ALLOC(2)), 1);
+      PUSH_DATA (&screen->base, push, tp->num_gprs);
    } else {
       tp = nvc0->tcp_empty;
       /* not a whole lot we can do to handle this failure */
       if (!nvc0_program_validate(nvc0, tp))
          assert(!"unable to validate empty tcp");
-      BEGIN_NVC0(push, NVC0_3D(SP_SELECT(2)), 1);
-      PUSH_DATA (push, 0x20);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_SELECT(2)), 1);
+      PUSH_DATA (&screen->base, push, 0x20);
       nvc0_program_sp_start_id(nvc0, 2, tp);
    }
    nvc0_program_update_context_state(nvc0, tp, 1);
@@ -213,22 +217,23 @@ nvc0_tctlprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_tevlprog_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *tp = nvc0->tevlprog;
 
    if (tp && nvc0_program_validate(nvc0, tp)) {
       if (tp->tp.tess_mode != ~0) {
-         BEGIN_NVC0(push, NVC0_3D(TESS_MODE), 1);
-         PUSH_DATA (push, tp->tp.tess_mode);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(TESS_MODE), 1);
+         PUSH_DATA (&screen->base, push, tp->tp.tess_mode);
       }
-      BEGIN_NVC0(push, NVC0_3D(MACRO_TEP_SELECT), 1);
-      PUSH_DATA (push, 0x31);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(MACRO_TEP_SELECT), 1);
+      PUSH_DATA (&screen->base, push, 0x31);
       nvc0_program_sp_start_id(nvc0, 3, tp);
-      BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(3)), 1);
-      PUSH_DATA (push, tp->num_gprs);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_GPR_ALLOC(3)), 1);
+      PUSH_DATA (&screen->base, push, tp->num_gprs);
    } else {
-      BEGIN_NVC0(push, NVC0_3D(MACRO_TEP_SELECT), 1);
-      PUSH_DATA (push, 0x30);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(MACRO_TEP_SELECT), 1);
+      PUSH_DATA (&screen->base, push, 0x30);
    }
    nvc0_program_update_context_state(nvc0, tp, 2);
 }
@@ -236,19 +241,20 @@ nvc0_tevlprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *gp = nvc0->gmtyprog;
 
    /* we allow GPs with no code for specifying stream output state only */
    if (gp && nvc0_program_validate(nvc0, gp) && gp->code_size) {
-      BEGIN_NVC0(push, NVC0_3D(MACRO_GP_SELECT), 1);
-      PUSH_DATA (push, 0x41);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(MACRO_GP_SELECT), 1);
+      PUSH_DATA (&screen->base, push, 0x41);
       nvc0_program_sp_start_id(nvc0, 4, gp);
-      BEGIN_NVC0(push, NVC0_3D(SP_GPR_ALLOC(4)), 1);
-      PUSH_DATA (push, gp->num_gprs);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_GPR_ALLOC(4)), 1);
+      PUSH_DATA (&screen->base, push, gp->num_gprs);
    } else {
-      BEGIN_NVC0(push, NVC0_3D(MACRO_GP_SELECT), 1);
-      PUSH_DATA (push, 0x40);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(MACRO_GP_SELECT), 1);
+      PUSH_DATA (&screen->base, push, 0x40);
    }
    nvc0_program_update_context_state(nvc0, gp, 3);
 }
@@ -256,19 +262,21 @@ nvc0_gmtyprog_validate(struct nvc0_context *nvc0)
 void
 nvc0_compprog_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *cp = nvc0->compprog;
 
    if (cp && !nvc0_program_validate(nvc0, cp))
       return;
 
-   BEGIN_NVC0(push, NVC0_CP(FLUSH), 1);
-   PUSH_DATA (push, NVC0_COMPUTE_FLUSH_CODE);
+   BEGIN_NVC0(&screen->base, push, NVC0_CP(FLUSH), 1);
+   PUSH_DATA (&screen->base, push, NVC0_COMPUTE_FLUSH_CODE);
 }
 
 void
 nvc0_layer_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_program *last;
    bool prog_selects_layer = false;
@@ -286,10 +294,10 @@ nvc0_layer_validate(struct nvc0_context *nvc0)
       layer_viewport_relative = last->vp.layer_viewport_relative;
    }
 
-   BEGIN_NVC0(push, NVC0_3D(LAYER), 1);
-   PUSH_DATA (push, prog_selects_layer ? NVC0_3D_LAYER_USE_GP : 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(LAYER), 1);
+   PUSH_DATA (&screen->base, push, prog_selects_layer ? NVC0_3D_LAYER_USE_GP : 0);
    if (nvc0->screen->eng3d->oclass >= GM200_3D_CLASS) {
-      IMMED_NVC0(push, NVC0_3D(LAYER_VIEWPORT_RELATIVE),
+      IMMED_NVC0(&screen->base, push, NVC0_3D(LAYER_VIEWPORT_RELATIVE),
                  layer_viewport_relative);
    }
 }
@@ -297,6 +305,7 @@ nvc0_layer_validate(struct nvc0_context *nvc0)
 void
 nvc0_tfb_validate(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_transform_feedback_state *tfb;
    unsigned b;
@@ -307,24 +316,24 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
    else
       tfb = nvc0->vertprog->tfb;
 
-   IMMED_NVC0(push, NVC0_3D(TFB_ENABLE), (tfb && nvc0->num_tfbbufs) ? 1 : 0);
+   IMMED_NVC0(&screen->base, push, NVC0_3D(TFB_ENABLE), (tfb && nvc0->num_tfbbufs) ? 1 : 0);
 
    if (tfb && tfb != nvc0->state.tfb) {
       for (b = 0; b < 4; ++b) {
          if (tfb->varying_count[b]) {
             unsigned n = (tfb->varying_count[b] + 3) / 4;
 
-            BEGIN_NVC0(push, NVC0_3D(TFB_STREAM(b)), 3);
-            PUSH_DATA (push, tfb->stream[b]);
-            PUSH_DATA (push, tfb->varying_count[b]);
-            PUSH_DATA (push, tfb->stride[b]);
-            BEGIN_NVC0(push, NVC0_3D(TFB_VARYING_LOCS(b, 0)), n);
-            PUSH_DATAp(push, tfb->varying_index[b], n);
+            BEGIN_NVC0(&screen->base, push, NVC0_3D(TFB_STREAM(b)), 3);
+            PUSH_DATA (&screen->base, push, tfb->stream[b]);
+            PUSH_DATA (&screen->base, push, tfb->varying_count[b]);
+            PUSH_DATA (&screen->base, push, tfb->stride[b]);
+            BEGIN_NVC0(&screen->base, push, NVC0_3D(TFB_VARYING_LOCS(b, 0)), n);
+            PUSH_DATAp(&screen->base, push, tfb->varying_index[b], n);
 
             if (nvc0->tfbbuf[b])
                nvc0_so_target(nvc0->tfbbuf[b])->stride = tfb->stride[b];
          } else {
-            IMMED_NVC0(push, NVC0_3D(TFB_VARYING_COUNT(b)), 0);
+            IMMED_NVC0(&screen->base, push, NVC0_3D(TFB_VARYING_COUNT(b)), 0);
          }
       }
    }
@@ -341,7 +350,7 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
          targ->stride = tfb->stride[b];
 
       if (!targ || !targ->stride) {
-         IMMED_NVC0(push, NVC0_3D(TFB_BUFFER_ENABLE(b)), 0);
+         IMMED_NVC0(&screen->base, push, NVC0_3D(TFB_BUFFER_ENABLE(b)), 0);
          continue;
       }
 
@@ -355,18 +364,18 @@ nvc0_tfb_validate(struct nvc0_context *nvc0)
       if (!targ->clean)
          nvc0_hw_query_fifo_wait(nvc0, nvc0_query(targ->pq));
       nouveau_pushbuf_space(push, 0, 0, 1);
-      BEGIN_NVC0(push, NVC0_3D(TFB_BUFFER_ENABLE(b)), 5);
-      PUSH_DATA (push, 1);
-      PUSH_DATAh(push, buf->address + targ->pipe.buffer_offset);
-      PUSH_DATA (push, buf->address + targ->pipe.buffer_offset);
-      PUSH_DATA (push, targ->pipe.buffer_size);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(TFB_BUFFER_ENABLE(b)), 5);
+      PUSH_DATA (&screen->base, push, 1);
+      PUSH_DATAh(&screen->base, push, buf->address + targ->pipe.buffer_offset);
+      PUSH_DATA (&screen->base, push, buf->address + targ->pipe.buffer_offset);
+      PUSH_DATA (&screen->base, push, targ->pipe.buffer_size);
       if (!targ->clean) {
-         nvc0_hw_query_pushbuf_submit(push, nvc0_query(targ->pq), 0x4);
+         nvc0_hw_query_pushbuf_submit(nvc0, push, nvc0_query(targ->pq), 0x4);
       } else {
-         PUSH_DATA(push, 0); /* TFB_BUFFER_OFFSET */
+         PUSH_DATA(&screen->base, push, 0); /* TFB_BUFFER_OFFSET */
          targ->clean = false;
       }
    }
    for (; b < 4; ++b)
-      IMMED_NVC0(push, NVC0_3D(TFB_BUFFER_ENABLE(b)), 0);
+      IMMED_NVC0(&screen->base, push, NVC0_3D(TFB_BUFFER_ENABLE(b)), 0);
 }

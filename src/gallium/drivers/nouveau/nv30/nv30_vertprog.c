@@ -188,32 +188,32 @@ nv30_vertprog_validate(struct nv30_context *nv30)
          }
 
          BEGIN_NV04(push, NV30_3D(VP_UPLOAD_CONST_ID), 5);
-         PUSH_DATA (push, vp->data->start + i);
-         PUSH_DATAp(push, data->value, 4);
+         PUSH_DATA (NULL, push, vp->data->start + i);
+         PUSH_DATAp(NULL, push, data->value, 4);
       }
    }
 
    if (upload_code) {
       BEGIN_NV04(push, NV30_3D(VP_UPLOAD_FROM_ID), 1);
-      PUSH_DATA (push, vp->exec->start);
+      PUSH_DATA (NULL, push, vp->exec->start);
       for (i = 0; i < vp->nr_insns; i++) {
          BEGIN_NV04(push, NV30_3D(VP_UPLOAD_INST(0)), 4);
-         PUSH_DATAp(push, vp->insns[i].data, 4);
+         PUSH_DATAp(NULL, push, vp->insns[i].data, 4);
       }
    }
 
    if (nv30->dirty & (NV30_NEW_VERTPROG | NV30_NEW_FRAGPROG)) {
       BEGIN_NV04(push, NV30_3D(VP_START_FROM_ID), 1);
-      PUSH_DATA (push, vp->exec->start);
+      PUSH_DATA (NULL, push, vp->exec->start);
       if (eng3d->oclass < NV40_3D_CLASS) {
          BEGIN_NV04(push, NV30_3D(ENGINE), 1);
-         PUSH_DATA (push, 0x00000013); /* vp instead of ff, somehow */
+         PUSH_DATA (NULL, push, 0x00000013); /* vp instead of ff, somehow */
       } else {
          BEGIN_NV04(push, NV40_3D(VP_ATTRIB_EN), 2);
-         PUSH_DATA (push, vp->ir);
-         PUSH_DATA (push, vp->or | fp->vp_or);
+         PUSH_DATA (NULL, push, vp->ir);
+         PUSH_DATA (NULL, push, vp->or | fp->vp_or);
          BEGIN_NV04(push, NV30_3D(ENGINE), 1);
-         PUSH_DATA (push, 0x00000011);
+         PUSH_DATA (NULL, push, 0x00000011);
       }
    }
 }

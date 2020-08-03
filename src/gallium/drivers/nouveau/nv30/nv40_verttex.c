@@ -40,7 +40,7 @@ nv40_verttex_validate(struct nv30_context *nv30)
       if (ss && sv) {
       } else {
          BEGIN_NV04(push, NV40_3D(VTXTEX_ENABLE(unit)), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
       }
       dirty &= ~(1 << unit);
    }

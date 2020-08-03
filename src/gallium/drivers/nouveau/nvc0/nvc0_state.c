@@ -1075,11 +1075,12 @@ nvc0_so_target_save_offset(struct pipe_context *pipe,
                            unsigned index, bool *serialize)
 {
    struct nvc0_so_target *targ = nvc0_so_target(ptarg);
+   struct nvc0_screen *screen = nvc0_context(pipe)->screen;
 
    if (*serialize) {
       *serialize = false;
-      PUSH_SPACE(nvc0_context(pipe)->base.pushbuf, 1);
-      IMMED_NVC0(nvc0_context(pipe)->base.pushbuf, NVC0_3D(SERIALIZE), 0);
+      PUSH_SPACE(&screen->base, nvc0_context(pipe)->base.pushbuf, 1);
+      IMMED_NVC0(&screen->base, nvc0_context(pipe)->base.pushbuf, NVC0_3D(SERIALIZE), 0);
 
       NOUVEAU_DRV_STAT(nouveau_screen(pipe->screen), gpu_serialize_count, 1);
    }

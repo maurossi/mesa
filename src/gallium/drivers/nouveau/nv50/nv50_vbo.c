@@ -152,29 +152,29 @@ nv50_emit_vtxattr(struct nv50_context *nv50, struct pipe_vertex_buffer *vb,
    switch (nc) {
    case 4:
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_4F_X(attr)), 4);
-      PUSH_DATAf(push, v[0]);
-      PUSH_DATAf(push, v[1]);
-      PUSH_DATAf(push, v[2]);
-      PUSH_DATAf(push, v[3]);
+      PUSH_DATAf(NULL, push, v[0]);
+      PUSH_DATAf(NULL, push, v[1]);
+      PUSH_DATAf(NULL, push, v[2]);
+      PUSH_DATAf(NULL, push, v[3]);
       break;
    case 3:
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_3F_X(attr)), 3);
-      PUSH_DATAf(push, v[0]);
-      PUSH_DATAf(push, v[1]);
-      PUSH_DATAf(push, v[2]);
+      PUSH_DATAf(NULL, push, v[0]);
+      PUSH_DATAf(NULL, push, v[1]);
+      PUSH_DATAf(NULL, push, v[2]);
       break;
    case 2:
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_2F_X(attr)), 2);
-      PUSH_DATAf(push, v[0]);
-      PUSH_DATAf(push, v[1]);
+      PUSH_DATAf(NULL, push, v[0]);
+      PUSH_DATAf(NULL, push, v[1]);
       break;
    case 1:
       if (attr == nv50->vertprog->vp.edgeflag) {
          BEGIN_NV04(push, NV50_3D(EDGEFLAG), 1);
-         PUSH_DATA (push, v[0] ? 1 : 0);
+         PUSH_DATA (NULL, push, v[0] ? 1 : 0);
       }
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_1F(attr)), 1);
-      PUSH_DATAf(push, v[0]);
+      PUSH_DATAf(NULL, push, v[0]);
       break;
    default:
       assert(0);
@@ -264,10 +264,10 @@ nv50_update_user_vbufs(struct nv50_context *nv50)
 
       BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_LIMIT_HIGH(i)), 2);
       PUSH_DATAh(push, address[b] + base + size - 1);
-      PUSH_DATA (push, address[b] + base + size - 1);
+      PUSH_DATA (NULL, push, address[b] + base + size - 1);
       BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_START_HIGH(i)), 2);
       PUSH_DATAh(push, address[b] + ve->src_offset);
-      PUSH_DATA (push, address[b] + ve->src_offset);
+      PUSH_DATA (NULL, push, address[b] + ve->src_offset);
    }
    nv50->base.vbo_dirty = true;
 }
@@ -321,12 +321,12 @@ nv50_vertex_arrays_validate(struct nv50_context *nv50)
    if (nv50->vbo_fifo) {
       nv50->state.num_vtxelts = vertex->num_elements;
       for (i = 0; i < vertex->num_elements; ++i)
-         PUSH_DATA (push, vertex->element[i].state);
+         PUSH_DATA (NULL, push, vertex->element[i].state);
       for (; i < n; ++i)
-         PUSH_DATA (push, NV50_3D_VERTEX_ATTRIB_INACTIVE);
+         PUSH_DATA (NULL, push, NV50_3D_VERTEX_ATTRIB_INACTIVE);
       for (i = 0; i < n; ++i) {
          BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FETCH(i)), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
       }
       return;
    }
@@ -338,12 +338,12 @@ nv50_vertex_arrays_validate(struct nv50_context *nv50)
       vb = &nv50->vtxbuf[b];
 
       if (likely(vb->stride) || !(nv50->vbo_user & (1 << b)))
-         PUSH_DATA(push, ve->state);
+         PUSH_DATA(NULL, push, ve->state);
       else
-         PUSH_DATA(push, ve->state | NV50_3D_VERTEX_ARRAY_ATTRIB_CONST);
+         PUSH_DATA(NULL, push, ve->state | NV50_3D_VERTEX_ARRAY_ATTRIB_CONST);
    }
    for (; i < n; ++i)
-      PUSH_DATA(push, NV50_3D_VERTEX_ATTRIB_INACTIVE);
+      PUSH_DATA(NULL, push, NV50_3D_VERTEX_ATTRIB_INACTIVE);
 
    /* update per-instance enables */
    mask = vertex->instance_elts ^ nv50->state.instance_elts;
@@ -351,7 +351,7 @@ nv50_vertex_arrays_validate(struct nv50_context *nv50)
       const int i = ffs(mask) - 1;
       mask &= ~(1 << i);
       BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_PER_INSTANCE(i)), 1);
-      PUSH_DATA (push, (vertex->instance_elts >> i) & 1);
+      PUSH_DATA (NULL, push, (vertex->instance_elts >> i) & 1);
    }
    nv50->state.instance_elts = vertex->instance_elts;
 
@@ -369,7 +369,7 @@ nv50_vertex_arrays_validate(struct nv50_context *nv50)
 
       if (unlikely(nv50->vbo_constant & (1 << b))) {
          BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FETCH(i)), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
          nv50_emit_vtxattr(nv50, vb, &ve->pipe, i);
          continue;
       } else
@@ -379,7 +379,7 @@ nv50_vertex_arrays_validate(struct nv50_context *nv50)
       } else
       if (!vb->buffer.resource) {
          BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FETCH(i)), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
          continue;
       } else {
          struct nv04_resource *buf = nv04_resource(vb->buffer.resource);
@@ -393,23 +393,23 @@ nv50_vertex_arrays_validate(struct nv50_context *nv50)
 
       if (unlikely(ve->pipe.instance_divisor)) {
          BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FETCH(i)), 4);
-         PUSH_DATA (push, NV50_3D_VERTEX_ARRAY_FETCH_ENABLE | vb->stride);
+         PUSH_DATA (NULL, push, NV50_3D_VERTEX_ARRAY_FETCH_ENABLE | vb->stride);
          PUSH_DATAh(push, address);
-         PUSH_DATA (push, address);
-         PUSH_DATA (push, ve->pipe.instance_divisor);
+         PUSH_DATA (NULL, push, address);
+         PUSH_DATA (NULL, push, ve->pipe.instance_divisor);
       } else {
          BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FETCH(i)), 3);
-         PUSH_DATA (push, NV50_3D_VERTEX_ARRAY_FETCH_ENABLE | vb->stride);
+         PUSH_DATA (NULL, push, NV50_3D_VERTEX_ARRAY_FETCH_ENABLE | vb->stride);
          PUSH_DATAh(push, address);
-         PUSH_DATA (push, address);
+         PUSH_DATA (NULL, push, address);
       }
       BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_LIMIT_HIGH(i)), 2);
       PUSH_DATAh(push, limit);
-      PUSH_DATA (push, limit);
+      PUSH_DATA (NULL, push, limit);
    }
    for (; i < nv50->state.num_vtxelts; ++i) {
       BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FETCH(i)), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
    nv50->state.num_vtxelts = vertex->num_elements;
 }
@@ -470,10 +470,10 @@ nv50_draw_arrays(struct nv50_context *nv50,
 
    if (nv50->state.index_bias) {
       BEGIN_NV04(push, NV50_3D(VB_ELEMENT_BASE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       if (nv50->screen->base.class_3d >= NV84_3D_CLASS) {
          BEGIN_NV04(push, NV84_3D(VERTEX_ID_BASE), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
       }
       nv50->state.index_bias = 0;
    }
@@ -482,12 +482,12 @@ nv50_draw_arrays(struct nv50_context *nv50,
 
    while (instance_count--) {
       BEGIN_NV04(push, NV50_3D(VERTEX_BEGIN_GL), 1);
-      PUSH_DATA (push, prim);
+      PUSH_DATA (NULL, push, prim);
       BEGIN_NV04(push, NV50_3D(VERTEX_BUFFER_FIRST), 2);
-      PUSH_DATA (push, start);
-      PUSH_DATA (push, count);
+      PUSH_DATA (NULL, push, start);
+      PUSH_DATA (NULL, push, count);
       BEGIN_NV04(push, NV50_3D(VERTEX_END_GL), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
 
       prim |= NV50_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
    }
@@ -503,7 +503,7 @@ nv50_draw_elements_inline_u08(struct nouveau_pushbuf *push, const uint8_t *map,
       unsigned i;
       BEGIN_NI04(push, NV50_3D(VB_ELEMENT_U32), count & 3);
       for (i = 0; i < (count & 3); ++i)
-         PUSH_DATA(push, *map++);
+         PUSH_DATA(NULL, push, *map++);
       count &= ~3;
    }
    while (count) {
@@ -511,7 +511,7 @@ nv50_draw_elements_inline_u08(struct nouveau_pushbuf *push, const uint8_t *map,
 
       BEGIN_NI04(push, NV50_3D(VB_ELEMENT_U8), nr);
       for (i = 0; i < nr; ++i) {
-         PUSH_DATA(push,
+         PUSH_DATA(NULL, push,
                    (map[3] << 24) | (map[2] << 16) | (map[1] << 8) | map[0]);
          map += 4;
       }
@@ -528,14 +528,14 @@ nv50_draw_elements_inline_u16(struct nouveau_pushbuf *push, const uint16_t *map,
    if (count & 1) {
       count &= ~1;
       BEGIN_NV04(push, NV50_3D(VB_ELEMENT_U32), 1);
-      PUSH_DATA (push, *map++);
+      PUSH_DATA (NULL, push, *map++);
    }
    while (count) {
       unsigned i, nr = MIN2(count, NV04_PFIFO_MAX_PACKET_LEN * 2) / 2;
 
       BEGIN_NI04(push, NV50_3D(VB_ELEMENT_U16), nr);
       for (i = 0; i < nr; ++i) {
-         PUSH_DATA(push, (map[1] << 16) | map[0]);
+         PUSH_DATA(NULL, push, (map[1] << 16) | map[0]);
          map += 2;
       }
       count -= nr * 2;
@@ -552,7 +552,7 @@ nv50_draw_elements_inline_u32(struct nouveau_pushbuf *push, const uint32_t *map,
       const unsigned nr = MIN2(count, NV04_PFIFO_MAX_PACKET_LEN);
 
       BEGIN_NI04(push, NV50_3D(VB_ELEMENT_U32), nr);
-      PUSH_DATAp(push, map, nr);
+      PUSH_DATAp(NULL, push, map, nr);
 
       map += nr;
       count -= nr;
@@ -569,14 +569,14 @@ nv50_draw_elements_inline_u32_short(struct nouveau_pushbuf *push,
    if (count & 1) {
       count--;
       BEGIN_NV04(push, NV50_3D(VB_ELEMENT_U32), 1);
-      PUSH_DATA (push, *map++);
+      PUSH_DATA (NULL, push, *map++);
    }
    while (count) {
       unsigned i, nr = MIN2(count, NV04_PFIFO_MAX_PACKET_LEN * 2) / 2;
 
       BEGIN_NI04(push, NV50_3D(VB_ELEMENT_U16), nr);
       for (i = 0; i < nr; ++i) {
-         PUSH_DATA(push, (map[1] << 16) | map[0]);
+         PUSH_DATA(NULL, push, (map[1] << 16) | map[0]);
          map += 2;
       }
       count -= nr * 2;
@@ -597,10 +597,10 @@ nv50_draw_elements(struct nv50_context *nv50, bool shorten,
 
    if (index_bias != nv50->state.index_bias) {
       BEGIN_NV04(push, NV50_3D(VB_ELEMENT_BASE), 1);
-      PUSH_DATA (push, index_bias);
+      PUSH_DATA (NULL, push, index_bias);
       if (nv50->screen->base.class_3d >= NV84_3D_CLASS) {
          BEGIN_NV04(push, NV84_3D(VERTEX_ID_BASE), 1);
-         PUSH_DATA (push, index_bias);
+         PUSH_DATA (NULL, push, index_bias);
       }
       nv50->state.index_bias = index_bias;
    }
@@ -626,7 +626,7 @@ nv50_draw_elements(struct nv50_context *nv50, bool shorten,
 
       while (instance_count--) {
          BEGIN_NV04(push, NV50_3D(VERTEX_BEGIN_GL), 1);
-         PUSH_DATA (push, prim);
+         PUSH_DATA (NULL, push, prim);
 
          nouveau_pushbuf_space(push, 16, 0, 1);
          PUSH_REFN(push, buf->bo, NOUVEAU_BO_RD | buf->domain);
@@ -641,11 +641,11 @@ nv50_draw_elements(struct nv50_context *nv50, bool shorten,
             pb_bytes = ((start + count + 1) & ~1) * 2 - pb_start;
 
             BEGIN_NV04(push, NV50_3D(VB_ELEMENT_U16_SETUP), 1);
-            PUSH_DATA (push, (start << 31) | count);
+            PUSH_DATA (NULL, push, (start << 31) | count);
             BEGIN_NL50(push, NV50_3D(VB_ELEMENT_U16), pb_bytes / 4);
             nouveau_pushbuf_data(push, buf->bo, base + pb_start, pb_bytes);
             BEGIN_NV04(push, NV50_3D(VB_ELEMENT_U16_SETUP), 1);
-            PUSH_DATA (push, 0);
+            PUSH_DATA (NULL, push, 0);
             break;
          default:
             assert(index_size == 1);
@@ -653,15 +653,15 @@ nv50_draw_elements(struct nv50_context *nv50, bool shorten,
             pb_bytes = ((start + count + 3) & ~3) - pb_start;
 
             BEGIN_NV04(push, NV50_3D(VB_ELEMENT_U8_SETUP), 1);
-            PUSH_DATA (push, (start << 30) | count);
+            PUSH_DATA (NULL, push, (start << 30) | count);
             BEGIN_NL50(push, NV50_3D(VB_ELEMENT_U8), pb_bytes / 4);
             nouveau_pushbuf_data(push, buf->bo, base + pb_start, pb_bytes);
             BEGIN_NV04(push, NV50_3D(VB_ELEMENT_U8_SETUP), 1);
-            PUSH_DATA (push, 0);
+            PUSH_DATA (NULL, push, 0);
             break;
          }
          BEGIN_NV04(push, NV50_3D(VERTEX_END_GL), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
 
          prim |= NV50_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
       }
@@ -670,7 +670,7 @@ nv50_draw_elements(struct nv50_context *nv50, bool shorten,
 
       while (instance_count--) {
          BEGIN_NV04(push, NV50_3D(VERTEX_BEGIN_GL), 1);
-         PUSH_DATA (push, prim);
+         PUSH_DATA (NULL, push, prim);
          switch (index_size) {
          case 1:
             nv50_draw_elements_inline_u08(push, data, start, count);
@@ -689,7 +689,7 @@ nv50_draw_elements(struct nv50_context *nv50, bool shorten,
             return;
          }
          BEGIN_NV04(push, NV50_3D(VERTEX_END_GL), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
 
          prim |= NV50_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
       }
@@ -717,26 +717,26 @@ nva0_draw_stream_output(struct nv50_context *nv50,
 
    if (res->status & NOUVEAU_BUFFER_STATUS_GPU_WRITING) {
       res->status &= ~NOUVEAU_BUFFER_STATUS_GPU_WRITING;
-      PUSH_SPACE(push, 4);
+      PUSH_SPACE(NULL, push, 4);
       BEGIN_NV04(push, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FLUSH), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    assert(num_instances);
    do {
-      PUSH_SPACE(push, 8);
+      PUSH_SPACE(NULL, push, 8);
       BEGIN_NV04(push, NV50_3D(VERTEX_BEGIN_GL), 1);
-      PUSH_DATA (push, mode);
+      PUSH_DATA (NULL, push, mode);
       BEGIN_NV04(push, NVA0_3D(DRAW_TFB_BASE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       BEGIN_NV04(push, NVA0_3D(DRAW_TFB_STRIDE), 1);
-      PUSH_DATA (push, so->stride);
+      PUSH_DATA (NULL, push, so->stride);
       nv50_hw_query_pushbuf_submit(push, NVA0_3D_DRAW_TFB_BYTES,
                                    nv50_query(so->pq), 0x4);
       BEGIN_NV04(push, NV50_3D(VERTEX_END_GL), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
 
       mode |= NV50_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
    } while (--num_instances);
@@ -798,7 +798,7 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
    /* If there are any coherent constbufs, flush the cache */
    if (nv50->cb_dirty) {
       BEGIN_NV04(push, NV50_3D(CODE_CB_FLUSH), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       nv50->cb_dirty = false;
    }
 
@@ -809,20 +809,20 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
 
    if (tex_dirty) {
       BEGIN_NV04(push, NV50_3D(TEX_CACHE_CTL), 1);
-      PUSH_DATA (push, 0x20);
+      PUSH_DATA (NULL, push, 0x20);
    }
 
    if (nv50->screen->base.class_3d >= NVA0_3D_CLASS &&
        nv50->seamless_cube_map != nv50->state.seamless_cube_map) {
       nv50->state.seamless_cube_map = nv50->seamless_cube_map;
       BEGIN_NV04(push, SUBC_3D(NVA0_3D_TEX_MISC), 1);
-      PUSH_DATA (push, nv50->seamless_cube_map ? NVA0_3D_TEX_MISC_SEAMLESS_CUBE_MAP : 0);
+      PUSH_DATA (NULL, push, nv50->seamless_cube_map ? NVA0_3D_TEX_MISC_SEAMLESS_CUBE_MAP : 0);
    }
 
    if (nv50->vertprog->mul_zero_wins != nv50->state.mul_zero_wins) {
       nv50->state.mul_zero_wins = nv50->vertprog->mul_zero_wins;
       BEGIN_NV04(push, NV50_3D(UNK1690), 1);
-      PUSH_DATA (push, 0x00010000 * !!nv50->state.mul_zero_wins);
+      PUSH_DATA (NULL, push, 0x00010000 * !!nv50->state.mul_zero_wins);
    }
 
    if (nv50->vbo_fifo) {
@@ -834,14 +834,14 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
       nv50->state.instance_base = info->start_instance;
       /* NOTE: this does not affect the shader input, should it ? */
       BEGIN_NV04(push, NV50_3D(VB_INSTANCE_BASE), 1);
-      PUSH_DATA (push, info->start_instance);
+      PUSH_DATA (NULL, push, info->start_instance);
    }
 
    nv50->base.vbo_dirty |= !!nv50->vtxbufs_coherent;
 
    if (nv50->base.vbo_dirty) {
       BEGIN_NV04(push, NV50_3D(VERTEX_ARRAY_FLUSH), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       nv50->base.vbo_dirty = false;
    }
 
@@ -851,20 +851,20 @@ nv50_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info)
       if (info->primitive_restart != nv50->state.prim_restart) {
          if (info->primitive_restart) {
             BEGIN_NV04(push, NV50_3D(PRIM_RESTART_ENABLE), 2);
-            PUSH_DATA (push, 1);
-            PUSH_DATA (push, info->restart_index);
+            PUSH_DATA (NULL, push, 1);
+            PUSH_DATA (NULL, push, info->restart_index);
 
             if (info->restart_index > 65535)
                shorten = false;
          } else {
             BEGIN_NV04(push, NV50_3D(PRIM_RESTART_ENABLE), 1);
-            PUSH_DATA (push, 0);
+            PUSH_DATA (NULL, push, 0);
          }
          nv50->state.prim_restart = info->primitive_restart;
       } else
       if (info->primitive_restart) {
          BEGIN_NV04(push, NV50_3D(PRIM_RESTART_INDEX), 1);
-         PUSH_DATA (push, info->restart_index);
+         PUSH_DATA (NULL, push, info->restart_index);
 
          if (info->restart_index > 65535)
             shorten = false;

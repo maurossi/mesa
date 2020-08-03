@@ -158,20 +158,20 @@ nv30_query_begin(struct pipe_context *pipe, struct pipe_query *pq)
       q->qo[0] = nv30_query_object_new(nv30->screen);
       if (q->qo[0]) {
          BEGIN_NV04(push, NV30_3D(QUERY_GET), 1);
-         PUSH_DATA (push, (q->report << 24) | q->qo[0]->hw->start);
+         PUSH_DATA (NULL, push, (q->report << 24) | q->qo[0]->hw->start);
       }
       break;
    case PIPE_QUERY_TIMESTAMP:
       return true;
    default:
       BEGIN_NV04(push, NV30_3D(QUERY_RESET), 1);
-      PUSH_DATA (push, q->report);
+      PUSH_DATA (NULL, push, q->report);
       break;
    }
 
    if (q->enable) {
       BEGIN_NV04(push, SUBC_3D(q->enable), 1);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, 1);
    }
    return true;
 }
@@ -187,14 +187,14 @@ nv30_query_end(struct pipe_context *pipe, struct pipe_query *pq)
    q->qo[1] = nv30_query_object_new(screen);
    if (q->qo[1]) {
       BEGIN_NV04(push, NV30_3D(QUERY_GET), 1);
-      PUSH_DATA (push, (q->report << 24) | q->qo[1]->hw->start);
+      PUSH_DATA (NULL, push, (q->report << 24) | q->qo[1]->hw->start);
    }
 
    if (q->enable) {
       BEGIN_NV04(push, SUBC_3D(q->enable), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
-   PUSH_KICK (push);
+   PUSH_KICK (&screen->base, push);
    return true;
 }
 
@@ -252,18 +252,18 @@ nv40_query_render_condition(struct pipe_context *pipe,
 
    if (!pq) {
       BEGIN_NV04(push, SUBC_3D(0x1e98), 1);
-      PUSH_DATA (push, 0x01000000);
+      PUSH_DATA (NULL, push, 0x01000000);
       return;
    }
 
    if (mode == PIPE_RENDER_COND_WAIT ||
        mode == PIPE_RENDER_COND_BY_REGION_WAIT) {
       BEGIN_NV04(push, SUBC_3D(0x0110), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    BEGIN_NV04(push, SUBC_3D(0x1e98), 1);
-   PUSH_DATA (push, 0x02000000 | q->qo[1]->hw->start);
+   PUSH_DATA (NULL, push, 0x02000000 | q->qo[1]->hw->start);
 }
 
 static void

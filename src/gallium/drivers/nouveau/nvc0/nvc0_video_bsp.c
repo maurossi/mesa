@@ -136,6 +136,7 @@ nvc0_decoder_bsp_end(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
                      unsigned *vp_caps, unsigned *is_ref,
                      struct nouveau_vp3_video_buffer *refs[16])
 {
+   struct nvc0_screen *screen = NULL;
    struct nouveau_pushbuf *push = dec->pushbuf[0];
    enum pipe_video_format codec = u_reduce_video_profile(dec->base.profile);
    uint32_t bsp_addr, comm_addr, inter_addr;
@@ -173,12 +174,12 @@ nvc0_decoder_bsp_end(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
    comm_addr = bsp_addr + (COMM_OFFSET>>8);
 #endif
 
-   BEGIN_NVC0(push, SUBC_BSP(0x700), 5);
-   PUSH_DATA (push, caps); // 700 cmd
-   PUSH_DATA (push, bsp_addr + 1); // 704 strparm_bsp
-   PUSH_DATA (push, bsp_addr + 7); // 708 str addr
-   PUSH_DATA (push, comm_addr); // 70c comm
-   PUSH_DATA (push, comm_seq); // 710 seq
+   BEGIN_NVC0(&screen->base, push, SUBC_BSP(0x700), 5);
+   PUSH_DATA (&screen->base, push, caps); // 700 cmd
+   PUSH_DATA (&screen->base, push, bsp_addr + 1); // 704 strparm_bsp
+   PUSH_DATA (&screen->base, push, bsp_addr + 7); // 708 str addr
+   PUSH_DATA (&screen->base, push, comm_addr); // 70c comm
+   PUSH_DATA (&screen->base, push, comm_seq); // 710 seq
 
    if (codec != PIPE_VIDEO_FORMAT_MPEG4_AVC) {
       u32 bitplane_addr;
@@ -186,35 +187,35 @@ nvc0_decoder_bsp_end(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
       bitplane_addr = dec->bitplane_bo->offset >> 8;
 
       nouveau_vp3_inter_sizes(dec, 1, &slice_size, &bucket_size, &ring_size);
-      BEGIN_NVC0(push, SUBC_BSP(0x400), 6);
-      PUSH_DATA (push, bsp_addr); // 400 picparm addr
-      PUSH_DATA (push, inter_addr); // 404 interparm addr
-      PUSH_DATA (push, inter_addr + slice_size + bucket_size); // 408 interdata addr
-      PUSH_DATA (push, ring_size << 8); // 40c interdata_size
-      PUSH_DATA (push, bitplane_addr); // 410 BITPLANE_DATA
-      PUSH_DATA (push, 0x400); // 414 BITPLANE_DATA_SIZE
+      BEGIN_NVC0(&screen->base, push, SUBC_BSP(0x400), 6);
+      PUSH_DATA (&screen->base, push, bsp_addr); // 400 picparm addr
+      PUSH_DATA (&screen->base, push, inter_addr); // 404 interparm addr
+      PUSH_DATA (&screen->base, push, inter_addr + slice_size + bucket_size); // 408 interdata addr
+      PUSH_DATA (&screen->base, push, ring_size << 8); // 40c interdata_size
+      PUSH_DATA (&screen->base, push, bitplane_addr); // 410 BITPLANE_DATA
+      PUSH_DATA (&screen->base, push, 0x400); // 414 BITPLANE_DATA_SIZE
    } else {
       nouveau_vp3_inter_sizes(dec, desc.h264->slice_count, &slice_size, &bucket_size, &ring_size);
-      BEGIN_NVC0(push, SUBC_BSP(0x400), 8);
-      PUSH_DATA (push, bsp_addr); // 400 picparm addr
-      PUSH_DATA (push, inter_addr); // 404 interparm addr
-      PUSH_DATA (push, slice_size << 8); // 408 interparm size?
-      PUSH_DATA (push, inter_addr + slice_size + bucket_size); // 40c interdata addr
-      PUSH_DATA (push, ring_size << 8); // 410 interdata size
-      PUSH_DATA (push, inter_addr + slice_size); // 414 bucket?
-      PUSH_DATA (push, bucket_size << 8); // 418 bucket size? unshifted..
-      PUSH_DATA (push, 0); // 41c targets
+      BEGIN_NVC0(&screen->base, push, SUBC_BSP(0x400), 8);
+      PUSH_DATA (&screen->base, push, bsp_addr); // 400 picparm addr
+      PUSH_DATA (&screen->base, push, inter_addr); // 404 interparm addr
+      PUSH_DATA (&screen->base, push, slice_size << 8); // 408 interparm size?
+      PUSH_DATA (&screen->base, push, inter_addr + slice_size + bucket_size); // 40c interdata addr
+      PUSH_DATA (&screen->base, push, ring_size << 8); // 410 interdata size
+      PUSH_DATA (&screen->base, push, inter_addr + slice_size); // 414 bucket?
+      PUSH_DATA (&screen->base, push, bucket_size << 8); // 418 bucket size? unshifted..
+      PUSH_DATA (&screen->base, push, 0); // 41c targets
       // TODO: Double check 414 / 418 with nvidia trace
    }
 
 #if NOUVEAU_VP3_DEBUG_FENCE
-   BEGIN_NVC0(push, SUBC_BSP(0x240), 3);
-   PUSH_DATAh(push, dec->fence_bo->offset);
-   PUSH_DATA (push, dec->fence_bo->offset);
-   PUSH_DATA (push, dec->fence_seq);
+   BEGIN_NVC0(&screen->base, push, SUBC_BSP(0x240), 3);
+   PUSH_DATAh(&screen->base, push, dec->fence_bo->offset);
+   PUSH_DATA (&screen->base, push, dec->fence_bo->offset);
+   PUSH_DATA (&screen->base, push, dec->fence_seq);
 
-   BEGIN_NVC0(push, SUBC_BSP(0x300), 1);
-   PUSH_DATA (push, 1);
+   BEGIN_NVC0(&screen->base, push, SUBC_BSP(0x300), 1);
+   PUSH_DATA (&screen->base, push, 1);
    PUSH_KICK (push);
 
    {
@@ -231,9 +232,9 @@ nvc0_decoder_bsp_end(struct nouveau_vp3_decoder *dec, union pipe_desc desc,
    dump_comm_bsp(dec->comm);
    return dec->comm->status[comm_seq & 0xf];
 #else
-   BEGIN_NVC0(push, SUBC_BSP(0x300), 1);
-   PUSH_DATA (push, 0);
-   PUSH_KICK (push);
+   BEGIN_NVC0(&screen->base, push, SUBC_BSP(0x300), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   PUSH_KICK (NULL, push);
    return 2;
 #endif
 }

@@ -298,6 +298,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
                              &screen->pushbuf);
    if (ret)
       goto err;
+   mtx_init(&screen->push_lock, mtx_timed);
 
    /* getting CPU time first appears to be more accurate */
    screen->cpu_gpu_time_delta = os_time_get();
@@ -360,6 +361,7 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    nouveau_mm_destroy(screen->mm_VRAM);
 
    nouveau_pushbuf_del(&screen->pushbuf);
+   mtx_destroy(&screen->push_lock);
 
    nouveau_client_del(&screen->client);
    nouveau_object_del(&screen->channel);

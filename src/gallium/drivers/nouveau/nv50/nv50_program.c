@@ -517,7 +517,7 @@ nv50_program_upload_code(struct nv50_context *nv50, struct nv50_program *prog)
                        NOUVEAU_BO_VRAM, prog->code_size, prog->code);
 
    BEGIN_NV04(nv50->base.pushbuf, NV50_3D(CODE_CB_FLUSH), 1);
-   PUSH_DATA (nv50->base.pushbuf, 0);
+   PUSH_DATA (NULL, nv50->base.pushbuf, 0);
 
    return true;
 }

@@ -113,35 +113,35 @@ nv50_2d_texture_set(struct nouveau_pushbuf *push, int dst,
 
    if (!nouveau_bo_memtype(bo)) {
       BEGIN_NV04(push, SUBC_2D(mthd), 2);
-      PUSH_DATA (push, format);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, format);
+      PUSH_DATA (NULL, push, 1);
       BEGIN_NV04(push, SUBC_2D(mthd + 0x14), 5);
-      PUSH_DATA (push, mt->level[level].pitch);
-      PUSH_DATA (push, width);
-      PUSH_DATA (push, height);
+      PUSH_DATA (NULL, push, mt->level[level].pitch);
+      PUSH_DATA (NULL, push, width);
+      PUSH_DATA (NULL, push, height);
       PUSH_DATAh(push, mt->base.address + offset);
-      PUSH_DATA (push, mt->base.address + offset);
+      PUSH_DATA (NULL, push, mt->base.address + offset);
    } else {
       BEGIN_NV04(push, SUBC_2D(mthd), 5);
-      PUSH_DATA (push, format);
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, mt->level[level].tile_mode);
-      PUSH_DATA (push, depth);
-      PUSH_DATA (push, layer);
+      PUSH_DATA (NULL, push, format);
+      PUSH_DATA (NULL, push, 0);
+      PUSH_DATA (NULL, push, mt->level[level].tile_mode);
+      PUSH_DATA (NULL, push, depth);
+      PUSH_DATA (NULL, push, layer);
       BEGIN_NV04(push, SUBC_2D(mthd + 0x18), 4);
-      PUSH_DATA (push, width);
-      PUSH_DATA (push, height);
+      PUSH_DATA (NULL, push, width);
+      PUSH_DATA (NULL, push, height);
       PUSH_DATAh(push, mt->base.address + offset);
-      PUSH_DATA (push, mt->base.address + offset);
+      PUSH_DATA (NULL, push, mt->base.address + offset);
    }
 
 #if 0
    if (dst) {
       BEGIN_NV04(push, SUBC_2D(NV50_2D_CLIP_X), 4);
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, width);
-      PUSH_DATA (push, height);
+      PUSH_DATA (NULL, push, 0);
+      PUSH_DATA (NULL, push, 0);
+      PUSH_DATA (NULL, push, width);
+      PUSH_DATA (NULL, push, height);
    }
 #endif
    return 0;
@@ -160,7 +160,7 @@ nv50_2d_texture_do_copy(struct nouveau_pushbuf *push,
    int ret;
    bool eqfmt = dfmt == sfmt;
 
-   if (!PUSH_SPACE(push, 2 * 16 + 32))
+   if (!PUSH_SPACE(NULL, push, 2 * 16 + 32))
       return PIPE_ERROR;
 
    ret = nv50_2d_texture_set(push, 1, dst, dst_level, dz, dfmt, eqfmt);
@@ -172,22 +172,22 @@ nv50_2d_texture_do_copy(struct nouveau_pushbuf *push,
       return ret;
 
    BEGIN_NV04(push, NV50_2D(BLIT_CONTROL), 1);
-   PUSH_DATA (push, NV50_2D_BLIT_CONTROL_FILTER_POINT_SAMPLE);
+   PUSH_DATA (NULL, push, NV50_2D_BLIT_CONTROL_FILTER_POINT_SAMPLE);
    BEGIN_NV04(push, NV50_2D(BLIT_DST_X), 4);
-   PUSH_DATA (push, dx << dst->ms_x);
-   PUSH_DATA (push, dy << dst->ms_y);
-   PUSH_DATA (push, w << dst->ms_x);
-   PUSH_DATA (push, h << dst->ms_y);
+   PUSH_DATA (NULL, push, dx << dst->ms_x);
+   PUSH_DATA (NULL, push, dy << dst->ms_y);
+   PUSH_DATA (NULL, push, w << dst->ms_x);
+   PUSH_DATA (NULL, push, h << dst->ms_y);
    BEGIN_NV04(push, NV50_2D(BLIT_DU_DX_FRACT), 4);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_2D(BLIT_SRC_X_FRACT), 4);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, sx << src->ms_x);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, sy << src->ms_y);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, sx << src->ms_x);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, sy << src->ms_y);
 
    return 0;
 }
@@ -290,10 +290,10 @@ nv50_clear_render_target(struct pipe_context *pipe,
    assert(dst->texture->target != PIPE_BUFFER);
 
    BEGIN_NV04(push, NV50_3D(CLEAR_COLOR(0)), 4);
-   PUSH_DATAf(push, color->f[0]);
-   PUSH_DATAf(push, color->f[1]);
-   PUSH_DATAf(push, color->f[2]);
-   PUSH_DATAf(push, color->f[3]);
+   PUSH_DATAf(NULL, push, color->f[0]);
+   PUSH_DATAf(NULL, push, color->f[1]);
+   PUSH_DATAf(NULL, push, color->f[2]);
+   PUSH_DATAf(NULL, push, color->f[3]);
 
    if (nouveau_pushbuf_space(push, 64 + sf->depth, 1, 0))
       return;
@@ -301,61 +301,61 @@ nv50_clear_render_target(struct pipe_context *pipe,
    PUSH_REFN(push, bo, mt->base.domain | NOUVEAU_BO_WR);
 
    BEGIN_NV04(push, NV50_3D(SCREEN_SCISSOR_HORIZ), 2);
-   PUSH_DATA (push, ( width << 16) | dstx);
-   PUSH_DATA (push, (height << 16) | dsty);
+   PUSH_DATA (NULL, push, ( width << 16) | dstx);
+   PUSH_DATA (NULL, push, (height << 16) | dsty);
    BEGIN_NV04(push, NV50_3D(SCISSOR_HORIZ(0)), 2);
-   PUSH_DATA (push, 8192 << 16);
-   PUSH_DATA (push, 8192 << 16);
+   PUSH_DATA (NULL, push, 8192 << 16);
+   PUSH_DATA (NULL, push, 8192 << 16);
    nv50->scissors_dirty |= 1;
 
    BEGIN_NV04(push, NV50_3D(RT_CONTROL), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_3D(RT_ADDRESS_HIGH(0)), 5);
    PUSH_DATAh(push, mt->base.address + sf->offset);
-   PUSH_DATA (push, mt->base.address + sf->offset);
-   PUSH_DATA (push, nv50_format_table[dst->format].rt);
-   PUSH_DATA (push, mt->level[sf->base.u.tex.level].tile_mode);
-   PUSH_DATA (push, mt->layer_stride >> 2);
+   PUSH_DATA (NULL, push, mt->base.address + sf->offset);
+   PUSH_DATA (NULL, push, nv50_format_table[dst->format].rt);
+   PUSH_DATA (NULL, push, mt->level[sf->base.u.tex.level].tile_mode);
+   PUSH_DATA (NULL, push, mt->layer_stride >> 2);
    BEGIN_NV04(push, NV50_3D(RT_HORIZ(0)), 2);
    if (nouveau_bo_memtype(bo))
-      PUSH_DATA(push, sf->width);
+      PUSH_DATA(NULL, push, sf->width);
    else
-      PUSH_DATA(push, NV50_3D_RT_HORIZ_LINEAR | mt->level[0].pitch);
-   PUSH_DATA (push, sf->height);
+      PUSH_DATA(NULL, push, NV50_3D_RT_HORIZ_LINEAR | mt->level[0].pitch);
+   PUSH_DATA (NULL, push, sf->height);
    BEGIN_NV04(push, NV50_3D(RT_ARRAY_MODE), 1);
    if (mt->layout_3d)
-      PUSH_DATA(push, NV50_3D_RT_ARRAY_MODE_MODE_3D | 512);
+      PUSH_DATA(NULL, push, NV50_3D_RT_ARRAY_MODE_MODE_3D | 512);
    else
-      PUSH_DATA(push, 512);
+      PUSH_DATA(NULL, push, 512);
 
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_MODE), 1);
-   PUSH_DATA (push, mt->ms_mode);
+   PUSH_DATA (NULL, push, mt->ms_mode);
 
    if (!nouveau_bo_memtype(bo)) {
       BEGIN_NV04(push, NV50_3D(ZETA_ENABLE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    /* NOTE: only works with D3D clear flag (5097/0x143c bit 4) */
 
    BEGIN_NV04(push, NV50_3D(VIEWPORT_HORIZ(0)), 2);
-   PUSH_DATA (push, (width << 16) | dstx);
-   PUSH_DATA (push, (height << 16) | dsty);
+   PUSH_DATA (NULL, push, (width << 16) | dstx);
+   PUSH_DATA (NULL, push, (height << 16) | dsty);
 
    if (!render_condition_enabled) {
       BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-      PUSH_DATA (push, NV50_3D_COND_MODE_ALWAYS);
+      PUSH_DATA (NULL, push, NV50_3D_COND_MODE_ALWAYS);
    }
 
    BEGIN_NI04(push, NV50_3D(CLEAR_BUFFERS), sf->depth);
    for (z = 0; z < sf->depth; ++z) {
-      PUSH_DATA (push, 0x3c |
+      PUSH_DATA (NULL, push, 0x3c |
                  (z << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
    }
 
    if (!render_condition_enabled) {
       BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-      PUSH_DATA (push, nv50->cond_condmode);
+      PUSH_DATA (NULL, push, nv50->cond_condmode);
    }
 
    nv50->dirty_3d |= NV50_NEW_3D_FRAMEBUFFER | NV50_NEW_3D_SCISSOR;
@@ -384,13 +384,13 @@ nv50_clear_depth_stencil(struct pipe_context *pipe,
 
    if (clear_flags & PIPE_CLEAR_DEPTH) {
       BEGIN_NV04(push, NV50_3D(CLEAR_DEPTH), 1);
-      PUSH_DATAf(push, depth);
+      PUSH_DATAf(NULL, push, depth);
       mode |= NV50_3D_CLEAR_BUFFERS_Z;
    }
 
    if (clear_flags & PIPE_CLEAR_STENCIL) {
       BEGIN_NV04(push, NV50_3D(CLEAR_STENCIL), 1);
-      PUSH_DATA (push, stencil & 0xff);
+      PUSH_DATA (NULL, push, stencil & 0xff);
       mode |= NV50_3D_CLEAR_BUFFERS_S;
    }
 
@@ -400,50 +400,50 @@ nv50_clear_depth_stencil(struct pipe_context *pipe,
    PUSH_REFN(push, bo, mt->base.domain | NOUVEAU_BO_WR);
 
    BEGIN_NV04(push, NV50_3D(SCREEN_SCISSOR_HORIZ), 2);
-   PUSH_DATA (push, ( width << 16) | dstx);
-   PUSH_DATA (push, (height << 16) | dsty);
+   PUSH_DATA (NULL, push, ( width << 16) | dstx);
+   PUSH_DATA (NULL, push, (height << 16) | dsty);
    BEGIN_NV04(push, NV50_3D(SCISSOR_HORIZ(0)), 2);
-   PUSH_DATA (push, 8192 << 16);
-   PUSH_DATA (push, 8192 << 16);
+   PUSH_DATA (NULL, push, 8192 << 16);
+   PUSH_DATA (NULL, push, 8192 << 16);
    nv50->scissors_dirty |= 1;
 
    BEGIN_NV04(push, NV50_3D(ZETA_ADDRESS_HIGH), 5);
    PUSH_DATAh(push, mt->base.address + sf->offset);
-   PUSH_DATA (push, mt->base.address + sf->offset);
-   PUSH_DATA (push, nv50_format_table[dst->format].rt);
-   PUSH_DATA (push, mt->level[sf->base.u.tex.level].tile_mode);
-   PUSH_DATA (push, mt->layer_stride >> 2);
+   PUSH_DATA (NULL, push, mt->base.address + sf->offset);
+   PUSH_DATA (NULL, push, nv50_format_table[dst->format].rt);
+   PUSH_DATA (NULL, push, mt->level[sf->base.u.tex.level].tile_mode);
+   PUSH_DATA (NULL, push, mt->layer_stride >> 2);
    BEGIN_NV04(push, NV50_3D(ZETA_ENABLE), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_3D(ZETA_HORIZ), 3);
-   PUSH_DATA (push, sf->width);
-   PUSH_DATA (push, sf->height);
-   PUSH_DATA (push, (1 << 16) | 1);
+   PUSH_DATA (NULL, push, sf->width);
+   PUSH_DATA (NULL, push, sf->height);
+   PUSH_DATA (NULL, push, (1 << 16) | 1);
 
    BEGIN_NV04(push, NV50_3D(RT_ARRAY_MODE), 1);
-   PUSH_DATA (push, 512);
+   PUSH_DATA (NULL, push, 512);
 
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_MODE), 1);
-   PUSH_DATA (push, mt->ms_mode);
+   PUSH_DATA (NULL, push, mt->ms_mode);
 
    BEGIN_NV04(push, NV50_3D(VIEWPORT_HORIZ(0)), 2);
-   PUSH_DATA (push, (width << 16) | dstx);
-   PUSH_DATA (push, (height << 16) | dsty);
+   PUSH_DATA (NULL, push, (width << 16) | dstx);
+   PUSH_DATA (NULL, push, (height << 16) | dsty);
 
    if (!render_condition_enabled) {
       BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-      PUSH_DATA (push, NV50_3D_COND_MODE_ALWAYS);
+      PUSH_DATA (NULL, push, NV50_3D_COND_MODE_ALWAYS);
    }
 
    BEGIN_NI04(push, NV50_3D(CLEAR_BUFFERS), sf->depth);
    for (z = 0; z < sf->depth; ++z) {
-      PUSH_DATA (push, mode |
+      PUSH_DATA (NULL, push, mode |
                  (z << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
    }
 
    if (!render_condition_enabled) {
       BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-      PUSH_DATA (push, nv50->cond_condmode);
+      PUSH_DATA (NULL, push, nv50->cond_condmode);
    }
 
    nv50->dirty_3d |= NV50_NEW_3D_FRAMEBUFFER | NV50_NEW_3D_SCISSOR;
@@ -541,14 +541,14 @@ nv50_clear(struct pipe_context *pipe, unsigned buffers, const struct pipe_scisso
    /* We have to clear ALL of the layers, not up to the min number of layers
     * of any attachment. */
    BEGIN_NV04(push, NV50_3D(RT_ARRAY_MODE), 1);
-   PUSH_DATA (push, (nv50->rt_array_mode & NV50_3D_RT_ARRAY_MODE_MODE_3D) | 512);
+   PUSH_DATA (NULL, push, (nv50->rt_array_mode & NV50_3D_RT_ARRAY_MODE_MODE_3D) | 512);
 
    if (buffers & PIPE_CLEAR_COLOR && fb->nr_cbufs) {
       BEGIN_NV04(push, NV50_3D(CLEAR_COLOR(0)), 4);
-      PUSH_DATAf(push, color->f[0]);
-      PUSH_DATAf(push, color->f[1]);
-      PUSH_DATAf(push, color->f[2]);
-      PUSH_DATAf(push, color->f[3]);
+      PUSH_DATAf(NULL, push, color->f[0]);
+      PUSH_DATAf(NULL, push, color->f[1]);
+      PUSH_DATAf(NULL, push, color->f[2]);
+      PUSH_DATAf(NULL, push, color->f[3]);
       if (buffers & PIPE_CLEAR_COLOR0)
          mode =
             NV50_3D_CLEAR_BUFFERS_R | NV50_3D_CLEAR_BUFFERS_G |
@@ -557,13 +557,13 @@ nv50_clear(struct pipe_context *pipe, unsigned buffers, const struct pipe_scisso
 
    if (buffers & PIPE_CLEAR_DEPTH) {
       BEGIN_NV04(push, NV50_3D(CLEAR_DEPTH), 1);
-      PUSH_DATA (push, fui(depth));
+      PUSH_DATA (NULL, push, fui(depth));
       mode |= NV50_3D_CLEAR_BUFFERS_Z;
    }
 
    if (buffers & PIPE_CLEAR_STENCIL) {
       BEGIN_NV04(push, NV50_3D(CLEAR_STENCIL), 1);
-      PUSH_DATA (push, stencil & 0xff);
+      PUSH_DATA (NULL, push, stencil & 0xff);
       mode |= NV50_3D_CLEAR_BUFFERS_S;
    }
 
@@ -576,15 +576,15 @@ nv50_clear(struct pipe_context *pipe, unsigned buffers, const struct pipe_scisso
 
       for (j = 0; j < MIN2(zs_layers, color0_layers); j++) {
          BEGIN_NV04(push, NV50_3D(CLEAR_BUFFERS), 1);
-         PUSH_DATA(push, mode | (j << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
+         PUSH_DATA(NULL, push, mode | (j << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
       }
       for (k = j; k < zs_layers; k++) {
          BEGIN_NV04(push, NV50_3D(CLEAR_BUFFERS), 1);
-         PUSH_DATA(push, (mode & ~0x3c) | (k << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
+         PUSH_DATA(NULL, push, (mode & ~0x3c) | (k << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
       }
       for (k = j; k < color0_layers; k++) {
          BEGIN_NV04(push, NV50_3D(CLEAR_BUFFERS), 1);
-         PUSH_DATA(push, (mode & 0x3c) | (k << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
+         PUSH_DATA(NULL, push, (mode & 0x3c) | (k << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
       }
    }
 
@@ -594,14 +594,14 @@ nv50_clear(struct pipe_context *pipe, unsigned buffers, const struct pipe_scisso
          continue;
       for (j = 0; j < nv50_surface(sf)->depth; j++) {
          BEGIN_NV04(push, NV50_3D(CLEAR_BUFFERS), 1);
-         PUSH_DATA (push, (i << 6) | 0x3c |
+         PUSH_DATA (NULL, push, (i << 6) | 0x3c |
                     (j << NV50_3D_CLEAR_BUFFERS_LAYER__SHIFT));
       }
    }
 
    /* restore the array mode */
    BEGIN_NV04(push, NV50_3D(RT_ARRAY_MODE), 1);
-   PUSH_DATA (push, nv50->rt_array_mode);
+   PUSH_DATA (NULL, push, nv50->rt_array_mode);
 }
 
 static void
@@ -638,28 +638,28 @@ nv50_clear_buffer_push(struct pipe_context *pipe,
    offset &= ~0xff;
 
    BEGIN_NV04(push, NV50_2D(DST_FORMAT), 2);
-   PUSH_DATA (push, G80_SURFACE_FORMAT_R8_UNORM);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, G80_SURFACE_FORMAT_R8_UNORM);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_2D(DST_PITCH), 5);
-   PUSH_DATA (push, 262144);
-   PUSH_DATA (push, 65536);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 262144);
+   PUSH_DATA (NULL, push, 65536);
+   PUSH_DATA (NULL, push, 1);
    PUSH_DATAh(push, buf->address + offset);
-   PUSH_DATA (push, buf->address + offset);
+   PUSH_DATA (NULL, push, buf->address + offset);
    BEGIN_NV04(push, NV50_2D(SIFC_BITMAP_ENABLE), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, G80_SURFACE_FORMAT_R8_UNORM);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, G80_SURFACE_FORMAT_R8_UNORM);
    BEGIN_NV04(push, NV50_2D(SIFC_WIDTH), 10);
-   PUSH_DATA (push, size);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, xcoord);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, size);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, xcoord);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    while (count) {
       unsigned nr_data = MIN2(count, NV04_PFIFO_MAX_PACKET_LEN) / data_words;
@@ -667,7 +667,7 @@ nv50_clear_buffer_push(struct pipe_context *pipe,
 
       BEGIN_NI04(push, NV50_2D(SIFC_DATA), nr);
       for (i = 0; i < nr_data; i++)
-         PUSH_DATAp(push, data, data_words);
+         PUSH_DATAp(NULL, push, data, data_words);
 
       count -= nr;
    }
@@ -746,10 +746,10 @@ nv50_clear_buffer(struct pipe_context *pipe,
    assert(width > 0);
 
    BEGIN_NV04(push, NV50_3D(CLEAR_COLOR(0)), 4);
-   PUSH_DATA (push, color.ui[0]);
-   PUSH_DATA (push, color.ui[1]);
-   PUSH_DATA (push, color.ui[2]);
-   PUSH_DATA (push, color.ui[3]);
+   PUSH_DATA (NULL, push, color.ui[0]);
+   PUSH_DATA (NULL, push, color.ui[1]);
+   PUSH_DATA (NULL, push, color.ui[2]);
+   PUSH_DATA (NULL, push, color.ui[3]);
 
    if (nouveau_pushbuf_space(push, 64, 1, 0))
       return;
@@ -757,43 +757,43 @@ nv50_clear_buffer(struct pipe_context *pipe,
    PUSH_REFN(push, buf->bo, buf->domain | NOUVEAU_BO_WR);
 
    BEGIN_NV04(push, NV50_3D(SCREEN_SCISSOR_HORIZ), 2);
-   PUSH_DATA (push, width << 16);
-   PUSH_DATA (push, height << 16);
+   PUSH_DATA (NULL, push, width << 16);
+   PUSH_DATA (NULL, push, height << 16);
    BEGIN_NV04(push, NV50_3D(SCISSOR_HORIZ(0)), 2);
-   PUSH_DATA (push, 8192 << 16);
-   PUSH_DATA (push, 8192 << 16);
+   PUSH_DATA (NULL, push, 8192 << 16);
+   PUSH_DATA (NULL, push, 8192 << 16);
    nv50->scissors_dirty |= 1;
 
    BEGIN_NV04(push, NV50_3D(RT_CONTROL), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_3D(RT_ADDRESS_HIGH(0)), 5);
    PUSH_DATAh(push, buf->address + offset);
-   PUSH_DATA (push, buf->address + offset);
-   PUSH_DATA (push, nv50_format_table[dst_fmt].rt);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, buf->address + offset);
+   PUSH_DATA (NULL, push, nv50_format_table[dst_fmt].rt);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(RT_HORIZ(0)), 2);
-   PUSH_DATA (push, NV50_3D_RT_HORIZ_LINEAR | align(width * data_size, 0x100));
-   PUSH_DATA (push, height);
+   PUSH_DATA (NULL, push, NV50_3D_RT_HORIZ_LINEAR | align(width * data_size, 0x100));
+   PUSH_DATA (NULL, push, height);
    BEGIN_NV04(push, NV50_3D(ZETA_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_MODE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    /* NOTE: only works with D3D clear flag (5097/0x143c bit 4) */
 
    BEGIN_NV04(push, NV50_3D(VIEWPORT_HORIZ(0)), 2);
-   PUSH_DATA (push, (width << 16));
-   PUSH_DATA (push, (height << 16));
+   PUSH_DATA (NULL, push, (width << 16));
+   PUSH_DATA (NULL, push, (height << 16));
 
    BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-   PUSH_DATA (push, NV50_3D_COND_MODE_ALWAYS);
+   PUSH_DATA (NULL, push, NV50_3D_COND_MODE_ALWAYS);
 
    BEGIN_NI04(push, NV50_3D(CLEAR_BUFFERS), 1);
-   PUSH_DATA (push, 0x3c);
+   PUSH_DATA (NULL, push, 0x3c);
 
    BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-   PUSH_DATA (push, nv50->cond_condmode);
+   PUSH_DATA (NULL, push, nv50->cond_condmode);
 
    nv50_resource_validate(buf, NOUVEAU_BO_WR);
 
@@ -1178,53 +1178,53 @@ nv50_blitctx_prepare_state(struct nv50_blitctx *blit)
 
    if (blit->nv50->cond_query && !blit->render_condition_enable) {
       BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-      PUSH_DATA (push, NV50_3D_COND_MODE_ALWAYS);
+      PUSH_DATA (NULL, push, NV50_3D_COND_MODE_ALWAYS);
    }
 
    /* blend state */
    BEGIN_NV04(push, NV50_3D(COLOR_MASK(0)), 1);
-   PUSH_DATA (push, blit->color_mask);
+   PUSH_DATA (NULL, push, blit->color_mask);
    BEGIN_NV04(push, NV50_3D(BLEND_ENABLE(0)), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(LOGIC_OP_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    /* rasterizer state */
 #ifndef NV50_SCISSORS_CLIPPING
    BEGIN_NV04(push, NV50_3D(SCISSOR_ENABLE(0)), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 #endif
    BEGIN_NV04(push, NV50_3D(VERTEX_TWO_SIDE_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(FRAG_COLOR_CLAMP_EN), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(MSAA_MASK(0)), 4);
-   PUSH_DATA (push, 0xffff);
-   PUSH_DATA (push, 0xffff);
-   PUSH_DATA (push, 0xffff);
-   PUSH_DATA (push, 0xffff);
+   PUSH_DATA (NULL, push, 0xffff);
+   PUSH_DATA (NULL, push, 0xffff);
+   PUSH_DATA (NULL, push, 0xffff);
+   PUSH_DATA (NULL, push, 0xffff);
    BEGIN_NV04(push, NV50_3D(POLYGON_MODE_FRONT), 3);
-   PUSH_DATA (push, NV50_3D_POLYGON_MODE_FRONT_FILL);
-   PUSH_DATA (push, NV50_3D_POLYGON_MODE_BACK_FILL);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, NV50_3D_POLYGON_MODE_FRONT_FILL);
+   PUSH_DATA (NULL, push, NV50_3D_POLYGON_MODE_BACK_FILL);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(CULL_FACE_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(POLYGON_STIPPLE_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(POLYGON_OFFSET_FILL_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    /* zsa state */
    BEGIN_NV04(push, NV50_3D(DEPTH_TEST_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(DEPTH_BOUNDS_EN), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(STENCIL_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(ALPHA_TEST_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 }
 
 static void
@@ -1409,9 +1409,9 @@ nv50_blit_3d(struct nv50_context *nv50, const struct pipe_blit_info *info)
    }
 
    BEGIN_NV04(push, NV50_3D(VIEWPORT_TRANSFORM_EN), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(VIEW_VOLUME_CLIP_CTRL), 1);
-   PUSH_DATA (push, 0x1);
+   PUSH_DATA (NULL, push, 0x1);
 
    /* Draw a large triangle in screen coordinates covering the whole
     * render target, with scissors defining the destination region.
@@ -1430,50 +1430,50 @@ nv50_blit_3d(struct nv50_context *nv50, const struct pipe_blit_info *info)
       maxy = MIN2(maxy, info->scissor.maxy);
    }
    BEGIN_NV04(push, NV50_3D(SCISSOR_HORIZ(0)), 2);
-   PUSH_DATA (push, (maxx << 16) | minx);
-   PUSH_DATA (push, (maxy << 16) | miny);
+   PUSH_DATA (NULL, push, (maxx << 16) | minx);
+   PUSH_DATA (NULL, push, (maxy << 16) | miny);
 
    for (i = 0; i < info->dst.box.depth; ++i, z += dz) {
       if (info->dst.box.z + i) {
          BEGIN_NV04(push, NV50_3D(LAYER), 1);
-         PUSH_DATA (push, info->dst.box.z + i);
+         PUSH_DATA (NULL, push, info->dst.box.z + i);
       }
-      PUSH_SPACE(push, 32);
+      PUSH_SPACE(NULL, push, 32);
       BEGIN_NV04(push, NV50_3D(VERTEX_BEGIN_GL), 1);
-      PUSH_DATA (push, NV50_3D_VERTEX_BEGIN_GL_PRIMITIVE_TRIANGLES);
+      PUSH_DATA (NULL, push, NV50_3D_VERTEX_BEGIN_GL_PRIMITIVE_TRIANGLES);
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_3F_X(1)), 3);
-      PUSH_DATAf(push, x0);
-      PUSH_DATAf(push, y0);
-      PUSH_DATAf(push, z);
+      PUSH_DATAf(NULL, push, x0);
+      PUSH_DATAf(NULL, push, y0);
+      PUSH_DATAf(NULL, push, z);
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_2F_X(0)), 2);
-      PUSH_DATAf(push, 0.0f);
-      PUSH_DATAf(push, 0.0f);
+      PUSH_DATAf(NULL, push, 0.0f);
+      PUSH_DATAf(NULL, push, 0.0f);
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_3F_X(1)), 3);
-      PUSH_DATAf(push, x1);
-      PUSH_DATAf(push, y0);
-      PUSH_DATAf(push, z);
+      PUSH_DATAf(NULL, push, x1);
+      PUSH_DATAf(NULL, push, y0);
+      PUSH_DATAf(NULL, push, z);
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_2F_X(0)), 2);
-      PUSH_DATAf(push, 16384.0f);
-      PUSH_DATAf(push, 0.0f);
+      PUSH_DATAf(NULL, push, 16384.0f);
+      PUSH_DATAf(NULL, push, 0.0f);
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_3F_X(1)), 3);
-      PUSH_DATAf(push, x0);
-      PUSH_DATAf(push, y1);
-      PUSH_DATAf(push, z);
+      PUSH_DATAf(NULL, push, x0);
+      PUSH_DATAf(NULL, push, y1);
+      PUSH_DATAf(NULL, push, z);
       BEGIN_NV04(push, NV50_3D(VTX_ATTR_2F_X(0)), 2);
-      PUSH_DATAf(push, 0.0f);
-      PUSH_DATAf(push, 16384.0f);
+      PUSH_DATAf(NULL, push, 0.0f);
+      PUSH_DATAf(NULL, push, 16384.0f);
       BEGIN_NV04(push, NV50_3D(VERTEX_END_GL), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
    if (info->dst.box.z + info->dst.box.depth - 1) {
       BEGIN_NV04(push, NV50_3D(LAYER), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    /* re-enable normally constant state */
 
    BEGIN_NV04(push, NV50_3D(VIEWPORT_TRANSFORM_EN), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    nv50_blitctx_post_blit(blit);
 }
@@ -1512,30 +1512,30 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
 
    if (info->scissor_enable) {
       BEGIN_NV04(push, NV50_2D(CLIP_X), 5);
-      PUSH_DATA (push, info->scissor.minx << dst->ms_x);
-      PUSH_DATA (push, info->scissor.miny << dst->ms_y);
-      PUSH_DATA (push, (info->scissor.maxx - info->scissor.minx) << dst->ms_x);
-      PUSH_DATA (push, (info->scissor.maxy - info->scissor.miny) << dst->ms_y);
-      PUSH_DATA (push, 1); /* enable */
+      PUSH_DATA (NULL, push, info->scissor.minx << dst->ms_x);
+      PUSH_DATA (NULL, push, info->scissor.miny << dst->ms_y);
+      PUSH_DATA (NULL, push, (info->scissor.maxx - info->scissor.minx) << dst->ms_x);
+      PUSH_DATA (NULL, push, (info->scissor.maxy - info->scissor.miny) << dst->ms_y);
+      PUSH_DATA (NULL, push, 1); /* enable */
    }
 
    if (nv50->cond_query && info->render_condition_enable) {
       BEGIN_NV04(push, NV50_2D(COND_MODE), 1);
-      PUSH_DATA (push, nv50->cond_condmode);
+      PUSH_DATA (NULL, push, nv50->cond_condmode);
    }
 
    if (mask != 0xffffffff) {
       BEGIN_NV04(push, NV50_2D(ROP), 1);
-      PUSH_DATA (push, 0xca); /* DPSDxax */
+      PUSH_DATA (NULL, push, 0xca); /* DPSDxax */
       BEGIN_NV04(push, NV50_2D(PATTERN_COLOR_FORMAT), 1);
-      PUSH_DATA (push, NV50_2D_PATTERN_COLOR_FORMAT_A8R8G8B8);
+      PUSH_DATA (NULL, push, NV50_2D_PATTERN_COLOR_FORMAT_A8R8G8B8);
       BEGIN_NV04(push, NV50_2D(PATTERN_BITMAP_COLOR(0)), 4);
-      PUSH_DATA (push, 0x00000000);
-      PUSH_DATA (push, mask);
-      PUSH_DATA (push, 0xffffffff);
-      PUSH_DATA (push, 0xffffffff);
+      PUSH_DATA (NULL, push, 0x00000000);
+      PUSH_DATA (NULL, push, mask);
+      PUSH_DATA (NULL, push, 0xffffffff);
+      PUSH_DATA (NULL, push, 0xffffffff);
       BEGIN_NV04(push, NV50_2D(OPERATION), 1);
-      PUSH_DATA (push, NV50_2D_OPERATION_ROP);
+      PUSH_DATA (NULL, push, NV50_2D_OPERATION_ROP);
    } else
    if (info->src.format != info->dst.format) {
       if (info->src.format == PIPE_FORMAT_R8_UNORM ||
@@ -1544,8 +1544,8 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
           info->src.format == PIPE_FORMAT_R32_FLOAT) {
          mask = 0xffff0000; /* also makes condition for OPERATION reset true */
          BEGIN_NV04(push, NV50_2D(BETA4), 2);
-         PUSH_DATA (push, mask);
-         PUSH_DATA (push, NV50_2D_OPERATION_SRCCOPY_PREMULT);
+         PUSH_DATA (NULL, push, mask);
+         PUSH_DATA (NULL, push, NV50_2D_OPERATION_SRCCOPY_PREMULT);
       }
    }
 
@@ -1585,17 +1585,17 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
    }
 
    BEGIN_NV04(push, NV50_2D(BLIT_CONTROL), 1);
-   PUSH_DATA (push, mode);
+   PUSH_DATA (NULL, push, mode);
    BEGIN_NV04(push, NV50_2D(BLIT_DST_X), 4);
-   PUSH_DATA (push, dstx);
-   PUSH_DATA (push, dsty);
-   PUSH_DATA (push, dstw);
-   PUSH_DATA (push, dsth);
+   PUSH_DATA (NULL, push, dstx);
+   PUSH_DATA (NULL, push, dsty);
+   PUSH_DATA (NULL, push, dstw);
+   PUSH_DATA (NULL, push, dsth);
    BEGIN_NV04(push, NV50_2D(BLIT_DU_DX_FRACT), 4);
-   PUSH_DATA (push, du_dx);
-   PUSH_DATA (push, du_dx >> 32);
-   PUSH_DATA (push, dv_dy);
-   PUSH_DATA (push, dv_dy >> 32);
+   PUSH_DATA (NULL, push, du_dx);
+   PUSH_DATA (NULL, push, du_dx >> 32);
+   PUSH_DATA (NULL, push, dv_dy);
+   PUSH_DATA (NULL, push, dv_dy >> 32);
 
    BCTX_REFN(nv50->bufctx, 2D, &dst->base, WR);
    BCTX_REFN(nv50->bufctx, 2D, &src->base, RD);
@@ -1608,7 +1608,7 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
          /* no scaling in z-direction possible for eng2d blits */
          if (dst->layout_3d) {
             BEGIN_NV04(push, NV50_2D(DST_LAYER), 1);
-            PUSH_DATA (push, info->dst.box.z + i);
+            PUSH_DATA (NULL, push, info->dst.box.z + i);
          } else {
             const unsigned z = info->dst.box.z + i;
             const uint64_t address = dst->base.address +
@@ -1616,7 +1616,7 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
                z * dst->layer_stride;
             BEGIN_NV04(push, NV50_2D(DST_ADDRESS_HIGH), 2);
             PUSH_DATAh(push, address);
-            PUSH_DATA (push, address);
+            PUSH_DATA (NULL, push, address);
          }
          if (src->layout_3d) {
             /* not possible because of depth tiling */
@@ -1628,16 +1628,16 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
                z * src->layer_stride;
             BEGIN_NV04(push, NV50_2D(SRC_ADDRESS_HIGH), 2);
             PUSH_DATAh(push, address);
-            PUSH_DATA (push, address);
+            PUSH_DATA (NULL, push, address);
          }
          BEGIN_NV04(push, NV50_2D(BLIT_SRC_Y_INT), 1); /* trigger */
-         PUSH_DATA (push, srcy >> 32);
+         PUSH_DATA (NULL, push, srcy >> 32);
       } else {
          BEGIN_NV04(push, NV50_2D(BLIT_SRC_X_FRACT), 4);
-         PUSH_DATA (push, srcx);
-         PUSH_DATA (push, srcx >> 32);
-         PUSH_DATA (push, srcy);
-         PUSH_DATA (push, srcy >> 32);
+         PUSH_DATA (NULL, push, srcx);
+         PUSH_DATA (NULL, push, srcx >> 32);
+         PUSH_DATA (NULL, push, srcy);
+         PUSH_DATA (NULL, push, srcy >> 32);
       }
    }
    nv50_bufctx_fence(nv50->bufctx, false);
@@ -1646,15 +1646,15 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
 
    if (info->scissor_enable) {
       BEGIN_NV04(push, NV50_2D(CLIP_ENABLE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
    if (mask != 0xffffffff) {
       BEGIN_NV04(push, NV50_2D(OPERATION), 1);
-      PUSH_DATA (push, NV50_2D_OPERATION_SRCCOPY);
+      PUSH_DATA (NULL, push, NV50_2D_OPERATION_SRCCOPY);
    }
    if (nv50->cond_query && info->render_condition_enable) {
       BEGIN_NV04(push, NV50_2D(COND_MODE), 1);
-      PUSH_DATA (push, NV50_2D_COND_MODE_ALWAYS);
+      PUSH_DATA (NULL, push, NV50_2D_COND_MODE_ALWAYS);
    }
 }
 
@@ -1736,7 +1736,7 @@ nv50_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 
    if (nv50->screen->num_occlusion_queries_active) {
       BEGIN_NV04(push, NV50_3D(SAMPLECNT_ENABLE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    if (!eng3d)
@@ -1746,7 +1746,7 @@ nv50_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 
    if (nv50->screen->num_occlusion_queries_active) {
       BEGIN_NV04(push, NV50_3D(SAMPLECNT_ENABLE), 1);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, 1);
    }
 }
 
