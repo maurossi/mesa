@@ -88,7 +88,7 @@ nv30_fragtex_validate(struct nv30_context *nv30)
             enable |= NV40_3D_TEX_ENABLE_ENABLE;
 
             BEGIN_NV04(push, NV40_3D(TEX_SIZE1(unit)), 1);
-            PUSH_DATA (push, sv->npot_size1);
+            PUSH_DATA (NULL, push, sv->npot_size1);
          } else {
             /* this is a tad stupid of the hardware, but there's no non-rcomp
              * z16/z24 texture formats to be had, we have to suffer and lose
@@ -130,17 +130,17 @@ nv30_fragtex_validate(struct nv30_context *nv30)
                           mt->base.bo, format, NOUVEAU_BO_VRAM | NOUVEAU_BO_RD,
                           NV30_3D_TEX_FORMAT_DMA0,
                           NV30_3D_TEX_FORMAT_DMA1);
-         PUSH_DATA (push, sv->wrap | (ss->wrap & sv->wrap_mask));
-         PUSH_DATA (push, enable);
-         PUSH_DATA (push, sv->swz);
-         PUSH_DATA (push, filter);
-         PUSH_DATA (push, sv->npot_size0);
-         PUSH_DATA (push, ss->bcol);
+         PUSH_DATA (NULL, push, sv->wrap | (ss->wrap & sv->wrap_mask));
+         PUSH_DATA (NULL, push, enable);
+         PUSH_DATA (NULL, push, sv->swz);
+         PUSH_DATA (NULL, push, filter);
+         PUSH_DATA (NULL, push, sv->npot_size0);
+         PUSH_DATA (NULL, push, ss->bcol);
          BEGIN_NV04(push, NV30_3D(TEX_FILTER_OPTIMIZATION(unit)), 1);
-         PUSH_DATA (push, nv30->config.filter);
+         PUSH_DATA (NULL, push, nv30->config.filter);
       } else {
          BEGIN_NV04(push, NV30_3D(TEX_ENABLE(unit)), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
       }
 
       dirty &= ~(1 << unit);

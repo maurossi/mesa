@@ -901,7 +901,7 @@ nvc0_program_upload(struct nvc0_context *nvc0, struct nvc0_program *prog)
       debug_printf("WARNING: out of code space, evicting all shaders.\n");
 
       /* Make sure to synchronize before deleting the code segment. */
-      IMMED_NVC0(nvc0->base.pushbuf, NVC0_3D(SERIALIZE), 0);
+      IMMED_NVC0(&screen->base, nvc0->base.pushbuf, NVC0_3D(SERIALIZE), 0);
 
       if ((screen->text->size << 1) <= (1 << 23)) {
          ret = nvc0_screen_resize_text_area(screen, screen->text->size << 1);
@@ -935,8 +935,8 @@ nvc0_program_upload(struct nvc0_context *nvc0, struct nvc0_program *prog)
          if (progs[i]->type == PIPE_SHADER_COMPUTE) {
             /* Caches have to be invalidated but the CP_START_ID will be
              * updated in the launch_grid functions. */
-            BEGIN_NVC0(nvc0->base.pushbuf, NVC0_CP(FLUSH), 1);
-            PUSH_DATA (nvc0->base.pushbuf, NVC0_COMPUTE_FLUSH_CODE);
+            BEGIN_NVC0(&screen->base, nvc0->base.pushbuf, NVC0_CP(FLUSH), 1);
+            PUSH_DATA (&screen->base, nvc0->base.pushbuf, NVC0_COMPUTE_FLUSH_CODE);
          } else {
             nvc0_program_sp_start_id(nvc0, i, progs[i]);
          }
@@ -950,8 +950,8 @@ nvc0_program_upload(struct nvc0_context *nvc0, struct nvc0_program *prog)
       nvc0_program_dump(prog);
 #endif
 
-   BEGIN_NVC0(nvc0->base.pushbuf, NVC0_3D(MEM_BARRIER), 1);
-   PUSH_DATA (nvc0->base.pushbuf, 0x1011);
+   BEGIN_NVC0(&screen->base, nvc0->base.pushbuf, NVC0_3D(MEM_BARRIER), 1);
+   PUSH_DATA (&screen->base, nvc0->base.pushbuf, 0x1011);
 
    return true;
 }

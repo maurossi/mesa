@@ -60,6 +60,7 @@ nouveau_fence_emit(struct nouveau_fence *fence)
 {
    struct nouveau_screen *screen = fence->screen;
 
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
    assert(fence->state == NOUVEAU_FENCE_STATE_AVAILABLE);
 
    /* set this now, so that if fence.emit triggers a flush we don't recurse */
@@ -166,8 +167,9 @@ nouveau_fence_kick(struct nouveau_fence *fence)
    /* wtf, someone is waiting on a fence in flush_notify handler? */
    assert(fence->state != NOUVEAU_FENCE_STATE_EMITTING);
 
+   PUSH_ACQ(screen, screen->pushbuf);
    if (fence->state < NOUVEAU_FENCE_STATE_EMITTED) {
-      PUSH_SPACE(screen->pushbuf, 8);
+      PUSH_SPACE(screen, screen->pushbuf, 8);
       /* The space allocation might trigger a flush, which could emit the
        * current fence. So check again.
        */
@@ -176,13 +178,14 @@ nouveau_fence_kick(struct nouveau_fence *fence)
    }
 
    if (fence->state < NOUVEAU_FENCE_STATE_FLUSHED)
-      if (nouveau_pushbuf_kick(screen->pushbuf, screen->pushbuf->channel))
+      if (PUSH_KICK(screen, screen->pushbuf))
          return false;
 
    if (fence == screen->fence.current)
       nouveau_fence_next(screen);
 
    nouveau_fence_update(screen, false);
+   PUSH_REL(screen, screen->pushbuf);
 
    return true;
 }
@@ -199,6 +202,9 @@ nouveau_fence_wait(struct nouveau_fence *fence, struct pipe_debug_callback *debu
 
    if (!nouveau_fence_kick(fence))
       return false;
+
+   /* waiting on not flushed fences makes no sense */
+   assert(fence->state >= NOUVEAU_FENCE_STATE_FLUSHED);
 
    do {
       if (fence->state == NOUVEAU_FENCE_STATE_SIGNALLED) {

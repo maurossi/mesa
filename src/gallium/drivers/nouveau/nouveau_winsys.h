@@ -1,6 +1,12 @@
 #ifndef NOUVEAU_WINSYS_H
 #define NOUVEAU_WINSYS_H
 
+#include <assert.h>
+
+#include "util/timespec.h"
+
+#include "c11/threads.h"
+
 #include <stdint.h>
 #include <inttypes.h>
 
@@ -8,6 +14,7 @@
 
 #include "drm-uapi/drm.h"
 #include <nouveau.h>
+#include "nouveau_screen.h"
 
 #ifndef NV04_PFIFO_MAX_PACKET_LEN
 #define NV04_PFIFO_MAX_PACKET_LEN 2047
@@ -23,8 +30,9 @@ PUSH_AVAIL(struct nouveau_pushbuf *push)
 }
 
 static inline bool
-PUSH_SPACE(struct nouveau_pushbuf *push, uint32_t size)
+PUSH_SPACE(struct nouveau_screen *screen, struct nouveau_pushbuf *push, uint32_t size)
 {
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
    /* Provide a buffer so that fences always have room to be emitted */
    size += 8;
    if (PUSH_AVAIL(push) < size)
@@ -33,37 +41,68 @@ PUSH_SPACE(struct nouveau_pushbuf *push, uint32_t size)
 }
 
 static inline void
-PUSH_DATA(struct nouveau_pushbuf *push, uint32_t data)
+PUSH_DATA(struct nouveau_screen *screen, struct nouveau_pushbuf *push, uint32_t data)
 {
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
    *push->cur++ = data;
 }
 
 static inline void
-PUSH_DATAp(struct nouveau_pushbuf *push, const void *data, uint32_t size)
+PUSH_DATAp(struct nouveau_screen *screen, struct nouveau_pushbuf *push, const void *data, uint32_t size)
 {
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
    memcpy(push->cur, data, size * 4);
    push->cur += size;
 }
 
 static inline void
-PUSH_DATAb(struct nouveau_pushbuf *push, const void *data, uint32_t size)
+PUSH_DATAb(struct nouveau_screen *screen, struct nouveau_pushbuf *push, const void *data, uint32_t size)
 {
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
    memcpy(push->cur, data, size);
    push->cur += DIV_ROUND_UP(size, 4);
 }
 
 static inline void
-PUSH_DATAf(struct nouveau_pushbuf *push, float f)
+PUSH_DATAf(struct nouveau_screen *screen, struct nouveau_pushbuf *push, float f)
 {
    union { float f; uint32_t i; } u;
    u.f = f;
-   PUSH_DATA(push, u.i);
+   PUSH_DATA(screen, push, u.i);
 }
 
 static inline void
-PUSH_KICK(struct nouveau_pushbuf *push)
+PUSH_ACQ(struct nouveau_screen *screen, struct nouveau_pushbuf *push)
 {
-   nouveau_pushbuf_kick(push, push->channel);
+   // TODO: debug only
+   struct timespec current = {};
+//   clock_gettime(CLOCK_MONOTONIC, &current);
+   current.tv_sec = 2;
+   int res = mtx_timedlock(&screen->push_lock, &current);
+   assert(res != thrd_busy);
+}
+
+static inline int
+PUSH_KICK(struct nouveau_screen *screen, struct nouveau_pushbuf *push)
+{
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
+   return nouveau_pushbuf_kick(push, push->channel);
+}
+
+static inline int
+PUSH_DONE(struct nouveau_screen *screen, struct nouveau_pushbuf *push)
+{
+   int res = PUSH_KICK(screen, push);
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
+   mtx_unlock(&screen->push_lock);
+   return res;
+}
+
+static inline void
+PUSH_REL(struct nouveau_screen *screen, struct nouveau_pushbuf *push)
+{
+   assert(mtx_trylock(&screen->push_lock) == thrd_busy);
+   mtx_unlock(&screen->push_lock);
 }
 
 

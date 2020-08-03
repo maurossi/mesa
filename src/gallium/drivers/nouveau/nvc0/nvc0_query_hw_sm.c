@@ -2326,12 +2326,12 @@ nve4_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
    }
 
    assert(cfg->num_counters <= 4);
-   PUSH_SPACE(push, 4 * 8 * + 6);
+   PUSH_SPACE(&screen->base, push, 4 * 8 * + 6);
 
    if (!screen->pm.mp_counters_enabled) {
       screen->pm.mp_counters_enabled = true;
-      BEGIN_NVC0(push, SUBC_SW(0x06ac), 1);
-      PUSH_DATA (push, 0x1fcb);
+      BEGIN_NVC0(&screen->base, push, SUBC_SW(0x06ac), 1);
+      PUSH_DATA (&screen->base, push, 0x1fcb);
    }
 
    /* set sequence field to 0 (used to check if result is available) */
@@ -2346,8 +2346,8 @@ nve4_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
          uint32_t m = (1 << 22) | (1 << (7 + (8 * !d)));
          if (screen->pm.num_hw_sm_active[!d])
             m |= 1 << (7 + (8 * d));
-         BEGIN_NVC0(push, SUBC_SW(0x0600), 1);
-         PUSH_DATA (push, m);
+         BEGIN_NVC0(&screen->base, push, SUBC_SW(0x0600), 1);
+         PUSH_DATA (&screen->base, push, m);
       }
       screen->pm.num_hw_sm_active[d]++;
 
@@ -2362,16 +2362,16 @@ nve4_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 
       /* configure and reset the counter(s) */
      if (d == 0)
-        BEGIN_NVC0(push, NVE4_CP(MP_PM_A_SIGSEL(c & 3)), 1);
+        BEGIN_NVC0(&screen->base, push, NVE4_CP(MP_PM_A_SIGSEL(c & 3)), 1);
      else
-        BEGIN_NVC0(push, NVE4_CP(MP_PM_B_SIGSEL(c & 3)), 1);
-     PUSH_DATA (push, cfg->ctr[i].sig_sel);
-     BEGIN_NVC0(push, NVE4_CP(MP_PM_SRCSEL(c)), 1);
-     PUSH_DATA (push, cfg->ctr[i].src_sel + 0x2108421 * (c & 3));
-     BEGIN_NVC0(push, NVE4_CP(MP_PM_FUNC(c)), 1);
-     PUSH_DATA (push, (cfg->ctr[i].func << 4) | cfg->ctr[i].mode);
-     BEGIN_NVC0(push, NVE4_CP(MP_PM_SET(c)), 1);
-     PUSH_DATA (push, 0);
+        BEGIN_NVC0(&screen->base, push, NVE4_CP(MP_PM_B_SIGSEL(c & 3)), 1);
+     PUSH_DATA (&screen->base, push, cfg->ctr[i].sig_sel);
+     BEGIN_NVC0(&screen->base, push, NVE4_CP(MP_PM_SRCSEL(c)), 1);
+     PUSH_DATA (&screen->base, push, cfg->ctr[i].src_sel + 0x2108421 * (c & 3));
+     BEGIN_NVC0(&screen->base, push, NVE4_CP(MP_PM_FUNC(c)), 1);
+     PUSH_DATA (&screen->base, push, (cfg->ctr[i].func << 4) | cfg->ctr[i].mode);
+     BEGIN_NVC0(&screen->base, push, NVE4_CP(MP_PM_SET(c)), 1);
+     PUSH_DATA (&screen->base, push, 0);
    }
 
    if (screen->base.class_3d >= GM107_3D_CLASS) {
@@ -2381,8 +2381,8 @@ nve4_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
        * enable all counters because we don't want to track which ones is
        * enabled or not, and this allows to monitor multiple queries at the
        * same time. */
-      BEGIN_NVC0(push, SUBC_CP(0x33e0), 1);
-      PUSH_DATA (push, 0xff);
+      BEGIN_NVC0(&screen->base, push, SUBC_CP(0x33e0), 1);
+      PUSH_DATA (&screen->base, push, 0xff);
    }
 
    return true;
@@ -2409,7 +2409,7 @@ nvc0_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
    }
 
    assert(cfg->num_counters <= 8);
-   PUSH_SPACE(push, 8 * 8 + 2);
+   PUSH_SPACE(&screen->base, push, 8 * 8 + 2);
 
    /* set sequence field to 0 (used to check if result is available) */
    for (i = 0; i < screen->mp_count; ++i) {
@@ -2422,8 +2422,8 @@ nvc0_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
       uint32_t mask_sel = 0x00000000;
 
       if (!screen->pm.num_hw_sm_active[0]) {
-         BEGIN_NVC0(push, SUBC_SW(0x0600), 1);
-         PUSH_DATA (push, 0x80000000);
+         BEGIN_NVC0(&screen->base, push, SUBC_SW(0x0600), 1);
+         PUSH_DATA (&screen->base, push, 0x80000000);
       }
       screen->pm.num_hw_sm_active[0]++;
 
@@ -2445,14 +2445,14 @@ nvc0_hw_sm_begin_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
       mask_sel &= cfg->ctr[i].src_mask;
 
       /* configure and reset the counter(s) */
-      BEGIN_NVC0(push, NVC0_CP(MP_PM_SIGSEL(c)), 1);
-      PUSH_DATA (push, cfg->ctr[i].sig_sel);
-      BEGIN_NVC0(push, NVC0_CP(MP_PM_SRCSEL(c)), 1);
-      PUSH_DATA (push, cfg->ctr[i].src_sel | mask_sel);
-      BEGIN_NVC0(push, NVC0_CP(MP_PM_OP(c)), 1);
-      PUSH_DATA (push, (cfg->ctr[i].func << 4) | cfg->ctr[i].mode);
-      BEGIN_NVC0(push, NVC0_CP(MP_PM_SET(c)), 1);
-      PUSH_DATA (push, 0);
+      BEGIN_NVC0(&screen->base, push, NVC0_CP(MP_PM_SIGSEL(c)), 1);
+      PUSH_DATA (&screen->base, push, cfg->ctr[i].sig_sel);
+      BEGIN_NVC0(&screen->base, push, NVC0_CP(MP_PM_SRCSEL(c)), 1);
+      PUSH_DATA (&screen->base, push, cfg->ctr[i].src_sel | mask_sel);
+      BEGIN_NVC0(&screen->base, push, NVC0_CP(MP_PM_OP(c)), 1);
+      PUSH_DATA (&screen->base, push, (cfg->ctr[i].func << 4) | cfg->ctr[i].mode);
+      BEGIN_NVC0(&screen->base, push, NVC0_CP(MP_PM_SET(c)), 1);
+      PUSH_DATA (&screen->base, push, 0);
    }
    return true;
 }
@@ -2503,28 +2503,28 @@ nvc0_hw_sm_upload_input(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
 
    address = screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s);
 
-   PUSH_SPACE(push, 11);
+   PUSH_SPACE(&screen->base, push, 11);
 
    if (screen->base.class_3d >= NVE4_3D_CLASS) {
-      BEGIN_NVC0(push, NVE4_CP(UPLOAD_DST_ADDRESS_HIGH), 2);
-      PUSH_DATAh(push, address + NVC0_CB_AUX_MP_INFO);
-      PUSH_DATA (push, address + NVC0_CB_AUX_MP_INFO);
-      BEGIN_NVC0(push, NVE4_CP(UPLOAD_LINE_LENGTH_IN), 2);
-      PUSH_DATA (push, 3 * 4);
-      PUSH_DATA (push, 0x1);
-      BEGIN_1IC0(push, NVE4_CP(UPLOAD_EXEC), 1 + 3);
-      PUSH_DATA (push, NVE4_COMPUTE_UPLOAD_EXEC_LINEAR | (0x20 << 1));
+      BEGIN_NVC0(&screen->base, push, NVE4_CP(UPLOAD_DST_ADDRESS_HIGH), 2);
+      PUSH_DATAh(&screen->base, push, address + NVC0_CB_AUX_MP_INFO);
+      PUSH_DATA (&screen->base, push, address + NVC0_CB_AUX_MP_INFO);
+      BEGIN_NVC0(&screen->base, push, NVE4_CP(UPLOAD_LINE_LENGTH_IN), 2);
+      PUSH_DATA (&screen->base, push, 3 * 4);
+      PUSH_DATA (&screen->base, push, 0x1);
+      BEGIN_1IC0(&screen->base, push, NVE4_CP(UPLOAD_EXEC), 1 + 3);
+      PUSH_DATA (&screen->base, push, NVE4_COMPUTE_UPLOAD_EXEC_LINEAR | (0x20 << 1));
    } else {
-      BEGIN_NVC0(push, NVC0_CP(CB_SIZE), 3);
-      PUSH_DATA (push, NVC0_CB_AUX_SIZE);
-      PUSH_DATAh(push, address);
-      PUSH_DATA (push, address);
-      BEGIN_1IC0(push, NVC0_CP(CB_POS), 1 + 3);
-      PUSH_DATA (push, NVC0_CB_AUX_MP_INFO);
+      BEGIN_NVC0(&screen->base, push, NVC0_CP(CB_SIZE), 3);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SIZE);
+      PUSH_DATAh(&screen->base, push, address);
+      PUSH_DATA (&screen->base, push, address);
+      BEGIN_1IC0(&screen->base, push, NVC0_CP(CB_POS), 1 + 3);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_MP_INFO);
    }
-   PUSH_DATA (push, (hq->bo->offset + hq->base_offset));
-   PUSH_DATAh(push, (hq->bo->offset + hq->base_offset));
-   PUSH_DATA (push, hq->sequence);
+   PUSH_DATA (&screen->base, push, (hq->bo->offset + hq->base_offset));
+   PUSH_DATAh(&screen->base, push, (hq->bo->offset + hq->base_offset));
+   PUSH_DATA (&screen->base, push, hq->sequence);
 }
 
 static void
@@ -2547,13 +2547,13 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
       screen->pm.prog = nvc0_hw_sm_get_program(screen);
 
    /* disable all counting */
-   PUSH_SPACE(push, 8);
+   PUSH_SPACE(&screen->base, push, 8);
    for (c = 0; c < 8; ++c)
       if (screen->pm.mp_counter[c]) {
          if (is_nve4) {
-            IMMED_NVC0(push, NVE4_CP(MP_PM_FUNC(c)), 0);
+            IMMED_NVC0(&screen->base, push, NVE4_CP(MP_PM_FUNC(c)), 0);
          } else {
-            IMMED_NVC0(push, NVC0_CP(MP_PM_OP(c)), 0);
+            IMMED_NVC0(&screen->base, push, NVC0_CP(MP_PM_OP(c)), 0);
          }
       }
    /* release counters for this query */
@@ -2566,13 +2566,13 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
    }
 
    if (screen->base.class_3d >= GM107_3D_CLASS)
-      IMMED_NVC0(push, SUBC_CP(0x33e0), 0);
+      IMMED_NVC0(&screen->base, push, SUBC_CP(0x33e0), 0);
 
    BCTX_REFN_bo(nvc0->bufctx_cp, CP_QUERY, NOUVEAU_BO_GART | NOUVEAU_BO_WR,
                 hq->bo);
 
-   PUSH_SPACE(push, 1);
-   IMMED_NVC0(push, SUBC_CP(NV50_GRAPH_SERIALIZE), 0);
+   PUSH_SPACE(&screen->base, push, 1);
+   IMMED_NVC0(&screen->base, push, SUBC_CP(NV50_GRAPH_SERIALIZE), 0);
 
    /* upload input data for the compute shader which reads MP counters */
    nvc0_hw_sm_upload_input(nvc0, hq);
@@ -2590,7 +2590,7 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_QUERY);
 
    /* re-activate other counters */
-   PUSH_SPACE(push, 16);
+   PUSH_SPACE(&screen->base, push, 16);
    mask = 0;
    for (c = 0; c < 8; ++c) {
       const struct nvc0_hw_sm_query_cfg *cfg;
@@ -2606,11 +2606,11 @@ nvc0_hw_sm_end_query(struct nvc0_context *nvc0, struct nvc0_hw_query *hq)
             break;
          mask |= 1 << hsq->ctr[i];
          if (is_nve4) {
-            BEGIN_NVC0(push, NVE4_CP(MP_PM_FUNC(hsq->ctr[i])), 1);
+            BEGIN_NVC0(&screen->base, push, NVE4_CP(MP_PM_FUNC(hsq->ctr[i])), 1);
          } else {
-            BEGIN_NVC0(push, NVC0_CP(MP_PM_OP(hsq->ctr[i])), 1);
+            BEGIN_NVC0(&screen->base, push, NVC0_CP(MP_PM_OP(hsq->ctr[i])), 1);
          }
-         PUSH_DATA (push, (cfg->ctr[i].func << 4) | cfg->ctr[i].mode);
+         PUSH_DATA (&screen->base, push, (cfg->ctr[i].func << 4) | cfg->ctr[i].mode);
       }
    }
 }

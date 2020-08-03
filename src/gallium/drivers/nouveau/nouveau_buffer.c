@@ -511,11 +511,15 @@ nouveau_buffer_transfer_flush_region(struct pipe_context *pipe,
                                      struct pipe_transfer *transfer,
                                      const struct pipe_box *box)
 {
+   struct nouveau_context *nv = nouveau_context(pipe);
    struct nouveau_transfer *tx = nouveau_transfer(transfer);
    struct nv04_resource *buf = nv04_resource(transfer->resource);
 
-   if (tx->map)
+   if (tx->map) {
+      PUSH_ACQ(nv->screen, nv->screen->pushbuf);
       nouveau_transfer_write(nouveau_context(pipe), tx, box->x, box->width);
+      PUSH_DONE(nv->screen, nv->screen->pushbuf);
+   }
 
    util_range_add(&buf->base, &buf->valid_buffer_range,
                   tx->base.box.x + box->x,
@@ -538,8 +542,11 @@ nouveau_buffer_transfer_unmap(struct pipe_context *pipe,
 
    if (tx->base.usage & PIPE_MAP_WRITE) {
       if (!(tx->base.usage & PIPE_MAP_FLUSH_EXPLICIT)) {
-         if (tx->map)
+         if (tx->map) {
+            PUSH_ACQ(nv->screen, nv->screen->pushbuf);
             nouveau_transfer_write(nv, tx, 0, tx->base.box.width);
+            PUSH_DONE(nv->screen, nv->screen->pushbuf);
+         }
 
          util_range_add(&buf->base, &buf->valid_buffer_range,
                         tx->base.box.x, tx->base.box.x + tx->base.box.width);

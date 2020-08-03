@@ -52,7 +52,7 @@ PUSH_MTHDl(struct nouveau_pushbuf *push, int subc, int mthd, int bin,
 {
    nouveau_bufctx_mthd(bufctx(push), bin, (1 << 18) | (subc << 13) | mthd,
                        bo, offset, access | NOUVEAU_BO_LOW, 0, 0)->priv = NULL;
-   PUSH_DATA(push, bo->offset + offset);
+   PUSH_DATA(NULL, push, bo->offset + offset);
 }
 
 static inline void
@@ -62,9 +62,9 @@ PUSH_MTHDo(struct nouveau_pushbuf *push, int subc, int mthd, int bin,
    nouveau_bufctx_mthd(bufctx(push), bin, (1 << 18) | (subc << 13) | mthd,
                        bo, 0, access | NOUVEAU_BO_OR, vor, tor)->priv = NULL;
    if (bo->flags & NOUVEAU_BO_VRAM)
-      PUSH_DATA(push, vor);
+      PUSH_DATA(NULL, push, vor);
    else
-      PUSH_DATA(push, tor);
+      PUSH_DATA(NULL, push, tor);
 }
 
 static inline void
@@ -75,9 +75,9 @@ PUSH_MTHDs(struct nouveau_pushbuf *push, int subc, int mthd, int bin,
    nouveau_bufctx_mthd(bufctx(push), bin, (1 << 18) | (subc << 13) | mthd,
                        bo, data, access | NOUVEAU_BO_OR, vor, tor)->priv = NULL;
    if (bo->flags & NOUVEAU_BO_VRAM)
-      PUSH_DATA(push, data | vor);
+      PUSH_DATA(NULL, push, data | vor);
    else
-      PUSH_DATA(push, data | tor);
+      PUSH_DATA(NULL, push, data | tor);
 }
 
 static inline struct nouveau_bufref *
@@ -94,7 +94,7 @@ PUSH_MTHD(struct nouveau_pushbuf *push, int subc, int mthd, int bin,
       data |= vor;
    else
       data |= tor;
-   PUSH_DATA(push, data);
+   PUSH_DATA(NULL, push, data);
    bref->priv = NULL;
    return bref;
 }
@@ -111,15 +111,15 @@ PUSH_RESRC(struct nouveau_pushbuf *push, int subc, int mthd, int bin,
 static inline void
 BEGIN_NV04(struct nouveau_pushbuf *push, int subc, int mthd, int size)
 {
-   PUSH_SPACE(push, size + 1);
-   PUSH_DATA (push, 0x00000000 | (size << 18) | (subc << 13) | mthd);
+   PUSH_SPACE(NULL, push, size + 1);
+   PUSH_DATA (NULL, push, 0x00000000 | (size << 18) | (subc << 13) | mthd);
 }
 
 static inline void
 BEGIN_NI04(struct nouveau_pushbuf *push, int subc, int mthd, int size)
 {
-   PUSH_SPACE(push, size + 1);
-   PUSH_DATA (push, 0x40000000 | (size << 18) | (subc << 13) | mthd);
+   PUSH_SPACE(NULL, push, size + 1);
+   PUSH_DATA (NULL, push, 0x40000000 | (size << 18) | (subc << 13) | mthd);
 }
 
 /* subchannel assignment

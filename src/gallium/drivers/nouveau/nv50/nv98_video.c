@@ -159,25 +159,25 @@ nv98_create_decoder(struct pipe_context *context,
       goto fail;
 
    BEGIN_NV04(push[0], SUBC_BSP(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push[0], dec->bsp->handle);
+   PUSH_DATA (NULL, push[0], dec->bsp->handle);
 
    BEGIN_NV04(push[0], SUBC_BSP(0x180), 5);
    for (i = 0; i < 5; i++)
-      PUSH_DATA (push[0], nv04_data.vram);
+      PUSH_DATA (NULL, push[0], nv04_data.vram);
 
    BEGIN_NV04(push[1], SUBC_VP(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push[1], dec->vp->handle);
+   PUSH_DATA (NULL, push[1], dec->vp->handle);
 
    BEGIN_NV04(push[1], SUBC_VP(0x180), 6);
    for (i = 0; i < 6; i++)
-      PUSH_DATA (push[1], nv04_data.vram);
+      PUSH_DATA (NULL, push[1], nv04_data.vram);
 
    BEGIN_NV04(push[2], SUBC_PPP(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push[2], dec->ppp->handle);
+   PUSH_DATA (NULL, push[2], dec->ppp->handle);
 
    BEGIN_NV04(push[2], SUBC_PPP(0x180), 5);
    for (i = 0; i < 5; i++)
-      PUSH_DATA (push[2], nv04_data.vram);
+      PUSH_DATA (NULL, push[2], nv04_data.vram);
 
    dec->base.context = context;
    dec->base.decode_bitstream = nv98_decoder_decode_bitstream;
@@ -249,16 +249,16 @@ nv98_create_decoder(struct pipe_context *context,
    timeout = 0;
 
    BEGIN_NV04(push[0], SUBC_BSP(0x200), 2);
-   PUSH_DATA (push[0], codec);
-   PUSH_DATA (push[0], timeout);
+   PUSH_DATA (NULL, push[0], codec);
+   PUSH_DATA (NULL, push[0], timeout);
 
    BEGIN_NV04(push[1], SUBC_VP(0x200), 2);
-   PUSH_DATA (push[1], codec);
-   PUSH_DATA (push[1], timeout);
+   PUSH_DATA (NULL, push[1], codec);
+   PUSH_DATA (NULL, push[1], timeout);
 
    BEGIN_NV04(push[2], SUBC_PPP(0x200), 2);
-   PUSH_DATA (push[2], ppp_codec);
-   PUSH_DATA (push[2], timeout);
+   PUSH_DATA (NULL, push[2], ppp_codec);
+   PUSH_DATA (NULL, push[2], timeout);
 
    ++dec->fence_seq;
 
@@ -278,33 +278,33 @@ nv98_create_decoder(struct pipe_context *context,
    PUSH_REFN (push[0], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NV04(push[0], SUBC_BSP(0x240), 3);
    PUSH_DATAh(push[0], dec->fence_bo->offset);
-   PUSH_DATA (push[0], dec->fence_bo->offset);
-   PUSH_DATA (push[0], dec->fence_seq);
+   PUSH_DATA (NULL, push[0], dec->fence_bo->offset);
+   PUSH_DATA (NULL, push[0], dec->fence_seq);
 
    BEGIN_NV04(push[0], SUBC_BSP(0x304), 1);
-   PUSH_DATA (push[0], 0);
+   PUSH_DATA (NULL, push[0], 0);
    PUSH_KICK (push[0]);
 
    nouveau_pushbuf_space(push[1], 16, 1, 0);
    PUSH_REFN (push[1], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NV04(push[1], SUBC_VP(0x240), 3);
    PUSH_DATAh(push[1], (dec->fence_bo->offset + 0x10));
-   PUSH_DATA (push[1], (dec->fence_bo->offset + 0x10));
-   PUSH_DATA (push[1], dec->fence_seq);
+   PUSH_DATA (NULL, push[1], (dec->fence_bo->offset + 0x10));
+   PUSH_DATA (NULL, push[1], dec->fence_seq);
 
    BEGIN_NV04(push[1], SUBC_VP(0x304), 1);
-   PUSH_DATA (push[1], 0);
+   PUSH_DATA (NULL, push[1], 0);
    PUSH_KICK (push[1]);
 
    nouveau_pushbuf_space(push[2], 16, 1, 0);
    PUSH_REFN (push[2], dec->fence_bo, NOUVEAU_BO_GART|NOUVEAU_BO_RDWR);
    BEGIN_NV04(push[2], SUBC_PPP(0x240), 3);
    PUSH_DATAh(push[2], (dec->fence_bo->offset + 0x20));
-   PUSH_DATA (push[2], (dec->fence_bo->offset + 0x20));
-   PUSH_DATA (push[2], dec->fence_seq);
+   PUSH_DATA (NULL, push[2], (dec->fence_bo->offset + 0x20));
+   PUSH_DATA (NULL, push[2], dec->fence_seq);
 
    BEGIN_NV04(push[2], SUBC_PPP(0x304), 1);
-   PUSH_DATA (push[2], 0);
+   PUSH_DATA (NULL, push[2], 0);
    PUSH_KICK (push[2]);
 
    usleep(100);

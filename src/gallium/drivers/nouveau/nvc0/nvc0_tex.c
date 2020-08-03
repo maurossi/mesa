@@ -481,6 +481,7 @@ bool
 nvc0_validate_tic(struct nvc0_context *nvc0, int s)
 {
    uint32_t commands[32];
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    unsigned i;
    unsigned n = 0;
@@ -509,10 +510,10 @@ nvc0_validate_tic(struct nvc0_context *nvc0, int s)
       } else
       if (res->status & NOUVEAU_BUFFER_STATUS_GPU_WRITING) {
          if (unlikely(s == 5))
-            BEGIN_NVC0(push, NVC0_CP(TEX_CACHE_CTL), 1);
+            BEGIN_NVC0(&screen->base, push, NVC0_CP(TEX_CACHE_CTL), 1);
          else
-            BEGIN_NVC0(push, NVC0_3D(TEX_CACHE_CTL), 1);
-         PUSH_DATA (push, (tic->id << 4) | 1);
+            BEGIN_NVC0(&screen->base, push, NVC0_3D(TEX_CACHE_CTL), 1);
+         PUSH_DATA (&screen->base, push, (tic->id << 4) | 1);
          NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_cache_flush_count, 1);
       }
       nvc0->screen->tic.lock[tic->id / 32] |= 1 << (tic->id % 32);
@@ -536,10 +537,10 @@ nvc0_validate_tic(struct nvc0_context *nvc0, int s)
 
    if (n) {
       if (unlikely(s == 5))
-         BEGIN_NIC0(push, NVC0_CP(BIND_TIC), n);
+         BEGIN_NIC0(&screen->base, push, NVC0_CP(BIND_TIC), n);
       else
-         BEGIN_NIC0(push, NVC0_3D(BIND_TIC(s)), n);
-      PUSH_DATAp(push, commands, n);
+         BEGIN_NIC0(&screen->base, push, NVC0_3D(BIND_TIC(s)), n);
+      PUSH_DATAp(&screen->base, push, commands, n);
    }
    nvc0->textures_dirty[s] = 0;
 
@@ -549,6 +550,7 @@ nvc0_validate_tic(struct nvc0_context *nvc0, int s)
 static bool
 nve4_validate_tic(struct nvc0_context *nvc0, unsigned s)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    unsigned i;
    bool need_flush = false;
@@ -574,8 +576,8 @@ nve4_validate_tic(struct nvc0_context *nvc0, unsigned s)
          need_flush = true;
       } else
       if (res->status & NOUVEAU_BUFFER_STATUS_GPU_WRITING) {
-         BEGIN_NVC0(push, NVC0_3D(TEX_CACHE_CTL), 1);
-         PUSH_DATA (push, (tic->id << 4) | 1);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(TEX_CACHE_CTL), 1);
+         PUSH_DATA (&screen->base, push, (tic->id << 4) | 1);
       }
       nvc0->screen->tic.lock[tic->id / 32] |= 1 << (tic->id % 32);
 
@@ -599,6 +601,7 @@ nve4_validate_tic(struct nvc0_context *nvc0, unsigned s)
 
 void nvc0_validate_textures(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    bool need_flush = false;
    int i;
 
@@ -610,8 +613,8 @@ void nvc0_validate_textures(struct nvc0_context *nvc0)
    }
 
    if (need_flush) {
-      BEGIN_NVC0(nvc0->base.pushbuf, NVC0_3D(TIC_FLUSH), 1);
-      PUSH_DATA (nvc0->base.pushbuf, 0);
+      BEGIN_NVC0(&screen->base, nvc0->base.pushbuf, NVC0_3D(TIC_FLUSH), 1);
+      PUSH_DATA (&screen->base, nvc0->base.pushbuf, 0);
    }
 
    /* Invalidate all CP textures because they are aliased. */
@@ -625,6 +628,7 @@ bool
 nvc0_validate_tsc(struct nvc0_context *nvc0, int s)
 {
    uint32_t commands[16];
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    unsigned i;
    unsigned n = 0;
@@ -672,10 +676,10 @@ nvc0_validate_tsc(struct nvc0_context *nvc0, int s)
 
    if (n) {
       if (unlikely(s == 5))
-         BEGIN_NIC0(push, NVC0_CP(BIND_TSC), n);
+         BEGIN_NIC0(&screen->base, push, NVC0_CP(BIND_TSC), n);
       else
-         BEGIN_NIC0(push, NVC0_3D(BIND_TSC(s)), n);
-      PUSH_DATAp(push, commands, n);
+         BEGIN_NIC0(&screen->base, push, NVC0_3D(BIND_TSC(s)), n);
+      PUSH_DATAp(&screen->base, push, commands, n);
    }
    nvc0->samplers_dirty[s] = 0;
 
@@ -721,6 +725,7 @@ nve4_validate_tsc(struct nvc0_context *nvc0, int s)
 
 void nvc0_validate_samplers(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    bool need_flush = false;
    int i;
 
@@ -732,8 +737,8 @@ void nvc0_validate_samplers(struct nvc0_context *nvc0)
    }
 
    if (need_flush) {
-      BEGIN_NVC0(nvc0->base.pushbuf, NVC0_3D(TSC_FLUSH), 1);
-      PUSH_DATA (nvc0->base.pushbuf, 0);
+      BEGIN_NVC0(&screen->base, nvc0->base.pushbuf, NVC0_3D(TSC_FLUSH), 1);
+      PUSH_DATA (&screen->base, nvc0->base.pushbuf, 0);
    }
 
    /* Invalidate all CP samplers because they are aliased. */
@@ -744,13 +749,15 @@ void nvc0_validate_samplers(struct nvc0_context *nvc0)
 void
 nvc0_upload_tsc0(struct nvc0_context *nvc0)
 {
+   struct nvc0_screen *screen = nvc0->screen;
+
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    u32 data[8] = { G80_TSC_0_SRGB_CONVERSION };
    nvc0->base.push_data(&nvc0->base, nvc0->screen->txc,
                         65536 /*+ tsc->id * 32*/,
                         NV_VRAM_DOMAIN(&nvc0->screen->base), 32, data);
-   BEGIN_NVC0(push, NVC0_3D(TSC_FLUSH), 1);
-   PUSH_DATA (push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(TSC_FLUSH), 1);
+   PUSH_DATA (&screen->base, push, 0);
 }
 
 /* Upload the "diagonal" entries for the possible texture sources ($t == $s).
@@ -771,17 +778,17 @@ nve4_set_tex_handles(struct nvc0_context *nvc0)
       uint32_t dirty = nvc0->textures_dirty[s] | nvc0->samplers_dirty[s];
       if (!dirty)
          continue;
-      BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-      PUSH_DATA (push, NVC0_CB_AUX_SIZE);
-      PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
-      PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SIZE);
+      PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+      PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
       do {
          int i = ffs(dirty) - 1;
          dirty &= ~(1 << i);
 
-         BEGIN_NVC0(push, NVC0_3D(CB_POS), 2);
-         PUSH_DATA (push, NVC0_CB_AUX_TEX_INFO(i));
-         PUSH_DATA (push, nvc0->tex_handles[s][i]);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_POS), 2);
+         PUSH_DATA (&screen->base, push, NVC0_CB_AUX_TEX_INFO(i));
+         PUSH_DATA (&screen->base, push, nvc0->tex_handles[s][i]);
       } while (dirty);
 
       nvc0->textures_dirty[s] = 0;
@@ -799,6 +806,7 @@ nve4_create_texture_handle(struct pipe_context *pipe,
     * they can't be kicked out later.
     */
    struct nvc0_context *nvc0 = nvc0_context(pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nv50_tic_entry *tic = nv50_tic_entry(view);
    struct nv50_tsc_entry *tsc = pipe->create_sampler_state(pipe, sampler);
@@ -817,7 +825,7 @@ nve4_create_texture_handle(struct pipe_context *pipe,
                             NV_VRAM_DOMAIN(&nvc0->screen->base), 32,
                             tic->tic);
 
-      IMMED_NVC0(push, NVC0_3D(TIC_FLUSH), 0);
+      IMMED_NVC0(&screen->base, push, NVC0_3D(TIC_FLUSH), 0);
    }
 
    nve4_p2mf_push_linear(&nvc0->base, nvc0->screen->txc,
@@ -825,7 +833,7 @@ nve4_create_texture_handle(struct pipe_context *pipe,
                          NV_VRAM_DOMAIN(&nvc0->screen->base),
                          32, tsc->tsc);
 
-   IMMED_NVC0(push, NVC0_3D(TSC_FLUSH), 0);
+   IMMED_NVC0(&screen->base, push, NVC0_3D(TSC_FLUSH), 0);
 
    // Add an extra reference to this sampler view effectively held by this
    // texture handle. This is to deal with the sampler view being dereferenced
@@ -1134,9 +1142,9 @@ nvc0_validate_suf(struct nvc0_context *nvc0, int s)
       uint64_t address = 0;
 
       if (s == 5)
-         BEGIN_NVC0(push, NVC0_CP(IMAGE(i)), 6);
+         BEGIN_NVC0(&screen->base, push, NVC0_CP(IMAGE(i)), 6);
       else
-         BEGIN_NVC0(push, NVC0_3D(IMAGE(i)), 6);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(IMAGE(i)), 6);
 
       if (view->resource) {
          struct nv04_resource *res = nv04_resource(view->resource);
@@ -1160,12 +1168,12 @@ nvc0_validate_suf(struct nvc0_context *nvc0, int s)
             if (view->access & PIPE_IMAGE_ACCESS_WRITE)
                nvc0_mark_image_range_valid(view);
 
-            PUSH_DATAh(push, address);
-            PUSH_DATA (push, address);
-            PUSH_DATA (push, align(width * blocksize, 0x100));
-            PUSH_DATA (push, NVC0_3D_IMAGE_HEIGHT_LINEAR | 1);
-            PUSH_DATA (push, rt);
-            PUSH_DATA (push, 0);
+            PUSH_DATAh(&screen->base, push, address);
+            PUSH_DATA (&screen->base, push, address);
+            PUSH_DATA (&screen->base, push, align(width * blocksize, 0x100));
+            PUSH_DATA (&screen->base, push, NVC0_3D_IMAGE_HEIGHT_LINEAR | 1);
+            PUSH_DATA (&screen->base, push, rt);
+            PUSH_DATA (&screen->base, push, 0);
          } else {
             struct nv50_miptree *mt = nv50_miptree(view->resource);
             struct nv50_miptree_level *lvl = &mt->level[view->u.tex.level];
@@ -1183,12 +1191,12 @@ nvc0_validate_suf(struct nvc0_context *nvc0, int s)
             }
             address += lvl->offset;
 
-            PUSH_DATAh(push, address);
-            PUSH_DATA (push, address);
-            PUSH_DATA (push, width << mt->ms_x);
-            PUSH_DATA (push, height << mt->ms_y);
-            PUSH_DATA (push, rt);
-            PUSH_DATA (push, lvl->tile_mode & 0xff); /* mask out z-tiling */
+            PUSH_DATAh(&screen->base, push, address);
+            PUSH_DATA (&screen->base, push, address);
+            PUSH_DATA (&screen->base, push, width << mt->ms_x);
+            PUSH_DATA (&screen->base, push, height << mt->ms_y);
+            PUSH_DATA (&screen->base, push, rt);
+            PUSH_DATA (&screen->base, push, lvl->tile_mode & 0xff); /* mask out z-tiling */
          }
 
          if (s == 5)
@@ -1196,27 +1204,27 @@ nvc0_validate_suf(struct nvc0_context *nvc0, int s)
          else
             BCTX_REFN(nvc0->bufctx_3d, 3D_SUF, res, RDWR);
       } else {
-         PUSH_DATA(push, 0);
-         PUSH_DATA(push, 0);
-         PUSH_DATA(push, 0);
-         PUSH_DATA(push, 0);
-         PUSH_DATA(push, 0x14000);
-         PUSH_DATA(push, 0);
+         PUSH_DATA(&screen->base, push, 0);
+         PUSH_DATA(&screen->base, push, 0);
+         PUSH_DATA(&screen->base, push, 0);
+         PUSH_DATA(&screen->base, push, 0);
+         PUSH_DATA(&screen->base, push, 0x14000);
+         PUSH_DATA(&screen->base, push, 0);
       }
 
       /* stick surface information into the driver constant buffer */
       if (s == 5)
-         BEGIN_NVC0(push, NVC0_CP(CB_SIZE), 3);
+         BEGIN_NVC0(&screen->base, push, NVC0_CP(CB_SIZE), 3);
       else
-         BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-      PUSH_DATA (push, NVC0_CB_AUX_SIZE);
-      PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
-      PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SIZE);
+      PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+      PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
       if (s == 5)
-         BEGIN_1IC0(push, NVC0_CP(CB_POS), 1 + 16);
+         BEGIN_1IC0(&screen->base, push, NVC0_CP(CB_POS), 1 + 16);
       else
-         BEGIN_1IC0(push, NVC0_3D(CB_POS), 1 + 16);
-      PUSH_DATA (push, NVC0_CB_AUX_SU_INFO(i));
+         BEGIN_1IC0(&screen->base, push, NVC0_3D(CB_POS), 1 + 16);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SU_INFO(i));
 
       nvc0_set_surface_info(push, view, address, width, height, depth);
    }
@@ -1254,12 +1262,12 @@ gm107_validate_surfaces(struct nvc0_context *nvc0,
       nve4_p2mf_push_linear(&nvc0->base, nvc0->screen->txc, tic->id * 32,
                             NV_VRAM_DOMAIN(&nvc0->screen->base), 32, tic->tic);
 
-      BEGIN_NVC0(push, NVC0_3D(TIC_FLUSH), 1);
-      PUSH_DATA (push, 0);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(TIC_FLUSH), 1);
+      PUSH_DATA (&screen->base, push, 0);
    } else
    if (res->status & NOUVEAU_BUFFER_STATUS_GPU_WRITING) {
-      BEGIN_NVC0(push, NVC0_3D(TEX_CACHE_CTL), 1);
-      PUSH_DATA (push, (tic->id << 4) | 1);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(TEX_CACHE_CTL), 1);
+      PUSH_DATA (&screen->base, push, (tic->id << 4) | 1);
    }
    nvc0->screen->tic.lock[tic->id / 32] |= 1 << (tic->id % 32);
 
@@ -1269,13 +1277,13 @@ gm107_validate_surfaces(struct nvc0_context *nvc0,
    BCTX_REFN(nvc0->bufctx_3d, 3D_SUF, res, RD);
 
    /* upload the texture handle */
-   BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-   PUSH_DATA (push, NVC0_CB_AUX_SIZE);
-   PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(stage));
-   PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(stage));
-   BEGIN_NVC0(push, NVC0_3D(CB_POS), 2);
-   PUSH_DATA (push, NVC0_CB_AUX_TEX_INFO(slot + 32));
-   PUSH_DATA (push, tic->id);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+   PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SIZE);
+   PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(stage));
+   PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(stage));
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_POS), 2);
+   PUSH_DATA (&screen->base, push, NVC0_CB_AUX_TEX_INFO(slot + 32));
+   PUSH_DATA (&screen->base, push, tic->id);
 }
 
 static inline void
@@ -1292,12 +1300,12 @@ nve4_update_surface_bindings(struct nvc0_context *nvc0)
       for (i = 0; i < NVC0_MAX_IMAGES; ++i) {
          struct pipe_image_view *view = &nvc0->images[s][i];
 
-         BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-         PUSH_DATA (push, NVC0_CB_AUX_SIZE);
-         PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
-         PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
-         BEGIN_1IC0(push, NVC0_3D(CB_POS), 1 + 16);
-         PUSH_DATA (push, NVC0_CB_AUX_SU_INFO(i));
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+         PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SIZE);
+         PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+         PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+         BEGIN_1IC0(&screen->base, push, NVC0_3D(CB_POS), 1 + 16);
+         PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SU_INFO(i));
 
          if (view->resource) {
             struct nv04_resource *res = nv04_resource(view->resource);
@@ -1314,7 +1322,7 @@ nve4_update_surface_bindings(struct nvc0_context *nvc0)
                gm107_validate_surfaces(nvc0, view, s, i);
          } else {
             for (j = 0; j < 16; j++)
-               PUSH_DATA(push, 0);
+               PUSH_DATA(&screen->base, push, 0);
          }
       }
    }
@@ -1350,12 +1358,12 @@ nve4_create_image_handle(struct pipe_context *pipe,
    *screen->img.entries[i] = *view;
 
    for (s = 0; s < 6; s++) {
-      BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-      PUSH_DATA (push, NVC0_CB_AUX_SIZE);
-      PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
-      PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
-      BEGIN_1IC0(push, NVC0_3D(CB_POS), 1 + 16);
-      PUSH_DATA (push, NVC0_CB_AUX_BINDLESS_INFO(i));
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SIZE);
+      PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+      PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(s));
+      BEGIN_1IC0(&screen->base, push, NVC0_3D(CB_POS), 1 + 16);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_BINDLESS_INFO(i));
       nve4_set_surface_info(push, view, nvc0);
    }
 
@@ -1412,6 +1420,7 @@ gm107_create_image_handle(struct pipe_context *pipe,
     * just the TIC id.
     */
    struct nvc0_context *nvc0 = nvc0_context(pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct pipe_sampler_view *sview =
       gm107_create_texture_view_from_image(pipe, view);
@@ -1429,7 +1438,7 @@ gm107_create_image_handle(struct pipe_context *pipe,
                          NV_VRAM_DOMAIN(&nvc0->screen->base), 32,
                          tic->tic);
 
-   IMMED_NVC0(push, NVC0_3D(TIC_FLUSH), 0);
+   IMMED_NVC0(&screen->base, push, NVC0_3D(TIC_FLUSH), 0);
 
    nvc0->screen->tic.lock[tic->id / 32] |= 1 << (tic->id % 32);
 

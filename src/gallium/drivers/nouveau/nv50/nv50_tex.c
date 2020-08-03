@@ -251,7 +251,7 @@ nv50_validate_tic(struct nv50_context *nv50, int s)
 
       if (!tic) {
          BEGIN_NV04(push, NV50_3D(BIND_TIC(s)), 1);
-         PUSH_DATA (push, (i << 1) | 0);
+         PUSH_DATA (NULL, push, (i << 1) | 0);
          continue;
       }
       res = &nv50_miptree(tic->pipe.texture)->base;
@@ -261,36 +261,36 @@ nv50_validate_tic(struct nv50_context *nv50, int s)
          tic->id = nv50_screen_tic_alloc(nv50->screen, tic);
 
          BEGIN_NV04(push, NV50_2D(DST_FORMAT), 2);
-         PUSH_DATA (push, G80_SURFACE_FORMAT_R8_UNORM);
-         PUSH_DATA (push, 1);
+         PUSH_DATA (NULL, push, G80_SURFACE_FORMAT_R8_UNORM);
+         PUSH_DATA (NULL, push, 1);
          BEGIN_NV04(push, NV50_2D(DST_PITCH), 5);
-         PUSH_DATA (push, 262144);
-         PUSH_DATA (push, 65536);
-         PUSH_DATA (push, 1);
+         PUSH_DATA (NULL, push, 262144);
+         PUSH_DATA (NULL, push, 65536);
+         PUSH_DATA (NULL, push, 1);
          PUSH_DATAh(push, txc->offset);
-         PUSH_DATA (push, txc->offset);
+         PUSH_DATA (NULL, push, txc->offset);
          BEGIN_NV04(push, NV50_2D(SIFC_BITMAP_ENABLE), 2);
-         PUSH_DATA (push, 0);
-         PUSH_DATA (push, G80_SURFACE_FORMAT_R8_UNORM);
+         PUSH_DATA (NULL, push, 0);
+         PUSH_DATA (NULL, push, G80_SURFACE_FORMAT_R8_UNORM);
          BEGIN_NV04(push, NV50_2D(SIFC_WIDTH), 10);
-         PUSH_DATA (push, 32);
-         PUSH_DATA (push, 1);
-         PUSH_DATA (push, 0);
-         PUSH_DATA (push, 1);
-         PUSH_DATA (push, 0);
-         PUSH_DATA (push, 1);
-         PUSH_DATA (push, 0);
-         PUSH_DATA (push, tic->id * 32);
-         PUSH_DATA (push, 0);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 32);
+         PUSH_DATA (NULL, push, 1);
+         PUSH_DATA (NULL, push, 0);
+         PUSH_DATA (NULL, push, 1);
+         PUSH_DATA (NULL, push, 0);
+         PUSH_DATA (NULL, push, 1);
+         PUSH_DATA (NULL, push, 0);
+         PUSH_DATA (NULL, push, tic->id * 32);
+         PUSH_DATA (NULL, push, 0);
+         PUSH_DATA (NULL, push, 0);
          BEGIN_NI04(push, NV50_2D(SIFC_DATA), 8);
-         PUSH_DATAp(push, &tic->tic[0], 8);
+         PUSH_DATAp(NULL, push, &tic->tic[0], 8);
 
          need_flush = true;
       } else
       if (res->status & NOUVEAU_BUFFER_STATUS_GPU_WRITING) {
          BEGIN_NV04(push, NV50_3D(TEX_CACHE_CTL), 1);
-         PUSH_DATA (push, 0x20);
+         PUSH_DATA (NULL, push, 0x20);
       }
 
       nv50->screen->tic.lock[tic->id / 32] |= 1 << (tic->id % 32);
@@ -301,28 +301,28 @@ nv50_validate_tic(struct nv50_context *nv50, int s)
       BCTX_REFN(nv50->bufctx_3d, 3D_TEXTURES, res, RD);
 
       BEGIN_NV04(push, NV50_3D(BIND_TIC(s)), 1);
-      PUSH_DATA (push, (tic->id << 9) | (i << 1) | 1);
+      PUSH_DATA (NULL, push, (tic->id << 9) | (i << 1) | 1);
    }
    for (; i < nv50->state.num_textures[s]; ++i) {
       BEGIN_NV04(push, NV50_3D(BIND_TIC(s)), 1);
-      PUSH_DATA (push, (i << 1) | 0);
+      PUSH_DATA (NULL, push, (i << 1) | 0);
    }
    if (nv50->num_textures[s]) {
       BEGIN_NV04(push, NV50_3D(CB_ADDR), 1);
-      PUSH_DATA (push, ((NV50_CB_AUX_TEX_MS_OFFSET + 16 * s * 2 * 4) << (8 - 2)) | NV50_CB_AUX);
+      PUSH_DATA (NULL, push, ((NV50_CB_AUX_TEX_MS_OFFSET + 16 * s * 2 * 4) << (8 - 2)) | NV50_CB_AUX);
       BEGIN_NI04(push, NV50_3D(CB_DATA(0)), nv50->num_textures[s] * 2);
       for (i = 0; i < nv50->num_textures[s]; i++) {
          struct nv50_tic_entry *tic = nv50_tic_entry(nv50->textures[s][i]);
          struct nv50_miptree *res;
 
          if (!tic || tic->pipe.target == PIPE_BUFFER) {
-            PUSH_DATA (push, 0);
-            PUSH_DATA (push, 0);
+            PUSH_DATA (NULL, push, 0);
+            PUSH_DATA (NULL, push, 0);
             continue;
          }
          res = nv50_miptree(tic->pipe.texture);
-         PUSH_DATA (push, res->ms_x);
-         PUSH_DATA (push, res->ms_y);
+         PUSH_DATA (NULL, push, res->ms_x);
+         PUSH_DATA (NULL, push, res->ms_y);
       }
    }
    nv50->state.num_textures[s] = nv50->num_textures[s];
@@ -340,7 +340,7 @@ void nv50_validate_textures(struct nv50_context *nv50)
 
    if (need_flush) {
       BEGIN_NV04(nv50->base.pushbuf, NV50_3D(TIC_FLUSH), 1);
-      PUSH_DATA (nv50->base.pushbuf, 0);
+      PUSH_DATA (NULL, nv50->base.pushbuf, 0);
    }
 }
 
@@ -357,7 +357,7 @@ nv50_validate_tsc(struct nv50_context *nv50, int s)
 
       if (!tsc) {
          BEGIN_NV04(push, NV50_3D(BIND_TSC(s)), 1);
-         PUSH_DATA (push, (i << 4) | 0);
+         PUSH_DATA (NULL, push, (i << 4) | 0);
          continue;
       }
       nv50->seamless_cube_map = tsc->seamless_cube_map;
@@ -372,11 +372,11 @@ nv50_validate_tsc(struct nv50_context *nv50, int s)
       nv50->screen->tsc.lock[tsc->id / 32] |= 1 << (tsc->id % 32);
 
       BEGIN_NV04(push, NV50_3D(BIND_TSC(s)), 1);
-      PUSH_DATA (push, (tsc->id << 12) | (i << 4) | 1);
+      PUSH_DATA (NULL, push, (tsc->id << 12) | (i << 4) | 1);
    }
    for (; i < nv50->state.num_samplers[s]; ++i) {
       BEGIN_NV04(push, NV50_3D(BIND_TSC(s)), 1);
-      PUSH_DATA (push, (i << 4) | 0);
+      PUSH_DATA (NULL, push, (i << 4) | 0);
    }
    nv50->state.num_samplers[s] = nv50->num_samplers[s];
 
@@ -387,7 +387,7 @@ nv50_validate_tsc(struct nv50_context *nv50, int s)
    // any effect on what TXF does.
    if (!nv50->samplers[s][0]) {
       BEGIN_NV04(push, NV50_3D(BIND_TSC(s)), 1);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, 1);
    }
 
    return need_flush;
@@ -403,7 +403,7 @@ void nv50_validate_samplers(struct nv50_context *nv50)
 
    if (need_flush) {
       BEGIN_NV04(nv50->base.pushbuf, NV50_3D(TSC_FLUSH), 1);
-      PUSH_DATA (nv50->base.pushbuf, 0);
+      PUSH_DATA (NULL, nv50->base.pushbuf, 0);
    }
 }
 
@@ -457,9 +457,9 @@ static const uint32_t msaa_sample_xy_offsets[] = {
 void nv50_upload_ms_info(struct nouveau_pushbuf *push)
 {
    BEGIN_NV04(push, NV50_3D(CB_ADDR), 1);
-   PUSH_DATA (push, (NV50_CB_AUX_MS_OFFSET << (8 - 2)) | NV50_CB_AUX);
+   PUSH_DATA (NULL, push, (NV50_CB_AUX_MS_OFFSET << (8 - 2)) | NV50_CB_AUX);
    BEGIN_NI04(push, NV50_3D(CB_DATA(0)), ARRAY_SIZE(msaa_sample_xy_offsets));
-   PUSH_DATAp(push, msaa_sample_xy_offsets, ARRAY_SIZE(msaa_sample_xy_offsets));
+   PUSH_DATAp(NULL, push, msaa_sample_xy_offsets, ARRAY_SIZE(msaa_sample_xy_offsets));
 }
 
 void nv50_upload_tsc0(struct nv50_context *nv50)
@@ -470,5 +470,5 @@ void nv50_upload_tsc0(struct nv50_context *nv50)
                        65536 /* + tsc->id * 32 */,
                        NOUVEAU_BO_VRAM, 32, data);
    BEGIN_NV04(push, NV50_3D(TSC_FLUSH), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 }
