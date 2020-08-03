@@ -7,13 +7,13 @@ static inline void
 nv50_fb_set_null_rt(struct nouveau_pushbuf *push, unsigned i)
 {
    BEGIN_NV04(push, NV50_3D(RT_ADDRESS_HIGH(i)), 4);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(RT_HORIZ(i)), 2);
-   PUSH_DATA (push, 64);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 64);
+   PUSH_DATA (NULL, push, 0);
 }
 
 static void
@@ -28,10 +28,10 @@ nv50_validate_fb(struct nv50_context *nv50)
    nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_FB);
 
    BEGIN_NV04(push, NV50_3D(RT_CONTROL), 1);
-   PUSH_DATA (push, (076543210 << 4) | fb->nr_cbufs);
+   PUSH_DATA (NULL, push, (076543210 << 4) | fb->nr_cbufs);
    BEGIN_NV04(push, NV50_3D(SCREEN_SCISSOR_HORIZ), 2);
-   PUSH_DATA (push, fb->width << 16);
-   PUSH_DATA (push, fb->height << 16);
+   PUSH_DATA (NULL, push, fb->width << 16);
+   PUSH_DATA (NULL, push, fb->height << 16);
 
    for (i = 0; i < fb->nr_cbufs; ++i) {
       struct nv50_miptree *mt;
@@ -56,27 +56,27 @@ nv50_validate_fb(struct nv50_context *nv50)
 
       BEGIN_NV04(push, NV50_3D(RT_ADDRESS_HIGH(i)), 5);
       PUSH_DATAh(push, mt->base.address + sf->offset);
-      PUSH_DATA (push, mt->base.address + sf->offset);
-      PUSH_DATA (push, nv50_format_table[sf->base.format].rt);
+      PUSH_DATA (NULL, push, mt->base.address + sf->offset);
+      PUSH_DATA (NULL, push, nv50_format_table[sf->base.format].rt);
       if (likely(nouveau_bo_memtype(bo))) {
          assert(sf->base.texture->target != PIPE_BUFFER);
 
-         PUSH_DATA (push, mt->level[sf->base.u.tex.level].tile_mode);
-         PUSH_DATA (push, mt->layer_stride >> 2);
+         PUSH_DATA (NULL, push, mt->level[sf->base.u.tex.level].tile_mode);
+         PUSH_DATA (NULL, push, mt->layer_stride >> 2);
          BEGIN_NV04(push, NV50_3D(RT_HORIZ(i)), 2);
-         PUSH_DATA (push, sf->width);
-         PUSH_DATA (push, sf->height);
+         PUSH_DATA (NULL, push, sf->width);
+         PUSH_DATA (NULL, push, sf->height);
          BEGIN_NV04(push, NV50_3D(RT_ARRAY_MODE), 1);
-         PUSH_DATA (push, array_mode | array_size);
+         PUSH_DATA (NULL, push, array_mode | array_size);
          nv50->rt_array_mode = array_mode | array_size;
       } else {
-         PUSH_DATA (push, 0);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
+         PUSH_DATA (NULL, push, 0);
          BEGIN_NV04(push, NV50_3D(RT_HORIZ(i)), 2);
-         PUSH_DATA (push, NV50_3D_RT_HORIZ_LINEAR | mt->level[0].pitch);
-         PUSH_DATA (push, sf->height);
+         PUSH_DATA (NULL, push, NV50_3D_RT_HORIZ_LINEAR | mt->level[0].pitch);
+         PUSH_DATA (NULL, push, sf->height);
          BEGIN_NV04(push, NV50_3D(RT_ARRAY_MODE), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
 
          assert(!fb->zsbuf);
          assert(!mt->ms_mode);
@@ -100,16 +100,16 @@ nv50_validate_fb(struct nv50_context *nv50)
 
       BEGIN_NV04(push, NV50_3D(ZETA_ADDRESS_HIGH), 5);
       PUSH_DATAh(push, mt->base.address + sf->offset);
-      PUSH_DATA (push, mt->base.address + sf->offset);
-      PUSH_DATA (push, nv50_format_table[fb->zsbuf->format].rt);
-      PUSH_DATA (push, mt->level[sf->base.u.tex.level].tile_mode);
-      PUSH_DATA (push, mt->layer_stride >> 2);
+      PUSH_DATA (NULL, push, mt->base.address + sf->offset);
+      PUSH_DATA (NULL, push, nv50_format_table[fb->zsbuf->format].rt);
+      PUSH_DATA (NULL, push, mt->level[sf->base.u.tex.level].tile_mode);
+      PUSH_DATA (NULL, push, mt->layer_stride >> 2);
       BEGIN_NV04(push, NV50_3D(ZETA_ENABLE), 1);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, 1);
       BEGIN_NV04(push, NV50_3D(ZETA_HORIZ), 3);
-      PUSH_DATA (push, sf->width);
-      PUSH_DATA (push, sf->height);
-      PUSH_DATA (push, (unk << 16) | sf->depth);
+      PUSH_DATA (NULL, push, sf->width);
+      PUSH_DATA (NULL, push, sf->height);
+      PUSH_DATA (NULL, push, (unk << 16) | sf->depth);
 
       ms_mode = mt->ms_mode;
 
@@ -121,27 +121,27 @@ nv50_validate_fb(struct nv50_context *nv50)
       BCTX_REFN(nv50->bufctx_3d, 3D_FB, &mt->base, WR);
    } else {
       BEGIN_NV04(push, NV50_3D(ZETA_ENABLE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    BEGIN_NV04(push, NV50_3D(MULTISAMPLE_MODE), 1);
-   PUSH_DATA (push, ms_mode);
+   PUSH_DATA (NULL, push, ms_mode);
 
    /* Only need to initialize the first viewport, which is used for clears */
    BEGIN_NV04(push, NV50_3D(VIEWPORT_HORIZ(0)), 2);
-   PUSH_DATA (push, fb->width << 16);
-   PUSH_DATA (push, fb->height << 16);
+   PUSH_DATA (NULL, push, fb->width << 16);
+   PUSH_DATA (NULL, push, fb->height << 16);
 
    if (nv50->screen->tesla->oclass >= NVA3_3D_CLASS) {
       unsigned ms = 1 << ms_mode;
       BEGIN_NV04(push, NV50_3D(CB_ADDR), 1);
-      PUSH_DATA (push, (NV50_CB_AUX_SAMPLE_OFFSET << (8 - 2)) | NV50_CB_AUX);
+      PUSH_DATA (NULL, push, (NV50_CB_AUX_SAMPLE_OFFSET << (8 - 2)) | NV50_CB_AUX);
       BEGIN_NI04(push, NV50_3D(CB_DATA(0)), 2 * ms);
       for (i = 0; i < ms; i++) {
          float xy[2];
          nv50->base.pipe.get_sample_position(&nv50->base.pipe, ms, i, xy);
-         PUSH_DATAf(push, xy[0]);
-         PUSH_DATAf(push, xy[1]);
+         PUSH_DATAf(NULL, push, xy[0]);
+         PUSH_DATAf(NULL, push, xy[1]);
       }
    }
 }
@@ -152,10 +152,10 @@ nv50_validate_blend_colour(struct nv50_context *nv50)
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
 
    BEGIN_NV04(push, NV50_3D(BLEND_COLOR(0)), 4);
-   PUSH_DATAf(push, nv50->blend_colour.color[0]);
-   PUSH_DATAf(push, nv50->blend_colour.color[1]);
-   PUSH_DATAf(push, nv50->blend_colour.color[2]);
-   PUSH_DATAf(push, nv50->blend_colour.color[3]);
+   PUSH_DATAf(NULL, push, nv50->blend_colour.color[0]);
+   PUSH_DATAf(NULL, push, nv50->blend_colour.color[1]);
+   PUSH_DATAf(NULL, push, nv50->blend_colour.color[2]);
+   PUSH_DATAf(NULL, push, nv50->blend_colour.color[3]);
 }
 
 static void
@@ -164,9 +164,9 @@ nv50_validate_stencil_ref(struct nv50_context *nv50)
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
 
    BEGIN_NV04(push, NV50_3D(STENCIL_FRONT_FUNC_REF), 1);
-   PUSH_DATA (push, nv50->stencil_ref.ref_value[0]);
+   PUSH_DATA (NULL, push, nv50->stencil_ref.ref_value[0]);
    BEGIN_NV04(push, NV50_3D(STENCIL_BACK_FUNC_REF), 1);
-   PUSH_DATA (push, nv50->stencil_ref.ref_value[1]);
+   PUSH_DATA (NULL, push, nv50->stencil_ref.ref_value[1]);
 }
 
 static void
@@ -177,7 +177,7 @@ nv50_validate_stipple(struct nv50_context *nv50)
 
    BEGIN_NV04(push, NV50_3D(POLYGON_STIPPLE_PATTERN(0)), 32);
    for (i = 0; i < 32; ++i)
-      PUSH_DATA(push, util_bswap32(nv50->stipple.stipple[i]));
+      PUSH_DATA(NULL, push, util_bswap32(nv50->stipple.stipple[i]));
 }
 
 static void
@@ -232,12 +232,12 @@ nv50_validate_scissor(struct nv50_context *nv50)
       maxy = MAX2(maxy, 0);
 
       BEGIN_NV04(push, NV50_3D(SCISSOR_HORIZ(i)), 2);
-      PUSH_DATA (push, (maxx << 16) | minx);
-      PUSH_DATA (push, (maxy << 16) | miny);
+      PUSH_DATA (NULL, push, (maxx << 16) | minx);
+      PUSH_DATA (NULL, push, (maxy << 16) | miny);
 #else
       BEGIN_NV04(push, NV50_3D(SCISSOR_HORIZ(i)), 2);
-      PUSH_DATA (push, (s->maxx << 16) | s->minx);
-      PUSH_DATA (push, (s->maxy << 16) | s->miny);
+      PUSH_DATA (NULL, push, (s->maxx << 16) | s->minx);
+      PUSH_DATA (NULL, push, (s->maxy << 16) | s->miny);
 #endif
    }
 
@@ -258,13 +258,13 @@ nv50_validate_viewport(struct nv50_context *nv50)
          continue;
 
       BEGIN_NV04(push, NV50_3D(VIEWPORT_TRANSLATE_X(i)), 3);
-      PUSH_DATAf(push, vpt->translate[0]);
-      PUSH_DATAf(push, vpt->translate[1]);
-      PUSH_DATAf(push, vpt->translate[2]);
+      PUSH_DATAf(NULL, push, vpt->translate[0]);
+      PUSH_DATAf(NULL, push, vpt->translate[1]);
+      PUSH_DATAf(NULL, push, vpt->translate[2]);
       BEGIN_NV04(push, NV50_3D(VIEWPORT_SCALE_X(i)), 3);
-      PUSH_DATAf(push, vpt->scale[0]);
-      PUSH_DATAf(push, vpt->scale[1]);
-      PUSH_DATAf(push, vpt->scale[2]);
+      PUSH_DATAf(NULL, push, vpt->scale[0]);
+      PUSH_DATAf(NULL, push, vpt->scale[1]);
+      PUSH_DATAf(NULL, push, vpt->scale[2]);
 
       /* If the halfz setting ever changes, the viewports will also get
        * updated. The rast will get updated before the validate function has a
@@ -275,8 +275,8 @@ nv50_validate_viewport(struct nv50_context *nv50)
 
 #ifdef NV50_SCISSORS_CLIPPING
       BEGIN_NV04(push, NV50_3D(DEPTH_RANGE_NEAR(i)), 2);
-      PUSH_DATAf(push, zmin);
-      PUSH_DATAf(push, zmax);
+      PUSH_DATAf(NULL, push, zmin);
+      PUSH_DATAf(NULL, push, zmax);
 #endif
    }
 
@@ -291,21 +291,21 @@ nv50_validate_window_rects(struct nv50_context *nv50)
    int i;
 
    BEGIN_NV04(push, NV50_3D(CLIP_RECTS_EN), 1);
-   PUSH_DATA (push, enable);
+   PUSH_DATA (NULL, push, enable);
    if (!enable)
       return;
 
    BEGIN_NV04(push, NV50_3D(CLIP_RECTS_MODE), 1);
-   PUSH_DATA (push, !nv50->window_rect.inclusive);
+   PUSH_DATA (NULL, push, !nv50->window_rect.inclusive);
    BEGIN_NV04(push, NV50_3D(CLIP_RECT_HORIZ(0)), NV50_MAX_WINDOW_RECTANGLES * 2);
    for (i = 0; i < nv50->window_rect.rects; i++) {
       struct pipe_scissor_state *s = &nv50->window_rect.rect[i];
-      PUSH_DATA(push, (s->maxx << 16) | s->minx);
-      PUSH_DATA(push, (s->maxy << 16) | s->miny);
+      PUSH_DATA(NULL, push, (s->maxx << 16) | s->minx);
+      PUSH_DATA(NULL, push, (s->maxy << 16) | s->miny);
    }
    for (; i < NV50_MAX_WINDOW_RECTANGLES; i++) {
-      PUSH_DATA(push, 0);
-      PUSH_DATA(push, 0);
+      PUSH_DATA(NULL, push, 0);
+      PUSH_DATA(NULL, push, 0);
    }
 }
 
@@ -343,7 +343,7 @@ nv50_validate_derived_2(struct nv50_context *nv50)
        nv50->framebuffer.nr_cbufs == 0) {
       nv50_fb_set_null_rt(push, 0);
       BEGIN_NV04(push, NV50_3D(RT_CONTROL), 1);
-      PUSH_DATA (push, (076543210 << 4) | 1);
+      PUSH_DATA (NULL, push, (076543210 << 4) | 1);
    }
 }
 
@@ -356,9 +356,9 @@ nv50_validate_clip(struct nv50_context *nv50)
 
    if (nv50->dirty_3d & NV50_NEW_3D_CLIP) {
       BEGIN_NV04(push, NV50_3D(CB_ADDR), 1);
-      PUSH_DATA (push, (NV50_CB_AUX_UCP_OFFSET << 8) | NV50_CB_AUX);
+      PUSH_DATA (NULL, push, (NV50_CB_AUX_UCP_OFFSET << 8) | NV50_CB_AUX);
       BEGIN_NI04(push, NV50_3D(CB_DATA(0)), PIPE_MAX_CLIP_PLANES * 4);
-      PUSH_DATAp(push, &nv50->clip.ucp[0][0], PIPE_MAX_CLIP_PLANES * 4);
+      PUSH_DATAp(NULL, push, &nv50->clip.ucp[0][0], PIPE_MAX_CLIP_PLANES * 4);
    }
 
    vp = nv50->gmtyprog;
@@ -372,12 +372,12 @@ nv50_validate_clip(struct nv50_context *nv50)
    clip_enable |= vp->vp.cull_enable;
 
    BEGIN_NV04(push, NV50_3D(CLIP_DISTANCE_ENABLE), 1);
-   PUSH_DATA (push, clip_enable);
+   PUSH_DATA (NULL, push, clip_enable);
 
    if (nv50->state.clip_mode != vp->vp.clip_mode) {
       nv50->state.clip_mode = vp->vp.clip_mode;
       BEGIN_NV04(push, NV50_3D(CLIP_DISTANCE_MODE), 1);
-      PUSH_DATA (push, vp->vp.clip_mode);
+      PUSH_DATA (NULL, push, vp->vp.clip_mode);
    }
 }
 
@@ -386,8 +386,8 @@ nv50_validate_blend(struct nv50_context *nv50)
 {
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
 
-   PUSH_SPACE(push, nv50->blend->size);
-   PUSH_DATAp(push, nv50->blend->state, nv50->blend->size);
+   PUSH_SPACE(NULL, push, nv50->blend->size);
+   PUSH_DATAp(NULL, push, nv50->blend->state, nv50->blend->size);
 }
 
 static void
@@ -395,8 +395,8 @@ nv50_validate_zsa(struct nv50_context *nv50)
 {
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
 
-   PUSH_SPACE(push, nv50->zsa->size);
-   PUSH_DATAp(push, nv50->zsa->state, nv50->zsa->size);
+   PUSH_SPACE(NULL, push, nv50->zsa->size);
+   PUSH_DATAp(NULL, push, nv50->zsa->state, nv50->zsa->size);
 }
 
 static void
@@ -404,8 +404,8 @@ nv50_validate_rasterizer(struct nv50_context *nv50)
 {
    struct nouveau_pushbuf *push = nv50->base.pushbuf;
 
-   PUSH_SPACE(push, nv50->rast->size);
-   PUSH_DATAp(push, nv50->rast->state, nv50->rast->size);
+   PUSH_SPACE(NULL, push, nv50->rast->size);
+   PUSH_DATAp(NULL, push, nv50->rast->state, nv50->rast->size);
 }
 
 static void
@@ -422,10 +422,10 @@ nv50_validate_sample_mask(struct nv50_context *nv50)
    };
 
    BEGIN_NV04(push, NV50_3D(MSAA_MASK(0)), 4);
-   PUSH_DATA (push, mask[0]);
-   PUSH_DATA (push, mask[1]);
-   PUSH_DATA (push, mask[2]);
-   PUSH_DATA (push, mask[3]);
+   PUSH_DATA (NULL, push, mask[0]);
+   PUSH_DATA (NULL, push, mask[1]);
+   PUSH_DATA (NULL, push, mask[2]);
+   PUSH_DATA (NULL, push, mask[3]);
 }
 
 static void
@@ -442,7 +442,7 @@ nv50_validate_min_samples(struct nv50_context *nv50)
       samples |= NVA3_3D_SAMPLE_SHADING_ENABLE;
 
    BEGIN_NV04(push, SUBC_3D(NVA3_3D_SAMPLE_SHADING), 1);
-   PUSH_DATA (push, samples);
+   PUSH_DATA (NULL, push, samples);
 }
 
 static void
@@ -553,7 +553,7 @@ nv50_state_validate(struct nv50_context *nv50, uint32_t mask,
       if (nv50->state.rt_serialize) {
          nv50->state.rt_serialize = false;
          BEGIN_NV04(nv50->base.pushbuf, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
-         PUSH_DATA (nv50->base.pushbuf, 0);
+         PUSH_DATA (NULL, nv50->base.pushbuf, 0);
       }
 
       nv50_bufctx_fence(bufctx, false);

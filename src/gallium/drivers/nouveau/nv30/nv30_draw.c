@@ -138,11 +138,11 @@ nv30_render_draw_elements(struct vbuf_render *render,
       return;
 
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (push, r->prim);
+   PUSH_DATA (NULL, push, r->prim);
 
    if (count & 1) {
       BEGIN_NV04(push, NV30_3D(VB_ELEMENT_U32), 1);
-      PUSH_DATA (push, *indices++);
+      PUSH_DATA (NULL, push, *indices++);
    }
 
    count >>= 1;
@@ -152,13 +152,13 @@ nv30_render_draw_elements(struct vbuf_render *render,
 
       BEGIN_NI04(push, NV30_3D(VB_ELEMENT_U16), npush);
       while (npush--) {
-         PUSH_DATA(push, (indices[1] << 16) | indices[0]);
+         PUSH_DATA(NULL, push, (indices[1] << 16) | indices[0]);
          indices += 2;
       }
    }
 
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (push, NV30_3D_VERTEX_BEGIN_END_STOP);
+   PUSH_DATA (NULL, push, NV30_3D_VERTEX_BEGIN_END_STOP);
    PUSH_RESET(push, BUFCTX_VTXTMP);
 }
 
@@ -183,19 +183,19 @@ nv30_render_draw_arrays(struct vbuf_render *render, unsigned start, uint nr)
       return;
 
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (push, r->prim);
+   PUSH_DATA (NULL, push, r->prim);
 
    BEGIN_NI04(push, NV30_3D(VB_VERTEX_BATCH), ps);
    while (fn--) {
-      PUSH_DATA (push, 0xff000000 | start);
+      PUSH_DATA (NULL, push, 0xff000000 | start);
       start += 256;
    }
 
    if (pn)
-      PUSH_DATA (push, ((pn - 1) << 24) | start);
+      PUSH_DATA (NULL, push, ((pn - 1) << 24) | start);
 
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (push, NV30_3D_VERTEX_BEGIN_END_STOP);
+   PUSH_DATA (NULL, push, NV30_3D_VERTEX_BEGIN_END_STOP);
    PUSH_RESET(push, BUFCTX_VTXTMP);
 }
 
@@ -332,43 +332,43 @@ nv30_render_validate(struct nv30_context *nv30)
 
    /* modify vertex format for correct stride, and stub out unused ones */
    BEGIN_NV04(push, NV30_3D(VP_UPLOAD_FROM_ID), 1);
-   PUSH_DATA (push, r->vertprog->start);
+   PUSH_DATA (NULL, push, r->vertprog->start);
    r->vtxprog[attrib - 1][3] |= 1;
    for (i = 0; i < attrib; i++) {
       BEGIN_NV04(push, NV30_3D(VP_UPLOAD_INST(0)), 4);
-      PUSH_DATAp(push, r->vtxprog[i], 4);
+      PUSH_DATAp(NULL, push, r->vtxprog[i], 4);
       r->vtxfmt[i] |= vinfo->size << 8;
    }
    for (; i < 16; i++)
       r->vtxfmt[i]  = NV30_3D_VTXFMT_TYPE_V32_FLOAT;
 
    BEGIN_NV04(push, NV30_3D(VIEWPORT_TRANSLATE_X), 8);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 1.0);
-   PUSH_DATAf(push, 1.0);
-   PUSH_DATAf(push, 1.0);
-   PUSH_DATAf(push, 1.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 1.0);
+   PUSH_DATAf(NULL, push, 1.0);
+   PUSH_DATAf(NULL, push, 1.0);
+   PUSH_DATAf(NULL, push, 1.0);
    BEGIN_NV04(push, NV30_3D(DEPTH_RANGE_NEAR), 2);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 1.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 1.0);
    BEGIN_NV04(push, NV30_3D(VIEWPORT_HORIZ), 2);
-   PUSH_DATA (push, nv30->framebuffer.width << 16);
-   PUSH_DATA (push, nv30->framebuffer.height << 16);
+   PUSH_DATA (NULL, push, nv30->framebuffer.width << 16);
+   PUSH_DATA (NULL, push, nv30->framebuffer.height << 16);
 
    BEGIN_NV04(push, NV30_3D(VTXFMT(0)), 16);
-   PUSH_DATAp(push, r->vtxfmt, 16);
+   PUSH_DATAp(NULL, push, r->vtxfmt, 16);
 
    BEGIN_NV04(push, NV30_3D(VP_START_FROM_ID), 1);
-   PUSH_DATA (push, r->vertprog->start);
+   PUSH_DATA (NULL, push, r->vertprog->start);
    BEGIN_NV04(push, NV30_3D(ENGINE), 1);
-   PUSH_DATA (push, 0x00000103);
+   PUSH_DATA (NULL, push, 0x00000103);
    if (eng3d->oclass >= NV40_3D_CLASS) {
       BEGIN_NV04(push, NV40_3D(VP_ATTRIB_EN), 2);
-      PUSH_DATA (push, vp_attribs);
-      PUSH_DATA (push, vp_results);
+      PUSH_DATA (NULL, push, vp_attribs);
+      PUSH_DATA (NULL, push, vp_results);
    }
 
    vinfo->size /= 4;

@@ -469,10 +469,10 @@ nv30_screen_fence_emit(struct pipe_screen *pscreen, uint32_t *sequence)
    *sequence = ++screen->base.fence.sequence;
 
    assert(PUSH_AVAIL(push) + push->rsvd_kick >= 3);
-   PUSH_DATA (push, NV30_3D_FENCE_OFFSET |
+   PUSH_DATA (NULL, push, NV30_3D_FENCE_OFFSET |
               (2 /* size */ << 18) | (7 /* subchan */ << 13));
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, *sequence);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, *sequence);
 }
 
 static uint32_t
@@ -687,70 +687,70 @@ nv30_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("error allocating 3d object: %d\n", ret);
 
    BEGIN_NV04(push, NV01_SUBC(3D, OBJECT), 1);
-   PUSH_DATA (push, screen->eng3d->handle);
+   PUSH_DATA (NULL, push, screen->eng3d->handle);
    BEGIN_NV04(push, NV30_3D(DMA_NOTIFY), 13);
-   PUSH_DATA (push, screen->ntfy->handle);
-   PUSH_DATA (push, fifo->vram);     /* TEXTURE0 */
-   PUSH_DATA (push, fifo->gart);     /* TEXTURE1 */
-   PUSH_DATA (push, fifo->vram);     /* COLOR1 */
-   PUSH_DATA (push, screen->null->handle);  /* UNK190 */
-   PUSH_DATA (push, fifo->vram);     /* COLOR0 */
-   PUSH_DATA (push, fifo->vram);     /* ZETA */
-   PUSH_DATA (push, fifo->vram);     /* VTXBUF0 */
-   PUSH_DATA (push, fifo->gart);     /* VTXBUF1 */
-   PUSH_DATA (push, screen->fence->handle);  /* FENCE */
-   PUSH_DATA (push, screen->query->handle);  /* QUERY - intr 0x80 if nullobj */
-   PUSH_DATA (push, screen->null->handle);  /* UNK1AC */
-   PUSH_DATA (push, screen->null->handle);  /* UNK1B0 */
+   PUSH_DATA (NULL, push, screen->ntfy->handle);
+   PUSH_DATA (NULL, push, fifo->vram);     /* TEXTURE0 */
+   PUSH_DATA (NULL, push, fifo->gart);     /* TEXTURE1 */
+   PUSH_DATA (NULL, push, fifo->vram);     /* COLOR1 */
+   PUSH_DATA (NULL, push, screen->null->handle);  /* UNK190 */
+   PUSH_DATA (NULL, push, fifo->vram);     /* COLOR0 */
+   PUSH_DATA (NULL, push, fifo->vram);     /* ZETA */
+   PUSH_DATA (NULL, push, fifo->vram);     /* VTXBUF0 */
+   PUSH_DATA (NULL, push, fifo->gart);     /* VTXBUF1 */
+   PUSH_DATA (NULL, push, screen->fence->handle);  /* FENCE */
+   PUSH_DATA (NULL, push, screen->query->handle);  /* QUERY - intr 0x80 if nullobj */
+   PUSH_DATA (NULL, push, screen->null->handle);  /* UNK1AC */
+   PUSH_DATA (NULL, push, screen->null->handle);  /* UNK1B0 */
    if (screen->eng3d->oclass < NV40_3D_CLASS) {
       BEGIN_NV04(push, SUBC_3D(0x03b0), 1);
-      PUSH_DATA (push, 0x00100000);
+      PUSH_DATA (NULL, push, 0x00100000);
       BEGIN_NV04(push, SUBC_3D(0x1d80), 1);
-      PUSH_DATA (push, 3);
+      PUSH_DATA (NULL, push, 3);
 
       BEGIN_NV04(push, SUBC_3D(0x1e98), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       BEGIN_NV04(push, SUBC_3D(0x17e0), 3);
-      PUSH_DATA (push, fui(0.0));
-      PUSH_DATA (push, fui(0.0));
-      PUSH_DATA (push, fui(1.0));
+      PUSH_DATA (NULL, push, fui(0.0));
+      PUSH_DATA (NULL, push, fui(0.0));
+      PUSH_DATA (NULL, push, fui(1.0));
       BEGIN_NV04(push, SUBC_3D(0x1f80), 16);
       for (i = 0; i < 16; i++)
-         PUSH_DATA (push, (i == 8) ? 0x0000ffff : 0);
+         PUSH_DATA (NULL, push, (i == 8) ? 0x0000ffff : 0);
 
       BEGIN_NV04(push, NV30_3D(RC_ENABLE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    } else {
       BEGIN_NV04(push, NV40_3D(DMA_COLOR2), 2);
-      PUSH_DATA (push, fifo->vram);
-      PUSH_DATA (push, fifo->vram);  /* COLOR3 */
+      PUSH_DATA (NULL, push, fifo->vram);
+      PUSH_DATA (NULL, push, fifo->vram);  /* COLOR3 */
 
       BEGIN_NV04(push, SUBC_3D(0x1450), 1);
-      PUSH_DATA (push, 0x00000004);
+      PUSH_DATA (NULL, push, 0x00000004);
 
       BEGIN_NV04(push, SUBC_3D(0x1ea4), 3); /* ZCULL */
-      PUSH_DATA (push, 0x00000010);
-      PUSH_DATA (push, 0x01000100);
-      PUSH_DATA (push, 0xff800006);
+      PUSH_DATA (NULL, push, 0x00000010);
+      PUSH_DATA (NULL, push, 0x01000100);
+      PUSH_DATA (NULL, push, 0xff800006);
 
       /* vtxprog output routing */
       BEGIN_NV04(push, SUBC_3D(0x1fc4), 1);
-      PUSH_DATA (push, 0x06144321);
+      PUSH_DATA (NULL, push, 0x06144321);
       BEGIN_NV04(push, SUBC_3D(0x1fc8), 2);
-      PUSH_DATA (push, 0xedcba987);
-      PUSH_DATA (push, 0x0000006f);
+      PUSH_DATA (NULL, push, 0xedcba987);
+      PUSH_DATA (NULL, push, 0x0000006f);
       BEGIN_NV04(push, SUBC_3D(0x1fd0), 1);
-      PUSH_DATA (push, 0x00171615);
+      PUSH_DATA (NULL, push, 0x00171615);
       BEGIN_NV04(push, SUBC_3D(0x1fd4), 1);
-      PUSH_DATA (push, 0x001b1a19);
+      PUSH_DATA (NULL, push, 0x001b1a19);
 
       BEGIN_NV04(push, SUBC_3D(0x1ef8), 1);
-      PUSH_DATA (push, 0x0020ffff);
+      PUSH_DATA (NULL, push, 0x0020ffff);
       BEGIN_NV04(push, SUBC_3D(0x1d64), 1);
-      PUSH_DATA (push, 0x01d300d4);
+      PUSH_DATA (NULL, push, 0x01d300d4);
 
       BEGIN_NV04(push, NV40_3D(MIPMAP_ROUNDING), 1);
-      PUSH_DATA (push, NV40_3D_MIPMAP_ROUNDING_MODE_DOWN);
+      PUSH_DATA (NULL, push, NV40_3D_MIPMAP_ROUNDING_MODE_DOWN);
    }
 
    ret = nouveau_object_new(screen->base.channel, 0xbeef3901, NV03_M2MF_CLASS,
@@ -759,9 +759,9 @@ nv30_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("error allocating m2mf object: %d\n", ret);
 
    BEGIN_NV04(push, NV01_SUBC(M2MF, OBJECT), 1);
-   PUSH_DATA (push, screen->m2mf->handle);
+   PUSH_DATA (NULL, push, screen->m2mf->handle);
    BEGIN_NV04(push, NV03_M2MF(DMA_NOTIFY), 1);
-   PUSH_DATA (push, screen->ntfy->handle);
+   PUSH_DATA (NULL, push, screen->ntfy->handle);
 
    ret = nouveau_object_new(screen->base.channel, 0xbeef6201,
                             NV10_SURFACE_2D_CLASS, NULL, 0, &screen->surf2d);
@@ -769,9 +769,9 @@ nv30_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("error allocating surf2d object: %d\n", ret);
 
    BEGIN_NV04(push, NV01_SUBC(SF2D, OBJECT), 1);
-   PUSH_DATA (push, screen->surf2d->handle);
+   PUSH_DATA (NULL, push, screen->surf2d->handle);
    BEGIN_NV04(push, NV04_SF2D(DMA_NOTIFY), 1);
-   PUSH_DATA (push, screen->ntfy->handle);
+   PUSH_DATA (NULL, push, screen->ntfy->handle);
 
    if (dev->chipset < 0x40)
       oclass = NV30_SURFACE_SWZ_CLASS;
@@ -784,9 +784,9 @@ nv30_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("error allocating swizzled surface object: %d\n", ret);
 
    BEGIN_NV04(push, NV01_SUBC(SSWZ, OBJECT), 1);
-   PUSH_DATA (push, screen->swzsurf->handle);
+   PUSH_DATA (NULL, push, screen->swzsurf->handle);
    BEGIN_NV04(push, NV04_SSWZ(DMA_NOTIFY), 1);
-   PUSH_DATA (push, screen->ntfy->handle);
+   PUSH_DATA (NULL, push, screen->ntfy->handle);
 
    if (dev->chipset < 0x40)
       oclass = NV30_SIFM_CLASS;
@@ -799,11 +799,11 @@ nv30_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("error allocating scaled image object: %d\n", ret);
 
    BEGIN_NV04(push, NV01_SUBC(SIFM, OBJECT), 1);
-   PUSH_DATA (push, screen->sifm->handle);
+   PUSH_DATA (NULL, push, screen->sifm->handle);
    BEGIN_NV04(push, NV03_SIFM(DMA_NOTIFY), 1);
-   PUSH_DATA (push, screen->ntfy->handle);
+   PUSH_DATA (NULL, push, screen->ntfy->handle);
    BEGIN_NV04(push, NV05_SIFM(COLOR_CONVERSION), 1);
-   PUSH_DATA (push, NV05_SIFM_COLOR_CONVERSION_TRUNCATE);
+   PUSH_DATA (NULL, push, NV05_SIFM_COLOR_CONVERSION_TRUNCATE);
 
    nouveau_pushbuf_kick(push, push->channel);
 

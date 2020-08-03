@@ -81,7 +81,7 @@ emit_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
 
       if (unlikely(ctx->need_vertex_id)) {
          BEGIN_NV04(ctx->push, NV84_3D(VERTEX_ID_BASE), 1);
-         PUSH_DATA (ctx->push, *elts + ctx->index_bias);
+         PUSH_DATA (NULL, ctx->push, *elts + ctx->index_bias);
       }
 
       BEGIN_NI04(ctx->push, NV50_3D(VERTEX_DATA), size);
@@ -98,7 +98,7 @@ emit_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
          count--;
          elts++;
          BEGIN_NV04(ctx->push, NV50_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (ctx->push, ctx->restart_index);
+         PUSH_DATA (NULL, ctx->push, ctx->restart_index);
       }
    }
 }
@@ -120,7 +120,7 @@ emit_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
 
       if (unlikely(ctx->need_vertex_id)) {
          BEGIN_NV04(ctx->push, NV84_3D(VERTEX_ID_BASE), 1);
-         PUSH_DATA (ctx->push, *elts + ctx->index_bias);
+         PUSH_DATA (NULL, ctx->push, *elts + ctx->index_bias);
       }
 
       BEGIN_NI04(ctx->push, NV50_3D(VERTEX_DATA), size);
@@ -137,7 +137,7 @@ emit_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
          count--;
          elts++;
          BEGIN_NV04(ctx->push, NV50_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (ctx->push, ctx->restart_index);
+         PUSH_DATA (NULL, ctx->push, ctx->restart_index);
       }
    }
 }
@@ -159,7 +159,7 @@ emit_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
 
       if (unlikely(ctx->need_vertex_id)) {
          BEGIN_NV04(ctx->push, NV84_3D(VERTEX_ID_BASE), 1);
-         PUSH_DATA (ctx->push, *elts + ctx->index_bias);
+         PUSH_DATA (NULL, ctx->push, *elts + ctx->index_bias);
       }
 
       BEGIN_NI04(ctx->push, NV50_3D(VERTEX_DATA), size);
@@ -176,7 +176,7 @@ emit_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
          count--;
          elts++;
          BEGIN_NV04(ctx->push, NV50_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (ctx->push, ctx->restart_index);
+         PUSH_DATA (NULL, ctx->push, ctx->restart_index);
       }
    }
 }
@@ -193,7 +193,7 @@ emit_vertices_seq(struct push_context *ctx, unsigned start, unsigned count)
       if (unlikely(ctx->need_vertex_id)) {
          /* For non-indexed draws, gl_VertexID goes up after each vertex. */
          BEGIN_NV04(ctx->push, NV84_3D(VERTEX_ID_BASE), 1);
-         PUSH_DATA (ctx->push, elts++);
+         PUSH_DATA (NULL, ctx->push, elts++);
       }
 
       BEGIN_NI04(ctx->push, NV50_3D(VERTEX_DATA), size);
@@ -314,18 +314,18 @@ nv50_push_vbo(struct nv50_context *nv50, const struct pipe_draw_info *info)
 
    if (info->primitive_restart) {
       BEGIN_NV04(ctx.push, NV50_3D(PRIM_RESTART_ENABLE), 2);
-      PUSH_DATA (ctx.push, 1);
-      PUSH_DATA (ctx.push, info->restart_index);
+      PUSH_DATA (NULL, ctx.push, 1);
+      PUSH_DATA (NULL, ctx.push, info->restart_index);
    } else
    if (nv50->state.prim_restart) {
       BEGIN_NV04(ctx.push, NV50_3D(PRIM_RESTART_ENABLE), 1);
-      PUSH_DATA (ctx.push, 0);
+      PUSH_DATA (NULL, ctx.push, 0);
    }
    nv50->state.prim_restart = info->primitive_restart;
 
    while (inst_count--) {
       BEGIN_NV04(ctx.push, NV50_3D(VERTEX_BEGIN_GL), 1);
-      PUSH_DATA (ctx.push, ctx.prim);
+      PUSH_DATA (NULL, ctx.push, ctx.prim);
       switch (index_size) {
       case 0:
          emit_vertices_seq(&ctx, info->start, vert_count);
@@ -344,7 +344,7 @@ nv50_push_vbo(struct nv50_context *nv50, const struct pipe_draw_info *info)
          break;
       }
       BEGIN_NV04(ctx.push, NV50_3D(VERTEX_END_GL), 1);
-      PUSH_DATA (ctx.push, 0);
+      PUSH_DATA (NULL, ctx.push, 0);
 
       ctx.instance_id++;
       ctx.prim |= NV50_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
@@ -353,6 +353,6 @@ nv50_push_vbo(struct nv50_context *nv50, const struct pipe_draw_info *info)
    if (unlikely(ctx.need_vertex_id)) {
       /* Reset gl_VertexID to prevent future indexed draws to be confused. */
       BEGIN_NV04(ctx.push, NV84_3D(VERTEX_ID_BASE), 1);
-      PUSH_DATA (ctx.push, nv50->state.index_bias);
+      PUSH_DATA (NULL, ctx.push, nv50->state.index_bias);
    }
 }

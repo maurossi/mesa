@@ -38,7 +38,7 @@ nv50_flush(struct pipe_context *pipe,
    if (fence)
       nouveau_fence_ref(screen->fence.current, (struct nouveau_fence **)fence);
 
-   PUSH_KICK(screen->pushbuf);
+   PUSH_KICK(screen, screen->pushbuf);
 
    nouveau_context_update_frame_stats(nouveau_context(pipe));
 }
@@ -49,9 +49,9 @@ nv50_texture_barrier(struct pipe_context *pipe, unsigned flags)
    struct nouveau_pushbuf *push = nv50_context(pipe)->base.pushbuf;
 
    BEGIN_NV04(push, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV50_3D(TEX_CACHE_CTL), 1);
-   PUSH_DATA (push, 0x20);
+   PUSH_DATA (NULL, push, 0x20);
 }
 
 static void
@@ -106,11 +106,11 @@ nv50_emit_string_marker(struct pipe_context *pipe, const char *str, int len)
       data_words = string_words + !!(len & 3);
    BEGIN_NI04(push, SUBC_3D(NV04_GRAPH_NOP), data_words);
    if (string_words)
-      PUSH_DATAp(push, str, string_words);
+      PUSH_DATAp(NULL, push, str, string_words);
    if (string_words != data_words) {
       int data = 0;
       memcpy(&data, &str[string_words * 4], len & 3);
-      PUSH_DATA (push, data);
+      PUSH_DATA (NULL, push, data);
    }
 }
 

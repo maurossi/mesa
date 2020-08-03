@@ -107,7 +107,7 @@ nv30_fragprog_validate(struct nv30_context *nv30)
    if (nv30->state.fragprog != fp || upload) {
       struct nv04_resource *r = nv04_resource(fp->buffer);
 
-      if (!PUSH_SPACE(push, 8))
+      if (!PUSH_SPACE(NULL, push, 8))
          return;
       PUSH_RESET(push, BUFCTX_FRAGPROG);
 
@@ -117,15 +117,15 @@ nv30_fragprog_validate(struct nv30_context *nv30)
                        NV30_3D_FP_ACTIVE_PROGRAM_DMA0,
                        NV30_3D_FP_ACTIVE_PROGRAM_DMA1);
       BEGIN_NV04(push, NV30_3D(FP_CONTROL), 1);
-      PUSH_DATA (push, fp->fp_control);
+      PUSH_DATA (NULL, push, fp->fp_control);
       if (eng3d->oclass < NV40_3D_CLASS) {
          BEGIN_NV04(push, NV30_3D(FP_REG_CONTROL), 1);
-         PUSH_DATA (push, 0x00010004);
+         PUSH_DATA (NULL, push, 0x00010004);
          BEGIN_NV04(push, NV30_3D(TEX_UNITS_ENABLE), 1);
-         PUSH_DATA (push, fp->texcoords);
+         PUSH_DATA (NULL, push, fp->texcoords);
       } else {
          BEGIN_NV04(push, SUBC_3D(0x0b40), 1);
-         PUSH_DATA (push, 0x00000000);
+         PUSH_DATA (NULL, push, 0x00000000);
       }
 
       nv30->state.fragprog = fp;

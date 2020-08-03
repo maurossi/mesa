@@ -420,7 +420,7 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0;
 
    default:
-      debug_printf("%s: unhandled cap %d\n", __func__, param);
+//      debug_printf("%s: unhandled cap %d\n", __func__, param);
       /* fallthrough */
    /* caps where we want the default value */
    case PIPE_CAP_DMABUF:
@@ -729,12 +729,12 @@ nvc0_graph_set_macro(struct nvc0_screen *screen, uint32_t m, unsigned pos,
 
    assert((pos + size) <= 0x800);
 
-   BEGIN_NVC0(push, SUBC_3D(NVC0_GRAPH_MACRO_ID), 2);
-   PUSH_DATA (push, (m - 0x3800) / 8);
-   PUSH_DATA (push, pos);
-   BEGIN_1IC0(push, SUBC_3D(NVC0_GRAPH_MACRO_UPLOAD_POS), size + 1);
-   PUSH_DATA (push, pos);
-   PUSH_DATAp(push, data, size);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(NVC0_GRAPH_MACRO_ID), 2);
+   PUSH_DATA (&screen->base, push, (m - 0x3800) / 8);
+   PUSH_DATA (&screen->base, push, pos);
+   BEGIN_1IC0(&screen->base, push, SUBC_3D(NVC0_GRAPH_MACRO_UPLOAD_POS), size + 1);
+   PUSH_DATA (&screen->base, push, pos);
+   PUSH_DATAp(&screen->base, push, data, size);
 
    return pos + size;
 }
@@ -749,78 +749,78 @@ tu102_graph_set_macro(struct nvc0_screen *screen, uint32_t m, unsigned pos,
 
    assert((pos + size) <= 0x800);
 
-   BEGIN_NVC0(push, SUBC_3D(NVC0_GRAPH_MACRO_ID), 2);
-   PUSH_DATA (push, (m - 0x3800) / 8);
-   PUSH_DATA (push, pos);
-   BEGIN_1IC0(push, SUBC_3D(NVC0_GRAPH_MACRO_UPLOAD_POS), size + 1);
-   PUSH_DATA (push, pos);
-   PUSH_DATAp(push, data, size);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(NVC0_GRAPH_MACRO_ID), 2);
+   PUSH_DATA (&screen->base, push, (m - 0x3800) / 8);
+   PUSH_DATA (&screen->base, push, pos);
+   BEGIN_1IC0(&screen->base, push, SUBC_3D(NVC0_GRAPH_MACRO_UPLOAD_POS), size + 1);
+   PUSH_DATA (&screen->base, push, pos);
+   PUSH_DATAp(&screen->base, push, data, size);
 
    return pos + (size / 3);
 }
 
 static void
-nvc0_magic_3d_init(struct nouveau_pushbuf *push, uint16_t obj_class)
+nvc0_magic_3d_init(struct nvc0_screen *screen, struct nouveau_pushbuf *push, uint16_t obj_class)
 {
-   BEGIN_NVC0(push, SUBC_3D(0x10cc), 1);
-   PUSH_DATA (push, 0xff);
-   BEGIN_NVC0(push, SUBC_3D(0x10e0), 2);
-   PUSH_DATA (push, 0xff);
-   PUSH_DATA (push, 0xff);
-   BEGIN_NVC0(push, SUBC_3D(0x10ec), 2);
-   PUSH_DATA (push, 0xff);
-   PUSH_DATA (push, 0xff);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x10cc), 1);
+   PUSH_DATA (&screen->base, push, 0xff);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x10e0), 2);
+   PUSH_DATA (&screen->base, push, 0xff);
+   PUSH_DATA (&screen->base, push, 0xff);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x10ec), 2);
+   PUSH_DATA (&screen->base, push, 0xff);
+   PUSH_DATA (&screen->base, push, 0xff);
    if (obj_class < GV100_3D_CLASS) {
-      BEGIN_NVC0(push, SUBC_3D(0x074c), 1);
-      PUSH_DATA (push, 0x3f);
+      BEGIN_NVC0(&screen->base, push, SUBC_3D(0x074c), 1);
+      PUSH_DATA (&screen->base, push, 0x3f);
    }
 
-   BEGIN_NVC0(push, SUBC_3D(0x16a8), 1);
-   PUSH_DATA (push, (3 << 16) | 3);
-   BEGIN_NVC0(push, SUBC_3D(0x1794), 1);
-   PUSH_DATA (push, (2 << 16) | 2);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x16a8), 1);
+   PUSH_DATA (&screen->base, push, (3 << 16) | 3);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x1794), 1);
+   PUSH_DATA (&screen->base, push, (2 << 16) | 2);
 
    if (obj_class < GM107_3D_CLASS) {
-      BEGIN_NVC0(push, SUBC_3D(0x12ac), 1);
-      PUSH_DATA (push, 0);
+      BEGIN_NVC0(&screen->base, push, SUBC_3D(0x12ac), 1);
+      PUSH_DATA (&screen->base, push, 0);
    }
-   BEGIN_NVC0(push, SUBC_3D(0x0218), 1);
-   PUSH_DATA (push, 0x10);
-   BEGIN_NVC0(push, SUBC_3D(0x10fc), 1);
-   PUSH_DATA (push, 0x10);
-   BEGIN_NVC0(push, SUBC_3D(0x1290), 1);
-   PUSH_DATA (push, 0x10);
-   BEGIN_NVC0(push, SUBC_3D(0x12d8), 2);
-   PUSH_DATA (push, 0x10);
-   PUSH_DATA (push, 0x10);
-   BEGIN_NVC0(push, SUBC_3D(0x1140), 1);
-   PUSH_DATA (push, 0x10);
-   BEGIN_NVC0(push, SUBC_3D(0x1610), 1);
-   PUSH_DATA (push, 0xe);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x0218), 1);
+   PUSH_DATA (&screen->base, push, 0x10);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x10fc), 1);
+   PUSH_DATA (&screen->base, push, 0x10);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x1290), 1);
+   PUSH_DATA (&screen->base, push, 0x10);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x12d8), 2);
+   PUSH_DATA (&screen->base, push, 0x10);
+   PUSH_DATA (&screen->base, push, 0x10);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x1140), 1);
+   PUSH_DATA (&screen->base, push, 0x10);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x1610), 1);
+   PUSH_DATA (&screen->base, push, 0xe);
 
-   BEGIN_NVC0(push, NVC0_3D(VERTEX_ID_GEN_MODE), 1);
-   PUSH_DATA (push, NVC0_3D_VERTEX_ID_GEN_MODE_DRAW_ARRAYS_ADD_START);
-   BEGIN_NVC0(push, SUBC_3D(0x030c), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, SUBC_3D(0x0300), 1);
-   PUSH_DATA (push, 3);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_ID_GEN_MODE), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_VERTEX_ID_GEN_MODE_DRAW_ARRAYS_ADD_START);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x030c), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x0300), 1);
+   PUSH_DATA (&screen->base, push, 3);
 
    if (obj_class < GV100_3D_CLASS) {
-      BEGIN_NVC0(push, SUBC_3D(0x02d0), 1);
-      PUSH_DATA (push, 0x3fffff);
+      BEGIN_NVC0(&screen->base, push, SUBC_3D(0x02d0), 1);
+      PUSH_DATA (&screen->base, push, 0x3fffff);
    }
-   BEGIN_NVC0(push, SUBC_3D(0x0fdc), 1);
-   PUSH_DATA (push, 1);
-   BEGIN_NVC0(push, SUBC_3D(0x19c0), 1);
-   PUSH_DATA (push, 1);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x0fdc), 1);
+   PUSH_DATA (&screen->base, push, 1);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(0x19c0), 1);
+   PUSH_DATA (&screen->base, push, 1);
 
    if (obj_class < GM107_3D_CLASS) {
-      BEGIN_NVC0(push, SUBC_3D(0x075c), 1);
-      PUSH_DATA (push, 3);
+      BEGIN_NVC0(&screen->base, push, SUBC_3D(0x075c), 1);
+      PUSH_DATA (&screen->base, push, 3);
 
       if (obj_class >= NVE4_3D_CLASS) {
-         BEGIN_NVC0(push, SUBC_3D(0x07fc), 1);
-         PUSH_DATA (push, 1);
+         BEGIN_NVC0(&screen->base, push, SUBC_3D(0x07fc), 1);
+         PUSH_DATA (&screen->base, push, 1);
       }
    }
 
@@ -838,11 +838,11 @@ nvc0_screen_fence_emit(struct pipe_screen *pscreen, u32 *sequence)
    *sequence = ++screen->base.fence.sequence;
 
    assert(PUSH_AVAIL(push) + push->rsvd_kick >= 5);
-   PUSH_DATA (push, NVC0_FIFO_PKHDR_SQ(NVC0_3D(QUERY_ADDRESS_HIGH), 4));
-   PUSH_DATAh(push, screen->fence.bo->offset);
-   PUSH_DATA (push, screen->fence.bo->offset);
-   PUSH_DATA (push, *sequence);
-   PUSH_DATA (push, NVC0_3D_QUERY_GET_FENCE | NVC0_3D_QUERY_GET_SHORT |
+   PUSH_DATA (&screen->base, push, NVC0_FIFO_PKHDR_SQ(NVC0_3D(QUERY_ADDRESS_HIGH), 4));
+   PUSH_DATAh(&screen->base, push, screen->fence.bo->offset);
+   PUSH_DATA (&screen->base, push, screen->fence.bo->offset);
+   PUSH_DATA (&screen->base, push, *sequence);
+   PUSH_DATA (&screen->base, push, NVC0_3D_QUERY_GET_FENCE | NVC0_3D_QUERY_GET_SHORT |
               (0xf << NVC0_3D_QUERY_GET_UNIT__SHIFT));
 }
 
@@ -904,7 +904,7 @@ nvc0_screen_resize_tls_area(struct nvc0_screen *screen,
     * segment, as it may have commands that will reference it.
     */
    if (screen->tls)
-      PUSH_REFN(screen->base.pushbuf, screen->tls,
+      PUSH_REFN(&screen->base, screen->base.pushbuf, screen->tls,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RDWR);
    nouveau_bo_ref(NULL, &screen->tls);
    screen->tls = bo;
@@ -927,7 +927,7 @@ nvc0_screen_resize_text_area(struct nvc0_screen *screen, uint64_t size)
     * segment, as it may have commands that will reference it.
     */
    if (screen->text)
-      PUSH_REFN(push, screen->text,
+      PUSH_REFN(&screen->base, push, screen->text,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD);
    nouveau_bo_ref(NULL, &screen->text);
    screen->text = bo;
@@ -942,13 +942,13 @@ nvc0_screen_resize_text_area(struct nvc0_screen *screen, uint64_t size)
 
    /* update the code segment setup */
    if (screen->eng3d->oclass < GV100_3D_CLASS) {
-      BEGIN_NVC0(push, NVC0_3D(CODE_ADDRESS_HIGH), 2);
-      PUSH_DATAh(push, screen->text->offset);
-      PUSH_DATA (push, screen->text->offset);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(CODE_ADDRESS_HIGH), 2);
+      PUSH_DATAh(&screen->base, push, screen->text->offset);
+      PUSH_DATA (&screen->base, push, screen->text->offset);
       if (screen->compute) {
-         BEGIN_NVC0(push, NVC0_CP(CODE_ADDRESS_HIGH), 2);
-         PUSH_DATAh(push, screen->text->offset);
-         PUSH_DATA (push, screen->text->offset);
+         BEGIN_NVC0(&screen->base, push, NVC0_CP(CODE_ADDRESS_HIGH), 2);
+         PUSH_DATAh(&screen->base, push, screen->text->offset);
+         PUSH_DATA (&screen->base, push, screen->text->offset);
       }
    }
 
@@ -971,7 +971,7 @@ nvc0_screen_bind_cb_3d(struct nvc0_screen *screen, bool *can_serialize,
       if (can_serialize)
          serialize = serialize && *can_serialize;
       if (serialize) {
-         IMMED_NVC0(push, NVC0_3D(SERIALIZE), 0);
+         IMMED_NVC0(&screen->base, push, NVC0_3D(SERIALIZE), 0);
          if (can_serialize)
             *can_serialize = false;
       }
@@ -981,12 +981,12 @@ nvc0_screen_bind_cb_3d(struct nvc0_screen *screen, bool *can_serialize,
    }
 
    if (size >= 0) {
-      BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-      PUSH_DATA (push, size);
-      PUSH_DATAh(push, addr);
-      PUSH_DATA (push, addr);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+      PUSH_DATA (&screen->base, push, size);
+      PUSH_DATAh(&screen->base, push, addr);
+      PUSH_DATA (&screen->base, push, addr);
    }
-   IMMED_NVC0(push, NVC0_3D(CB_BIND(stage)), (index << 4) | (size >= 0));
+   IMMED_NVC0(&screen->base, push, NVC0_3D(CB_BIND(stage)), (index << 4) | (size >= 0));
 }
 
 static const void *
@@ -1096,14 +1096,15 @@ nvc0_screen_create(struct nouveau_device *dev)
    screen->base.fence.emit = nvc0_screen_fence_emit;
    screen->base.fence.update = nvc0_screen_fence_update;
 
+   PUSH_ACQ(&screen->base, push);
    if (dev->chipset < 0x140) {
       ret = nouveau_object_new(chan, (dev->chipset < 0xe0) ? 0x1f906e : 0x906e,
                                NVIF_CLASS_SW_GF100, NULL, 0, &screen->nvsw);
       if (ret)
          FAIL_SCREEN_INIT("Error creating SW object: %d\n", ret);
 
-      BEGIN_NVC0(push, SUBC_SW(NV01_SUBCHAN_OBJECT), 1);
-      PUSH_DATA (push, screen->nvsw->handle);
+      BEGIN_NVC0(&screen->base, push, SUBC_SW(NV01_SUBCHAN_OBJECT), 1);
+      PUSH_DATA (&screen->base, push, screen->nvsw->handle);
    }
 
    switch (dev->chipset & ~0xf) {
@@ -1128,11 +1129,11 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating PGRAPH context for M2MF: %d\n", ret);
 
-   BEGIN_NVC0(push, SUBC_M2MF(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push, screen->m2mf->oclass);
+   BEGIN_NVC0(&screen->base, push, SUBC_M2MF(NV01_SUBCHAN_OBJECT), 1);
+   PUSH_DATA (&screen->base, push, screen->m2mf->oclass);
    if (screen->m2mf->oclass == NVE4_P2MF_CLASS) {
-      BEGIN_NVC0(push, SUBC_COPY(NV01_SUBCHAN_OBJECT), 1);
-      PUSH_DATA (push, NVE4_COPY_CLASS);
+      BEGIN_NVC0(&screen->base, push, SUBC_COPY(NV01_SUBCHAN_OBJECT), 1);
+      PUSH_DATA (&screen->base, push, NVE4_COPY_CLASS);
    }
 
    ret = nouveau_object_new(chan, 0xbeef902d, NVC0_2D_CLASS, NULL, 0,
@@ -1140,26 +1141,26 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating PGRAPH context for 2D: %d\n", ret);
 
-   BEGIN_NVC0(push, SUBC_2D(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push, screen->eng2d->oclass);
-   BEGIN_NVC0(push, SUBC_2D(NVC0_2D_SINGLE_GPC), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_2D(OPERATION), 1);
-   PUSH_DATA (push, NV50_2D_OPERATION_SRCCOPY);
-   BEGIN_NVC0(push, NVC0_2D(CLIP_ENABLE), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_2D(COLOR_KEY_ENABLE), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_2D(SET_PIXELS_FROM_MEMORY_CORRAL_SIZE), 1);
-   PUSH_DATA (push, 0x3f);
-   BEGIN_NVC0(push, NVC0_2D(SET_PIXELS_FROM_MEMORY_SAFE_OVERLAP), 1);
-   PUSH_DATA (push, 1);
-   BEGIN_NVC0(push, NVC0_2D(COND_MODE), 1);
-   PUSH_DATA (push, NV50_2D_COND_MODE_ALWAYS);
+   BEGIN_NVC0(&screen->base, push, SUBC_2D(NV01_SUBCHAN_OBJECT), 1);
+   PUSH_DATA (&screen->base, push, screen->eng2d->oclass);
+   BEGIN_NVC0(&screen->base, push, SUBC_2D(NVC0_2D_SINGLE_GPC), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_2D(OPERATION), 1);
+   PUSH_DATA (&screen->base, push, NV50_2D_OPERATION_SRCCOPY);
+   BEGIN_NVC0(&screen->base, push, NVC0_2D(CLIP_ENABLE), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_2D(COLOR_KEY_ENABLE), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_2D(SET_PIXELS_FROM_MEMORY_CORRAL_SIZE), 1);
+   PUSH_DATA (&screen->base, push, 0x3f);
+   BEGIN_NVC0(&screen->base, push, NVC0_2D(SET_PIXELS_FROM_MEMORY_SAFE_OVERLAP), 1);
+   PUSH_DATA (&screen->base, push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_2D(COND_MODE), 1);
+   PUSH_DATA (&screen->base, push, NV50_2D_COND_MODE_ALWAYS);
 
-   BEGIN_NVC0(push, SUBC_2D(NVC0_GRAPH_NOTIFY_ADDRESS_HIGH), 2);
-   PUSH_DATAh(push, screen->fence.bo->offset + 16);
-   PUSH_DATA (push, screen->fence.bo->offset + 16);
+   BEGIN_NVC0(&screen->base, push, SUBC_2D(NVC0_GRAPH_NOTIFY_ADDRESS_HIGH), 2);
+   PUSH_DATAh(&screen->base, push, screen->fence.bo->offset + 16);
+   PUSH_DATA (&screen->base, push, screen->fence.bo->offset + 16);
 
    switch (dev->chipset & ~0xf) {
    case 0x160:
@@ -1223,61 +1224,61 @@ nvc0_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("Error allocating PGRAPH context for 3D: %d\n", ret);
    screen->base.class_3d = obj_class;
 
-   BEGIN_NVC0(push, SUBC_3D(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push, screen->eng3d->oclass);
+   BEGIN_NVC0(&screen->base, push, SUBC_3D(NV01_SUBCHAN_OBJECT), 1);
+   PUSH_DATA (&screen->base, push, screen->eng3d->oclass);
 
-   BEGIN_NVC0(push, NVC0_3D(COND_MODE), 1);
-   PUSH_DATA (push, NVC0_3D_COND_MODE_ALWAYS);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(COND_MODE), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_COND_MODE_ALWAYS);
 
    if (debug_get_bool_option("NOUVEAU_SHADER_WATCHDOG", true)) {
       /* kill shaders after about 1 second (at 100 MHz) */
-      BEGIN_NVC0(push, NVC0_3D(WATCHDOG_TIMER), 1);
-      PUSH_DATA (push, 0x17);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(WATCHDOG_TIMER), 1);
+      PUSH_DATA (&screen->base, push, 0x17);
    }
 
-   IMMED_NVC0(push, NVC0_3D(ZETA_COMP_ENABLE),
+   IMMED_NVC0(&screen->base, push, NVC0_3D(ZETA_COMP_ENABLE),
                     screen->base.drm->version >= 0x01000101);
-   BEGIN_NVC0(push, NVC0_3D(RT_COMP_ENABLE(0)), 8);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(RT_COMP_ENABLE(0)), 8);
    for (i = 0; i < 8; ++i)
-      PUSH_DATA(push, screen->base.drm->version >= 0x01000101);
+      PUSH_DATA(&screen->base, push, screen->base.drm->version >= 0x01000101);
 
-   BEGIN_NVC0(push, NVC0_3D(RT_CONTROL), 1);
-   PUSH_DATA (push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(RT_CONTROL), 1);
+   PUSH_DATA (&screen->base, push, 1);
 
-   BEGIN_NVC0(push, NVC0_3D(CSAA_ENABLE), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(MULTISAMPLE_ENABLE), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(MULTISAMPLE_MODE), 1);
-   PUSH_DATA (push, NVC0_3D_MULTISAMPLE_MODE_MS1);
-   BEGIN_NVC0(push, NVC0_3D(MULTISAMPLE_CTRL), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(LINE_WIDTH_SEPARATE), 1);
-   PUSH_DATA (push, 1);
-   BEGIN_NVC0(push, NVC0_3D(PRIM_RESTART_WITH_DRAW_ARRAYS), 1);
-   PUSH_DATA (push, 1);
-   BEGIN_NVC0(push, NVC0_3D(BLEND_SEPARATE_ALPHA), 1);
-   PUSH_DATA (push, 1);
-   BEGIN_NVC0(push, NVC0_3D(BLEND_ENABLE_COMMON), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(SHADE_MODEL), 1);
-   PUSH_DATA (push, NVC0_3D_SHADE_MODEL_SMOOTH);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CSAA_ENABLE), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(MULTISAMPLE_ENABLE), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(MULTISAMPLE_MODE), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_MULTISAMPLE_MODE_MS1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(MULTISAMPLE_CTRL), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(LINE_WIDTH_SEPARATE), 1);
+   PUSH_DATA (&screen->base, push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(PRIM_RESTART_WITH_DRAW_ARRAYS), 1);
+   PUSH_DATA (&screen->base, push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(BLEND_SEPARATE_ALPHA), 1);
+   PUSH_DATA (&screen->base, push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(BLEND_ENABLE_COMMON), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SHADE_MODEL), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_SHADE_MODEL_SMOOTH);
    if (screen->eng3d->oclass < NVE4_3D_CLASS) {
-      IMMED_NVC0(push, NVC0_3D(TEX_MISC), 0);
+      IMMED_NVC0(&screen->base, push, NVC0_3D(TEX_MISC), 0);
    } else {
-      BEGIN_NVC0(push, NVE4_3D(TEX_CB_INDEX), 1);
-      PUSH_DATA (push, 15);
+      BEGIN_NVC0(&screen->base, push, NVE4_3D(TEX_CB_INDEX), 1);
+      PUSH_DATA (&screen->base, push, 15);
    }
-   BEGIN_NVC0(push, NVC0_3D(CALL_LIMIT_LOG), 1);
-   PUSH_DATA (push, 8); /* 128 */
-   BEGIN_NVC0(push, NVC0_3D(ZCULL_STATCTRS_ENABLE), 1);
-   PUSH_DATA (push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CALL_LIMIT_LOG), 1);
+   PUSH_DATA (&screen->base, push, 8); /* 128 */
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(ZCULL_STATCTRS_ENABLE), 1);
+   PUSH_DATA (&screen->base, push, 1);
    if (screen->eng3d->oclass >= NVC1_3D_CLASS) {
-      BEGIN_NVC0(push, NVC0_3D(CACHE_SPLIT), 1);
-      PUSH_DATA (push, NVC0_3D_CACHE_SPLIT_48K_SHARED_16K_L1);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(CACHE_SPLIT), 1);
+      PUSH_DATA (&screen->base, push, NVC0_3D_CACHE_SPLIT_48K_SHARED_16K_L1);
    }
 
-   nvc0_magic_3d_init(push, screen->eng3d->oclass);
+   nvc0_magic_3d_init(screen, push, screen->eng3d->oclass);
 
    ret = nvc0_screen_resize_text_area(screen, 1 << 19);
    if (ret)
@@ -1289,22 +1290,22 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating uniform BO: %d\n", ret);
 
-   PUSH_REFN (push, screen->uniform_bo, NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_WR);
+   PUSH_REFN (&screen->base, push, screen->uniform_bo, NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_WR);
 
    /* return { 0.0, 0.0, 0.0, 0.0 } for out-of-bounds vtxbuf access */
-   BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-   PUSH_DATA (push, 256);
-   PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
-   PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
-   BEGIN_1IC0(push, NVC0_3D(CB_POS), 5);
-   PUSH_DATA (push, 0);
-   PUSH_DATAf(push, 0.0f);
-   PUSH_DATAf(push, 0.0f);
-   PUSH_DATAf(push, 0.0f);
-   PUSH_DATAf(push, 0.0f);
-   BEGIN_NVC0(push, NVC0_3D(VERTEX_RUNOUT_ADDRESS_HIGH), 2);
-   PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
-   PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+   PUSH_DATA (&screen->base, push, 256);
+   PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
+   PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
+   BEGIN_1IC0(&screen->base, push, NVC0_3D(CB_POS), 5);
+   PUSH_DATA (&screen->base, push, 0);
+   PUSH_DATAf(&screen->base, push, 0.0f);
+   PUSH_DATAf(&screen->base, push, 0.0f);
+   PUSH_DATAf(&screen->base, push, 0.0f);
+   PUSH_DATAf(&screen->base, push, 0.0f);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_RUNOUT_ADDRESS_HIGH), 2);
+   PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
+   PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_RUNOUT_INFO);
 
    if (screen->base.drm->version >= 0x01000101) {
       ret = nouveau_getparam(dev, NOUVEAU_GETPARAM_GRAPH_UNITS, &value);
@@ -1324,19 +1325,19 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating TLS area: %d\n", ret);
 
-   BEGIN_NVC0(push, NVC0_3D(TEMP_ADDRESS_HIGH), 4);
-   PUSH_DATAh(push, screen->tls->offset);
-   PUSH_DATA (push, screen->tls->offset);
-   PUSH_DATA (push, screen->tls->size >> 32);
-   PUSH_DATA (push, screen->tls->size);
-   BEGIN_NVC0(push, NVC0_3D(WARP_TEMP_ALLOC), 1);
-   PUSH_DATA (push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(TEMP_ADDRESS_HIGH), 4);
+   PUSH_DATAh(&screen->base, push, screen->tls->offset);
+   PUSH_DATA (&screen->base, push, screen->tls->offset);
+   PUSH_DATA (&screen->base, push, screen->tls->size >> 32);
+   PUSH_DATA (&screen->base, push, screen->tls->size);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(WARP_TEMP_ALLOC), 1);
+   PUSH_DATA (&screen->base, push, 0);
    /* Reduce likelihood of collision with real buffers by placing the hole at
     * the top of the 4G area. This will have to be dealt with for real
     * eventually by blocking off that area from the VM.
     */
-   BEGIN_NVC0(push, NVC0_3D(LOCAL_BASE), 1);
-   PUSH_DATA (push, 0xff << 24);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(LOCAL_BASE), 1);
+   PUSH_DATA (&screen->base, push, 0xff << 24);
 
    if (screen->eng3d->oclass < GM107_3D_CLASS) {
       ret = nouveau_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 17, 1 << 20, NULL,
@@ -1344,10 +1345,10 @@ nvc0_screen_create(struct nouveau_device *dev)
       if (ret)
          FAIL_SCREEN_INIT("Error allocating poly cache BO: %d\n", ret);
 
-      BEGIN_NVC0(push, NVC0_3D(VERTEX_QUARANTINE_ADDRESS_HIGH), 3);
-      PUSH_DATAh(push, screen->poly_cache->offset);
-      PUSH_DATA (push, screen->poly_cache->offset);
-      PUSH_DATA (push, 3);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_QUARANTINE_ADDRESS_HIGH), 3);
+      PUSH_DATAh(&screen->base, push, screen->poly_cache->offset);
+      PUSH_DATA (&screen->base, push, screen->poly_cache->offset);
+      PUSH_DATA (&screen->base, push, 3);
    }
 
    ret = nouveau_bo_new(dev, NV_VRAM_DOMAIN(&screen->base), 1 << 17, 1 << 17, NULL,
@@ -1355,64 +1356,64 @@ nvc0_screen_create(struct nouveau_device *dev)
    if (ret)
       FAIL_SCREEN_INIT("Error allocating txc BO: %d\n", ret);
 
-   BEGIN_NVC0(push, NVC0_3D(TIC_ADDRESS_HIGH), 3);
-   PUSH_DATAh(push, screen->txc->offset);
-   PUSH_DATA (push, screen->txc->offset);
-   PUSH_DATA (push, NVC0_TIC_MAX_ENTRIES - 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(TIC_ADDRESS_HIGH), 3);
+   PUSH_DATAh(&screen->base, push, screen->txc->offset);
+   PUSH_DATA (&screen->base, push, screen->txc->offset);
+   PUSH_DATA (&screen->base, push, NVC0_TIC_MAX_ENTRIES - 1);
    if (screen->eng3d->oclass >= GM107_3D_CLASS) {
       screen->tic.maxwell = true;
       if (screen->eng3d->oclass == GM107_3D_CLASS) {
          screen->tic.maxwell =
             debug_get_bool_option("NOUVEAU_MAXWELL_TIC", true);
-         IMMED_NVC0(push, SUBC_3D(0x0f10), screen->tic.maxwell);
+         IMMED_NVC0(&screen->base, push, SUBC_3D(0x0f10), screen->tic.maxwell);
       }
    }
 
-   BEGIN_NVC0(push, NVC0_3D(TSC_ADDRESS_HIGH), 3);
-   PUSH_DATAh(push, screen->txc->offset + 65536);
-   PUSH_DATA (push, screen->txc->offset + 65536);
-   PUSH_DATA (push, NVC0_TSC_MAX_ENTRIES - 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(TSC_ADDRESS_HIGH), 3);
+   PUSH_DATAh(&screen->base, push, screen->txc->offset + 65536);
+   PUSH_DATA (&screen->base, push, screen->txc->offset + 65536);
+   PUSH_DATA (&screen->base, push, NVC0_TSC_MAX_ENTRIES - 1);
 
-   BEGIN_NVC0(push, NVC0_3D(SCREEN_Y_CONTROL), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(WINDOW_OFFSET_X), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(ZCULL_REGION), 1); /* deactivate ZCULL */
-   PUSH_DATA (push, 0x3f);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SCREEN_Y_CONTROL), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(WINDOW_OFFSET_X), 2);
+   PUSH_DATA (&screen->base, push, 0);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(ZCULL_REGION), 1); /* deactivate ZCULL */
+   PUSH_DATA (&screen->base, push, 0x3f);
 
-   BEGIN_NVC0(push, NVC0_3D(CLIP_RECTS_MODE), 1);
-   PUSH_DATA (push, NVC0_3D_CLIP_RECTS_MODE_INSIDE_ANY);
-   BEGIN_NVC0(push, NVC0_3D(CLIP_RECT_HORIZ(0)), 8 * 2);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CLIP_RECTS_MODE), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_CLIP_RECTS_MODE_INSIDE_ANY);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CLIP_RECT_HORIZ(0)), 8 * 2);
    for (i = 0; i < 8 * 2; ++i)
-      PUSH_DATA(push, 0);
-   BEGIN_NVC0(push, NVC0_3D(CLIP_RECTS_EN), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(CLIPID_ENABLE), 1);
-   PUSH_DATA (push, 0);
+      PUSH_DATA(&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CLIP_RECTS_EN), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CLIPID_ENABLE), 1);
+   PUSH_DATA (&screen->base, push, 0);
 
    /* neither scissors, viewport nor stencil mask should affect clears */
-   BEGIN_NVC0(push, NVC0_3D(CLEAR_FLAGS), 1);
-   PUSH_DATA (push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(CLEAR_FLAGS), 1);
+   PUSH_DATA (&screen->base, push, 0);
 
-   BEGIN_NVC0(push, NVC0_3D(VIEWPORT_TRANSFORM_EN), 1);
-   PUSH_DATA (push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VIEWPORT_TRANSFORM_EN), 1);
+   PUSH_DATA (&screen->base, push, 1);
    for (i = 0; i < NVC0_MAX_VIEWPORTS; i++) {
-      BEGIN_NVC0(push, NVC0_3D(DEPTH_RANGE_NEAR(i)), 2);
-      PUSH_DATAf(push, 0.0f);
-      PUSH_DATAf(push, 1.0f);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(DEPTH_RANGE_NEAR(i)), 2);
+      PUSH_DATAf(&screen->base, push, 0.0f);
+      PUSH_DATAf(&screen->base, push, 1.0f);
    }
-   BEGIN_NVC0(push, NVC0_3D(VIEW_VOLUME_CLIP_CTRL), 1);
-   PUSH_DATA (push, NVC0_3D_VIEW_VOLUME_CLIP_CTRL_UNK1_UNK1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VIEW_VOLUME_CLIP_CTRL), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_VIEW_VOLUME_CLIP_CTRL_UNK1_UNK1);
 
    /* We use scissors instead of exact view volume clipping,
     * so they're always enabled.
     */
    for (i = 0; i < NVC0_MAX_VIEWPORTS; i++) {
-      BEGIN_NVC0(push, NVC0_3D(SCISSOR_ENABLE(i)), 3);
-      PUSH_DATA (push, 1);
-      PUSH_DATA (push, 16384 << 16);
-      PUSH_DATA (push, 16384 << 16);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(SCISSOR_ENABLE(i)), 3);
+      PUSH_DATA (&screen->base, push, 1);
+      PUSH_DATA (&screen->base, push, 16384 << 16);
+      PUSH_DATA (&screen->base, push, 16384 << 16);
    }
 
    if (screen->eng3d->oclass < TU102_3D_CLASS) {
@@ -1457,30 +1458,30 @@ nvc0_screen_create(struct nouveau_device *dev)
       MK_MACRO(NVC0_3D_MACRO_COMPUTE_COUNTER_TO_QUERY, mmec597_compute_counter_to_query);
    }
 
-   BEGIN_NVC0(push, NVC0_3D(RASTERIZE_ENABLE), 1);
-   PUSH_DATA (push, 1);
-   BEGIN_NVC0(push, NVC0_3D(RT_SEPARATE_FRAG_DATA), 1);
-   PUSH_DATA (push, 1);
-   BEGIN_NVC0(push, NVC0_3D(MACRO_GP_SELECT), 1);
-   PUSH_DATA (push, 0x40);
-   BEGIN_NVC0(push, NVC0_3D(LAYER), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(MACRO_TEP_SELECT), 1);
-   PUSH_DATA (push, 0x30);
-   BEGIN_NVC0(push, NVC0_3D(PATCH_VERTICES), 1);
-   PUSH_DATA (push, 3);
-   BEGIN_NVC0(push, NVC0_3D(SP_SELECT(2)), 1);
-   PUSH_DATA (push, 0x20);
-   BEGIN_NVC0(push, NVC0_3D(SP_SELECT(0)), 1);
-   PUSH_DATA (push, 0x00);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(RASTERIZE_ENABLE), 1);
+   PUSH_DATA (&screen->base, push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(RT_SEPARATE_FRAG_DATA), 1);
+   PUSH_DATA (&screen->base, push, 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(MACRO_GP_SELECT), 1);
+   PUSH_DATA (&screen->base, push, 0x40);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(LAYER), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(MACRO_TEP_SELECT), 1);
+   PUSH_DATA (&screen->base, push, 0x30);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(PATCH_VERTICES), 1);
+   PUSH_DATA (&screen->base, push, 3);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_SELECT(2)), 1);
+   PUSH_DATA (&screen->base, push, 0x20);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(SP_SELECT(0)), 1);
+   PUSH_DATA (&screen->base, push, 0x00);
    screen->save_state.patch_vertices = 3;
 
-   BEGIN_NVC0(push, NVC0_3D(POINT_COORD_REPLACE), 1);
-   PUSH_DATA (push, 0);
-   BEGIN_NVC0(push, NVC0_3D(POINT_RASTER_RULES), 1);
-   PUSH_DATA (push, NVC0_3D_POINT_RASTER_RULES_OGL);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(POINT_COORD_REPLACE), 1);
+   PUSH_DATA (&screen->base, push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(POINT_RASTER_RULES), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_POINT_RASTER_RULES_OGL);
 
-   IMMED_NVC0(push, NVC0_3D(EDGEFLAG), 1);
+   IMMED_NVC0(&screen->base, push, NVC0_3D(EDGEFLAG), 1);
 
    if (nvc0_screen_init_compute(screen))
       goto fail;
@@ -1497,39 +1498,39 @@ nvc0_screen_create(struct nouveau_device *dev)
                              screen->uniform_bo->offset + NVC0_CB_AUX_INFO(i));
       if (screen->eng3d->oclass >= NVE4_3D_CLASS) {
          unsigned j;
-         BEGIN_1IC0(push, NVC0_3D(CB_POS), 9);
-         PUSH_DATA (push, NVC0_CB_AUX_UNK_INFO);
+         BEGIN_1IC0(&screen->base, push, NVC0_3D(CB_POS), 9);
+         PUSH_DATA (&screen->base, push, NVC0_CB_AUX_UNK_INFO);
          for (j = 0; j < 8; ++j)
-            PUSH_DATA(push, j);
+            PUSH_DATA(&screen->base, push, j);
       } else {
-         BEGIN_NVC0(push, NVC0_3D(TEX_LIMITS(i)), 1);
-         PUSH_DATA (push, 0x54);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(TEX_LIMITS(i)), 1);
+         PUSH_DATA (&screen->base, push, 0x54);
       }
 
       /* MS sample coordinate offsets: these do not work with _ALT modes ! */
-      BEGIN_1IC0(push, NVC0_3D(CB_POS), 1 + 2 * 8);
-      PUSH_DATA (push, NVC0_CB_AUX_MS_INFO);
-      PUSH_DATA (push, 0); /* 0 */
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, 1); /* 1 */
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, 0); /* 2 */
-      PUSH_DATA (push, 1);
-      PUSH_DATA (push, 1); /* 3 */
-      PUSH_DATA (push, 1);
-      PUSH_DATA (push, 2); /* 4 */
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, 3); /* 5 */
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, 2); /* 6 */
-      PUSH_DATA (push, 1);
-      PUSH_DATA (push, 3); /* 7 */
-      PUSH_DATA (push, 1);
+      BEGIN_1IC0(&screen->base, push, NVC0_3D(CB_POS), 1 + 2 * 8);
+      PUSH_DATA (&screen->base, push, NVC0_CB_AUX_MS_INFO);
+      PUSH_DATA (&screen->base, push, 0); /* 0 */
+      PUSH_DATA (&screen->base, push, 0);
+      PUSH_DATA (&screen->base, push, 1); /* 1 */
+      PUSH_DATA (&screen->base, push, 0);
+      PUSH_DATA (&screen->base, push, 0); /* 2 */
+      PUSH_DATA (&screen->base, push, 1);
+      PUSH_DATA (&screen->base, push, 1); /* 3 */
+      PUSH_DATA (&screen->base, push, 1);
+      PUSH_DATA (&screen->base, push, 2); /* 4 */
+      PUSH_DATA (&screen->base, push, 0);
+      PUSH_DATA (&screen->base, push, 3); /* 5 */
+      PUSH_DATA (&screen->base, push, 0);
+      PUSH_DATA (&screen->base, push, 2); /* 6 */
+      PUSH_DATA (&screen->base, push, 1);
+      PUSH_DATA (&screen->base, push, 3); /* 7 */
+      PUSH_DATA (&screen->base, push, 1);
    }
-   BEGIN_NVC0(push, NVC0_3D(LINKED_TSC), 1);
-   PUSH_DATA (push, 0);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(LINKED_TSC), 1);
+   PUSH_DATA (&screen->base, push, 0);
 
-   PUSH_KICK (push);
+   PUSH_DONE (&screen->base, push);
 
    screen->tic.entries = CALLOC(
          NVC0_TIC_MAX_ENTRIES + NVC0_TSC_MAX_ENTRIES + NVE4_IMG_MAX_HANDLES,

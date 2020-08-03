@@ -52,7 +52,7 @@ nvc0_hw_get_driver_query_info(struct nvc0_screen *, unsigned,
 bool
 nvc0_hw_query_allocate(struct nvc0_context *, struct nvc0_query *, int);
 void
-nvc0_hw_query_pushbuf_submit(struct nouveau_pushbuf *, struct nvc0_query *,
+nvc0_hw_query_pushbuf_submit(struct nvc0_context *, struct nouveau_pushbuf *, struct nvc0_query *,
                              unsigned);
 void
 nvc0_hw_query_fifo_wait(struct nvc0_context *, struct nvc0_query *);

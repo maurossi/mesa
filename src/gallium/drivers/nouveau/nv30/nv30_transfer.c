@@ -90,17 +90,17 @@ nv30_transfer_rect_vertprog(struct nv30_context *nv30)
          struct nouveau_pushbuf *push = nv30->base.pushbuf;
 
          BEGIN_NV04(push, NV30_3D(VP_UPLOAD_FROM_ID), 1);
-         PUSH_DATA (push, vp->start);
+         PUSH_DATA (NULL, push, vp->start);
          BEGIN_NV04(push, NV30_3D(VP_UPLOAD_INST(0)), 4);
-         PUSH_DATA (push, 0x401f9c6c); /* mov o[hpos], a[0]; */
-         PUSH_DATA (push, 0x0040000d);
-         PUSH_DATA (push, 0x8106c083);
-         PUSH_DATA (push, 0x6041ff80);
+         PUSH_DATA (NULL, push, 0x401f9c6c); /* mov o[hpos], a[0]; */
+         PUSH_DATA (NULL, push, 0x0040000d);
+         PUSH_DATA (NULL, push, 0x8106c083);
+         PUSH_DATA (NULL, push, 0x6041ff80);
          BEGIN_NV04(push, NV30_3D(VP_UPLOAD_INST(0)), 4);
-         PUSH_DATA (push, 0x401f9c6c); /* mov o[tex0], a[8]; end; */
-         PUSH_DATA (push, 0x0040080d);
-         PUSH_DATA (push, 0x8106c083);
-         PUSH_DATA (push, 0x6041ff9d);
+         PUSH_DATA (NULL, push, 0x401f9c6c); /* mov o[tex0], a[8]; end; */
+         PUSH_DATA (NULL, push, 0x0040080d);
+         PUSH_DATA (NULL, push, 0x8106c083);
+         PUSH_DATA (NULL, push, 0x6041ff9d);
       }
    }
 
@@ -196,86 +196,86 @@ nv30_transfer_rect_blit(XFER_ARGS)
    }
 
    BEGIN_NV04(push, NV30_3D(VIEWPORT_HORIZ), 2);
-   PUSH_DATA (push, dst->w << 16);
-   PUSH_DATA (push, dst->h << 16);
+   PUSH_DATA (NULL, push, dst->w << 16);
+   PUSH_DATA (NULL, push, dst->h << 16);
    BEGIN_NV04(push, NV30_3D(RT_HORIZ), 5);
-   PUSH_DATA (push, dst->w << 16);
-   PUSH_DATA (push, dst->h << 16);
-   PUSH_DATA (push, format);
-   PUSH_DATA (push, stride);
+   PUSH_DATA (NULL, push, dst->w << 16);
+   PUSH_DATA (NULL, push, dst->h << 16);
+   PUSH_DATA (NULL, push, format);
+   PUSH_DATA (NULL, push, stride);
    PUSH_RELOC(push, dst->bo, dst->offset, NOUVEAU_BO_LOW, 0, 0);
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
-   PUSH_DATA (push, NV30_3D_RT_ENABLE_COLOR0);
+   PUSH_DATA (NULL, push, NV30_3D_RT_ENABLE_COLOR0);
 
    nv30->dirty |= NV30_NEW_FRAMEBUFFER;
 
    /* viewport state */
    BEGIN_NV04(push, NV30_3D(VIEWPORT_TRANSLATE_X), 8);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 1.0);
-   PUSH_DATAf(push, 1.0);
-   PUSH_DATAf(push, 1.0);
-   PUSH_DATAf(push, 1.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 1.0);
+   PUSH_DATAf(NULL, push, 1.0);
+   PUSH_DATAf(NULL, push, 1.0);
+   PUSH_DATAf(NULL, push, 1.0);
    BEGIN_NV04(push, NV30_3D(DEPTH_RANGE_NEAR), 2);
-   PUSH_DATAf(push, 0.0);
-   PUSH_DATAf(push, 1.0);
+   PUSH_DATAf(NULL, push, 0.0);
+   PUSH_DATAf(NULL, push, 1.0);
 
    nv30->dirty |= NV30_NEW_VIEWPORT;
 
    /* blend state */
    BEGIN_NV04(push, NV30_3D(COLOR_LOGIC_OP_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(DITHER_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(BLEND_FUNC_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(COLOR_MASK), 1);
-   PUSH_DATA (push, 0x01010101);
+   PUSH_DATA (NULL, push, 0x01010101);
 
    nv30->dirty |= NV30_NEW_BLEND;
 
    /* depth-stencil-alpha state */
    BEGIN_NV04(push, NV30_3D(DEPTH_WRITE_ENABLE), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(STENCIL_ENABLE(0)), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(STENCIL_ENABLE(1)), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(ALPHA_FUNC_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    nv30->dirty |= NV30_NEW_ZSA;
 
    /* rasterizer state */
    BEGIN_NV04(push, NV30_3D(SHADE_MODEL), 1);
-   PUSH_DATA (push, NV30_3D_SHADE_MODEL_FLAT);
+   PUSH_DATA (NULL, push, NV30_3D_SHADE_MODEL_FLAT);
    BEGIN_NV04(push, NV30_3D(CULL_FACE_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(POLYGON_MODE_FRONT), 2);
-   PUSH_DATA (push, NV30_3D_POLYGON_MODE_FRONT_FILL);
-   PUSH_DATA (push, NV30_3D_POLYGON_MODE_BACK_FILL);
+   PUSH_DATA (NULL, push, NV30_3D_POLYGON_MODE_FRONT_FILL);
+   PUSH_DATA (NULL, push, NV30_3D_POLYGON_MODE_BACK_FILL);
    BEGIN_NV04(push, NV30_3D(POLYGON_OFFSET_FILL_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(POLYGON_STIPPLE_ENABLE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    nv30->state.scissor_off = 0;
    nv30->dirty |= NV30_NEW_RASTERIZER;
 
    /* vertex program */
    BEGIN_NV04(push, NV30_3D(VP_START_FROM_ID), 1);
-   PUSH_DATA (push, vp->start);
+   PUSH_DATA (NULL, push, vp->start);
    BEGIN_NV04(push, NV40_3D(VP_ATTRIB_EN), 2);
-   PUSH_DATA (push, 0x00000101); /* attrib: 0, 8 */
-   PUSH_DATA (push, 0x00004000); /* result: hpos, tex0 */
+   PUSH_DATA (NULL, push, 0x00000101); /* attrib: 0, 8 */
+   PUSH_DATA (NULL, push, 0x00004000); /* result: hpos, tex0 */
    BEGIN_NV04(push, NV30_3D(ENGINE), 1);
-   PUSH_DATA (push, 0x00000103);
+   PUSH_DATA (NULL, push, 0x00000103);
    BEGIN_NV04(push, NV30_3D(VP_CLIP_PLANES_ENABLE), 1);
-   PUSH_DATA (push, 0x00000000);
+   PUSH_DATA (NULL, push, 0x00000000);
 
    nv30->dirty |= NV30_NEW_VERTPROG;
    nv30->dirty |= NV30_NEW_CLIP;
@@ -287,7 +287,7 @@ nv30_transfer_rect_blit(XFER_ARGS)
                     NV30_3D_FP_ACTIVE_PROGRAM_DMA0,
                     NV30_3D_FP_ACTIVE_PROGRAM_DMA1);
    BEGIN_NV04(push, NV30_3D(FP_CONTROL), 1);
-   PUSH_DATA (push, 0x02000000);
+   PUSH_DATA (NULL, push, 0x02000000);
 
    nv30->state.fragprog = NULL;
    nv30->dirty |= NV30_NEW_FRAGPROG;
@@ -308,65 +308,65 @@ nv30_transfer_rect_blit(XFER_ARGS)
    PUSH_RELOC(push, src->bo, src->offset, NOUVEAU_BO_LOW, 0, 0);
    PUSH_RELOC(push, src->bo, texfmt, NOUVEAU_BO_OR,
                     NV30_3D_TEX_FORMAT_DMA0, NV30_3D_TEX_FORMAT_DMA1);
-   PUSH_DATA (push, NV30_3D_TEX_WRAP_S_CLAMP_TO_EDGE |
+   PUSH_DATA (NULL, push, NV30_3D_TEX_WRAP_S_CLAMP_TO_EDGE |
                     NV30_3D_TEX_WRAP_T_CLAMP_TO_EDGE |
                     NV30_3D_TEX_WRAP_R_CLAMP_TO_EDGE);
-   PUSH_DATA (push, NV40_3D_TEX_ENABLE_ENABLE);
-   PUSH_DATA (push, texswz);
+   PUSH_DATA (NULL, push, NV40_3D_TEX_ENABLE_ENABLE);
+   PUSH_DATA (NULL, push, texswz);
    switch (filter) {
    case BILINEAR:
-      PUSH_DATA (push, NV30_3D_TEX_FILTER_MIN_LINEAR |
+      PUSH_DATA (NULL, push, NV30_3D_TEX_FILTER_MIN_LINEAR |
                        NV30_3D_TEX_FILTER_MAG_LINEAR | 0x00002000);
       break;
    default:
-      PUSH_DATA (push, NV30_3D_TEX_FILTER_MIN_NEAREST |
+      PUSH_DATA (NULL, push, NV30_3D_TEX_FILTER_MIN_NEAREST |
                        NV30_3D_TEX_FILTER_MAG_NEAREST | 0x00002000);
       break;
    }
-   PUSH_DATA (push, (src->w << 16) | src->h);
-   PUSH_DATA (push, 0x00000000);
+   PUSH_DATA (NULL, push, (src->w << 16) | src->h);
+   PUSH_DATA (NULL, push, 0x00000000);
    BEGIN_NV04(push, NV40_3D(TEX_SIZE1(0)), 1);
-   PUSH_DATA (push, 0x00100000 | src->pitch);
+   PUSH_DATA (NULL, push, 0x00100000 | src->pitch);
    BEGIN_NV04(push, SUBC_3D(0x0b40), 1);
-   PUSH_DATA (push, src->d < 2 ? 0x00000001 : 0x00000000);
+   PUSH_DATA (NULL, push, src->d < 2 ? 0x00000001 : 0x00000000);
    BEGIN_NV04(push, NV40_3D(TEX_CACHE_CTL), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    nv30->fragprog.dirty_samplers |= 1;
    nv30->dirty |= NV30_NEW_FRAGTEX;
 
    /* blit! */
    BEGIN_NV04(push, NV30_3D(SCISSOR_HORIZ), 2);
-   PUSH_DATA (push, (dst->x1 - dst->x0) << 16 | dst->x0);
-   PUSH_DATA (push, (dst->y1 - dst->y0) << 16 | dst->y0);
+   PUSH_DATA (NULL, push, (dst->x1 - dst->x0) << 16 | dst->x0);
+   PUSH_DATA (NULL, push, (dst->y1 - dst->y0) << 16 | dst->y0);
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (push, NV30_3D_VERTEX_BEGIN_END_QUADS);
+   PUSH_DATA (NULL, push, NV30_3D_VERTEX_BEGIN_END_QUADS);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_3F(8)), 3);
-   PUSH_DATAf(push, src->x0);
-   PUSH_DATAf(push, src->y0);
-   PUSH_DATAf(push, src->z);
+   PUSH_DATAf(NULL, push, src->x0);
+   PUSH_DATAf(NULL, push, src->y0);
+   PUSH_DATAf(NULL, push, src->z);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_2I(0)), 1);
-   PUSH_DATA (push, (dst->y0 << 16) | dst->x0);
+   PUSH_DATA (NULL, push, (dst->y0 << 16) | dst->x0);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_3F(8)), 3);
-   PUSH_DATAf(push, src->x1);
-   PUSH_DATAf(push, src->y0);
-   PUSH_DATAf(push, src->z);
+   PUSH_DATAf(NULL, push, src->x1);
+   PUSH_DATAf(NULL, push, src->y0);
+   PUSH_DATAf(NULL, push, src->z);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_2I(0)), 1);
-   PUSH_DATA (push, (dst->y0 << 16) | dst->x1);
+   PUSH_DATA (NULL, push, (dst->y0 << 16) | dst->x1);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_3F(8)), 3);
-   PUSH_DATAf(push, src->x1);
-   PUSH_DATAf(push, src->y1);
-   PUSH_DATAf(push, src->z);
+   PUSH_DATAf(NULL, push, src->x1);
+   PUSH_DATAf(NULL, push, src->y1);
+   PUSH_DATAf(NULL, push, src->z);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_2I(0)), 1);
-   PUSH_DATA (push, (dst->y1 << 16) | dst->x1);
+   PUSH_DATA (NULL, push, (dst->y1 << 16) | dst->x1);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_3F(8)), 3);
-   PUSH_DATAf(push, src->x0);
-   PUSH_DATAf(push, src->y1);
-   PUSH_DATAf(push, src->z);
+   PUSH_DATAf(NULL, push, src->x0);
+   PUSH_DATAf(NULL, push, src->y1);
+   PUSH_DATAf(NULL, push, src->z);
    BEGIN_NV04(push, NV30_3D(VTX_ATTR_2I(0)), 1);
-   PUSH_DATA (push, (dst->y1 << 16) | dst->x0);
+   PUSH_DATA (NULL, push, (dst->y1 << 16) | dst->x0);
    BEGIN_NV04(push, NV30_3D(VERTEX_BEGIN_END), 1);
-   PUSH_DATA (push, NV30_3D_VERTEX_BEGIN_END_STOP);
+   PUSH_DATA (NULL, push, NV30_3D_VERTEX_BEGIN_END_STOP);
 }
 
 static bool
@@ -440,39 +440,39 @@ nv30_transfer_rect_sifm(XFER_ARGS)
       PUSH_RELOC(push, dst->bo, 0, NOUVEAU_BO_OR, fifo->vram, fifo->gart);
       PUSH_RELOC(push, dst->bo, 0, NOUVEAU_BO_OR, fifo->vram, fifo->gart);
       BEGIN_NV04(push, NV04_SF2D(FORMAT), 4);
-      PUSH_DATA (push, ss_fmt);
-      PUSH_DATA (push, dst->pitch << 16 | dst->pitch);
+      PUSH_DATA (NULL, push, ss_fmt);
+      PUSH_DATA (NULL, push, dst->pitch << 16 | dst->pitch);
       PUSH_RELOC(push, dst->bo, dst->offset, NOUVEAU_BO_LOW, 0, 0);
       PUSH_RELOC(push, dst->bo, dst->offset, NOUVEAU_BO_LOW, 0, 0);
       BEGIN_NV04(push, NV05_SIFM(SURFACE), 1);
-      PUSH_DATA (push, nv30->screen->surf2d->handle);
+      PUSH_DATA (NULL, push, nv30->screen->surf2d->handle);
    } else {
       BEGIN_NV04(push, NV04_SSWZ(DMA_IMAGE), 1);
       PUSH_RELOC(push, dst->bo, 0, NOUVEAU_BO_OR, fifo->vram, fifo->gart);
       BEGIN_NV04(push, NV04_SSWZ(FORMAT), 2);
-      PUSH_DATA (push, ss_fmt | (util_logbase2(dst->w) << 16) |
+      PUSH_DATA (NULL, push, ss_fmt | (util_logbase2(dst->w) << 16) |
                                 (util_logbase2(dst->h) << 24));
       PUSH_RELOC(push, dst->bo, dst->offset, NOUVEAU_BO_LOW, 0, 0);
       BEGIN_NV04(push, NV05_SIFM(SURFACE), 1);
-      PUSH_DATA (push, nv30->screen->swzsurf->handle);
+      PUSH_DATA (NULL, push, nv30->screen->swzsurf->handle);
    }
 
    BEGIN_NV04(push, NV03_SIFM(DMA_IMAGE), 1);
    PUSH_RELOC(push, src->bo, 0, NOUVEAU_BO_OR, fifo->vram, fifo->gart);
    BEGIN_NV04(push, NV03_SIFM(COLOR_FORMAT), 8);
-   PUSH_DATA (push, si_fmt);
-   PUSH_DATA (push, NV03_SIFM_OPERATION_SRCCOPY);
-   PUSH_DATA (push, (           dst->y0  << 16) |            dst->x0);
-   PUSH_DATA (push, ((dst->y1 - dst->y0) << 16) | (dst->x1 - dst->x0));
-   PUSH_DATA (push, (           dst->y0  << 16) |            dst->x0);
-   PUSH_DATA (push, ((dst->y1 - dst->y0) << 16) | (dst->x1 - dst->x0));
-   PUSH_DATA (push, ((src->x1 - src->x0) << 20) / (dst->x1 - dst->x0));
-   PUSH_DATA (push, ((src->y1 - src->y0) << 20) / (dst->y1 - dst->y0));
+   PUSH_DATA (NULL, push, si_fmt);
+   PUSH_DATA (NULL, push, NV03_SIFM_OPERATION_SRCCOPY);
+   PUSH_DATA (NULL, push, (           dst->y0  << 16) |            dst->x0);
+   PUSH_DATA (NULL, push, ((dst->y1 - dst->y0) << 16) | (dst->x1 - dst->x0));
+   PUSH_DATA (NULL, push, (           dst->y0  << 16) |            dst->x0);
+   PUSH_DATA (NULL, push, ((dst->y1 - dst->y0) << 16) | (dst->x1 - dst->x0));
+   PUSH_DATA (NULL, push, ((src->x1 - src->x0) << 20) / (dst->x1 - dst->x0));
+   PUSH_DATA (NULL, push, ((src->y1 - src->y0) << 20) / (dst->y1 - dst->y0));
    BEGIN_NV04(push, NV03_SIFM(SIZE), 4);
-   PUSH_DATA (push, align(src->h, 2) << 16 | align(src->w, 2));
-   PUSH_DATA (push, src->pitch | si_arg);
+   PUSH_DATA (NULL, push, align(src->h, 2) << 16 | align(src->w, 2));
+   PUSH_DATA (NULL, push, src->pitch | si_arg);
    PUSH_RELOC(push, src->bo, src->offset, NOUVEAU_BO_LOW, 0, 0);
-   PUSH_DATA (push, (src->y0 << 20) | src->x0 << 4);
+   PUSH_DATA (NULL, push, (src->y0 << 20) | src->x0 << 4);
 }
 
 /* The NOP+OFFSET_OUT stuff after each M2MF transfer *is* actually required
@@ -510,8 +510,8 @@ nv30_transfer_rect_m2mf(XFER_ARGS)
    dst_offset += (dst->y0 * dst->pitch) + (dst->x0 * dst->cpp);
 
    BEGIN_NV04(push, NV03_M2MF(DMA_BUFFER_IN), 2);
-   PUSH_DATA (push, (src->domain == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
-   PUSH_DATA (push, (dst->domain == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
+   PUSH_DATA (NULL, push, (src->domain == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
+   PUSH_DATA (NULL, push, (dst->domain == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
 
    while (h) {
       unsigned lines = (h > 2047) ? 2047 : h;
@@ -523,17 +523,17 @@ nv30_transfer_rect_m2mf(XFER_ARGS)
       BEGIN_NV04(push, NV03_M2MF(OFFSET_IN), 8);
       PUSH_RELOC(push, src->bo, src_offset, NOUVEAU_BO_LOW, 0, 0);
       PUSH_RELOC(push, dst->bo, dst_offset, NOUVEAU_BO_LOW, 0, 0);
-      PUSH_DATA (push, src->pitch);
-      PUSH_DATA (push, dst->pitch);
-      PUSH_DATA (push, w * src->cpp);
-      PUSH_DATA (push, lines);
-      PUSH_DATA (push, NV03_M2MF_FORMAT_INPUT_INC_1 |
+      PUSH_DATA (NULL, push, src->pitch);
+      PUSH_DATA (NULL, push, dst->pitch);
+      PUSH_DATA (NULL, push, w * src->cpp);
+      PUSH_DATA (NULL, push, lines);
+      PUSH_DATA (NULL, push, NV03_M2MF_FORMAT_INPUT_INC_1 |
                        NV03_M2MF_FORMAT_OUTPUT_INC_1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
       BEGIN_NV04(push, NV04_GRAPH(M2MF, NOP), 1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
       BEGIN_NV04(push, NV03_M2MF(OFFSET_OUT), 1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
 
       h -= lines;
       src_offset += src->pitch * lines;
@@ -701,8 +701,8 @@ nv30_transfer_copy_data(struct nouveau_context *nv,
    size -= (pages << 12);
 
    BEGIN_NV04(push, NV03_M2MF(DMA_BUFFER_IN), 2);
-   PUSH_DATA (push, (s_dom == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
-   PUSH_DATA (push, (d_dom == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
+   PUSH_DATA (NULL, push, (s_dom == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
+   PUSH_DATA (NULL, push, (d_dom == NOUVEAU_BO_VRAM) ? fifo->vram : fifo->gart);
 
    while (pages) {
       lines  = (pages > 2047) ? 2047 : pages;
@@ -715,17 +715,17 @@ nv30_transfer_copy_data(struct nouveau_context *nv,
       BEGIN_NV04(push, NV03_M2MF(OFFSET_IN), 8);
       PUSH_RELOC(push, src, s_off, NOUVEAU_BO_LOW, 0, 0);
       PUSH_RELOC(push, dst, d_off, NOUVEAU_BO_LOW, 0, 0);
-      PUSH_DATA (push, 4096);
-      PUSH_DATA (push, 4096);
-      PUSH_DATA (push, 4096);
-      PUSH_DATA (push, lines);
-      PUSH_DATA (push, NV03_M2MF_FORMAT_INPUT_INC_1 |
+      PUSH_DATA (NULL, push, 4096);
+      PUSH_DATA (NULL, push, 4096);
+      PUSH_DATA (NULL, push, 4096);
+      PUSH_DATA (NULL, push, lines);
+      PUSH_DATA (NULL, push, NV03_M2MF_FORMAT_INPUT_INC_1 |
                        NV03_M2MF_FORMAT_OUTPUT_INC_1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
       BEGIN_NV04(push, NV04_GRAPH(M2MF, NOP), 1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
       BEGIN_NV04(push, NV03_M2MF(OFFSET_OUT), 1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
 
       s_off += (lines << 12);
       d_off += (lines << 12);
@@ -739,16 +739,16 @@ nv30_transfer_copy_data(struct nouveau_context *nv,
       BEGIN_NV04(push, NV03_M2MF(OFFSET_IN), 8);
       PUSH_RELOC(push, src, s_off, NOUVEAU_BO_LOW, 0, 0);
       PUSH_RELOC(push, dst, d_off, NOUVEAU_BO_LOW, 0, 0);
-      PUSH_DATA (push, size);
-      PUSH_DATA (push, size);
-      PUSH_DATA (push, size);
-      PUSH_DATA (push, 1);
-      PUSH_DATA (push, NV03_M2MF_FORMAT_INPUT_INC_1 |
+      PUSH_DATA (NULL, push, size);
+      PUSH_DATA (NULL, push, size);
+      PUSH_DATA (NULL, push, size);
+      PUSH_DATA (NULL, push, 1);
+      PUSH_DATA (NULL, push, NV03_M2MF_FORMAT_INPUT_INC_1 |
                        NV03_M2MF_FORMAT_OUTPUT_INC_1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
       BEGIN_NV04(push, NV04_GRAPH(M2MF, NOP), 1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
       BEGIN_NV04(push, NV03_M2MF(OFFSET_OUT), 1);
-      PUSH_DATA (push, 0x00000000);
+      PUSH_DATA (NULL, push, 0x00000000);
    }
 }

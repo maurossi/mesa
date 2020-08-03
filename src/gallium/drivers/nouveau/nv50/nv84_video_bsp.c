@@ -199,57 +199,57 @@ nv84_decoder_bsp(struct nv84_decoder *dec,
    more_params[1] = total_bytes;
    memcpy(dec->bitstream->map + 0x600, more_params, sizeof(more_params));
 
-   PUSH_SPACE(push, 5 + 21 + 3 + 2 + 4 + 2);
+   PUSH_SPACE(NULL, push, 5 + 21 + 3 + 2 + 4 + 2);
    nouveau_pushbuf_refn(push, bo_refs, ARRAY_SIZE(bo_refs));
 
    /* Wait for the fence = 1 */
    BEGIN_NV04(push, SUBC_BSP(0x10), 4);
    PUSH_DATAh(push, dec->fence->offset);
-   PUSH_DATA (push, dec->fence->offset);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, dec->fence->offset);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    /* TODO: Use both halves of bitstream/vpring for alternating frames */
 
    /* Kick off the BSP */
    BEGIN_NV04(push, SUBC_BSP(0x400), 20);
-   PUSH_DATA (push, dec->bitstream->offset >> 8);
-   PUSH_DATA (push, (dec->bitstream->offset >> 8) + 7);
-   PUSH_DATA (push, dec->bitstream->size / 2 - 0x700);
-   PUSH_DATA (push, (dec->bitstream->offset >> 8) + 6);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, dec->mbring->offset >> 8);
-   PUSH_DATA (push, dec->frame_size);
-   PUSH_DATA (push, (dec->mbring->offset + dec->frame_size) >> 8);
-   PUSH_DATA (push, dec->vpring->offset >> 8);
-   PUSH_DATA (push, dec->vpring->size / 2);
-   PUSH_DATA (push, dec->vpring_residual);
-   PUSH_DATA (push, dec->vpring_ctrl);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, dec->vpring_residual);
-   PUSH_DATA (push, dec->vpring_residual + dec->vpring_ctrl);
-   PUSH_DATA (push, dec->vpring_deblock);
-   PUSH_DATA (push, (dec->vpring->offset + dec->vpring_ctrl +
+   PUSH_DATA (NULL, push, dec->bitstream->offset >> 8);
+   PUSH_DATA (NULL, push, (dec->bitstream->offset >> 8) + 7);
+   PUSH_DATA (NULL, push, dec->bitstream->size / 2 - 0x700);
+   PUSH_DATA (NULL, push, (dec->bitstream->offset >> 8) + 6);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, dec->mbring->offset >> 8);
+   PUSH_DATA (NULL, push, dec->frame_size);
+   PUSH_DATA (NULL, push, (dec->mbring->offset + dec->frame_size) >> 8);
+   PUSH_DATA (NULL, push, dec->vpring->offset >> 8);
+   PUSH_DATA (NULL, push, dec->vpring->size / 2);
+   PUSH_DATA (NULL, push, dec->vpring_residual);
+   PUSH_DATA (NULL, push, dec->vpring_ctrl);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, dec->vpring_residual);
+   PUSH_DATA (NULL, push, dec->vpring_residual + dec->vpring_ctrl);
+   PUSH_DATA (NULL, push, dec->vpring_deblock);
+   PUSH_DATA (NULL, push, (dec->vpring->offset + dec->vpring_ctrl +
                      dec->vpring_residual + dec->vpring_deblock) >> 8);
-   PUSH_DATA (push, 0x654321);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0x100008);
+   PUSH_DATA (NULL, push, 0x654321);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0x100008);
 
    BEGIN_NV04(push, SUBC_BSP(0x620), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    BEGIN_NV04(push, SUBC_BSP(0x300), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    /* Write fence = 2, intr */
    BEGIN_NV04(push, SUBC_BSP(0x610), 3);
    PUSH_DATAh(push, dec->fence->offset);
-   PUSH_DATA (push, dec->fence->offset);
-   PUSH_DATA (push, 2);
+   PUSH_DATA (NULL, push, dec->fence->offset);
+   PUSH_DATA (NULL, push, 2);
 
    BEGIN_NV04(push, SUBC_BSP(0x304), 1);
-   PUSH_DATA (push, 0x101);
-   PUSH_KICK (push);
+   PUSH_DATA (NULL, push, 0x101);
+   PUSH_KICK (NULL, push);
    return 0;
 }
