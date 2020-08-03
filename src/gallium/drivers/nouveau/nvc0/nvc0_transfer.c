@@ -249,7 +249,6 @@ nve4_p2mf_push_linear(struct nouveau_context *nv,
 
    nouveau_bufctx_refn(nvc0->bufctx, 0, dst, domain | NOUVEAU_BO_WR);
    PUSH_BUFCTX(push, nvc0->bufctx);
-   nouveau_pushbuf_validate(push);
 
    while (count) {
       unsigned nr = MIN2(count, (NV04_PFIFO_MAX_PACKET_LEN - 1));
@@ -509,6 +508,7 @@ nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
    }
 
    if (tx->base.usage & PIPE_MAP_WRITE) {
+      PUSH_ACQ(nvc0->screen->base.pushbuf);
       for (i = 0; i < tx->nlayers; ++i) {
          nvc0->m2mf_copy_rect(nvc0, &tx->rect[0], &tx->rect[1],
                               tx->nblocksx, tx->nblocksy);
@@ -518,6 +518,7 @@ nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
             tx->rect[0].base += mt->layer_stride;
          tx->rect[1].base += tx->nblocksy * tx->base.stride;
       }
+      PUSH_DONE(nvc0->screen->base.pushbuf);
       NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_transfers_wr, 1);
 
       /* Allow the copies above to finish executing before freeing the source */

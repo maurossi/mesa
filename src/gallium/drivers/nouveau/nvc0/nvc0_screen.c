@@ -419,7 +419,7 @@ nvc0_screen_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
       return 0;
 
    default:
-      debug_printf("%s: unhandled cap %d\n", __func__, param);
+//      debug_printf("%s: unhandled cap %d\n", __func__, param);
       /* fallthrough */
    /* caps where we want the default value */
    case PIPE_CAP_DMABUF:
@@ -676,7 +676,7 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
    nouveau_fence_cleanup(&screen->base);
 
    if (screen->base.pushbuf)
-      screen->base.pushbuf->user_priv = NULL;
+      pushbuf_data(screen->base.pushbuf)->priv = NULL;
 
    if (screen->blitter)
       nvc0_blitter_destroy(screen);
@@ -1036,7 +1036,7 @@ nvc0_screen_create(struct nouveau_device *dev)
       FAIL_SCREEN_INIT("Base screen init failed: %d\n", ret);
    chan = screen->base.channel;
    push = screen->base.pushbuf;
-   push->user_priv = screen;
+   pushbuf_data(push)->priv = screen;
    push->rsvd_kick = 5;
 
    /* TODO: could this be higher on Kepler+? how does reclocking vs no
@@ -1086,6 +1086,7 @@ nvc0_screen_create(struct nouveau_device *dev)
    screen->base.fence.emit = nvc0_screen_fence_emit;
    screen->base.fence.update = nvc0_screen_fence_update;
 
+   PUSH_ACQ(push);
    if (dev->chipset < 0x140) {
       ret = nouveau_object_new(chan, (dev->chipset < 0xe0) ? 0x1f906e : 0x906e,
                                NVIF_CLASS_SW_GF100, NULL, 0, &screen->nvsw);
@@ -1519,7 +1520,7 @@ nvc0_screen_create(struct nouveau_device *dev)
    BEGIN_NVC0(push, NVC0_3D(LINKED_TSC), 1);
    PUSH_DATA (push, 0);
 
-   PUSH_KICK (push);
+   PUSH_DONE (push);
 
    screen->tic.entries = CALLOC(
          NVC0_TIC_MAX_ENTRIES + NVC0_TSC_MAX_ENTRIES + NVE4_IMG_MAX_HANDLES,
