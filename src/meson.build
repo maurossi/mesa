@@ -67,6 +67,21 @@ endif
 if with_platform_wayland
   subdir('egl/wayland/wayland-drm')
 endif
+
+if with_any_vk or with_gallium
+  sym_install_dir = join_paths(get_option('libdir'), 'mesa-tls')
+  sym_install_dir_c_arg = '-DSYM_INSTALL_DIR="@0@"'.format(
+    join_paths(get_option('prefix'), sym_install_dir)
+  )
+
+  # The 'tls' target is a mesa implementation detail, used to ease API interop
+  # Namely: it allows for a simple "dummy" DSO to be dlopen(RTLD_GLOBAL) and
+  # the required state shared across the APIs. Alternatively the drivers need
+  # to be opened with RTLD_GLOBAL, polluting the global namespace with symbols
+  # of their dependencies.
+  subdir('tls')
+endif
+
 if with_any_vk
   subdir('vulkan')
 endif
