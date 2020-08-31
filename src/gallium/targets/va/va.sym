@@ -1,11 +1,6 @@
 {
 	global:
 		__vaDriverInit_*_*;
-
-		# Workaround for an LLVM warning with -simplifycfg-sink-common
-		# due to LLVM being initialized multiple times.
-		amdgpu_winsys_create;
-		ac_init_shared_llvm_once;
 	local:
 		*;
 };
