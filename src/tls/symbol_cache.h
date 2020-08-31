@@ -65,6 +65,7 @@ struct winsys_cache
    mtx_t hash_mutex;
 };
 
+#define NOUVEAU_WINSYS_CACHE __nouveau_winsys_cache
 #define RADEON_WINSYS_CACHE __radeon_winsys_cache
 
 /* We only set the macro when it's used - in the driver winsys code */

@@ -5,4 +5,5 @@
       .hash_mutex = _MTX_INITIALIZER_NP, \
    }
 
+DECL_CACHE(NOUVEAU);
 DECL_CACHE(RADEON);
