@@ -43,8 +43,13 @@
 #include <fcntl.h>
 #include <radeon_surface.h>
 
-static struct hash_table *fd_tab = NULL;
-static mtx_t fd_tab_mutex = _MTX_INITIALIZER_NP;
+#include "tls/symbol_cache.h"
+
+static struct winsys_cache *RADEON_WINSYS_CACHE;
+static mtx_t cache_sym_mutex = _MTX_INITIALIZER_NP;
+
+#define fd_tab       RADEON_WINSYS_CACHE->hash
+#define fd_tab_mutex RADEON_WINSYS_CACHE->hash_mutex
 
 /* Enable/disable feature access for one command stream.
  * If enable == true, return true on success.
@@ -808,11 +813,14 @@ static bool radeon_cs_is_secure(struct radeon_cmdbuf* cs)
     return false;
 }
 
-PUBLIC struct radeon_winsys *
+struct radeon_winsys *
 radeon_drm_winsys_create(int fd, const struct pipe_screen_config *config,
                          radeon_screen_create_t screen_create)
 {
    struct radeon_drm_winsys *ws;
+
+   if (symbol_cache(RADEON_WINSYS_CACHE, &cache_sym_mutex))
+      return NULL;
 
    mtx_lock(&fd_tab_mutex);
    if (!fd_tab) {
