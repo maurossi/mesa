@@ -3,7 +3,6 @@
 		__driDriverExtensions;
 		__driDriverGetExtensions*;
 		load_pipe_screen;
-		nouveau_drm_screen_create;
 		amdgpu_winsys_create;
 		ac_init_shared_llvm_once;
 	local:
