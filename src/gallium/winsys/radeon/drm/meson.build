@@ -24,6 +24,7 @@ libradeonwinsys = static_library(
         'radeon_drm_cs.h', 'radeon_drm_public.h', 'radeon_drm_surface.c',
         'radeon_drm_winsys.c', 'radeon_drm_winsys.h'),
   include_directories : [inc_src, inc_include, inc_gallium, inc_gallium_aux],
+  c_args : [ sym_install_dir_c_arg ],
   gnu_symbol_visibility : 'hidden',
   dependencies : [dep_libdrm_radeon],
 )
