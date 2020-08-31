@@ -44,8 +44,13 @@
 #include "ac_llvm_util.h"
 #include "sid.h"
 
-static struct hash_table *dev_tab = NULL;
-static simple_mtx_t dev_tab_mutex = _SIMPLE_MTX_INITIALIZER_NP;
+#include "tls/symbol_cache.h"
+
+static struct winsys_cache *AMDGPU_WINSYS_CACHE;
+static mtx_t cache_sym_mutex = _MTX_INITIALIZER_NP;
+
+#define dev_tab         AMDGPU_WINSYS_CACHE->hash
+#define dev_tab_mutex   AMDGPU_WINSYS_CACHE->hash_mutex
 
 DEBUG_GET_ONCE_BOOL_OPTION(all_bos, "RADEON_ALL_BOS", false)
 
@@ -159,7 +164,7 @@ static void amdgpu_winsys_destroy(struct radeon_winsys *rws)
     * amdgpu_winsys_create in another thread doesn't get the winsys
     * from the table when the counter drops to 0.
     */
-   simple_mtx_lock(&dev_tab_mutex);
+   mtx_lock(&dev_tab_mutex);
 
    destroy = pipe_reference(&ws->reference, NULL);
    if (destroy && dev_tab) {
@@ -170,7 +175,7 @@ static void amdgpu_winsys_destroy(struct radeon_winsys *rws)
       }
    }
 
-   simple_mtx_unlock(&dev_tab_mutex);
+   mtx_unlock(&dev_tab_mutex);
 
    if (destroy)
       do_winsys_deinit(ws);
@@ -334,7 +339,7 @@ static bool amdgpu_cs_is_secure(struct radeon_cmdbuf *rcs)
    return cs->csc->secure;
 }
 
-PUBLIC struct radeon_winsys *
+struct radeon_winsys *
 amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
 		     radeon_screen_create_t screen_create)
 {
@@ -351,8 +356,13 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
    pipe_reference_init(&ws->reference, 1);
    ws->fd = os_dupfd_cloexec(fd);
 
+   if (symbol_cache(AMDGPU_WINSYS_CACHE, &cache_sym_mutex)) {
+      FREE(ws);
+      return NULL;
+   }
+
    /* Look up the winsys from the dev table. */
-   simple_mtx_lock(&dev_tab_mutex);
+   mtx_lock(&dev_tab_mutex);
    if (!dev_tab)
       dev_tab = util_hash_table_create_ptr_keys();
 
@@ -445,7 +455,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
                             amdgpu_bo_slab_alloc_normal,
                             amdgpu_bo_slab_free)) {
             amdgpu_winsys_destroy(&ws->base);
-            simple_mtx_unlock(&dev_tab_mutex);
+            mtx_unlock(&dev_tab_mutex);
             return NULL;
          }
 
@@ -458,7 +468,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
                             amdgpu_bo_slab_alloc_encrypted,
                             amdgpu_bo_slab_free)) {
             amdgpu_winsys_destroy(&ws->base);
-            simple_mtx_unlock(&dev_tab_mutex);
+            mtx_unlock(&dev_tab_mutex);
             return NULL;
          }
 
@@ -481,7 +491,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
       if (!util_queue_init(&aws->cs_queue, "cs", 8, 1,
                            UTIL_QUEUE_INIT_RESIZE_IF_FULL)) {
          amdgpu_winsys_destroy(&ws->base);
-         simple_mtx_unlock(&dev_tab_mutex);
+         mtx_unlock(&dev_tab_mutex);
          return NULL;
       }
 
@@ -491,7 +501,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
          r = amdgpu_vm_reserve_vmid(dev, 0);
          if (r) {
             amdgpu_winsys_destroy(&ws->base);
-            simple_mtx_unlock(&dev_tab_mutex);
+            mtx_unlock(&dev_tab_mutex);
             return NULL;
          }
       }
@@ -521,7 +531,7 @@ amdgpu_winsys_create(int fd, const struct pipe_screen_config *config,
    ws->base.screen = screen_create(&ws->base, config);
    if (!ws->base.screen) {
       amdgpu_winsys_destroy(&ws->base);
-      simple_mtx_unlock(&dev_tab_mutex);
+      mtx_unlock(&dev_tab_mutex);
       return NULL;
    }
 
@@ -534,7 +544,7 @@ unlock:
    /* We must unlock the mutex once the winsys is fully initialized, so that
     * other threads attempting to create the winsys from the same fd will
     * get a fully initialized winsys and not just half-way initialized. */
-   simple_mtx_unlock(&dev_tab_mutex);
+   mtx_unlock(&dev_tab_mutex);
 
    return &ws->base;
 
@@ -545,6 +555,6 @@ fail:
       _mesa_hash_table_destroy(ws->kms_handles, NULL);
    close(ws->fd);
    FREE(ws);
-   simple_mtx_unlock(&dev_tab_mutex);
+   mtx_unlock(&dev_tab_mutex);
    return NULL;
 }

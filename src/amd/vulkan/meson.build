@@ -189,7 +189,6 @@ if with_symbols_check
     args : [
       '--lib', libvulkan_radeon,
       '--symbols-file', vulkan_icd_symbols,
-      '--ignore-symbol', 'ac_init_shared_llvm_once',
       symbols_check_args,
     ],
     suite : ['amd'],

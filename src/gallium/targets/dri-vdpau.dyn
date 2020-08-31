@@ -1,4 +1,3 @@
 {
-	amdgpu_winsys_create;
-	ac_init_shared_llvm_once;
+	dummy;
 };

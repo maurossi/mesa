@@ -128,7 +128,6 @@ unsigned ac_count_scratch_private_memory(LLVMValueRef function);
 
 LLVMTargetLibraryInfoRef ac_create_target_library_info(const char *triple);
 void ac_dispose_target_library_info(LLVMTargetLibraryInfoRef library_info);
-void ac_init_shared_llvm_once(void); /* Do not use directly, use ac_init_llvm_once */
 void ac_init_llvm_once(void);
 
 bool ac_init_llvm_compiler(struct ac_llvm_compiler *compiler, enum radeon_family family,

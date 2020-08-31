@@ -1,8 +1,6 @@
 {
        global:
                vdp_imp_device_create_x11;
-               amdgpu_winsys_create;
-               ac_init_shared_llvm_once;
        local:
                *;
 };

@@ -29,6 +29,7 @@ libamdgpuwinsys = static_library(
     inc_amd, inc_gallium, inc_gallium_aux, inc_include, inc_src,
     inc_amd_common, inc_amd_common_llvm,
   ],
+  c_args : [ sym_install_dir_c_arg ],
   gnu_symbol_visibility : 'hidden',
   link_with : libamdgpu_addrlib,
   dependencies : [dep_llvm, dep_libdrm_amdgpu, idep_amdgfxregs_h],
