@@ -65,8 +65,11 @@ struct winsys_cache
    mtx_t hash_mutex;
 };
 
+#define AMDGPU_WINSYS_CACHE __amdgpu_winsys_cache
 #define NOUVEAU_WINSYS_CACHE __nouveau_winsys_cache
 #define RADEON_WINSYS_CACHE __radeon_winsys_cache
+
+#define AMDGPU_LLVM_INIT __amdgpu_llvm_init
 
 /* We only set the macro when it's used - in the driver winsys code */
 #ifdef SYM_INSTALL_DIR

@@ -40,6 +40,19 @@
 #include <stdio.h>
 #include <string.h>
 
+#if LLVM_IS_SHARED
+#include "tls/symbol_cache.h"
+
+static struct amdgpu_llvm_init *AMDGPU_LLVM_INIT;
+static mtx_t cache_sym_mutex = _MTX_INITIALIZER_NP;
+
+#define llvm_initialized   AMDGPU_LLVM_INIT->initialized
+#define llvm_init_mutex    AMDGPU_LLVM_INIT->mutex
+#else
+bool llvm_initialized;
+static mtx_t llvm_init_mutex = _MTX_INITIALIZER_NP;
+#endif
+
 static void ac_init_llvm_target()
 {
    LLVMInitializeAMDGPUTargetInfo();
@@ -79,27 +92,17 @@ static void ac_init_llvm_target()
    LLVMParseCommandLineOptions(ARRAY_SIZE(argv), argv, NULL);
 }
 
-PUBLIC void ac_init_shared_llvm_once(void)
-{
-   static once_flag ac_init_llvm_target_once_flag = ONCE_FLAG_INIT;
-   call_once(&ac_init_llvm_target_once_flag, ac_init_llvm_target);
-}
-
-#if !LLVM_IS_SHARED
-static once_flag ac_init_static_llvm_target_once_flag = ONCE_FLAG_INIT;
-static void ac_init_static_llvm_once(void)
-{
-   call_once(&ac_init_static_llvm_target_once_flag, ac_init_llvm_target);
-}
-#endif
-
 void ac_init_llvm_once(void)
 {
 #if LLVM_IS_SHARED
-   ac_init_shared_llvm_once();
-#else
-   ac_init_static_llvm_once();
+   symbol_cache(AMDGPU_LLVM_INIT, &cache_sym_mutex);
 #endif
+   mtx_lock(&llvm_init_mutex);
+   if (!llvm_initialized) {
+      ac_init_llvm_target();
+      llvm_initialized = true;
+   }
+   mtx_unlock(&llvm_init_mutex);
 }
 
 static LLVMTargetRef ac_get_llvm_target(const char *triple)

@@ -44,6 +44,7 @@ libamd_common_llvm = static_library(
     dep_llvm, dep_thread, dep_elf, dep_libdrm_amdgpu, dep_valgrind,
     idep_nir_headers, idep_amdgfxregs_h,
   ],
+  c_args : [ sym_install_dir_c_arg ],
   gnu_symbol_visibility : 'hidden',
 )
 
