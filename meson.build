@@ -1288,13 +1288,6 @@ if cc.links('int main() { return 0; }',
             name : 'version-script')
   with_ld_version_script = true
 endif
-with_ld_dynamic_list = false
-if cc.links('int main() { return 0; }',
-            args : '-Wl,--dynamic-list=@0@'.format(
-              join_paths(meson.source_root(), 'build-support/conftest.dyn')),
-            name : 'dynamic-list')
-  with_ld_dynamic_list = true
-endif
 
 ld_args_build_id = cc.get_supported_link_arguments('-Wl,--build-id=sha1')
 

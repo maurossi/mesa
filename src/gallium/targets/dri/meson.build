@@ -32,10 +32,6 @@ if with_ld_version_script
   gallium_dri_ld_args += ['-Wl,--version-script', join_paths(meson.current_source_dir(), 'dri.sym')]
   gallium_dri_link_depends += files('dri.sym')
 endif
-if with_ld_dynamic_list
-  gallium_dri_ld_args += ['-Wl,--dynamic-list', join_paths(meson.current_source_dir(), '../dri-vdpau.dyn')]
-  gallium_dri_link_depends += files('../dri-vdpau.dyn')
-endif
 
 libgallium_dri = shared_library(
   'gallium_dri',
