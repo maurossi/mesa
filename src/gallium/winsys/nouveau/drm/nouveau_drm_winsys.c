@@ -19,9 +19,13 @@
 #include <nvif/class.h>
 #include <nvif/cl0080.h>
 
-static struct hash_table *fd_tab = NULL;
+#include "tls/symbol_cache.h"
 
-static mtx_t nouveau_screen_mutex = _MTX_INITIALIZER_NP;
+static struct winsys_cache *NOUVEAU_WINSYS_CACHE;
+static mtx_t cache_sym_mutex = _MTX_INITIALIZER_NP;
+
+#define fd_tab		      NOUVEAU_WINSYS_CACHE->hash
+#define nouveau_screen_mutex  NOUVEAU_WINSYS_CACHE->hash_mutex
 
 bool nouveau_drm_screen_unref(struct nouveau_screen *screen)
 {
@@ -32,13 +36,19 @@ bool nouveau_drm_screen_unref(struct nouveau_screen *screen)
 	mtx_lock(&nouveau_screen_mutex);
 	ret = --screen->refcount;
 	assert(ret >= 0);
-	if (ret == 0)
+	if (ret == 0) {
 		_mesa_hash_table_remove_key(fd_tab, intptr_to_pointer(screen->drm->fd));
+		if (_mesa_hash_table_num_entries(fd_tab) == 0) {
+			_mesa_hash_table_destroy(fd_tab, NULL);
+			fd_tab = NULL;
+		}
+	}
+
 	mtx_unlock(&nouveau_screen_mutex);
 	return ret == 0;
 }
 
-PUBLIC struct pipe_screen *
+struct pipe_screen *
 nouveau_drm_screen_create(int fd)
 {
 	struct nouveau_drm *drm = NULL;
@@ -46,6 +56,9 @@ nouveau_drm_screen_create(int fd)
 	struct nouveau_screen *(*init)(struct nouveau_device *);
 	struct nouveau_screen *screen = NULL;
 	int ret, dupfd;
+
+	if (symbol_cache(NOUVEAU_WINSYS_CACHE, &cache_sym_mutex))
+		return NULL;
 
 	mtx_lock(&nouveau_screen_mutex);
 	if (!fd_tab) {
