@@ -30,6 +30,7 @@
 
 #include "util/os_file.h"
 #include "util/u_memory.h"
+#include "util/u_pointer.h"
 #include "pipe/p_compiler.h"
 #include "util/u_hash_table.h"
 #ifdef MAJOR_IN_MKDEV
@@ -42,24 +43,14 @@
 #include <unistd.h>
 #include <fcntl.h>
 
-static struct hash_table *dev_hash = NULL;
-
-static bool vmw_dev_compare(const void *key1, const void *key2)
-{
-   return (major(*(dev_t *)key1) == major(*(dev_t *)key2) &&
-           minor(*(dev_t *)key1) == minor(*(dev_t *)key2));
-}
-
-static uint32_t vmw_dev_hash(const void *key)
-{
-   return (major(*(dev_t *) key) << 16) | minor(*(dev_t *) key);
-}
+static struct hash_table *fd_hash = NULL;
+static mtx_t fd_hash_mutex = _MTX_INITIALIZER_NP;
 
 /* Called from vmw_drm_create_screen(), creates and initializes the
  * vmw_winsys_screen structure, which is the main entity in this
  * module.
  * First, check whether a vmw_winsys_screen object already exists for
- * this device, and in that case return that one, making sure that we
+ * this device node, and in that case return that one, making sure that we
  * have our own file descriptor open to DRM.
  */
 
@@ -67,29 +58,25 @@ struct vmw_winsys_screen *
 vmw_winsys_create( int fd )
 {
    struct vmw_winsys_screen *vws;
-   struct stat stat_buf;
    const char *getenv_val;
 
-   if (dev_hash == NULL) {
-      dev_hash = _mesa_hash_table_create(NULL, vmw_dev_hash, vmw_dev_compare);
-      if (dev_hash == NULL)
-         return NULL;
+   mtx_lock(&fd_hash_mutex);
+   if (fd_hash == NULL) {
+      fd_hash = util_hash_table_create_fd_keys();
+      if (fd_hash == NULL)
+         goto out_no_vws;
    }
 
-   if (fstat(fd, &stat_buf))
-      return NULL;
-
-   vws = util_hash_table_get(dev_hash, &stat_buf.st_rdev);
+   vws = util_hash_table_get(fd_hash, intptr_to_pointer(fd));
    if (vws) {
       vws->open_count++;
-      return vws;
+      goto out_unlock;
    }
 
    vws = CALLOC_STRUCT(vmw_winsys_screen);
    if (!vws)
       goto out_no_vws;
 
-   vws->device = stat_buf.st_rdev;
    vws->open_count = 1;
    vws->ioctl.drm_fd = os_dupfd_cloexec(fd);
    vws->force_coherent = FALSE;
@@ -112,10 +99,13 @@ vmw_winsys_create( int fd )
    if (!vmw_winsys_screen_init_svga(vws))
       goto out_no_svga;
 
-   _mesa_hash_table_insert(dev_hash, &vws->device, vws);
+   _mesa_hash_table_insert(fd_hash, intptr_to_pointer(vws->ioctl.drm_fd), vws);
 
    cnd_init(&vws->cs_cond);
    mtx_init(&vws->cs_mutex, mtx_plain);
+
+out_unlock:
+   mtx_unlock(&fd_hash_mutex);
 
    return vws;
 out_no_svga:
@@ -128,14 +118,21 @@ out_no_ioctl:
    close(vws->ioctl.drm_fd);
    FREE(vws);
 out_no_vws:
+   mtx_unlock(&fd_hash_mutex);
    return NULL;
 }
 
 void
 vmw_winsys_destroy(struct vmw_winsys_screen *vws)
 {
+   mtx_lock(&fd_hash_mutex);
+
    if (--vws->open_count == 0) {
-      _mesa_hash_table_remove_key(dev_hash, &vws->device);
+      _mesa_hash_table_remove_key(fd_hash, intptr_to_pointer(vws->ioctl.drm_fd));
+      if (_mesa_hash_table_num_entries(fd_hash) == 0) {
+         _mesa_hash_table_destroy(fd_hash, NULL);
+         fd_hash = NULL;
+      }
       vmw_pools_cleanup(vws);
       vws->fence_ops->destroy(vws->fence_ops);
       vmw_ioctl_cleanup(vws);
@@ -144,4 +141,6 @@ vmw_winsys_destroy(struct vmw_winsys_screen *vws)
       cnd_destroy(&vws->cs_cond);
       FREE(vws);
    }
+
+   mtx_unlock(&fd_hash_mutex);
 }
