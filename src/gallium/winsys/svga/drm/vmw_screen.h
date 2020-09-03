@@ -102,7 +102,6 @@ struct vmw_winsys_screen
    /*
     * Screen instances
     */
-   dev_t device;
    int open_count;
 
    cnd_t cs_cond;
