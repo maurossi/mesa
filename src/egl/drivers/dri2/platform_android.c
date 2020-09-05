@@ -47,6 +47,12 @@
 #ifdef HAVE_DRM_GRALLOC
 #include <gralloc_drm_handle.h>
 #include "gralloc_drm.h"
+#define GRALLOC_DRM_GET_FORMAT 1 /* also needed here to build */
+#else
+/* Note, this is drm_gralloc specific, it is used as we want to offer a runtime
+ * fallback for format query but not depend on the full header.
+ */
+#define GRALLOC_DRM_GET_FORMAT 1
 #endif /* HAVE_DRM_GRALLOC */
 
 #define ALIGN(val, align)	(((val) + (align) - 1) & ~((align) - 1))
@@ -185,6 +191,79 @@ get_native_buffer_name(struct ANativeWindowBuffer *buf)
 }
 #endif /* HAVE_DRM_GRALLOC */
 
+static int
+droid_resolve_format(struct dri2_egl_display *dri2_dpy,
+                     struct ANativeWindowBuffer *buf)
+{
+   int format = -1;
+   int ret;
+
+   if (buf->format != HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED)
+      return buf->format;
+#ifdef HAVE_GRALLOC1
+   if (dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
+      if (!dri2_dpy->pfn_getFormat) {
+          _eglLog(_EGL_WARNING, "gralloc does not support getFormat");
+          return -1;
+      }
+      ret = dri2_dpy->pfn_getFormat(dri2_dpy->gralloc1_dev, buf->handle,
+                                    &format);
+      if (ret) {
+         _eglLog(_EGL_WARNING, "gralloc->getFormat failed: %d", ret);
+         return -1;
+      }
+   } else
+#endif
+   {
+      const gralloc_module_t *gralloc0 =
+         (const struct gralloc_module_t *) dri2_dpy->gralloc;
+
+      if (!gralloc0->perform) {
+         _eglLog(_EGL_WARNING, "gralloc->perform not supported");
+         return -1;
+      }
+      if (!strcmp(gralloc0->common.name, "CrOS Gralloc")) {
+         ret = gralloc0->perform(
+            (const struct gralloc_module_t *)dri2_dpy->gralloc,
+            GRALLOC_DRM_GET_FORMAT, buf->handle, &format);
+         if (ret) {
+            _eglLog(_EGL_WARNING, "gralloc->perform failed with error: %d", ret);
+            return -1;
+         }
+      else
+         format = HAL_PIXEL_FORMAT_RGBX_8888;
+      }
+   }
+   return format;
+}
+
+static bool
+get_ycbcr_from_flexlayout(struct android_flex_layout *outFlexLayout,
+                          struct android_ycbcr *ycbcr)
+{
+   for (int i = 0; i < outFlexLayout->num_planes; i++) {
+      switch(outFlexLayout->planes[i].component){
+      case FLEX_COMPONENT_Y:
+         ycbcr->y = outFlexLayout->planes[i].top_left;
+         ycbcr->ystride = outFlexLayout->planes[i].v_increment;
+         break;
+      case FLEX_COMPONENT_Cb:
+         ycbcr->cb = outFlexLayout->planes[i].top_left;
+         ycbcr->cstride = outFlexLayout->planes[i].v_increment;
+         break;
+      case FLEX_COMPONENT_Cr:
+         ycbcr->cr = outFlexLayout->planes[i].top_left;
+         ycbcr->chroma_step = outFlexLayout->planes[i].h_increment;
+         break;
+      default:
+         _eglLog(_EGL_WARNING, "unknown component 0x%x", __func__,
+                 outFlexLayout->planes[i].component);
+         return false;
+      }
+   }
+   return true;
+}
+
 static __DRIimage *
 droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp,
                                      struct ANativeWindowBuffer *buf,
@@ -200,24 +279,66 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp,
    int ret;
    unsigned error;
 
-   if (!dri2_dpy->gralloc->lock_ycbcr) {
-      _eglLog(_EGL_WARNING, "Gralloc does not support lock_ycbcr");
+   int format = droid_resolve_format(dri2_dpy, buf);
+   if (format < 0) {
+      _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
       return NULL;
    }
 
    memset(&ycbcr, 0, sizeof(ycbcr));
-   ret = dri2_dpy->gralloc->lock_ycbcr(dri2_dpy->gralloc, buf->handle,
-                                       0, 0, 0, 0, 0, &ycbcr);
-   if (ret) {
-      /* HACK: See droid_create_image_from_prime_fds() and
-       * https://issuetracker.google.com/32077885.*/
-      if (buf->format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED)
-         return NULL;
+#ifdef HAVE_GRALLOC1
+   if(dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
+      struct android_flex_layout outFlexLayout;
+      int ignored_outReleaseFence = 0;
+      gralloc1_rect_t accessRegion;
 
-      _eglLog(_EGL_WARNING, "gralloc->lock_ycbcr failed: %d", ret);
-      return NULL;
+     if (!dri2_dpy->pfn_lockflex) {
+        _eglLog(_EGL_WARNING, "gralloc does not support lockflex");
+        return NULL;
+     }
+
+     ret = dri2_dpy->pfn_lockflex(dri2_dpy->gralloc1_dev, buf->handle,
+                                       0, 0, &accessRegion, &outFlexLayout, -1);
+     if (ret) {
+        _eglLog(_EGL_WARNING, "gralloc->lockflex failed: %d", ret);
+        return NULL;
+     }
+     if (!get_ycbcr_from_flexlayout(&outFlexLayout, &ycbcr)) {
+        _eglLog(_EGL_WARNING, "get_ycbcr_from_flexlayout failed");
+        dri2_dpy->pfn_unlock(dri2_dpy->gralloc1_dev, buf->handle,
+                             &ignored_outReleaseFence);
+        return NULL;
+     }
+     dri2_dpy->pfn_unlock(dri2_dpy->gralloc1_dev, buf->handle,
+                          &ignored_outReleaseFence);
+   } else
+#endif
+   {
+      const gralloc_module_t *gralloc0 =
+         (const gralloc_module_t *) dri2_dpy->gralloc;
+
+      if (!gralloc0->lock_ycbcr) {
+         _eglLog(_EGL_WARNING, "gralloc does not support lock_ycbcr");
+         return NULL;
+      }
+
+      ret = gralloc0->lock_ycbcr(gralloc0, buf->handle,
+                                 0, 0, 0, 0, 0, &ycbcr);
+
+      if (ret) {
+         /* HACK: See droid_create_image_from_prime_fd() and
+          * https://issuetracker.google.com/32077885.
+          */
+         if (buf->format == HAL_PIXEL_FORMAT_IMPLEMENTATION_DEFINED)
+            return NULL;
+
+         _eglLog(_EGL_WARNING, "gralloc->lock_ycbcr failed: %d", ret);
+         return NULL;
+      }
+
+      gralloc0->unlock((const struct gralloc_module_t *) dri2_dpy->gralloc,
+                       buf->handle);
    }
-   dri2_dpy->gralloc->unlock(dri2_dpy->gralloc, buf->handle);
 
    /* When lock_ycbcr's usage argument contains no SW_READ/WRITE flags
     * it will return the .y/.cb/.cr pointers based on a NULL pointer,
@@ -243,10 +364,10 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp,
 
    /* .chroma_step is the byte distance between the same chroma channel
     * values of subsequent pixels, assumed to be the same for Cb and Cr. */
-   fourcc = get_fourcc_yuv(buf->format, chroma_order, ycbcr.chroma_step);
+   fourcc = get_fourcc_yuv(format, chroma_order, ycbcr.chroma_step);
    if (fourcc == -1) {
       _eglLog(_EGL_WARNING, "unsupported YUV format, native = %x, chroma_order = %s, chroma_step = %d",
-              buf->format, chroma_order == YCbCr ? "YCbCr" : "YCrCb", ycbcr.chroma_step);
+              format, chroma_order == YCbCr ? "YCbCr" : "YCrCb", ycbcr.chroma_step);
       return NULL;
    }
 
@@ -288,7 +409,13 @@ droid_create_image_from_prime_fds(_EGLDisplay *disp,
    if (num_fds == 0)
       return NULL;
 
-   if (is_yuv(buf->format)) {
+   int format = droid_resolve_format(dri2_dpy, buf);
+   if (format < 0) {
+      _eglLog(_EGL_WARNING, "Could not resolve buffer format");
+      return NULL;
+   }
+
+   if (is_yuv(format)) {
       __DRIimage *image;
 
       image = droid_create_image_from_prime_fds_yuv(
@@ -311,13 +438,13 @@ droid_create_image_from_prime_fds(_EGLDisplay *disp,
     */
    assert(num_fds == 1);
 
-   const int fourcc = get_fourcc(buf->format);
+   const int fourcc = get_fourcc(format);
    if (fourcc == -1) {
       _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
       return NULL;
    }
 
-   pitches[0] = buf->stride * get_format_bpp(buf->format);
+   pitches[0] = buf->stride * get_format_bpp(format);
    if (pitches[0] == 0) {
       _eglError(EGL_BAD_PARAMETER, "eglCreateEGLImageKHR");
       return NULL;
@@ -1643,6 +1770,31 @@ dri2_initialize_android(_EGLDisplay *disp)
       err = "DRI2: failed to get gralloc module";
       goto cleanup;
    }
+   dri2_dpy->gralloc_version = dri2_dpy->gralloc->module_api_version;
+#ifdef HAVE_GRALLOC1
+   if (dri2_dpy->gralloc_version == HARDWARE_MODULE_API_VERSION(1, 0)) {
+      hw_device_t *device;
+      ret = dri2_dpy->gralloc->methods->open(
+         dri2_dpy->gralloc, GRALLOC_HARDWARE_MODULE_ID, &device);
+      if (ret) {
+         err = "Failed to open hw_device device";
+         goto cleanup;
+      }
+
+      gralloc1_device_t *dev = (gralloc1_device_t *) device;
+
+      dri2_dpy->gralloc1_dev = dev;
+
+      dri2_dpy->pfn_lockflex = (GRALLOC1_PFN_LOCK_FLEX) \
+         dev->getFunction(dev, GRALLOC1_FUNCTION_LOCK_FLEX);
+
+      dri2_dpy->pfn_getFormat = (GRALLOC1_PFN_GET_FORMAT) \
+         dev->getFunction(dev, GRALLOC1_FUNCTION_GET_FORMAT);
+
+      dri2_dpy->pfn_unlock = (GRALLOC1_PFN_UNLOCK) \
+         dev->getFunction(dev, GRALLOC1_FUNCTION_UNLOCK);
+   }
+#endif
 
    disp->DriverData = (void *) dri2_dpy;
    device_opened = droid_open_device(disp, disp->Options.ForceSoftware);
