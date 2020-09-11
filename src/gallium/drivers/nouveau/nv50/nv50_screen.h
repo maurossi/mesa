@@ -96,6 +96,7 @@ struct nv50_screen {
    } tsc;
 
    struct {
+      uint32_t *map;
       struct nouveau_bo *bo;
    } fence;
 
