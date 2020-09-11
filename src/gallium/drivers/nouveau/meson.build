@@ -21,7 +21,6 @@
 files_libnouveau = files(
   'nouveau_buffer.c',
   'nouveau_buffer.h',
-  'nouveau_context.c',
   'nouveau_context.h',
   'nouveau_debug.h',
   'nouveau_fence.c',
