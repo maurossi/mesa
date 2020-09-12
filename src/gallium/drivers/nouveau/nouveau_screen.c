@@ -420,6 +420,6 @@ nouveau_context_init(struct nouveau_context *context)
 
    context->pipe.set_debug_callback = nouveau_set_debug_callback;
 
-   context->pipe.create_fence_fd = nouveau_create_fence_fd;
+   context->pipe.create_fence_fd = (void (*))nouveau_create_fence_fd;
    context->pipe.fence_server_sync = nouveau_fence_server_sync;
 }
