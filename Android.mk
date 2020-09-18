@@ -41,6 +41,8 @@ MESA_DRI_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/$(MESA_DRI_MODULE_REL_PAT
 MESA_DRI_MODULE_UNSTRIPPED_PATH := $(TARGET_OUT_SHARED_LIBRARIES_UNSTRIPPED)/$(MESA_DRI_MODULE_REL_PATH)
 MESA_DRI_LDFLAGS := -Wl,--build-id=sha1
 
+MESA_TLS_MODULE_REL_PATH := mesa_tls
+
 MESA_COMMON_MK := $(MESA_TOP)/Android.common.mk
 MESA_PYTHON2 := /usr/bin/python
 MESA_PYTHON3 := /usr/bin/python3
@@ -118,6 +120,7 @@ SUBDIRS := \
 	src/mesa/drivers/dri \
 	src/vulkan \
 	src/panfrost \
+	src/tls \
 
 INC_DIRS := $(call all-named-subdir-makefiles,$(SUBDIRS))
 INC_DIRS += $(call all-named-subdir-makefiles,src/gallium)

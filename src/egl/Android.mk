@@ -89,7 +89,7 @@ ifneq ($(HAVE_I965_DRI),)
 LOCAL_REQUIRED_MODULES += i965_dri
 endif
 ifneq ($(MESA_BUILD_GALLIUM),)
-LOCAL_REQUIRED_MODULES += gallium_dri
+LOCAL_REQUIRED_MODULES += gallium_dri mesa_tls
 endif
 
 LOCAL_MODULE := libGLES_mesa
