@@ -13,6 +13,10 @@
 
 struct pipe_debug_callback;
 
+struct nouveau_fence_list;
+struct nouveau_pushbuf;
+struct nouveau_screen;
+
 struct nouveau_fence_work {
    struct list_head list;
    void (*func)(void *);
@@ -21,7 +25,7 @@ struct nouveau_fence_work {
 
 struct nouveau_fence {
    struct nouveau_fence *next;
-   struct nouveau_screen *screen;
+   struct nouveau_fence_list *list;
    int state;
    int ref;
    uint32_t sequence;
@@ -29,18 +33,38 @@ struct nouveau_fence {
    struct list_head work;
 };
 
-void nouveau_fence_emit(struct nouveau_fence *);
+struct nouveau_fence_list {
+   struct nouveau_fence *head;
+   struct nouveau_fence *tail;
+   struct nouveau_fence *current;
+
+   struct nouveau_screen *screen;
+   void *data;
+
+   uint32_t sequence;
+   uint32_t sequence_ack;
+   void (*emit)(struct nouveau_fence_list *, struct nouveau_pushbuf *, uint32_t *sequence);
+   uint32_t  (*update)(struct nouveau_fence_list *);
+};
+
+void nouveau_fence_emit(struct nouveau_fence *, struct nouveau_pushbuf *);
 void nouveau_fence_del(struct nouveau_fence *);
 
-bool nouveau_fence_new(struct nouveau_screen *, struct nouveau_fence **);
-bool nouveau_fence_work(struct nouveau_fence *, void (*)(void *), void *);
-void nouveau_fence_update(struct nouveau_screen *, bool flushed);
-void nouveau_fence_next(struct nouveau_screen *);
-bool nouveau_fence_wait(struct nouveau_fence *, struct pipe_debug_callback *);
+bool nouveau_fence_new(struct nouveau_fence_list *list, struct nouveau_fence **);
+bool nouveau_fence_work(struct nouveau_fence *, struct nouveau_pushbuf *, void (*)(void *), void *);
+void nouveau_fence_update(struct nouveau_fence_list *, bool flushed);
+void nouveau_fence_next(struct nouveau_fence_list *, struct nouveau_pushbuf *);
+bool nouveau_fence_wait(struct nouveau_fence *, struct nouveau_pushbuf *push, struct pipe_debug_callback *);
 bool nouveau_fence_signalled(struct nouveau_fence *);
 
 void nouveau_fence_unref_bo(void *data); /* generic unref bo callback */
 
+static inline void
+nouveau_fence_list_init(struct nouveau_fence_list *list,
+                        struct nouveau_screen *screen)
+{
+   list->screen = screen;
+}
 
 static inline void
 nouveau_fence_ref(struct nouveau_fence *fence, struct nouveau_fence **ref)
