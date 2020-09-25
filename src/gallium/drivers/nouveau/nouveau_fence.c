@@ -30,13 +30,13 @@
 #endif
 
 bool
-nouveau_fence_new(struct nouveau_fence_list *list, struct nouveau_fence **fence)
+nouveau_fence_new(struct nouveau_screen *screen, struct nouveau_fence **fence)
 {
    *fence = CALLOC_STRUCT(nouveau_fence);
    if (!*fence)
       return false;
 
-   (*fence)->list = list;
+   (*fence)->screen = screen;
    (*fence)->ref = 1;
    list_inithead(&(*fence)->work);
 
@@ -56,9 +56,9 @@ nouveau_fence_trigger_work(struct nouveau_fence *fence)
 }
 
 void
-nouveau_fence_emit(struct nouveau_fence *fence, struct nouveau_pushbuf *push)
+nouveau_fence_emit(struct nouveau_fence *fence)
 {
-   struct nouveau_fence_list *list = fence->list;
+   struct nouveau_screen *screen = fence->screen;
 
    assert(fence->state == NOUVEAU_FENCE_STATE_AVAILABLE);
 
@@ -67,14 +67,14 @@ nouveau_fence_emit(struct nouveau_fence *fence, struct nouveau_pushbuf *push)
 
    ++fence->ref;
 
-   if (list->tail)
-      list->tail->next = fence;
+   if (screen->fence.tail)
+      screen->fence.tail->next = fence;
    else
-      list->head = fence;
+      screen->fence.head = fence;
 
-   list->tail = fence;
+   screen->fence.tail = fence;
 
-   list->emit(list, push, &fence->sequence);
+   screen->fence.emit(&screen->base, &fence->sequence);
 
    assert(fence->state == NOUVEAU_FENCE_STATE_EMITTING);
    fence->state = NOUVEAU_FENCE_STATE_EMITTED;
@@ -84,19 +84,19 @@ void
 nouveau_fence_del(struct nouveau_fence *fence)
 {
    struct nouveau_fence *it;
-   struct nouveau_fence_list *list = fence->list;
+   struct nouveau_screen *screen = fence->screen;
 
    if (fence->state == NOUVEAU_FENCE_STATE_EMITTED ||
        fence->state == NOUVEAU_FENCE_STATE_FLUSHED) {
-      if (fence == list->head) {
-         list->head = fence->next;
-         if (!list->head)
-            list->tail = NULL;
+      if (fence == screen->fence.head) {
+         screen->fence.head = fence->next;
+         if (!screen->fence.head)
+            screen->fence.tail = NULL;
       } else {
-         for (it = list->head; it && it->next != fence; it = it->next);
+         for (it = screen->fence.head; it && it->next != fence; it = it->next);
          it->next = fence->next;
-         if (list->tail == fence)
-            list->tail = it;
+         if (screen->fence.tail == fence)
+            screen->fence.tail = it;
       }
    }
 
@@ -109,17 +109,17 @@ nouveau_fence_del(struct nouveau_fence *fence)
 }
 
 void
-nouveau_fence_update(struct nouveau_fence_list *list, bool flushed)
+nouveau_fence_update(struct nouveau_screen *screen, bool flushed)
 {
    struct nouveau_fence *fence;
    struct nouveau_fence *next = NULL;
-   u32 sequence = list->update(list);
+   u32 sequence = screen->fence.update(&screen->base);
 
-   if (list->sequence_ack == sequence)
+   if (screen->fence.sequence_ack == sequence)
       return;
-   list->sequence_ack = sequence;
+   screen->fence.sequence_ack = sequence;
 
-   for (fence = list->head; fence; fence = next) {
+   for (fence = screen->fence.head; fence; fence = next) {
       next = fence->next;
       sequence = fence->sequence;
 
@@ -128,12 +128,12 @@ nouveau_fence_update(struct nouveau_fence_list *list, bool flushed)
       nouveau_fence_trigger_work(fence);
       nouveau_fence_ref(NULL, &fence);
 
-      if (sequence == list->sequence_ack)
+      if (sequence == screen->fence.sequence_ack)
          break;
    }
-   list->head = next;
+   screen->fence.head = next;
    if (!next)
-      list->tail = NULL;
+      screen->fence.tail = NULL;
 
    if (flushed) {
       for (fence = next; fence; fence = fence->next)
@@ -147,52 +147,57 @@ nouveau_fence_update(struct nouveau_fence_list *list, bool flushed)
 bool
 nouveau_fence_signalled(struct nouveau_fence *fence)
 {
+   struct nouveau_screen *screen = fence->screen;
+
    if (fence->state == NOUVEAU_FENCE_STATE_SIGNALLED)
       return true;
 
    if (fence->state >= NOUVEAU_FENCE_STATE_EMITTED)
-      nouveau_fence_update(fence->list, false);
+      nouveau_fence_update(screen, false);
 
    return fence->state == NOUVEAU_FENCE_STATE_SIGNALLED;
 }
 
 static bool
-nouveau_fence_kick(struct nouveau_fence *fence, struct nouveau_pushbuf *push)
+nouveau_fence_kick(struct nouveau_fence *fence)
 {
+   struct nouveau_screen *screen = fence->screen;
+
    /* wtf, someone is waiting on a fence in flush_notify handler? */
    assert(fence->state != NOUVEAU_FENCE_STATE_EMITTING);
 
    if (fence->state < NOUVEAU_FENCE_STATE_EMITTED) {
-      PUSH_SPACE(push, 8);
+      PUSH_SPACE(screen->pushbuf, 8);
       /* The space allocation might trigger a flush, which could emit the
        * current fence. So check again.
        */
       if (fence->state < NOUVEAU_FENCE_STATE_EMITTED)
-         nouveau_fence_emit(fence, push);
+         nouveau_fence_emit(fence);
    }
 
    if (fence->state < NOUVEAU_FENCE_STATE_FLUSHED)
-      if (nouveau_pushbuf_kick(push, push->channel))
+      if (nouveau_pushbuf_kick(screen->pushbuf, screen->pushbuf->channel))
          return false;
 
-   if (fence == fence->list->current)
-      nouveau_fence_next(fence->list, push);
+   if (fence == screen->fence.current)
+      nouveau_fence_next(screen);
 
-   nouveau_fence_update(fence->list, false);
+   nouveau_fence_update(screen, false);
 
    return true;
 }
 
 bool
-nouveau_fence_wait(struct nouveau_fence *fence, struct nouveau_pushbuf *push, struct pipe_debug_callback *debug)
+nouveau_fence_wait(struct nouveau_fence *fence, struct pipe_debug_callback *debug)
 {
+   struct nouveau_screen *screen = fence->screen;
    uint32_t spins = 0;
    int64_t start = 0;
 
    if (debug && debug->debug_message)
       start = os_time_get_nano();
 
-   if (!nouveau_fence_kick(fence, push))
+   if (!nouveau_fence_kick(fence))
       return false;
 
    do {
@@ -204,36 +209,36 @@ nouveau_fence_wait(struct nouveau_fence *fence, struct nouveau_pushbuf *push, st
          return true;
       }
       if (!spins)
-         NOUVEAU_DRV_STAT(fence->list->screen, any_non_kernel_fence_sync_count, 1);
+         NOUVEAU_DRV_STAT(screen, any_non_kernel_fence_sync_count, 1);
       spins++;
 #ifdef PIPE_OS_UNIX
       if (!(spins % 8)) /* donate a few cycles */
          sched_yield();
 #endif
 
-      nouveau_fence_update(fence->list, false);
+      nouveau_fence_update(screen, false);
    } while (spins < NOUVEAU_FENCE_MAX_SPINS);
 
    debug_printf("Wait on fence %u (ack = %u, next = %u) timed out !\n",
                 fence->sequence,
-                fence->list->sequence_ack, fence->list->sequence);
+                screen->fence.sequence_ack, screen->fence.sequence);
 
    return false;
 }
 
 void
-nouveau_fence_next(struct nouveau_fence_list *list, struct nouveau_pushbuf *push)
+nouveau_fence_next(struct nouveau_screen *screen)
 {
-   if (list->current->state < NOUVEAU_FENCE_STATE_EMITTING) {
-      if (list->current->ref > 1)
-         nouveau_fence_emit(list->current, push);
+   if (screen->fence.current->state < NOUVEAU_FENCE_STATE_EMITTING) {
+      if (screen->fence.current->ref > 1)
+         nouveau_fence_emit(screen->fence.current);
       else
          return;
    }
 
-   nouveau_fence_ref(NULL, &list->current);
+   nouveau_fence_ref(NULL, &screen->fence.current);
 
-   nouveau_fence_new(list, &list->current);
+   nouveau_fence_new(screen, &screen->fence.current);
 }
 
 void
@@ -246,7 +251,6 @@ nouveau_fence_unref_bo(void *data)
 
 bool
 nouveau_fence_work(struct nouveau_fence *fence,
-                   struct nouveau_pushbuf *push,
                    void (*func)(void *), void *data)
 {
    struct nouveau_fence_work *work;
@@ -264,6 +268,6 @@ nouveau_fence_work(struct nouveau_fence *fence,
    list_add(&work->list, &fence->work);
    p_atomic_inc(&fence->work_count);
    if (fence->work_count > 64)
-      nouveau_fence_kick(fence, push);
+      nouveau_fence_kick(fence);
    return true;
 }
