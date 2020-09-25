@@ -69,27 +69,26 @@ nouveau_buffer_allocate(struct nouveau_screen *screen,
 
 static inline void
 release_allocation(struct nouveau_mm_allocation **mm,
-                   struct nouveau_fence *fence,
-                   struct nouveau_pushbuf *push)
+                   struct nouveau_fence *fence)
 {
-   nouveau_fence_work(fence, push, nouveau_mm_free_work, *mm);
+   nouveau_fence_work(fence, nouveau_mm_free_work, *mm);
    (*mm) = NULL;
 }
 
 inline void
-nouveau_buffer_release_gpu_storage(struct nouveau_pushbuf *push, struct nv04_resource *buf)
+nouveau_buffer_release_gpu_storage(struct nv04_resource *buf)
 {
    assert(!(buf->status & NOUVEAU_BUFFER_STATUS_USER_PTR));
 
    if (buf->fence && buf->fence->state < NOUVEAU_FENCE_STATE_FLUSHED) {
-      nouveau_fence_work(buf->fence, push, nouveau_fence_unref_bo, buf->bo);
+      nouveau_fence_work(buf->fence, nouveau_fence_unref_bo, buf->bo);
       buf->bo = NULL;
    } else {
       nouveau_bo_ref(NULL, &buf->bo);
    }
 
    if (buf->mm)
-      release_allocation(&buf->mm, buf->fence, push);
+      release_allocation(&buf->mm, buf->fence);
 
    if (buf->domain == NOUVEAU_BO_VRAM)
       NOUVEAU_DRV_STAT_RES(buf, buf_obj_current_bytes_vid, -(uint64_t)buf->base.width0);
@@ -100,10 +99,10 @@ nouveau_buffer_release_gpu_storage(struct nouveau_pushbuf *push, struct nv04_res
 }
 
 static inline bool
-nouveau_buffer_reallocate(struct nouveau_screen *screen, struct nouveau_pushbuf *push,
+nouveau_buffer_reallocate(struct nouveau_screen *screen,
                           struct nv04_resource *buf, unsigned domain)
 {
-   nouveau_buffer_release_gpu_storage(push, buf);
+   nouveau_buffer_release_gpu_storage(buf);
 
    nouveau_fence_ref(NULL, &buf->fence);
    nouveau_fence_ref(NULL, &buf->fence_wr);
@@ -119,7 +118,7 @@ nouveau_buffer_destroy(struct pipe_screen *pscreen,
 {
    struct nv04_resource *res = nv04_resource(presource);
 
-   nouveau_buffer_release_gpu_storage(nouveau_screen(pscreen)->pushbuf, res);
+   nouveau_buffer_release_gpu_storage(res);
 
    if (res->data && !(res->status & NOUVEAU_BUFFER_STATUS_USER_MEMORY))
       align_free(res->data);
@@ -234,14 +233,14 @@ nouveau_buffer_sync(struct nouveau_context *nv,
          return true;
       NOUVEAU_DRV_STAT_RES(buf, buf_non_kernel_fence_sync_count,
                            !nouveau_fence_signalled(buf->fence_wr));
-      if (!nouveau_fence_wait(buf->fence_wr, nv->pushbuf, &nv->debug))
+      if (!nouveau_fence_wait(buf->fence_wr, &nv->debug))
          return false;
    } else {
       if (!buf->fence)
          return true;
       NOUVEAU_DRV_STAT_RES(buf, buf_non_kernel_fence_sync_count,
                            !nouveau_fence_signalled(buf->fence));
-      if (!nouveau_fence_wait(buf->fence, nv->pushbuf, &nv->debug))
+      if (!nouveau_fence_wait(buf->fence, &nv->debug))
          return false;
 
       nouveau_fence_ref(NULL, &buf->fence);
@@ -288,10 +287,10 @@ nouveau_buffer_transfer_del(struct nouveau_context *nv,
 {
    if (tx->map) {
       if (likely(tx->bo)) {
-         nouveau_fence_work(nv->screen->fence.current, nv->pushbuf,
+         nouveau_fence_work(nv->screen->fence.current,
                             nouveau_fence_unref_bo, tx->bo);
          if (tx->mm)
-            release_allocation(&tx->mm, nv->screen->fence.current, nv->pushbuf);
+            release_allocation(&tx->mm, nv->screen->fence.current);
       } else {
          align_free(tx->map -
                     (tx->base.box.x & NOUVEAU_MIN_BUFFER_MAP_ALIGN_MASK));
@@ -445,7 +444,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
 
    if (nouveau_buffer_should_discard(buf, usage)) {
       int ref = buf->base.reference.count - 1;
-      nouveau_buffer_reallocate(nv->screen, nv->pushbuf, buf, buf->domain);
+      nouveau_buffer_reallocate(nv->screen, buf, buf->domain);
       if (ref > 0) /* any references inside context possible ? */
          nv->invalidate_resource_storage(nv, &buf->base, ref);
    }
@@ -859,9 +858,9 @@ nouveau_buffer_migrate(struct nouveau_context *nv,
       nv->copy_data(nv, buf->bo, buf->offset, new_domain,
                     bo, offset, old_domain, buf->base.width0);
 
-      nouveau_fence_work(screen->fence.current, nv->pushbuf, nouveau_fence_unref_bo, bo);
+      nouveau_fence_work(screen->fence.current, nouveau_fence_unref_bo, bo);
       if (mm)
-         release_allocation(&mm, screen->fence.current, nv->pushbuf);
+         release_allocation(&mm, screen->fence.current);
    } else
    if (new_domain == NOUVEAU_BO_VRAM && old_domain == 0) {
       struct nouveau_transfer tx;
@@ -900,7 +899,7 @@ nouveau_user_buffer_upload(struct nouveau_context *nv,
    assert(buf->status & NOUVEAU_BUFFER_STATUS_USER_MEMORY);
 
    buf->base.width0 = base + size;
-   if (!nouveau_buffer_reallocate(screen, nv->pushbuf, buf, NOUVEAU_BO_GART))
+   if (!nouveau_buffer_reallocate(screen, buf, NOUVEAU_BO_GART))
       return false;
 
    ret = nouveau_bo_map(buf->bo, 0, nv->client);
@@ -935,7 +934,7 @@ nouveau_buffer_invalidate(struct pipe_context *pipe,
    if (buf->mm && !nouveau_buffer_busy(buf, PIPE_MAP_WRITE)) {
       util_range_set_empty(&buf->valid_buffer_range);
    } else {
-      nouveau_buffer_reallocate(nv->screen, nv->pushbuf, buf, buf->domain);
+      nouveau_buffer_reallocate(nv->screen, buf, buf->domain);
       if (ref > 0) /* any references inside context possible ? */
          nv->invalidate_resource_storage(nv, &buf->base, ref);
    }
@@ -970,7 +969,7 @@ nouveau_scratch_runout_release(struct nouveau_context *nv)
    if (!nv->scratch.runout)
       return;
 
-   if (!nouveau_fence_work(nv->screen->fence.current, nv->pushbuf, nouveau_scratch_unref_bos,
+   if (!nouveau_fence_work(nv->screen->fence.current, nouveau_scratch_unref_bos,
          nv->scratch.runout))
       return;
 
