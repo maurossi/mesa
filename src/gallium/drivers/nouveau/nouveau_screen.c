@@ -396,10 +396,11 @@ nouveau_set_debug_callback(struct pipe_context *pipe,
 static void
 nouveau_create_fence_fd(struct pipe_context *pipe,
                         struct pipe_fence_handle **pfence,
-                        int fd)
+                        int fd, enum pipe_fd_type type)
 {
    struct nouveau_screen *screen = nouveau_screen(pipe->screen);
 
+   assert(type == PIPE_FD_TYPE_NATIVE_SYNC);
    nouveau_fence_fd(screen, (struct nouveau_fence **)pfence, fd);
 }
 
