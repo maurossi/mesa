@@ -40,8 +40,7 @@ ifeq ($(USE_LIBBACKTRACE),true)
 endif
 
 LOCAL_C_INCLUDES := \
-	$(GALLIUM_TOP)/auxiliary/util \
-	$(MESA_TOP)/src/util
+	$(GALLIUM_TOP)/auxiliary/util
 
 ifeq ($(MESA_ENABLE_LLVM),true)
 LOCAL_SRC_FILES += \
@@ -53,7 +52,9 @@ LOCAL_CPPFLAGS += -std=c++14
 
 # We need libmesa_nir to get NIR's generated include directories.
 LOCAL_MODULE := libmesa_gallium
-LOCAL_STATIC_LIBRARIES += libmesa_nir
+LOCAL_STATIC_LIBRARIES += \
+	libmesa_nir \
+	libmesa_util
 
 LOCAL_WHOLE_STATIC_LIBRARIES += cpufeatures
 LOCAL_CFLAGS += -DHAS_ANDROID_CPUFEATURES
