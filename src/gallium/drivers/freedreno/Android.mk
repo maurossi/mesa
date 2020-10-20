@@ -45,7 +45,7 @@ LOCAL_C_INCLUDES := \
 LOCAL_GENERATED_SOURCES := $(MESA_GEN_NIR_H)
 
 LOCAL_SHARED_LIBRARIES := libdrm
-LOCAL_STATIC_LIBRARIES := libmesa_glsl libmesa_nir libfreedreno_drm libfreedreno_ir3 libfreedreno_perfcntrs libfreedreno_registers
+LOCAL_STATIC_LIBRARIES := libmesa_glsl libmesa_util libmesa_nir libfreedreno_drm libfreedreno_ir3 libfreedreno_perfcntrs libfreedreno_registers
 LOCAL_MODULE := libmesa_pipe_freedreno
 
 include $(GALLIUM_COMMON_MK)
