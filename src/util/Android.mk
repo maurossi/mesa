@@ -60,6 +60,8 @@ endif
 
 LOCAL_SHARED_LIBRARIES += liblog
 
+LOCAL_EXPORT_SHARED_LIBRARY_HEADERS += libsync
+
 # Generated sources
 
 LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
