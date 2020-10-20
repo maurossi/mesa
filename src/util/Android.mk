@@ -64,7 +64,9 @@ LOCAL_EXPORT_SHARED_LIBRARY_HEADERS += libsync
 
 # Generated sources
 
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
+LOCAL_EXPORT_C_INCLUDE_DIRS := \
+	$(LOCAL_PATH) \
+	$(intermediates)
 
 UTIL_GENERATED_SOURCES := $(addprefix $(intermediates)/,$(MESA_UTIL_GENERATED_FILES))
 LOCAL_GENERATED_SOURCES := $(UTIL_GENERATED_SOURCES)
