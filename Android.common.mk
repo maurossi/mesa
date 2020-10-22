@@ -27,7 +27,8 @@ endif
 
 LOCAL_C_INCLUDES += \
 	$(MESA_TOP)/src \
-	$(MESA_TOP)/include
+	$(MESA_TOP)/include \
+	system/core/libsync/include
 
 MESA_VERSION := $(shell cat $(MESA_TOP)/VERSION)
 LOCAL_CFLAGS += \
