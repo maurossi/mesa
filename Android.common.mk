@@ -84,17 +84,21 @@ LOCAL_CFLAGS += \
 	-fno-trapping-math \
 	-Werror \
 	-Wno-\#warnings \
+	-Wno-absolute-value \
 	-Wno-asm-operand-widths \
 	-Wno-cast-calling-convention \
+	-Wno-constant-conversion \
 	-Wno-constant-logical-operand \
 	-Wno-enum-conversion \
 	-Wno-format \
 	-Wno-gnu-variable-sized-type-not-at-end \
+	-Wno-ignored-qualifiers \
 	-Wno-implicit-fallthrough \
 	-Wno-incompatible-pointer-types \
 	-Wno-missing-braces \
 	-Wno-overloaded-virtual \
 	-Wno-self-assign \
+	-Wno-shift-count-overflow \
 	-Wno-shift-negative-value \
 	-Wno-sign-compare \
 	-Wno-sometimes-uninitialized \
