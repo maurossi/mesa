@@ -226,7 +226,7 @@ $(intermediates)/vulkan/anv_entrypoints.c: $(ANV_ENTRYPOINTS_GEN_SCRIPT) \
 					   $(ANV_EXTENSIONS_SCRIPT) \
 					   $(VULKAN_API_XML)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(ANV_ENTRYPOINTS_GEN_SCRIPT) \
+	$(MESA_PYTHON3) $(ANV_ENTRYPOINTS_GEN_SCRIPT) \
 		--xml $(VULKAN_API_XML) \
 		--outdir $(dir $@)
 
@@ -236,7 +236,7 @@ $(intermediates)/vulkan/anv_extensions.c: $(ANV_EXTENSIONS_GEN_SCRIPT) \
 					  $(ANV_EXTENSIONS_SCRIPT) \
 					  $(VULKAN_API_XML)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(ANV_EXTENSIONS_GEN_SCRIPT) \
+	$(MESA_PYTHON3) $(ANV_EXTENSIONS_GEN_SCRIPT) \
 		--xml $(VULKAN_API_XML) \
 		--out-c $@
 
@@ -244,7 +244,7 @@ $(intermediates)/vulkan/anv_extensions.h: $(ANV_EXTENSIONS_GEN_SCRIPT) \
 					   $(ANV_EXTENSIONS_SCRIPT) \
 					   $(VULKAN_API_XML)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(ANV_EXTENSIONS_GEN_SCRIPT) \
+	$(MESA_PYTHON3) $(ANV_EXTENSIONS_GEN_SCRIPT) \
 		--xml $(VULKAN_API_XML) \
 		--out-h $@
 

@@ -59,7 +59,7 @@ $(firstword $(LOCAL_GENERATED_SOURCES)): $(MESA_TOP)/src/vulkan/util/gen_enum_to
 		$(vulkan_api_xml)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	    --xml $(vulkan_api_xml) \
 	    --outdir $(dir $@)
 

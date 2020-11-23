@@ -64,7 +64,7 @@ LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 intermediates := $(call local-generated-sources-dir)
 LOCAL_GENERATED_SOURCES := $(addprefix $(intermediates)/, $(GENERATED_SOURCES))
 
-$(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON2)
+$(LOCAL_GENERATED_SOURCES): PRIVATE_PYTHON := $(MESA_PYTHON3)
 $(LOCAL_GENERATED_SOURCES): PRIVATE_CUSTOM_TOOL = $(PRIVATE_PYTHON) $^ > $@
 
 $(intermediates)/indices/u_indices_gen.c \
