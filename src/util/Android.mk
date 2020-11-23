@@ -75,7 +75,7 @@ format_srgb_gen := $(LOCAL_PATH)/format_srgb.py
 
 $(intermediates)/format_srgb.c: $(format_srgb_gen)
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $(format_srgb_gen) $< > $@
+	$(hide) $(MESA_PYTHON3) $(format_srgb_gen) $< > $@
 
 u_format_gen := $(LOCAL_PATH)/format/u_format_table.py
 u_format_deps := $(LOCAL_PATH)/format/u_format.csv \
@@ -84,11 +84,11 @@ u_format_deps := $(LOCAL_PATH)/format/u_format.csv \
 
 $(intermediates)/format/u_format_pack.h: $(u_format_deps)
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $(u_format_gen) --header $< > $@
+	$(hide) $(MESA_PYTHON3) $(u_format_gen) --header $< > $@
 
 $(intermediates)/format/u_format_table.c: $(u_format_deps)
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $(u_format_gen) $< > $@
+	$(hide) $(MESA_PYTHON3) $(u_format_gen) $< > $@
 
 include $(MESA_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

@@ -297,7 +297,7 @@ isl_format_layout_deps := \
 	$(LOCAL_PATH)/isl/gen_format_layout.py \
 	$(LOCAL_PATH)/isl/isl_format_layout.csv
 
-$(intermediates)/isl/isl_format_layout.c: PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/isl/gen_format_layout.py
+$(intermediates)/isl/isl_format_layout.c: PRIVATE_SCRIPT := $(MESA_PYTHON3) $(LOCAL_PATH)/isl/gen_format_layout.py
 $(intermediates)/isl/isl_format_layout.c: PRIVATE_CSV := $(LOCAL_PATH)/isl/isl_format_layout.csv
 $(intermediates)/isl/isl_format_layout.c: $(isl_format_layout_deps)
 	$(call bash-gen)
