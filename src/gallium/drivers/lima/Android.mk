@@ -94,7 +94,7 @@ intermediates := $(call local-generated-sources-dir)
 $(intermediates)/lima_nir_algebraic.c: $(LOCAL_PATH)/ir/lima_nir_algebraic.py
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< -p $(MESA_TOP)/src/compiler/nir/ > $@
+	$(hide) $(MESA_PYTHON3) $< -p $(MESA_TOP)/src/compiler/nir/ > $@
 
 LOCAL_GENERATED_SOURCES := \
 	$(intermediates)/lima_nir_algebraic.c \
