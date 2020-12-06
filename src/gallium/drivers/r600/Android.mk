@@ -47,7 +47,7 @@ LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, $(R600_GENERATED_FILES
 $(intermediates)/egd_tables.h: $(MESA_TOP)/src/gallium/drivers/r600/egd_tables.py $(MESA_TOP)/src/gallium/drivers/r600/evergreend.h
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(MESA_PYTHON2) $(MESA_TOP)/src/gallium/drivers/r600/egd_tables.py $(MESA_TOP)/src/gallium/drivers/r600/evergreend.h > $@
+	$(hide) $(MESA_PYTHON3) $(MESA_TOP)/src/gallium/drivers/r600/egd_tables.py $(MESA_TOP)/src/gallium/drivers/r600/evergreend.h > $@
 
 ifeq ($(MESA_ENABLE_LLVM),true)
 $(call mesa-build-with-llvm)
