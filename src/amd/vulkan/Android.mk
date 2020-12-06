@@ -85,7 +85,7 @@ vulkan_api_xml = $(MESA_TOP)/src/vulkan/registry/vk.xml
 $(intermediates)/radv_entrypoints.c: $(RADV_ENTRYPOINTS_SCRIPT) \
 					$(vulkan_api_xml)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(RADV_ENTRYPOINTS_SCRIPT) \
+	$(MESA_PYTHON3) $(RADV_ENTRYPOINTS_SCRIPT) \
 		--xml $(vulkan_api_xml) \
 		--proto --weak \
 		--out-c $@ \
