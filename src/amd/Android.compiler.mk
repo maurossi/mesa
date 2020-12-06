@@ -53,17 +53,17 @@ ACO_DEPS := $(MESA_TOP)/src/amd/compiler/aco_opcodes.py
 $(intermediates)/compiler/aco_opcodes.h: $(ACO_OPCODES_H_SCRIPT) $(ACO_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(MESA_PYTHON2) $(ACO_OPCODES_H_SCRIPT) > $@ || ($(RM) $@; false)
+	$(hide) $(MESA_PYTHON3) $(ACO_OPCODES_H_SCRIPT) > $@ || ($(RM) $@; false)
 
 $(intermediates)/compiler/aco_opcodes.cpp: $(ACO_OPCODES_CPP_SCRIPT) $(ACO_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(MESA_PYTHON2) $(ACO_OPCODES_CPP_SCRIPT) > $@ || ($(RM) $@; false)
+	$(hide) $(MESA_PYTHON3) $(ACO_OPCODES_CPP_SCRIPT) > $@ || ($(RM) $@; false)
 
 $(intermediates)/compiler/aco_builder.h: $(ACO_BUILDER_H_SCRIPT) $(ACO_DEPS)
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(MESA_PYTHON2) $(ACO_BUILDER_H_SCRIPT) > $@ || ($(RM) $@; false)
+	$(hide) $(MESA_PYTHON3) $(ACO_BUILDER_H_SCRIPT) > $@ || ($(RM) $@; false)
 
 LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/amd \

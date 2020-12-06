@@ -41,7 +41,7 @@ LOCAL_GENERATED_SOURCES += $(addprefix $(intermediates)/, \
 $(intermediates)/perf/gen_perf_metrics.c: $(LOCAL_PATH)/perf/gen_perf.py $(addprefix $(MESA_TOP)/src/intel/,$(GEN_PERF_XML_FILES))
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	--code=$@ \
 	--header=$(@:%.c=%.h) \
 	$(addprefix $(MESA_TOP)/src/intel/,$(GEN_PERF_XML_FILES))
