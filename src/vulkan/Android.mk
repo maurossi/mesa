@@ -60,7 +60,7 @@ $(intermediates)/util/vk_enum_to_str.c: $(MESA_TOP)/src/vulkan/util/gen_enum_to_
 		$(vulkan_api_xml)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	    --xml $(vulkan_api_xml) \
 	    --outdir $(dir $@)
 
@@ -70,7 +70,7 @@ $(intermediates)/util/vk_common_entrypoints.c: $(MESA_TOP)/src/vulkan/util/vk_en
 		$(vulkan_api_xml)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	    --xml $(vulkan_api_xml) \
 	    --proto --weak --prefix vk_common \
 	    --out-c $@ --out-h $(dir $@)/vk_common_entrypoints.h
@@ -81,7 +81,7 @@ $(intermediates)/util/vk_dispatch_table.c: $(MESA_TOP)/src/vulkan/util/vk_dispat
 		$(vulkan_api_xml)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	    --xml $(vulkan_api_xml) \
 	    --out-c $@
 
@@ -89,7 +89,7 @@ $(intermediates)/util/vk_dispatch_table.h: $(MESA_TOP)/src/vulkan/util/vk_dispat
 		$(vulkan_api_xml)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	    --xml $(vulkan_api_xml) \
 	    --out-h $@
 
@@ -97,7 +97,7 @@ $(intermediates)/util/vk_extensions.c: $(MESA_TOP)/src/vulkan/util/vk_extensions
 		$(vulkan_api_xml)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	    --xml $(vulkan_api_xml) \
 	    --out-c $@
 
@@ -105,7 +105,7 @@ $(intermediates)/util/vk_extensions.h: $(MESA_TOP)/src/vulkan/util/vk_extensions
 		$(vulkan_api_xml)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	    --xml $(vulkan_api_xml) \
 	    --out-h $@
 
