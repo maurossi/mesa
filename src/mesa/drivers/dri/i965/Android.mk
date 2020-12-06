@@ -295,7 +295,7 @@ i965_oa_xml_FILES := $(addprefix $(MESA_TOP)/src/mesa/drivers/dri/i965/, \
 $(intermediates)/brw_oa_metrics.c: $(LOCAL_PATH)/brw_oa.py $(i965_oa_xml_FILES)
 	@echo "target Generated: $(PRIVATE_MODULE) <= $(notdir $(@))"
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< \
+	$(hide) $(MESA_PYTHON3) $< \
 	--code=$@ \
 	--header=$(call generated-sources-dir-for,SHARED_LIBRARIES,i965_dri,,)/brw_oa_metrics.h \
 	$(i965_oa_xml_FILES)
