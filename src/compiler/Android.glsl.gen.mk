@@ -92,16 +92,16 @@ $(intermediates)/glsl/glcpp/glcpp-parse.c: $(LOCAL_PATH)/glsl/glcpp/glcpp-parse.
 
 $(intermediates)/glsl/ir_expression_operation.h: $(LOCAL_PATH)/glsl/ir_expression_operation.py
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< enum > $@
+	$(hide) $(MESA_PYTHON3) $< enum > $@
 
 $(intermediates)/glsl/ir_expression_operation_constant.h: $(LOCAL_PATH)/glsl/ir_expression_operation.py
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< constant > $@
+	$(hide) $(MESA_PYTHON3) $< constant > $@
 
 $(intermediates)/glsl/ir_expression_operation_strings.h: $(LOCAL_PATH)/glsl/ir_expression_operation.py
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< strings > $@
+	$(hide) $(MESA_PYTHON3) $< strings > $@
 
 $(intermediates)/glsl/float64_glsl.h: $(MESA_TOP)/src/util/xxd.py
 	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON2) $< $(MESA_TOP)/src/compiler/glsl/float64.glsl $@ -n float64_source > $@
+	$(hide) $(MESA_PYTHON3) $< $(MESA_TOP)/src/compiler/glsl/float64.glsl $@ -n float64_source > $@
