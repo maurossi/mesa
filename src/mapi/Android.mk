@@ -73,7 +73,7 @@ mapi_abi_deps := \
 	$(wildcard $(LOCAL_PATH)/glapi/gen/*.xml) \
 	$(LOCAL_PATH)/mapi_abi.py
 
-$(mapi_abi_headers): PRIVATE_SCRIPT := $(MESA_PYTHON2) $(LOCAL_PATH)/mapi_abi.py
+$(mapi_abi_headers): PRIVATE_SCRIPT := $(MESA_PYTHON3) $(LOCAL_PATH)/mapi_abi.py
 $(mapi_abi_headers): PRIVATE_APIXML := $(LOCAL_PATH)/glapi/gen/gl_and_es_API.xml
 $(mapi_abi_headers): $(mapi_abi_deps)
 	@mkdir -p $(dir $@)
