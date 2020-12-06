@@ -93,7 +93,7 @@ $(intermediates)/radv_entrypoints.c: $(RADV_ENTRYPOINTS_SCRIPT) \
 					$(RADV_EXTENSIONS_SCRIPT) \
 					$(vulkan_api_xml)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(RADV_ENTRYPOINTS_SCRIPT) \
+	$(MESA_PYTHON3) $(RADV_ENTRYPOINTS_SCRIPT) \
 		--xml $(vulkan_api_xml) \
 		--outdir $(dir $@)
 
@@ -101,7 +101,7 @@ $(intermediates)/radv_entrypoints.h: $(intermediates)/radv_entrypoints.c
 
 $(intermediates)/radv_extensions.c: $(RADV_EXTENSIONS_SCRIPT) $(vulkan_api_xml)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(RADV_EXTENSIONS_SCRIPT) \
+	$(MESA_PYTHON3) $(RADV_EXTENSIONS_SCRIPT) \
 		--xml $(vulkan_api_xml) \
 		--out-c $@ \
 		--out-h $(addsuffix .h,$(basename $@))
@@ -112,7 +112,7 @@ $(intermediates)/vk_format_table.c: $(VK_FORMAT_TABLE_SCRIPT) \
 					$(VK_FORMAT_PARSE_SCRIPT) \
 					$(vk_format_layout_csv)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(VK_FORMAT_TABLE_SCRIPT) $(vk_format_layout_csv) > $@
+	$(MESA_PYTHON3) $(VK_FORMAT_TABLE_SCRIPT) $(vk_format_layout_csv) > $@
 
 LOCAL_SHARED_LIBRARIES += $(RADV_SHARED_LIBRARIES)
 
