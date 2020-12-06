@@ -247,7 +247,7 @@ ANV_VK_ENTRYPOINTS_GEN_ARGS= \
 $(intermediates)/vulkan/anv_entrypoints.c: $(VK_ENTRYPOINTS_GEN_SCRIPT) \
 					   $(VULKAN_API_XML)
 	@mkdir -p $(dir $@)
-	$(MESA_PYTHON2) $(VK_ENTRYPOINTS_GEN_SCRIPT) \
+	$(MESA_PYTHON3) $(VK_ENTRYPOINTS_GEN_SCRIPT) \
 		--xml $(VULKAN_API_XML) \
 		$(ANV_VK_ENTRYPOINTS_GEN_ARGS) \
 		--out-c $@ --out-h $(dir $@)/anv_entrypoints.h
