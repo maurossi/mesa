@@ -884,7 +884,8 @@ if with_platform_android
   pre_args += [
     '-DHAVE_ANDROID_PLATFORM',
     '-DANDROID',
-    '-DANDROID_API_LEVEL=' + get_option('platform-sdk-version').to_string()
+    '-DANDROID_API_LEVEL=' + get_option('platform-sdk-version').to_string(),
+    '-DHAVE_GRALLOC_HANDLE'
   ]
 endif
 if with_platform_haiku

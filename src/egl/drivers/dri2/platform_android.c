@@ -38,6 +38,9 @@
 #include <sync/sync.h>
 #include <sys/types.h>
 #include <drm-uapi/drm_fourcc.h>
+#ifdef HAVE_GRALLOC_HANDLE
+#include <android/gralloc_handle.h>
+#endif
 
 #include "util/os_file.h"
 
@@ -364,6 +367,55 @@ cros_get_buffer_info(_EGLDisplay *disp,
    return false;
 }
 
+#ifdef HAVE_GRALLOC_HANDLE
+
+static const char gbm_gralloc_module_name[] = "GBM Memory Allocator";
+static const char drm_gralloc_module_name[] = "DRM Memory Allocator";
+
+#if GRALLOC_HANDLE_VERSION < 4
+#error libdrm >= v2.4.97 is required
+#endif
+
+static bool
+libdrm_gralloc_handle_get_buffer_info(_EGLDisplay *disp,
+                                      struct ANativeWindowBuffer *buf,
+                                      struct buffer_info *buf_info)
+{
+   struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
+
+   const bool is_drm_gralloc =
+      strcmp(dri2_dpy->gralloc->common.name, drm_gralloc_module_name) == 0;
+   const bool is_gbm_gralloc =
+      strcmp(dri2_dpy->gralloc->common.name, gbm_gralloc_module_name) == 0;
+
+   if (is_gbm_gralloc || is_drm_gralloc) {
+      struct gralloc_handle_t *handle = (struct gralloc_handle_t *)buf->handle;
+
+      if (handle->magic != GRALLOC_HANDLE_MAGIC ||
+          handle->version != GRALLOC_HANDLE_VERSION)
+         return false;
+
+      if (is_yuv(buf->format)) {
+         if (!get_yuv_buffer_info(disp, buf, buf_info))
+            return false;
+      } else {
+         buf_info->num_planes = get_native_buffer_fds(buf, buf_info->fds);
+         if (buf_info->num_planes != 1)
+             return false;
+
+         buf_info->drm_fourcc = get_fourcc(buf->format);
+         buf_info->pitches[0] = handle->stride;
+      }
+
+      buf_info->modifier = handle->modifier;
+      return true;
+   }
+
+   return false;
+}
+
+#endif
+
 static __DRIimage *
 droid_create_image_from_native_buffer(_EGLDisplay *disp,
                                       struct ANativeWindowBuffer *buf,
@@ -374,8 +426,11 @@ droid_create_image_from_native_buffer(_EGLDisplay *disp,
    unsigned error;
 
    if (!cros_get_buffer_info(disp, buf, &buf_info))
-      if (!native_window_buffer_get_buffer_info(disp, buf, &buf_info))
-         return NULL;
+#ifdef HAVE_GRALLOC_HANDLE
+      if (!libdrm_gralloc_handle_get_buffer_info(disp, buf, &buf_info))
+#endif
+         if (!native_window_buffer_get_buffer_info(disp, buf, &buf_info))
+            return NULL;
 
    if (dri2_dpy->image->base.version >= 15 &&
        dri2_dpy->image->createImageFromDmaBufs2 != NULL) {
