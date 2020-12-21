@@ -788,6 +788,12 @@ crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
          usage |= ISL_SURF_USAGE_DEPTH_BIT;
    }
 
+   if (templ->usage == PIPE_USAGE_STAGING &&
+       templ->bind == PIPE_BIND_DEPTH_STENCIL &&
+       devinfo->gen < 6)
+     return NULL;
+
+
    enum pipe_format pfmt = templ->format;
    res->internal_format = pfmt;
 
