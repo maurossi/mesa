@@ -2308,38 +2308,12 @@ crocus_get_scratch_space(struct crocus_context *ice,
 
    struct crocus_bo **bop = &ice->shaders.scratch_bos[encoded_size][stage];
 
-   /* The documentation for 3DSTATE_PS "Scratch Space Base Pointer" says:
-    *
-    *    "Scratch Space per slice is computed based on 4 sub-slices.  SW
-    *     must allocate scratch space enough so that each slice has 4
-    *     slices allowed."
-    *
-    * According to the other driver team, this applies to compute shaders
-    * as well.  This is not currently documented at all.
-    *
-    * This hack is no longer necessary on Gen11+.
-    */
    unsigned subslice_total = screen->subslice_total;
-   if (devinfo->gen < 11)
-      subslice_total = 4 * devinfo->num_slices;
-   assert(subslice_total >= screen->subslice_total);
+   subslice_total = 4 * devinfo->num_slices;
+   //   assert(subslice_total >= screen->subslice_total);
 
    if (!*bop) {
       unsigned scratch_ids_per_subslice = devinfo->max_cs_threads;
-
-      if (devinfo->gen >= 11) {
-         /* The MEDIA_VFE_STATE docs say:
-          *
-          *    "Starting with this configuration, the Maximum Number of
-          *     Threads must be set to (#EU * 8) for GPGPU dispatches.
-          *
-          *     Although there are only 7 threads per EU in the configuration,
-          *     the FFTID is calculated as if there are 8 threads per EU,
-          *     which in turn requires a larger amount of Scratch Space to be
-          *     allocated by the driver."
-          */
-         scratch_ids_per_subslice = 8 * 8;
-      }
 
       uint32_t max_threads[] = {
          [MESA_SHADER_VERTEX]    = devinfo->max_vs_threads,
