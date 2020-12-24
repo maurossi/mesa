@@ -348,16 +348,16 @@ stream_state(struct crocus_batch *batch,
 {
    uint32_t offset = ALIGN(batch->state.used, alignment);
 
-   if (offset + size >= BATCH_SZ /*&& !batch->no_wrap*/) {
+   if (offset + size >= BATCH_SZ && !batch->no_wrap) {
       crocus_batch_flush(batch);
       offset = ALIGN(batch->state.used, alignment);
-   }/* else if (offset + size >= batch->state.bo->size) {
+   } else if (offset + size >= batch->state.bo->size) {
       const unsigned new_size =
          MIN2(batch->state.bo->size + batch->state.bo->size / 2,
               MAX_STATE_SIZE);
-      grow_buffer(brw, &batch->state, batch->state_used, new_size);
+      crocus_grow_buffer(batch, true, new_size);
       assert(offset + size < batch->state.bo->size);
-      }*/
+   }
 
    crocus_record_state_size(batch->state_sizes, *out_offset, size);
 
@@ -6225,8 +6225,10 @@ crocus_upload_render_state(struct crocus_context *ice,
 {
    bool use_predicate = ice->state.predicate == CROCUS_PREDICATE_STATE_USE_BIT;
 
+   batch->no_wrap = true;
    crocus_upload_dirty_render_state(ice, batch, draw);
 
+   batch->no_wrap = false;
    if (draw->index_size > 0) {
       unsigned offset;
       unsigned size;

@@ -38,6 +38,12 @@
 /* The kernel assumes batchbuffers are smaller than 256kB. */
 #define MAX_BATCH_SIZE (256 * 1024)
 
+/* 3DSTATE_BINDING_TABLE_POINTERS has a U16 offset from Surface State Base
+ * Address, which means that we can't put binding tables beyond 64kB.  This
+ * effectively limits the maximum statebuffer size to 64kB.
+ */
+#define MAX_STATE_SIZE (64 * 1024)
+
 /* Our target batch size - flush approximately at this point. */
 #define BATCH_SZ (64 * 1024)
 
@@ -60,6 +66,17 @@ struct crocus_reloc_list {
    int reloc_array_size;
 };
 
+struct crocus_growing_bo {
+   struct crocus_bo *bo;
+   void *map;
+   void *map_next;
+   struct crocus_bo *partial_bo;
+   void *partial_bo_map;
+   unsigned partial_bytes;
+   struct crocus_reloc_list relocs;
+   unsigned used;
+};
+
 struct crocus_batch {
    struct crocus_context *ice;
    struct crocus_screen *screen;
@@ -71,13 +88,7 @@ struct crocus_batch {
    enum crocus_batch_name name;
 
    /** buffers: command, state */
-   struct {
-      struct crocus_bo *bo;
-      void *map;
-      void *map_next;
-      struct crocus_reloc_list relocs;
-      uint32_t used;
-   } command, state;
+   struct crocus_growing_bo command, state;
 
    /** Size of the primary batch if we've moved on to a secondary. */
    unsigned primary_batch_size;
@@ -89,6 +100,7 @@ struct crocus_batch {
    uint32_t valid_reloc_flags;
 
    bool use_shadow_copy;
+   bool no_wrap;
 
    /** Which engine this batch targets - a I915_EXEC_RING_MASK value */
    uint8_t engine;
@@ -179,6 +191,10 @@ uint64_t crocus_state_reloc(struct crocus_batch *batch, uint32_t batch_offset,
 
 enum pipe_reset_status crocus_batch_check_for_reset(struct crocus_batch *batch);
 
+void
+crocus_grow_buffer(struct crocus_batch *batch, bool grow_state,
+		   unsigned new_size);
+
 static inline unsigned
 crocus_batch_bytes_used(struct crocus_batch *batch)
 {
@@ -197,9 +213,15 @@ crocus_require_command_space(struct crocus_batch *batch, unsigned size)
 {
    const unsigned required_bytes = crocus_batch_bytes_used(batch) + size;
 
-   if (required_bytes >= BATCH_SZ) {
-      //TODO
-      assert(0);
+   if (required_bytes >= BATCH_SZ && !batch->no_wrap) {
+      crocus_batch_flush(batch);
+   } else if (crocus_batch_bytes_used(batch) + size >= batch->command.bo->size) {
+      const unsigned new_size =
+	 MIN2(batch->command.bo->size + batch->command.bo->size / 2,
+	      MAX_BATCH_SIZE);
+      crocus_grow_buffer(batch, false, new_size);
+      batch->command.map_next = (void *)batch->command.map + batch->command.used;
+      assert(crocus_batch_bytes_used(batch) + size < batch->command.bo->size);
    }
 }
 

@@ -66,11 +66,16 @@ stream_state(struct crocus_batch *batch,
    void *ptr = NULL;
    uint32_t offset = ALIGN(batch->state.used, alignment);
 
-   if (offset + size >= BATCH_SZ /*&& !batch->no_wrap*/) {
+   if (offset + size >= BATCH_SZ && !batch->no_wrap) {
       crocus_batch_flush(batch);
       offset = ALIGN(batch->state.used, alignment);
-   } //TODO grow
-   
+   } else if (offset + size >= batch->state.bo->size) {
+      const unsigned new_size =
+         MIN2(batch->state.bo->size + batch->state.bo->size / 2,
+              MAX_STATE_SIZE);
+      crocus_grow_buffer(batch, true, new_size);
+      assert(offset + size < batch->state.bo->size);
+   }
 
    batch->state.used = offset + size;
    *out_offset = offset;
@@ -293,7 +298,7 @@ crocus_blorp_exec(struct blorp_batch *blorp_batch,
    batch->ice->vtbl.init_render_context(batch);
    crocus_require_command_space(batch, 1400);
    crocus_require_statebuffer_space(batch, 600);
-
+   batch->no_wrap = true;
 #if GEN_GEN == 6
    /* Emit workaround flushes when we switch from drawing to blorping. */
 //TODO   brw_emit_post_sync_nonzero_flush(brw);
@@ -309,6 +314,7 @@ crocus_blorp_exec(struct blorp_batch *blorp_batch,
 
    blorp_exec(blorp_batch, params);
 
+   batch->no_wrap = false;
    crocus_handle_always_flush_cache(batch);
 
    /* We've smashed all state compared to what the normal 3D pipeline

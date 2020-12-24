@@ -499,12 +499,143 @@ crocus_batch_maybe_flush(struct crocus_batch *batch, unsigned estimate)
 }
 
 /**
+ * Finish copying the old batch/state buffer's contents to the new one
+ * after we tried to "grow" the buffer in an earlier operation.
+ */
+static void
+finish_growing_bos(struct crocus_growing_bo *grow)
+{
+   struct crocus_bo *old_bo = grow->partial_bo;
+   if (!old_bo)
+      return;
+
+   memcpy(grow->map, grow->partial_bo_map, grow->partial_bytes);
+
+   grow->partial_bo = NULL;
+   grow->partial_bo_map = NULL;
+   grow->partial_bytes = 0;
+
+   crocus_bo_unreference(old_bo);
+}
+
+void
+crocus_grow_buffer(struct crocus_batch *batch, bool grow_state,
+		   unsigned new_size)
+{
+   struct crocus_screen *screen = batch->screen;
+   struct crocus_bufmgr *bufmgr = screen->bufmgr;
+   struct crocus_growing_bo *grow = grow_state ? &batch->state : &batch->command;
+   struct crocus_bo *bo = grow->bo;
+
+   if (grow->partial_bo) {
+      /* We've already grown once, and now we need to do it again.
+       * Finish our last grow operation so we can start a new one.
+       * This should basically never happen.
+       */
+      finish_growing_bos(grow);
+   }
+
+   struct crocus_bo *new_bo = crocus_bo_alloc(bufmgr, bo->name,
+                                              new_size);
+
+   /* Copy existing data to the new larger buffer */
+   grow->partial_bo_map = grow->map;
+
+   if (batch->use_shadow_copy) {
+      /* We can't safely use realloc, as it may move the existing buffer,
+       * breaking existing pointers the caller may still be using.  Just
+       * malloc a new copy and memcpy it like the normal BO path.
+       *
+       * Use bo->size rather than new_size because the bufmgr may have
+       * rounded up the size, and we want the shadow size to match.
+       */
+      grow->map = malloc(new_bo->size);
+   } else {
+      grow->map = crocus_bo_map(NULL, new_bo, MAP_READ | MAP_WRITE);
+   }
+   /* Try to put the new BO at the same GTT offset as the old BO (which
+    * we're throwing away, so it doesn't need to be there).
+    *
+    * This guarantees that our relocations continue to work: values we've
+    * already written into the buffer, values we're going to write into the
+    * buffer, and the validation/relocation lists all will match.
+    *
+    * Also preserve kflags for EXEC_OBJECT_CAPTURE.
+    */
+   new_bo->gtt_offset = bo->gtt_offset;
+   new_bo->index = bo->index;
+   new_bo->kflags = bo->kflags;
+
+   /* Batch/state buffers are per-context, and if we've run out of space,
+    * we must have actually used them before, so...they will be in the list.
+    */
+   assert(bo->index < batch->exec_count);
+   assert(batch->exec_bos[bo->index] == bo);
+
+   /* Update the validation list to use the new BO. */
+   batch->validation_list[bo->index].handle = new_bo->gem_handle;
+   /* Exchange the two BOs...without breaking pointers to the old BO.
+    *
+    * Consider this scenario:
+    *
+    * 1. Somebody calls brw_state_batch() to get a region of memory, and
+    *    and then creates a brw_address pointing to brw->batch.state.bo.
+    * 2. They then call brw_state_batch() a second time, which happens to
+    *    grow and replace the state buffer.  They then try to emit a
+    *    relocation to their first section of memory.
+    *
+    * If we replace the brw->batch.state.bo pointer at step 2, we would
+    * break the address created in step 1.  They'd have a pointer to the
+    * old destroyed BO.  Emitting a relocation would add this dead BO to
+    * the validation list...causing /both/ statebuffers to be in the list,
+    * and all kinds of disasters.
+    *
+    * This is not a contrived case - BLORP vertex data upload hits this.
+    *
+    * There are worse scenarios too.  Fences for GL sync objects reference
+    * brw->batch.batch.bo.  If we replaced the batch pointer when growing,
+    * we'd need to chase down every fence and update it to point to the
+    * new BO.  Otherwise, it would refer to a "batch" that never actually
+    * gets submitted, and would fail to trigger.
+    *
+    * To work around both of these issues, we transmutate the buffers in
+    * place, making the existing struct brw_bo represent the new buffer,
+    * and "new_bo" represent the old BO.  This is highly unusual, but it
+    * seems like a necessary evil.
+    *
+    * We also defer the memcpy of the existing batch's contents.  Callers
+    * may make multiple brw_state_batch calls, and retain pointers to the
+    * old BO's map.  We'll perform the memcpy in finish_growing_bo() when
+    * we finally submit the batch, at which point we've finished uploading
+    * state, and nobody should have any old references anymore.
+    *
+    * To do that, we keep a reference to the old BO in grow->partial_bo,
+    * and store the number of bytes to copy in grow->partial_bytes.  We
+    * can monkey with the refcounts directly without atomics because these
+    * are per-context BOs and they can only be touched by this thread.
+    */
+   assert(new_bo->refcount == 1);
+   new_bo->refcount = bo->refcount;
+   bo->refcount = 1;
+
+   struct crocus_bo tmp;
+   memcpy(&tmp, bo, sizeof(struct crocus_bo));
+   memcpy(bo, new_bo, sizeof(struct crocus_bo));
+   memcpy(new_bo, &tmp, sizeof(struct crocus_bo));
+
+   grow->partial_bo = new_bo; /* the one reference of the OLD bo */
+   grow->partial_bytes = grow->used;
+}
+
+
+/**
  * Terminate a batch with MI_BATCH_BUFFER_END.
  */
 static void
 crocus_finish_batch(struct crocus_batch *batch)
 {
 
+   batch->no_wrap = true;
    if (batch->vtbl->finish_batch)
       batch->vtbl->finish_batch(batch);
 
@@ -518,6 +649,7 @@ crocus_finish_batch(struct crocus_batch *batch)
 
    if (batch->command.bo == batch->exec_bos[0])
       batch->primary_batch_size = crocus_batch_bytes_used(batch);
+   batch->no_wrap = false;
 }
 
 /**
@@ -687,6 +819,7 @@ _crocus_batch_flush(struct crocus_batch *batch, const char *file, int line)
    if (crocus_batch_bytes_used(batch) == 0)
       return;
 
+   assert(!batch->no_wrap);
    crocus_finish_batch(batch);
 
    int ret = submit_batch(batch);
