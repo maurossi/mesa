@@ -1507,6 +1507,11 @@ static void util_blitter_clear_custom(struct blitter_context *blitter,
    enum blitter_attrib_type type = pass_generic ? UTIL_BLITTER_ATTRIB_COLOR :
                                                   UTIL_BLITTER_ATTRIB_NONE;
 
+   if (pass_generic)
+      bind_fs_write_all_cbufs(ctx);
+   else
+      bind_fs_empty(ctx);
+
    if (num_layers > 1 && ctx->has_layered) {
       blitter_get_vs_func get_vs = get_vs_layered;
 
