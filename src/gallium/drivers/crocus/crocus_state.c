@@ -7359,6 +7359,7 @@ genX(init_state)(struct crocus_context *ice)
 
    ice->state.statistics_counters_enabled = true;
 
+   genX(init_blt)(ice);
    ice->state.sample_mask = 0xff;
    ice->state.num_viewports = 1;
    ice->state.prim_mode = PIPE_PRIM_MAX;

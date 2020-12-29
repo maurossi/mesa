@@ -53,7 +53,7 @@ crocus_gen_libs = []
 foreach v : ['40', '45', '50', '60', '70', '75']
   crocus_gen_libs += static_library(
     'libcrocus_gen@0@'.format(v),
-    ['crocus_blorp.c', 'crocus_query.c', 'crocus_state.c', gen_xml_pack],
+    ['crocus_blt.c', 'crocus_blorp.c', 'crocus_query.c', 'crocus_state.c', gen_xml_pack],
     include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_intel],
     c_args : [
       no_override_init_args, c_sse2_args,

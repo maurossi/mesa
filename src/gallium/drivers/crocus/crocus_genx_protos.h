@@ -50,3 +50,5 @@ void genX(math_div32_gpr0)(struct crocus_context *ice,
                            struct crocus_batch *batch,
                            uint32_t D);
 
+/* crocus_blt.c */
+void genX(init_blt)(struct crocus_context *ice);

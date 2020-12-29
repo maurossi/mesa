@@ -1348,7 +1348,7 @@ get_image_offset_el(const struct isl_surf *surf, unsigned level, unsigned z,
  * This function computes the tile_w (in bytes) and tile_h (in rows) of
  * different tiling patterns.
  */
-static void
+void
 crocus_resource_get_tile_dims(enum isl_tiling tiling, uint32_t cpp,
                             uint32_t *tile_w, uint32_t *tile_h)
 {
@@ -1416,6 +1416,15 @@ crocus_resource_get_aligned_offset(const struct crocus_resource *res,
       return y * pitch + x / (128 / cpp) * 4096;
    }
 }
+
+void
+crocus_resource_get_image_offset(struct crocus_resource *res,
+				 uint32_t level, uint32_t z,
+				 uint32_t *x, uint32_t *y)
+{
+   get_image_offset_el(&res->surf, level, z, x, y);
+}
+
 
 /**
  * Rendering with tiled buffers requires that the base address of the buffer

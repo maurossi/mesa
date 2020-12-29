@@ -511,6 +511,17 @@ struct crocus_vtable {
    void (*lost_genx_state)(struct crocus_context *ice, struct crocus_batch *batch);
 
    void (*finish_batch)(struct crocus_batch *batch); /* haswell only */
+
+   bool (*blit_blt)(struct crocus_batch *batch,
+                    const struct pipe_blit_info *info);
+   bool (*copy_region_blt)(struct crocus_batch *batch,
+                           struct crocus_resource *dst,
+                           unsigned dst_level,
+                           unsigned dstx, unsigned dsty, unsigned dstz,
+                           struct crocus_resource *src,
+                           unsigned src_level,
+                           const struct pipe_box *src_box);
+
 };
 
 /**

@@ -432,6 +432,13 @@ enum isl_dim_layout crocus_get_isl_dim_layout(const struct gen_device_info *devi
                                             enum isl_tiling tiling,
                                             enum pipe_texture_target target);
 enum isl_surf_dim target_to_isl_surf_dim(enum pipe_texture_target target);
+void
+crocus_resource_get_tile_dims(enum isl_tiling tiling, uint32_t cpp,
+			      uint32_t *tile_w, uint32_t *tile_h);
+void
+crocus_resource_get_image_offset(struct crocus_resource *res,
+				 uint32_t level, uint32_t z,
+				 uint32_t *x, uint32_t *y);
 uint32_t crocus_resource_get_tile_offsets(const struct crocus_resource *res,
                                         uint32_t level, uint32_t z,
                                         uint32_t *tile_x, uint32_t *tile_y);
