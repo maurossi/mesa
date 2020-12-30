@@ -4441,7 +4441,7 @@ static const uint32_t push_constant_opcodes[] = {
 static void
 emit_sized_null_surface(struct crocus_batch *batch,
                         unsigned width, unsigned height,
-                        unsigned layers,
+                        unsigned layers, unsigned levels,
                         uint32_t *out_offset)
 {
    struct isl_device *isl_dev = &batch->screen->isl_dev;
@@ -4450,13 +4450,13 @@ emit_sized_null_surface(struct crocus_batch *batch,
                                  out_offset);
    //TODO gen 6 multisample crash
    isl_null_fill_state(isl_dev, surf,
-                       isl_extent3d(width, height, layers));
+                       isl_extent3d(width, height, layers), levels);
 }
 static void
 emit_null_surface(struct crocus_batch *batch,
                   uint32_t *out_offset)
 {
-   emit_sized_null_surface(batch, 1, 1, 1, out_offset);
+   emit_sized_null_surface(batch, 1, 1, 1, 0, out_offset);
 }
 
 static void
@@ -4473,6 +4473,7 @@ emit_null_fb_surface(struct crocus_batch *batch,
    struct pipe_framebuffer_state *cso = &ice->state.framebuffer;
    emit_sized_null_surface(batch, MAX2(cso->width, 1),
                            MAX2(cso->height, 1), cso->layers ? cso->layers : 1,
+                           cso->zsbuf ? cso->zsbuf->u.tex.level : 0,
                            out_offset);
 }
 
