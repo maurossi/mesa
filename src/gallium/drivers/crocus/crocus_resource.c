@@ -786,8 +786,16 @@ crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
    if (templ->usage != PIPE_USAGE_STAGING) {
       if (templ->format == PIPE_FORMAT_S8_UINT)
          usage |= ISL_SURF_USAGE_STENCIL_BIT;
-      else if (has_depth)
+      else if (has_depth) {
+         /* combined DS only on gen4/5 */
+         if (devinfo->gen < 6) {
+            if (templ->format == PIPE_FORMAT_Z24X8_UNORM ||
+                templ->format == PIPE_FORMAT_Z24_UNORM_S8_UINT ||
+                templ->format == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT)
+               usage |= ISL_SURF_USAGE_STENCIL_BIT;
+         }
          usage |= ISL_SURF_USAGE_DEPTH_BIT;
+      }
    }
 
    if (templ->usage == PIPE_USAGE_STAGING &&
@@ -804,10 +812,13 @@ crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
 
    struct crocus_format_info fmt = crocus_format_for_usage(devinfo, pfmt, usage);
    assert(fmt.fmt != ISL_FORMAT_UNSUPPORTED);
+   enum isl_surf_dim dim = target_to_isl_surf_dim(templ->target);
+   if (devinfo->gen < 6 && has_depth)
+      dim = ISL_SURF_DIM_2D;
 
    UNUSED const bool isl_surf_created_successfully =
       isl_surf_init(&screen->isl_dev, &res->surf,
-                    .dim = target_to_isl_surf_dim(templ->target),
+                    .dim = dim,
                     .format = fmt.fmt,
                     .width = templ->width0,
                     .height = templ->height0,
