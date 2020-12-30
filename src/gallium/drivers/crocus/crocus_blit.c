@@ -563,8 +563,8 @@ crocus_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
        util_format_has_stencil(util_format_description(info->src.format))) {
       struct crocus_resource *src_res, *junk;
       struct blorp_surf src_surf, dst_surf;
-      crocus_get_depth_stencil_resources(info->src.resource, &junk, &src_res);
-      crocus_get_depth_stencil_resources(info->dst.resource, &junk, &stc_dst);
+      crocus_get_depth_stencil_resources(devinfo, info->src.resource, &junk, &src_res);
+      crocus_get_depth_stencil_resources(devinfo, info->dst.resource, &junk, &stc_dst);
 
       struct crocus_format_info src_fmt =
          crocus_format_for_usage(devinfo, src_res->base.format,
@@ -816,8 +816,8 @@ crocus_resource_copy_region(struct pipe_context *ctx,
    if (util_format_is_depth_and_stencil(dst->format) &&
        util_format_has_stencil(util_format_description(src->format))) {
       struct crocus_resource *junk, *s_src_res, *s_dst_res;
-      crocus_get_depth_stencil_resources(src, &junk, &s_src_res);
-      crocus_get_depth_stencil_resources(dst, &junk, &s_dst_res);
+      crocus_get_depth_stencil_resources(&batch->screen->devinfo, src, &junk, &s_src_res);
+      crocus_get_depth_stencil_resources(&batch->screen->devinfo, dst, &junk, &s_dst_res);
 
       crocus_copy_region(&ice->blorp, batch, &s_dst_res->base, dst_level, dstx,
                        dsty, dstz, &s_src_res->base, src_level, src_box);

@@ -566,7 +566,7 @@ clear_depth_stencil(struct crocus_context *ice,
    struct blorp_surf z_surf;
    struct blorp_surf stencil_surf;
 
-   crocus_get_depth_stencil_resources(p_res, &z_res, &stencil_res);
+   crocus_get_depth_stencil_resources(&batch->screen->devinfo, p_res, &z_res, &stencil_res);
    if (z_res && clear_depth &&
        can_fast_clear_depth(ice, z_res, level, box, depth)) {
       fast_clear_depth(ice, z_res, level, box, depth);

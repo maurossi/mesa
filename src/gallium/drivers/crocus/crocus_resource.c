@@ -222,13 +222,21 @@ crocus_resource_set_separate_stencil(struct pipe_resource *p_res,
 }
 
 void
-crocus_get_depth_stencil_resources(struct pipe_resource *res,
-                                 struct crocus_resource **out_z,
-                                 struct crocus_resource **out_s)
+crocus_get_depth_stencil_resources(const struct gen_device_info *devinfo,
+				   struct pipe_resource *res,
+				   struct crocus_resource **out_z,
+				   struct crocus_resource **out_s)
 {
    if (!res) {
       *out_z = NULL;
       *out_s = NULL;
+      return;
+   }
+
+   /* gen4/5 only supports packed ds */
+   if (devinfo->gen <= 6) {
+      *out_z = (void *)res;
+      *out_s = (void *)res;
       return;
    }
 

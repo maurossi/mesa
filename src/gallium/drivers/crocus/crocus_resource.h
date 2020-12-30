@@ -284,9 +284,10 @@ struct crocus_format_info crocus_format_for_usage(const struct gen_device_info *
 
 struct pipe_resource *crocus_resource_get_separate_stencil(struct pipe_resource *);
 
-void crocus_get_depth_stencil_resources(struct pipe_resource *res,
-                                      struct crocus_resource **out_z,
-                                      struct crocus_resource **out_s);
+void crocus_get_depth_stencil_resources(const struct gen_device_info *devinfo,
+					struct pipe_resource *res,
+					struct crocus_resource **out_z,
+					struct crocus_resource **out_s);
 bool crocus_resource_set_clear_color(struct crocus_context *ice,
                                    struct crocus_resource *res,
                                    union isl_color_value color);

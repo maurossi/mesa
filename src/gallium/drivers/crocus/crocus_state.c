@@ -2187,7 +2187,7 @@ crocus_create_sampler_view(struct pipe_context *ctx,
       const struct util_format_description *desc =
          util_format_description(tmpl->format);
 
-      crocus_get_depth_stencil_resources(tex, &zres, &sres);
+      crocus_get_depth_stencil_resources(devinfo, tex, &zres, &sres);
 
       tex = util_format_has_depth(desc) ? &zres->base : &sres->base;
    }
@@ -2905,8 +2905,8 @@ crocus_set_framebuffer_state(struct pipe_context *ctx,
    struct isl_depth_stencil_hiz_emit_info info = { .view = &view };
 
    if (cso->zsbuf) {
-      crocus_get_depth_stencil_resources(cso->zsbuf->texture, &zres,
-                                       &stencil_res);
+     crocus_get_depth_stencil_resources(devinfo, cs->zsbuf->texture, &zres,
+					&stencil_res);
 
       view.base_level = cso->zsbuf->u.tex.level;
       view.base_array_layer = cso->zsbuf->u.tex.first_layer;
@@ -5978,7 +5978,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       struct isl_depth_stencil_hiz_emit_info info = { .view = &view };
 
       if (cso->zsbuf) {
-         crocus_get_depth_stencil_resources(cso->zsbuf->texture, &zres, &sres);
+         crocus_get_depth_stencil_resources(&batch->screen->devinfo, cso->zsbuf->texture, &zres, &sres);
 
          info.depth_address = crocus_command_reloc(batch,
                                                    (batch_ptr - batch->command.map) + isl_dev->ds.depth_offset,

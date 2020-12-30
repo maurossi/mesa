@@ -193,7 +193,7 @@ crocus_predraw_resolve_framebuffer(struct crocus_context *ice,
 
       if (zs_surf) {
          struct crocus_resource *z_res, *s_res;
-         crocus_get_depth_stencil_resources(zs_surf->texture, &z_res, &s_res);
+         crocus_get_depth_stencil_resources(devinfo, zs_surf->texture, &z_res, &s_res);
          unsigned num_layers =
             zs_surf->u.tex.last_layer - zs_surf->u.tex.first_layer + 1;
 
@@ -272,7 +272,8 @@ crocus_postdraw_update_resolve_tracking(struct crocus_context *ice,
                                       struct crocus_batch *batch)
 {
    struct pipe_framebuffer_state *cso_fb = &ice->state.framebuffer;
-
+   struct crocus_screen *screen = (void *) ice->ctx.screen;
+   struct gen_device_info *devinfo = &screen->devinfo;
    // XXX: front buffer drawing?
 
    bool may_have_resolved_depth =
@@ -282,7 +283,7 @@ crocus_postdraw_update_resolve_tracking(struct crocus_context *ice,
    struct pipe_surface *zs_surf = cso_fb->zsbuf;
    if (zs_surf) {
       struct crocus_resource *z_res, *s_res;
-      crocus_get_depth_stencil_resources(zs_surf->texture, &z_res, &s_res);
+      crocus_get_depth_stencil_resources(devinfo, zs_surf->texture, &z_res, &s_res);
       unsigned num_layers =
          zs_surf->u.tex.last_layer - zs_surf->u.tex.first_layer + 1;
 
