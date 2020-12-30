@@ -27,6 +27,7 @@
 #include "pipe/p_screen.h"
 #include "util/format/u_format.h"
 #include "util/u_inlines.h"
+#include "util/u_surface.h"
 #include "util/ralloc.h"
 #include "intel/blorp/blorp.h"
 #include "crocus_context.h"
@@ -701,6 +702,12 @@ crocus_copy_region(struct blorp_context *blorp,
    struct crocus_resource *src_res = (void *) src;
    struct crocus_resource *dst_res = (void *) dst;
 
+   if (devinfo->gen <= 5) {
+      if (ice->vtbl.copy_region_blt(batch, dst_res,
+                                    dst_level, dstx, dsty, dstz,
+                                    src_res, src_level, src_box))
+         return;
+   }
    enum isl_aux_usage src_aux_usage, dst_aux_usage;
    bool src_clear_supported, dst_clear_supported;
    get_copy_region_aux_settings(devinfo, src_res, &src_aux_usage,
@@ -794,11 +801,13 @@ crocus_resource_copy_region(struct pipe_context *ctx,
 {
    struct crocus_context *ice = (void *) ctx;
    struct crocus_batch *batch = &ice->batches[CROCUS_BATCH_RENDER];
+   struct crocus_screen *screen = (struct crocus_screen *)ctx->screen;
+   const struct gen_device_info *devinfo = &screen->devinfo;
 
-#if GEN_GEN >= 7
    /* Use MI_COPY_MEM_MEM for tiny (<= 16 byte, % 4) buffer copies. */
    if (src->target == PIPE_BUFFER && dst->target == PIPE_BUFFER &&
-       (src_box->width % 4 == 0) && src_box->width <= 16) {
+       (src_box->width % 4 == 0) && src_box->width <= 16 &&
+       ice->vtbl.copy_mem_mem) {
       struct crocus_bo *dst_bo = crocus_resource_bo(dst);
       batch = get_preferred_batch(ice, dst_bo);
       crocus_batch_maybe_flush(batch, 24 + 5 * (src_box->width / 4));
@@ -809,15 +818,21 @@ crocus_resource_copy_region(struct pipe_context *ctx,
                              src_box->x, src_box->width);
       return;
    }
-#endif
+
+   if (devinfo->gen < 6 && util_format_is_depth_or_stencil(dst->format)) {
+     util_resource_copy_region(ctx, dst, dst_level, dstx, dsty, dstz,
+			       src, src_level, src_box);
+     return;
+   }
    crocus_copy_region(&ice->blorp, batch, dst, dst_level, dstx, dsty, dstz,
                     src, src_level, src_box);
 
    if (util_format_is_depth_and_stencil(dst->format) &&
-       util_format_has_stencil(util_format_description(src->format))) {
+       util_format_has_stencil(util_format_description(src->format)) &&
+       devinfo->gen >= 6) {
       struct crocus_resource *junk, *s_src_res, *s_dst_res;
-      crocus_get_depth_stencil_resources(&batch->screen->devinfo, src, &junk, &s_src_res);
-      crocus_get_depth_stencil_resources(&batch->screen->devinfo, dst, &junk, &s_dst_res);
+      crocus_get_depth_stencil_resources(devinfo, src, &junk, &s_src_res);
+      crocus_get_depth_stencil_resources(devinfo, dst, &junk, &s_dst_res);
 
       crocus_copy_region(&ice->blorp, batch, &s_dst_res->base, dst_level, dstx,
                        dsty, dstz, &s_src_res->base, src_level, src_box);
