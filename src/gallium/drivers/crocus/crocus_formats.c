@@ -332,6 +332,24 @@ crocus_isl_format_for_pipe_format(enum pipe_format pf)
    return table[pf];
 }
 
+static enum isl_format get_gen4_texture_format(enum pipe_format pformat, enum isl_format def_format)
+{
+   switch (pformat) {
+   case PIPE_FORMAT_L8_UNORM:
+      return ISL_FORMAT_L8_UNORM;
+   case PIPE_FORMAT_L8A8_UNORM:
+      return ISL_FORMAT_L8A8_UNORM;
+   case PIPE_FORMAT_A16_UNORM:
+      return ISL_FORMAT_A16_UNORM;
+   case PIPE_FORMAT_L16_UNORM:
+      return ISL_FORMAT_L16_UNORM;
+   case PIPE_FORMAT_L16A16_UNORM:
+      return ISL_FORMAT_L16A16_UNORM;
+   default:
+      return def_format;
+   }
+}
+
 struct crocus_format_info
 crocus_format_for_usage(const struct gen_device_info *devinfo,
                       enum pipe_format pformat,
@@ -364,26 +382,7 @@ crocus_format_for_usage(const struct gen_device_info *devinfo,
        swizzle = ISL_SWIZZLE_IDENTITY;
      }
      if (!(usage & ISL_SURF_USAGE_RENDER_TARGET_BIT)) {
-         if (pformat == PIPE_FORMAT_L8_UNORM) {
-            format = ISL_FORMAT_L8_UNORM;
-            swizzle = ISL_SWIZZLE_IDENTITY;
-         }
-         if (pformat == PIPE_FORMAT_L8A8_UNORM) {
-            format = ISL_FORMAT_L8A8_UNORM;
-            swizzle = ISL_SWIZZLE_IDENTITY;
-         }
-         if (pformat == PIPE_FORMAT_A16_UNORM) {
-            format = ISL_FORMAT_A16_UNORM;
-            swizzle = ISL_SWIZZLE_IDENTITY;
-         }
-         if (pformat == PIPE_FORMAT_L16_UNORM) {
-            format = ISL_FORMAT_L16_UNORM;
-            swizzle = ISL_SWIZZLE_IDENTITY;
-         }
-         if (pformat == PIPE_FORMAT_L16A16_UNORM) {
-            format = ISL_FORMAT_L16A16_UNORM;
-            swizzle = ISL_SWIZZLE_IDENTITY;
-         }
+        format = get_gen4_texture_format(pformat, format);
      }
      if (pformat == PIPE_FORMAT_Z32_FLOAT_S8X24_UINT)
         format = ISL_FORMAT_R32_FLOAT_X8X24_TYPELESS;
