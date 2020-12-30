@@ -1814,6 +1814,7 @@ crocus_bind_sampler_states(struct pipe_context *ctx,
    }
 
    if (dirty) {
+      ice->state.dirty |= CROCUS_DIRTY_WM;
       ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_VS << stage;
       ice->state.dirty |= ice->state.dirty_for_nos[CROCUS_NOS_TEXTURES];
    }
