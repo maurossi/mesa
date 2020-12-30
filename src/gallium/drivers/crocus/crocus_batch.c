@@ -402,26 +402,36 @@ crocus_state_reloc(struct crocus_batch *batch, uint32_t state_offset,
 }
 
 static void
-create_batch(struct crocus_batch *batch)
+recreate_growing_buffer(struct crocus_batch *batch,
+                        struct crocus_growing_bo *grow,
+                        const char *name, unsigned size)
 {
    struct crocus_screen *screen = batch->screen;
    struct crocus_bufmgr *bufmgr = screen->bufmgr;
+   grow->bo = crocus_bo_alloc(bufmgr, name, size);
+   grow->bo->kflags |= EXEC_OBJECT_CAPTURE;
+   grow->partial_bo = NULL;
+   grow->partial_bo_map = NULL;
+   grow->partial_bytes = 0;
+   grow->map = crocus_bo_map(NULL, grow->bo, MAP_READ | MAP_WRITE);
+   grow->map_next = grow->map;
+}
 
-   batch->command.bo = crocus_bo_alloc(bufmgr, "command buffer",
-				       BATCH_SZ + BATCH_RESERVED(&screen->devinfo));
-   batch->command.bo->kflags |= EXEC_OBJECT_CAPTURE;
-   batch->command.map = crocus_bo_map(NULL, batch->command.bo, MAP_READ | MAP_WRITE);
-   batch->command.map_next = batch->command.map;
+static void
+create_batch(struct crocus_batch *batch)
+{
+   struct crocus_screen *screen = batch->screen;
+
+   recreate_growing_buffer(batch, &batch->command,
+                           "command buffer",
+                           BATCH_SZ + BATCH_RESERVED(&screen->devinfo));
+
    init_reloc_list(&batch->command.relocs, 250);
-
    crocus_use_bo(batch, batch->command.bo, false);
 
-
-   batch->state.bo = crocus_bo_alloc(bufmgr, "state buffer",
-				     BATCH_SZ + BATCH_RESERVED(&screen->devinfo));
-   batch->state.bo->kflags |= EXEC_OBJECT_CAPTURE;
-   batch->state.map = crocus_bo_map(NULL, batch->state.bo, MAP_READ | MAP_WRITE);
-   batch->state.map_next = batch->state.map;
+   recreate_growing_buffer(batch, &batch->state,
+                           "state buffer",
+                           STATE_SZ);
    init_reloc_list(&batch->state.relocs, 250);
 
 

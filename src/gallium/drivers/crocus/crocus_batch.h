@@ -45,7 +45,8 @@
 #define MAX_STATE_SIZE (64 * 1024)
 
 /* Our target batch size - flush approximately at this point. */
-#define BATCH_SZ (64 * 1024)
+#define BATCH_SZ (20 * 1024)
+#define STATE_SZ (16 * 1024)
 
 enum crocus_batch_name {
    CROCUS_BATCH_RENDER,
