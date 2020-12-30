@@ -2974,6 +2974,8 @@ crocus_set_constant_buffer(struct pipe_context *ctx,
    /* TODO: Only do this if the buffer changes? */
    pipe_resource_reference(&shs->constbuf_surf_state[index].res, NULL);
 
+   util_copy_constant_buffer(&shs->constbufs[index], input, take_ownership);
+
    if (input && input->buffer_size && (input->buffer || input->user_buffer)) {
       shs->bound_cbufs |= 1u << index;
 

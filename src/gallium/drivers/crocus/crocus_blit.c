@@ -53,6 +53,7 @@ void crocus_blitter_begin(struct crocus_context *ice, enum crocus_blitter_op op)
      util_blitter_save_rasterizer(ice->blitter, ice->state.cso_rast);
      util_blitter_save_scissor(ice->blitter, &ice->state.scissors[0]);
      util_blitter_save_viewport(ice->blitter, &ice->state.viewports[0]);
+     util_blitter_save_fragment_constant_buffer_slot(ice->blitter, &ice->state.shaders[MESA_SHADER_FRAGMENT].constbufs[0]);
    }
 
 
