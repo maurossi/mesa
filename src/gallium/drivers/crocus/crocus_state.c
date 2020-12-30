@@ -4531,7 +4531,12 @@ emit_surface(struct crocus_context *ice,
    UNUSED struct isl_device *isl_dev = &batch->screen->isl_dev;
    struct crocus_resource *res = (void *) p_surf->texture;
    uint32_t offset = 0;
+   uint32_t write_disables = 0;
 
+   write_disables |= (gen4_rt_state->colormask & PIPE_MASK_A) ? 0x0 : 0x8;
+   write_disables |= (gen4_rt_state->colormask & PIPE_MASK_R) ? 0x0 : 0x4;
+   write_disables |= (gen4_rt_state->colormask & PIPE_MASK_G) ? 0x0 : 0x2;
+   write_disables |= (gen4_rt_state->colormask & PIPE_MASK_B) ? 0x0 : 0x1;
    struct isl_view *view = &surf->view;
    union isl_color_value clear_color = { .u32 = { 0, 0, 0, 0 } };
    uint32_t *surf_state = stream_state(batch, isl_dev->ss.size, isl_dev->ss.align, &offset);
@@ -4548,7 +4553,7 @@ emit_surface(struct crocus_context *ice,
                        .clear_address = clear_offset,
                        .x_offset_sa = 0, .y_offset_sa = 0,
 #if GEN_GEN <= 5
-                       .write_disables = (gen4_rt_state->colormask ^ 0xf),
+                       .write_disables = write_disables,
                        .blend_enable = gen4_rt_state->blend_enable,
 #endif
                        );
