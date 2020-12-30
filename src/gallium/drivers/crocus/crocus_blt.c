@@ -32,8 +32,18 @@
 static bool validate_blit_for_blt(struct crocus_batch *batch,
                                   const struct pipe_blit_info *info)
 {
+   /* If the source and destination are the same size with no mirroring,
+    * the rectangles are within the size of the texture and there is no
+    * scissor, then we can probably use the blit engine.
+    */
    if (info->dst.box.width != info->src.box.width ||
        info->dst.box.height != info->src.box.height)
+      return false;
+
+   if (info->scissor_enable)
+      return false;
+
+   if (info->dst.box.height < 0 || info->src.box.height < 0)
       return false;
 
    if (info->dst.box.depth > 1 || info->src.box.depth > 1)
@@ -174,6 +184,9 @@ static bool crocus_emit_blt(struct crocus_batch *batch,
    const unsigned dst_cpp = dst_fmtl->bpb / 8;
    uint16_t src_x, src_y;
    uint32_t src_image_x, src_image_y, dst_image_x, dst_image_y;
+
+   if (util_format_is_depth_or_stencil(src->base.format))
+      return false;
 
    if (src->surf.format != dst->surf.format)
       return false;
