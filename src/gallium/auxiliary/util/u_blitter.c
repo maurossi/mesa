@@ -2791,11 +2791,11 @@ void util_blitter_custom_shader(struct blitter_context *blitter,
 }
 
 static void *
-get_stencil_blit_fallback_fs(struct blitter_context_priv *ctx, bool msaa_src)
+get_stencil_blit_fallback_fs(struct blitter_context_priv *ctx, bool msaa_src, bool sval_in_g)
 {
    if (!ctx->fs_stencil_blit_fallback[msaa_src]) {
       ctx->fs_stencil_blit_fallback[msaa_src] =
-         util_make_fs_stencil_blit(ctx->base.pipe, msaa_src);
+         util_make_fs_stencil_blit(ctx->base.pipe, msaa_src, sval_in_g);
    }
 
    return ctx->fs_stencil_blit_fallback[msaa_src];
@@ -2834,7 +2834,8 @@ util_blitter_stencil_fallback(struct blitter_context *blitter,
                               struct pipe_resource *src,
                               unsigned src_level,
                               const struct pipe_box *srcbox,
-                              const struct pipe_scissor_state *scissor)
+                              const struct pipe_scissor_state *scissor,
+                              bool sval_in_g)
 {
    struct blitter_context_priv *ctx = (struct blitter_context_priv *)blitter;
    struct pipe_context *pipe = ctx->base.pipe;
@@ -2860,7 +2861,7 @@ util_blitter_stencil_fallback(struct blitter_context *blitter,
    /* bind states */
    pipe->bind_blend_state(pipe, ctx->blend[PIPE_MASK_RGBA][0]);
    pipe->bind_fs_state(pipe,
-      get_stencil_blit_fallback_fs(ctx, src->nr_samples > 1));
+      get_stencil_blit_fallback_fs(ctx, src->nr_samples > 1, sval_in_g));
 
    /* set a framebuffer state */
    struct pipe_framebuffer_state fb_state = { 0 };

@@ -1169,7 +1169,7 @@ util_make_tess_ctrl_passthrough_shader(struct pipe_context *pipe,
 }
 
 void *
-util_make_fs_stencil_blit(struct pipe_context *pipe, bool msaa_src)
+util_make_fs_stencil_blit(struct pipe_context *pipe, bool msaa_src, bool sval_in_g)
 {
    static const char shader_templ[] =
       "FRAG\n"
@@ -1177,14 +1177,17 @@ util_make_fs_stencil_blit(struct pipe_context *pipe, bool msaa_src)
       "DCL SAMP[0]\n"
       "DCL CONST[0][0]\n"
       "DCL TEMP[0]\n"
-
-      "F2U TEMP[0], IN[0]\n"
-      "TXF_LZ TEMP[0].x, TEMP[0], SAMP[0], %s\n"
+       "F2U TEMP[0], IN[0]\n"
+      "TXF_LZ TEMP[0], TEMP[0], SAMP[0], %s\n"
+      "%s"
       "AND TEMP[0].x, TEMP[0], CONST[0][0]\n"
       "USNE TEMP[0].x, TEMP[0], CONST[0][0]\n"
       "U2F TEMP[0].x, TEMP[0]\n"
       "KILL_IF -TEMP[0].xxxx\n"
       "END\n";
+
+   static const char mov_y[] =
+      "MOV TEMP[0].x, TEMP[0].yyyy\n";
 
    char text[sizeof(shader_templ)+100];
    struct tgsi_token tokens[1000];
@@ -1193,7 +1196,8 @@ util_make_fs_stencil_blit(struct pipe_context *pipe, bool msaa_src)
    enum tgsi_texture_type tgsi_tex = msaa_src ? TGSI_TEXTURE_2D_MSAA :
                                                 TGSI_TEXTURE_2D;
 
-   sprintf(text, shader_templ, tgsi_texture_names[tgsi_tex]);
+   sprintf(text, shader_templ, tgsi_texture_names[tgsi_tex],
+	   sval_in_g ? mov_y : "");
 
    if (!tgsi_text_translate(text, tokens, ARRAY_SIZE(tokens))) {
       assert(0);

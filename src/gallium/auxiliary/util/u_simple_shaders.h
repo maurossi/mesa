@@ -170,7 +170,7 @@ util_make_tess_ctrl_passthrough_shader(struct pipe_context *pipe,
                                        const unsigned vertices_per_patch);
 
 void *
-util_make_fs_stencil_blit(struct pipe_context *pipe, bool msaa_src);
+util_make_fs_stencil_blit(struct pipe_context *pipe, bool msaa_src, bool sval_in_g);
 
 #ifdef __cplusplus
 }
