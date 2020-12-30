@@ -929,7 +929,7 @@ isl_genX(buffer_fill_state_s)(const struct isl_device *dev, void *state,
 }
 
 void
-isl_genX(null_fill_state)(void *state, struct isl_extent3d size)
+isl_genX(null_fill_state)(void *state, struct isl_extent3d size, unsigned levels)
 {
    struct GENX(RENDER_SURFACE_STATE) s = {
       .SurfaceType = SURFTYPE_NULL,
@@ -938,7 +938,11 @@ isl_genX(null_fill_state)(void *state, struct isl_extent3d size)
        *
        * https://gitlab.freedesktop.org/mesa/mesa/-/issues/1872
        */
+#if GEN_GEN <= 5
+      .SurfaceFormat = ISL_FORMAT_B8G8R8A8_UNORM,
+#else
       .SurfaceFormat = ISL_FORMAT_R32_UINT,
+#endif
 #if GEN_GEN >= 7
       .SurfaceArray = size.depth > 1,
 #endif
@@ -961,6 +965,7 @@ isl_genX(null_fill_state)(void *state, struct isl_extent3d size)
        */
       .SurfaceVerticalAlignment = VALIGN_4,
 #endif
+      .MIPCountLOD = levels,
       .Width = size.width - 1,
       .Height = size.height - 1,
       .Depth = size.depth - 1,
