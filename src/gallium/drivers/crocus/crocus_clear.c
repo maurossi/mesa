@@ -415,6 +415,9 @@ can_fast_clear_depth(struct crocus_context *ice,
    if (INTEL_DEBUG & DEBUG_NO_FAST_CLEAR)
       return false;
 
+   if (devinfo->gen < 6)
+      return false;
+
    /* Check for partial clears */
    if (box->x > 0 || box->y > 0 ||
        box->width < u_minify(p_res->width0, level) ||
