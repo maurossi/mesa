@@ -2839,6 +2839,7 @@ crocus_set_viewport_states(struct pipe_context *ctx,
    memcpy(&ice->state.viewports[start_slot], states, sizeof(*states) * count);
 
    ice->state.dirty |= CROCUS_DIRTY_SF_CL_VIEWPORT;
+   ice->state.dirty |= CROCUS_DIRTY_RASTER;
 
    if (ice->state.cso_rast && (!ice->state.cso_rast->depth_clip_near ||
                                !ice->state.cso_rast->depth_clip_far))
@@ -2879,6 +2880,7 @@ crocus_set_framebuffer_state(struct pipe_context *ctx,
 
    if (cso->width != state->width || cso->height != state->height) {
       ice->state.dirty |= CROCUS_DIRTY_SF_CL_VIEWPORT;
+      ice->state.dirty |= CROCUS_DIRTY_RASTER;
       ice->state.dirty |= CROCUS_DIRTY_DRAWING_RECTANGLE;
    }
 
@@ -4937,14 +4939,21 @@ set_depth_stencil_bits(struct crocus_context *ice, DEPTH_STENCIL_GENXML *ds)
    ds->StencilPassDepthPassOp = cso->cso.stencil[0].zpass_op;
    ds->StencilTestFunction = translate_compare_func(cso->cso.stencil[0].func);
 
+   ds->StencilTestMask = cso->cso.stencil[0].valuemask;
+   ds->StencilWriteMask = cso->cso.stencil[0].writemask;
+
    ds->BackfaceStencilFailOp = cso->cso.stencil[1].fail_op;
    ds->BackfaceStencilPassDepthFailOp = cso->cso.stencil[1].zfail_op;
    ds->BackfaceStencilPassDepthPassOp = cso->cso.stencil[1].zpass_op;
    ds->BackfaceStencilTestFunction = translate_compare_func(cso->cso.stencil[1].func);
 
+   ds->BackfaceStencilTestMask = cso->cso.stencil[1].valuemask;
+   ds->BackfaceStencilWriteMask = cso->cso.stencil[1].writemask;
    ds->DoubleSidedStencilEnable = cso->cso.stencil[1].enabled;
    ds->StencilTestEnable = cso->cso.stencil[0].enabled;
-
+   ds->StencilBufferWriteEnable =
+      cso->cso.stencil[0].writemask != 0 ||
+         (cso->cso.stencil[1].enabled && cso->cso.stencil[1].writemask != 0);
 }
 
 static void
@@ -5190,9 +5199,6 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
          set_depth_stencil_bits(ice, &cc);
 
-         cc.StencilReferenceValue = p_stencil_refs->ref_value[0];
-         cc.BackfaceStencilReferenceValue = p_stencil_refs->ref_value[1];
-
          cc.ColorBufferBlendEnable = rt->blend_enable;
 
          cc.LogicOpEnable = cso_blend->blend_state.logicop_enable;
@@ -5217,13 +5223,16 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 	 cc.StatisticsEnable = ice->state.stats_wm ? 1 : 0;
 	 cc.CCViewportStatePointer = ro_bo(batch->state.bo, ice->state.cc_vp_address);
 #else
+         cc.AlphaTestFormat = ALPHATEST_FLOAT32;
+         cc.AlphaReferenceValueAsFLOAT32 = cso->cso.alpha_ref_value;
+
          cc.BlendConstantColorRed   = ice->state.blend_color.color[0];
          cc.BlendConstantColorGreen = ice->state.blend_color.color[1];
          cc.BlendConstantColorBlue  = ice->state.blend_color.color[2];
          cc.BlendConstantColorAlpha = ice->state.blend_color.color[3];
+#endif
          cc.StencilReferenceValue = p_stencil_refs->ref_value[0];
          cc.BackfaceStencilReferenceValue = p_stencil_refs->ref_value[1];
-#endif
       }
       ice->shaders.cc_offset = cc_offset;
 #if GEN_GEN >= 6
@@ -5529,6 +5538,8 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          clip.GRFRegisterCount = DIV_ROUND_UP(clip_prog_data->total_grf, 16) - 1;
 
          clip.VertexURBEntryReadLength = clip_prog_data->urb_read_length;
+         clip.ConstantURBEntryReadLength = clip_prog_data->curb_read_length;
+
          clip.DispatchGRFStartRegisterForURBData = 1;
          clip.VertexURBEntryReadOffset = 0;
 
