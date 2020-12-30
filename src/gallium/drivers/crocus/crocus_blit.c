@@ -376,8 +376,44 @@ crocus_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
           (info->mask & PIPE_MASK_RGBA) == 0);
 
    if (devinfo->gen <= 5) {
-     crocus_blitter_begin(ice, CROCUS_SAVE_FRAMEBUFFER | CROCUS_SAVE_TEXTURES | CROCUS_SAVE_FRAGMENT_STATE);
-     util_blitter_blit(ice->blitter, info);
+     if (!ice->vtbl.blit_blt(batch, info)) {
+
+        if (!util_blitter_is_blit_supported(ice->blitter, info)) {
+          debug_printf("crocus: blit unsupported %s -> %s\n",
+                       util_format_short_name(info->src.resource->format),
+                       util_format_short_name(info->dst.resource->format));
+          if (util_format_is_depth_or_stencil(info->src.resource->format)) {
+
+             struct pipe_blit_info depth_blit = *info;
+             depth_blit.mask = PIPE_MASK_Z;
+             crocus_blitter_begin(ice, CROCUS_SAVE_FRAMEBUFFER | CROCUS_SAVE_TEXTURES | CROCUS_SAVE_FRAGMENT_STATE);
+             util_blitter_blit(ice->blitter, &depth_blit);
+
+             struct pipe_surface *dst_view, dst_templ;
+             util_blitter_default_dst_texture(&dst_templ, info->dst.resource, info->dst.level, info->dst.box.z);
+             dst_view = ctx->create_surface(ctx, info->dst.resource, &dst_templ);
+
+             crocus_blitter_begin(ice, CROCUS_SAVE_FRAMEBUFFER | CROCUS_SAVE_TEXTURES | CROCUS_SAVE_FRAGMENT_STATE);
+
+             util_blitter_clear_depth_stencil(ice->blitter, dst_view, PIPE_CLEAR_STENCIL,
+                                               0, 0, info->dst.box.x, info->dst.box.y,
+                                               info->dst.box.width, info->dst.box.height);
+             crocus_blitter_begin(ice, CROCUS_SAVE_FRAMEBUFFER | CROCUS_SAVE_TEXTURES | CROCUS_SAVE_FRAGMENT_STATE);
+             util_blitter_stencil_fallback(ice->blitter,
+                                           info->dst.resource,
+                                           info->dst.level,
+                                           &info->dst.box,
+                                           info->src.resource,
+                                           info->src.level,
+                                           &info->src.box, NULL, true);
+
+          }
+          return;
+        }
+
+       crocus_blitter_begin(ice, CROCUS_SAVE_FRAMEBUFFER | CROCUS_SAVE_TEXTURES | CROCUS_SAVE_FRAGMENT_STATE);
+       util_blitter_blit(ice->blitter, info);
+     }
      return;
    }
    if (info->render_condition_enable) {
