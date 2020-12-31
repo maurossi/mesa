@@ -2801,6 +2801,7 @@ crocus_set_scissor_states(struct pipe_context *ctx,
    }
 
    ice->state.dirty |= CROCUS_DIRTY_SCISSOR_RECT;
+   ice->state.dirty |= CROCUS_DIRTY_SF_CL_VIEWPORT;
 }
 
 /**
@@ -5081,17 +5082,10 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
             vp.ViewportMatrixElementm31 = state->translate[1];
             vp.ViewportMatrixElementm32 = state->translate[2];
 #if GEN_GEN < 6
-#if 0
             vp.ScissorRectangle.ScissorRectangleXMin = ice->state.scissors[0].minx;
             vp.ScissorRectangle.ScissorRectangleXMax = ice->state.scissors[0].maxx;
             vp.ScissorRectangle.ScissorRectangleYMin = ice->state.scissors[0].miny;
             vp.ScissorRectangle.ScissorRectangleYMax = ice->state.scissors[0].maxy;
-#else
-            vp.ScissorRectangle.ScissorRectangleXMin = 0;
-            vp.ScissorRectangle.ScissorRectangleXMax = cso_fb->width - 1;
-            vp.ScissorRectangle.ScissorRectangleYMin = 0;
-            vp.ScissorRectangle.ScissorRectangleYMax = cso_fb->height - 1;
-#endif
 #endif
 
 #if GEN_GEN == 7
@@ -5732,7 +5726,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #endif
          sf.ViewportTransformEnable = true;
          sf.FrontWinding = cso_state->front_ccw ? 1 : 0;
-         sf.ScissorRectangleEnable = true;
+         sf.ScissorRectangleEnable = cso_state->scissor;
          sf.CullMode = translate_cull_mode(cso_state->cull_face);
 
          if (cso_state->flatshade_first) {
