@@ -184,6 +184,7 @@ static bool crocus_emit_blt(struct crocus_batch *batch,
    const unsigned dst_cpp = dst_fmtl->bpb / 8;
    uint16_t src_x, src_y;
    uint32_t src_image_x, src_image_y, dst_image_x, dst_image_y;
+   uint32_t src_width = src_box->width, src_height = src_box->height;
 
    if (util_format_is_depth_or_stencil(src->base.format))
       return false;
@@ -201,9 +202,27 @@ static bool crocus_emit_blt(struct crocus_batch *batch,
 
    crocus_resource_get_image_offset(src, src_level, src_box->z, &src_image_x,
                                     &src_image_y);
+   if (util_format_is_compressed(src->base.format)) {
+      int bw = util_format_get_blockwidth(src->base.format);
+      int bh = util_format_get_blockheight(src->base.format);
+      assert(src_x % bw == 0);
+      assert(src_y % bh == 0);
+      src_x /= (int)bw;
+      src_y /= (int)bh;
+      src_width = DIV_ROUND_UP(src_width, (int)bw);
+      src_height = DIV_ROUND_UP(src_height, (int)bh);
+   }
    crocus_resource_get_image_offset(dst, dst_level, dst_z, &dst_image_x,
                                     &dst_image_y);
 
+   if (util_format_is_compressed(dst->base.format)) {
+      int bw = util_format_get_blockwidth(dst->base.format);
+      int bh = util_format_get_blockheight(dst->base.format);
+      assert(dst_x % bw == 0);
+      assert(dst_y % bh == 0);
+      dst_x /= (int)bw;
+      dst_y /= (int)bh;
+   }
    src_x += src_image_x;
    src_y += src_image_y;
    dst_x += dst_image_x;
@@ -237,10 +256,10 @@ static bool crocus_emit_blt(struct crocus_batch *batch,
     */
    const uint32_t max_chunk_size = 16384;
 
-   for (uint32_t chunk_x = 0; chunk_x < src_box->width; chunk_x += max_chunk_size) {
-      for (uint32_t chunk_y = 0; chunk_y < src_box->height; chunk_y += max_chunk_size) {
-         const uint32_t chunk_w = MIN2(max_chunk_size, src_box->width - chunk_x);
-         const uint32_t chunk_h = MIN2(max_chunk_size, src_box->height - chunk_y);
+   for (uint32_t chunk_x = 0; chunk_x < src_width; chunk_x += max_chunk_size) {
+      for (uint32_t chunk_y = 0; chunk_y < src_height; chunk_y += max_chunk_size) {
+         const uint32_t chunk_w = MIN2(max_chunk_size, src_width - chunk_x);
+         const uint32_t chunk_h = MIN2(max_chunk_size, src_height - chunk_y);
 
          uint32_t src_offset, src_tile_x, src_tile_y;
          get_blit_intratile_offset_el(src, src_cpp,
