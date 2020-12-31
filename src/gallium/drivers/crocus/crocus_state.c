@@ -4642,18 +4642,22 @@ crocus_populate_binding_table(struct crocus_context *ice,
    if (!info) {
       return;
    }
-   
+
    if (stage == MESA_SHADER_FRAGMENT) {
       struct pipe_framebuffer_state *cso_fb = &ice->state.framebuffer;
       /* Note that cso_fb->nr_cbufs == fs_key->nr_color_regions. */
       if (cso_fb->nr_cbufs) {
          for (unsigned i = 0; i < cso_fb->nr_cbufs; i++) {
             uint32_t addr;
+#if GEN_GEN <= 5
+            const struct pipe_rt_blend_state *rt =
+               &ice->state.cso_blend->blend_state.rt[ice->state.cso_blend->blend_state.independent_blend_enable ? i : 0];
+#endif
             if (cso_fb->cbufs[i]) {
                surf_offsets[s] = emit_surface(ice, batch, cso_fb->cbufs[i], i, true,
                                               ice->state.draw_aux_usage[i],
 #if GEN_GEN <= 5
-                                              &ice->state.cso_blend->blend_state.rt[i]
+                                              rt
 #else
                                               NULL
 #endif
