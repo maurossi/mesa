@@ -311,12 +311,9 @@ crocus_create_context(struct pipe_screen *pscreen, void *priv, unsigned flags)
    if (flags & PIPE_CONTEXT_LOW_PRIORITY)
       priority = INTEL_CONTEXT_LOW_PRIORITY;
 
-   if (unlikely(INTEL_DEBUG & DEBUG_BATCH))
-      ice->state.sizes = _mesa_hash_table_u64_create(ice);
-
    for (int i = 0; i < CROCUS_BATCH_COUNT; i++) {
       crocus_init_batch(&ice->batches[i], ice, &ice->vtbl, &ice->dbg,
-                      &ice->reset, ice->state.sizes,
+                      &ice->reset,
                       ice->batches, (enum crocus_batch_name) i,
                       I915_EXEC_RENDER, priority);
    }

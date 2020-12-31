@@ -359,7 +359,7 @@ stream_state(struct crocus_batch *batch,
       assert(offset + size < batch->state.bo->size);
    }
 
-   crocus_record_state_size(batch->state_sizes, *out_offset, size);
+   crocus_record_state_size(batch->state_sizes, offset, size);
 
    batch->state.used = offset + size;
    *out_offset = offset;
@@ -1855,7 +1855,7 @@ crocus_upload_sampler_states(struct crocus_context *ice,
 //   shs->sampler_table.offset +=
 //      crocus_bo_offset_from_base_address(crocus_resource_bo(res));
 
-   crocus_record_state_size(ice->state.sizes, shs->sampler_table.offset, size);
+   crocus_record_state_size(batch->state_sizes, shs->sampler_table.offset, size);
 
    /* Make sure all land in the same BO */
    // TODO crocus_border_color_pool_reserve(ice, CROCUS_MAX_TEXTURE_SAMPLERS);

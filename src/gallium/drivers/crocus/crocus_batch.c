@@ -128,8 +128,6 @@ decode_get_bo(void *v_batch, bool ppgtt, uint64_t address)
 {
    struct crocus_batch *batch = v_batch;
 
-   assert(ppgtt);
-
    for (int i = 0; i < batch->exec_count; i++) {
       struct crocus_bo *bo = batch->exec_bos[i];
       /* The decoder zeroes out the top 16 bits, so we need to as well */
@@ -150,7 +148,7 @@ decode_get_bo(void *v_batch, bool ppgtt, uint64_t address)
 
 static unsigned
 decode_get_state_size(void *v_batch, uint64_t address,
-                      UNUSED uint64_t base_address)
+                      uint64_t base_address)
 {
    struct crocus_batch *batch = v_batch;
 
@@ -163,7 +161,7 @@ decode_get_state_size(void *v_batch, uint64_t address,
     * enough for now.
     */
    unsigned size = (uintptr_t)
-      _mesa_hash_table_u64_search(batch->state_sizes, address);
+      _mesa_hash_table_u64_search(batch->state_sizes, address - base_address);
 
    return size;
 }
@@ -185,7 +183,6 @@ crocus_init_batch(struct crocus_batch *batch,
                 struct crocus_vtable *vtbl,
                 struct pipe_debug_callback *dbg,
                 struct pipe_device_reset_callback *reset,
-                struct hash_table_u64 *state_sizes,
                 struct crocus_batch *all_batches,
                 enum crocus_batch_name name,
                 uint8_t engine,
@@ -198,7 +195,6 @@ crocus_init_batch(struct crocus_batch *batch,
    batch->vtbl = vtbl;
    batch->dbg = dbg;
    batch->reset = reset;
-   batch->state_sizes = state_sizes;
    batch->name = name;
 
    /* engine should be one of I915_EXEC_RENDER, I915_EXEC_BLT, etc. */
@@ -238,7 +234,10 @@ crocus_init_batch(struct crocus_batch *batch,
          batch->other_batches[j++] = &all_batches[i];
    }
 
-   if (unlikely(INTEL_DEBUG)) {
+   if (INTEL_DEBUG & DEBUG_BATCH) {
+
+      batch->state_sizes =
+         _mesa_hash_table_u64_create(NULL);
       const unsigned decode_flags =
          INTEL_BATCH_DECODE_FULL |
          ((INTEL_DEBUG & DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
@@ -454,6 +453,8 @@ crocus_batch_reset(struct crocus_batch *batch)
    create_batch(batch);
    assert(batch->command.bo->index == 0);
 
+   if (batch->state_sizes)
+      _mesa_hash_table_u64_clear(batch->state_sizes, NULL);
    struct crocus_syncpt *syncpt = crocus_create_syncpt(screen);
    crocus_batch_add_syncpt(batch, syncpt, I915_EXEC_FENCE_SIGNAL);
    crocus_syncpt_reference(screen, &syncpt, NULL);
@@ -491,8 +492,10 @@ crocus_batch_free(struct crocus_batch *batch)
    _mesa_hash_table_destroy(batch->cache.render, NULL);
    _mesa_set_destroy(batch->cache.depth, NULL);
 
-   if (unlikely(INTEL_DEBUG))
+   if (batch->state_sizes) {
+      _mesa_hash_table_u64_destroy(batch->state_sizes, NULL);
       intel_batch_decode_ctx_finish(&batch->decoder);
+   }
 }
 
 /**
@@ -551,7 +554,7 @@ crocus_grow_buffer(struct crocus_batch *batch, bool grow_state,
    /* Copy existing data to the new larger buffer */
    grow->partial_bo_map = grow->map;
 
-   if (batch->use_shadow_copy) {
+   if (0) {//batch->use_shadow_copy) {
       /* We can't safely use realloc, as it may move the existing buffer,
        * breaking existing pointers the caller may still be using.  Just
        * malloc a new copy and memcpy it like the normal BO path.
@@ -832,6 +835,8 @@ _crocus_batch_flush(struct crocus_batch *batch, const char *file, int line)
    assert(!batch->no_wrap);
    crocus_finish_batch(batch);
 
+   finish_growing_bos(&batch->command);
+   finish_growing_bos(&batch->state);
    int ret = submit_batch(batch);
 
    if (unlikely(INTEL_DEBUG &
