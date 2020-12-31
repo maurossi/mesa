@@ -4470,6 +4470,7 @@ emit_null_fb_surface(struct crocus_batch *batch,
                      struct crocus_context *ice,
                      uint32_t *out_offset)
 {
+   uint32_t width, height, layers, level;
    /* If set_framebuffer_state() was never called, fall back to 1x1x1 */
    if (ice->state.framebuffer.width == 0 && ice->state.framebuffer.height == 0) {
       emit_null_surface(batch, out_offset);
@@ -4477,9 +4478,18 @@ emit_null_fb_surface(struct crocus_batch *batch,
    }
 
    struct pipe_framebuffer_state *cso = &ice->state.framebuffer;
-   emit_sized_null_surface(batch, MAX2(cso->width, 1),
-                           MAX2(cso->height, 1), cso->layers ? cso->layers : 1,
-                           cso->zsbuf ? cso->zsbuf->u.tex.level : 0,
+   width = MAX2(cso->width, 1);
+   height = MAX2(cso->height, 1);
+   layers = cso->layers ? cso->layers : 1;
+   level = 0;
+
+   if (cso->nr_cbufs == 0 && cso->zsbuf) {
+      width = cso->zsbuf->width;
+      height = cso->zsbuf->height;
+      level = cso->zsbuf->u.tex.level;
+   }
+   emit_sized_null_surface(batch, width, height,
+                           layers, level,
                            out_offset);
 }
 
