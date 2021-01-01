@@ -788,7 +788,7 @@ static void recalculate_urb_fence( struct crocus_batch *batch)
 }
 
 static void
-upload_urb_fence(struct crocus_batch *batch)
+crocus_upload_urb_fence(struct crocus_batch *batch)
 {
    crocus_emit_cmd(batch, GENX(URB_FENCE), urb) {
       urb.VSUnitURBReallocationRequest = 1;
@@ -6048,7 +6048,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #if GEN_GEN <= 5
    if (dirty & CROCUS_DIRTY_GEN5_PIPELINED_POINTERS)
       upload_pipelined_state_pointers(batch, ice->shaders.vs_offset, ice->shaders.sf_offset, ice->shaders.clip_offset, ice->shaders.wm_offset, ice->shaders.cc_offset);
-   upload_urb_fence(batch);
+   crocus_upload_urb_fence(batch);
 
    crocus_emit_cmd(batch, GENX(CS_URB_STATE), cs);
    crocus_emit_cmd(batch, GENX(CONSTANT_BUFFER), cb);
@@ -7247,6 +7247,10 @@ genX(emit_urb_setup)(struct crocus_context *ice,
                      const unsigned size[4],
                      bool tess_present, bool gs_present)
 {
+#if GEN_GEN <= 5
+   crocus_calculate_urb_fence(batch, 0,
+                              size[0], size[1]);
+#endif
    // XXX TODO
 }
 #endif
@@ -7382,6 +7386,10 @@ genX(init_state)(struct crocus_context *ice)
    ice->vtbl.lost_genx_state = crocus_lost_genx_state;
 #if GEN_VERSIONx10 == 75
    ice->vtbl.finish_batch = crocus_state_finish_batch;
+#endif
+#if GEN_GEN <= 5
+   ice->vtbl.upload_urb_fence = crocus_upload_urb_fence;
+   ice->vtbl.calculate_urb_fence = crocus_calculate_urb_fence;
 #endif
    ice->vtbl.get_sampler_clamp = crocus_get_sampler_clamp;
    ice->state.dirty = ~0ull;

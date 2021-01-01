@@ -183,7 +183,7 @@ blorp_emit_pipeline(struct blorp_batch *blorp_batch,
       pp.PointertoColorCalcState = blorp_emit_color_calc_state(blorp_batch);
    }
 
-//TODO brw_upload_urb_fence(brw);
+   batch->ice->vtbl.upload_urb_fence(batch);
 
    blorp_emit(blorp_batch, GENX(CS_URB_STATE), curb);
    blorp_emit(blorp_batch, GENX(CONSTANT_BUFFER), curb);

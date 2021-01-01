@@ -46,14 +46,14 @@
 #define BLORP_USE_SOFTPIN
 #include "blorp/blorp_genX_exec.h"
 
+#if GEN_GEN <= 5
+#include "gen4_blorp_exec.h"
+#endif
+
 #if GEN_GEN == 7
 #define MOCS_WB 1
 #else
 #define MOCS_WB 0
-#endif
-
-#if GEN_GEN <= 5
-#include "gen4_blorp_exec.h"
 #endif
 
 static uint32_t *
@@ -77,11 +77,10 @@ stream_state(struct crocus_batch *batch,
       assert(offset + size < batch->state.bo->size);
    }
 
+   crocus_record_state_size(batch->state_sizes, offset, size);
+
    batch->state.used = offset + size;
    *out_offset = offset;
-
-   crocus_record_state_size(batch->state_sizes,
-                            *out_offset, size);
 
    /* If the caller has asked for a BO, we leave them the responsibility of
     * adding bo->gtt_offset (say, by handing an address to genxml).  If not,
@@ -242,13 +241,14 @@ blorp_flush_range(UNUSED struct blorp_batch *blorp_batch,
     */
 }
 
+#if GEN_GEN >= 7
 static const struct intel_l3_config *
 blorp_get_l3_config(struct blorp_batch *blorp_batch)
 {
    struct crocus_batch *batch = blorp_batch->driver_batch;
    return batch->screen->l3_config_3d;
 }
-
+#else /* GEN_GEN < 7 */
 static void
 blorp_emit_urb_config(struct blorp_batch *blorp_batch,
                       unsigned vs_entry_size,
@@ -257,17 +257,16 @@ blorp_emit_urb_config(struct blorp_batch *blorp_batch,
    struct crocus_context *ice = blorp_batch->blorp->driver_ctx;
    struct crocus_batch *batch = blorp_batch->driver_batch;
 
+#if GEN_GEN <= 5
+   ice->vtbl.calculate_urb_fence(blorp_batch->driver_batch, 0, vs_entry_size, sf_entry_size);
+#else
    unsigned size[4] = { vs_entry_size, 1, 1, 1 };
-
-   /* If last VS URB size is good enough for what the BLORP operation needed,
-    * then we can skip reconfiguration
-    */
-   if (ice->shaders.last_vs_entry_size >= vs_entry_size)
-      return;
 
    genX(emit_urb_setup)(ice, batch, size, false, false);
    ice->state.dirty |= CROCUS_DIRTY_URB;
+#endif
 }
+#endif
 
 static void
 crocus_blorp_exec(struct blorp_batch *blorp_batch,

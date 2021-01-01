@@ -513,6 +513,8 @@ struct crocus_vtable {
 
    void (*finish_batch)(struct crocus_batch *batch); /* haswell only */
 
+   void (*upload_urb_fence)(struct crocus_batch *batch); /* gen4/5 only */
+
    bool (*blit_blt)(struct crocus_batch *batch,
                     const struct pipe_blit_info *info);
    bool (*copy_region_blt)(struct crocus_batch *batch,
@@ -522,7 +524,8 @@ struct crocus_vtable {
                            struct crocus_resource *src,
                            unsigned src_level,
                            const struct pipe_box *src_box);
-
+   void (*calculate_urb_fence)(struct crocus_batch *batch, unsigned csize,
+                               unsigned vsize, unsigned sfsize);
 };
 
 /**
