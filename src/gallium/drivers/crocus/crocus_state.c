@@ -4678,7 +4678,11 @@ crocus_populate_binding_table(struct crocus_context *ice,
 
    foreach_surface_used(i, CROCUS_SURFACE_GROUP_TEXTURE) {
       struct crocus_sampler_view *view = shs->textures[i];
-      surf_offsets[s++] = emit_sampler_view(ice, batch, view);
+      if (view)
+         surf_offsets[s] = emit_sampler_view(ice, batch, view);
+      else
+         emit_null_surface(batch, &surf_offsets[s]);
+      s++;
    }
 
    foreach_surface_used(i, CROCUS_SURFACE_GROUP_IMAGE) {
