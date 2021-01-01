@@ -310,6 +310,8 @@ static bool crocus_copy_region_blt(struct crocus_batch *batch,
                                    unsigned src_level,
                                    const struct pipe_box *src_box)
 {
+   if (dst->base.target == PIPE_BUFFER || src->base.target == PIPE_BUFFER)
+      return false;
    return crocus_emit_blt(batch,
                           src,
                           dst,
