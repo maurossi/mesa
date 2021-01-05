@@ -26,10 +26,6 @@
 
 #include <inttypes.h>
 
-#include <iomanip>
-#include <ostream>
-#include <sstream>
-
 namespace nv50_ir {
 
 enum TextStyle
@@ -580,13 +576,6 @@ int Symbol::print(char *buf, size_t size,
 
 void Instruction::print() const
 {
-   std::ostringstream buffer;
-   print(buffer);
-   INFO("%s", buffer.str().c_str());
-}
-
-void Instruction::print(std::ostringstream &buffer) const
-{
    #define BUFSZ 512
 
    const size_t size = BUFSZ;
@@ -757,24 +746,21 @@ void Instruction::print(std::ostringstream &buffer) const
 
    buf[MIN2(pos, BUFSZ - 1)] = 0;
 
-   buffer << buf << " (" << encSize << ")" << std::endl;
+   INFO("%s (%u)\n", buf, encSize);
 }
 
 class PrintPass : public Pass
 {
 public:
-   PrintPass(std::ostringstream &buffer, bool omitLineNum)
-      : serial(0), omit_serial(omitLineNum), buffer(buffer) { }
+   PrintPass(bool omitLineNum) : serial(0), omit_serial(omitLineNum) { }
 
-private:
    virtual bool visit(Function *);
    virtual bool visit(BasicBlock *);
    virtual bool visit(Instruction *);
 
+private:
    int serial;
    bool omit_serial;
-
-   std::ostringstream &buffer;
 };
 
 bool
@@ -782,30 +768,26 @@ PrintPass::visit(Function *fn)
 {
    char str[16];
 
-   buffer << std::endl << fn->getName() << ':' << (int32_t)fn->getLabel() << " (";
+   INFO("\n%s:%i (", fn->getName(), fn->getLabel());
 
    if (!fn->outs.empty())
-      buffer << "out";
+      INFO("out");
    for (std::deque<ValueRef>::iterator it = fn->outs.begin();
         it != fn->outs.end();
         ++it) {
       it->get()->print(str, sizeof(str), typeOfSize(it->get()->reg.size));
-      buffer << ' ' << str;
+      INFO(" %s", str);
    }
 
-   if (!fn->ins.empty()) {
-      buffer << colour[TXT_DEFAULT];
-      if (!fn->outs.empty())
-         buffer << ", ";
-      buffer << "in";
-   }
+   if (!fn->ins.empty())
+      INFO("%s%sin", colour[TXT_DEFAULT], fn->outs.empty() ? "" : ", ");
    for (std::deque<ValueDef>::iterator it = fn->ins.begin();
         it != fn->ins.end();
         ++it) {
       it->get()->print(str, sizeof(str), typeOfSize(it->get()->reg.size));
-      buffer << ' ' << str;
+      INFO(" %s", str);
    }
-   buffer << colour[TXT_DEFAULT] << ')' << std::endl;
+   INFO("%s)\n", colour[TXT_DEFAULT]);
 
    return true;
 }
@@ -820,20 +802,21 @@ PrintPass::visit(BasicBlock *bb)
            BasicBlock::get(ei.getNode())->getId(),
            ei.getEdge()->typeStr());
 #endif
-   buffer << "BB:" << bb->getId() << " (" << bb->getInsnCount() << " instructions) - ";
+   INFO("BB:%i (%u instructions) - ", bb->getId(), bb->getInsnCount());
 
    if (bb->idom())
-      buffer << "idom = BB:" << bb->idom()->getId() << ", ";
+      INFO("idom = BB:%i, ", bb->idom()->getId());
 
-   buffer << "df = { ";
+   INFO("df = { ");
    for (DLList::Iterator df = bb->getDF().iterator(); !df.end(); df.next())
-      buffer << "BB:" << BasicBlock::get(df)->getId() << ' ';
+      INFO("BB:%i ", BasicBlock::get(df)->getId());
 
-   buffer << '}' << std::endl;
+   INFO("}\n");
 
    for (Graph::EdgeIterator ei = bb->cfg.outgoing(); !ei.end(); ei.next())
-      buffer << " -> BB:" << BasicBlock::get(ei.getNode())->getId() << " ("
-             << ei.getEdge()->typeStr() << ')' << std::endl;
+      INFO(" -> BB:%i (%s)\n",
+           BasicBlock::get(ei.getNode())->getId(),
+           ei.getEdge()->typeStr());
 
    return true;
 }
@@ -842,31 +825,27 @@ bool
 PrintPass::visit(Instruction *insn)
 {
    if (omit_serial)
-      buffer << "     ";
+      INFO("     ");
    else
-      buffer << std::setw(3) << serial << std::setw(1) << ": ";
+      INFO("%3i: ", serial);
    serial++;
-   insn->print(buffer);
+   insn->print();
    return true;
 }
 
 void
 Function::print()
 {
-   std::ostringstream buffer;
-   PrintPass pass(buffer, prog->driver->omitLineNum);
+   PrintPass pass(prog->driver->omitLineNum);
    pass.run(this, true, false);
-   MSG(buffer.str().c_str());
 }
 
 void
 Program::print()
 {
-   std::ostringstream buffer;
-   PrintPass pass(buffer, driver->omitLineNum);
+   PrintPass pass(driver->omitLineNum);
    init_colours();
    pass.run(this, true, false);
-   MSG(buffer.str().c_str());
 }
 
 void
