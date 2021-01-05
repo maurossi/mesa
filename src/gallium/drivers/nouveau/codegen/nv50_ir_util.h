@@ -39,7 +39,6 @@
 #define ERROR(args...) _debug_printf("ERROR: " args)
 #define WARN(args...) _debug_printf("WARNING: " args)
 #define INFO(args...) _debug_printf(args)
-#define MSG(msg) os_log_message(msg)
 
 #define INFO_DBG(m, f, args...)          \
    do {                                  \
