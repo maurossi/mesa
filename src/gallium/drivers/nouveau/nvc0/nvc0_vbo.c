@@ -560,7 +560,7 @@ nvc0_draw_vbo_kick_notify(struct nouveau_pushbuf *push)
 {
    struct nvc0_screen *screen = push->user_priv;
 
-   nouveau_fence_update(&screen->base.fence, true);
+   nouveau_fence_update(&screen->base, true);
 
    NOUVEAU_DRV_STAT(&screen->base, pushbuf_count, 1);
 }
