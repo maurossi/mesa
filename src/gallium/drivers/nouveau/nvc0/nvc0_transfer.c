@@ -480,7 +480,7 @@ nvc0_miptree_transfer_map(struct pipe_context *pctx,
    if (usage & PIPE_MAP_WRITE)
       flags |= NOUVEAU_BO_WR;
 
-   ret = nouveau_bo_map(tx->rect[1].bo, flags, nvc0->base.client);
+   ret = nouveau_bo_map(tx->rect[1].bo, flags, nvc0->screen->base.client);
    if (ret) {
       pipe_resource_reference(&tx->base.resource, NULL);
       nouveau_bo_ref(NULL, &tx->rect[1].bo);
@@ -521,7 +521,7 @@ nvc0_miptree_transfer_unmap(struct pipe_context *pctx,
       NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_transfers_wr, 1);
 
       /* Allow the copies above to finish executing before freeing the source */
-      nouveau_fence_work(nvc0->base.fence.current,
+      nouveau_fence_work(nvc0->screen->base.fence.current,
                          nouveau_fence_unref_bo, tx->rect[1].bo);
    } else {
       nouveau_bo_ref(NULL, &tx->rect[1].bo);
