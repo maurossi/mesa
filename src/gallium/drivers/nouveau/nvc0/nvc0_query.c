@@ -98,6 +98,7 @@ nvc0_render_condition(struct pipe_context *pipe,
                       bool condition, enum pipe_render_cond_flag mode)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nvc0_query *q = nvc0_query(pq);
    struct nvc0_hw_query *hq = nvc0_hw_query(q);
@@ -142,30 +143,30 @@ nvc0_render_condition(struct pipe_context *pipe,
    nvc0->cond_mode = mode;
 
    if (!pq) {
-      PUSH_SPACE(push, 2);
-      IMMED_NVC0(push, NVC0_3D(COND_MODE), cond);
+      PUSH_SPACE(&screen->base, push, 2);
+      IMMED_NVC0(&screen->base, push, NVC0_3D(COND_MODE), cond);
       if (nvc0->screen->compute)
-         IMMED_NVC0(push, NVC0_CP(COND_MODE), cond);
+         IMMED_NVC0(&screen->base, push, NVC0_CP(COND_MODE), cond);
       return;
    }
 
    if (wait && hq->state != NVC0_HW_QUERY_STATE_READY)
       nvc0_hw_query_fifo_wait(nvc0, q);
 
-   PUSH_SPACE(push, 10);
-   PUSH_REFN (push, hq->bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
-   BEGIN_NVC0(push, NVC0_3D(COND_ADDRESS_HIGH), 3);
-   PUSH_DATAh(push, hq->bo->offset + hq->offset);
-   PUSH_DATA (push, hq->bo->offset + hq->offset);
-   PUSH_DATA (push, cond);
-   BEGIN_NVC0(push, NVC0_2D(COND_ADDRESS_HIGH), 2);
-   PUSH_DATAh(push, hq->bo->offset + hq->offset);
-   PUSH_DATA (push, hq->bo->offset + hq->offset);
+   PUSH_SPACE(&screen->base, push, 10);
+   PUSH_REFN (&screen->base, push, hq->bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(COND_ADDRESS_HIGH), 3);
+   PUSH_DATAh(&screen->base, push, hq->bo->offset + hq->offset);
+   PUSH_DATA (&screen->base, push, hq->bo->offset + hq->offset);
+   PUSH_DATA (&screen->base, push, cond);
+   BEGIN_NVC0(&screen->base, push, NVC0_2D(COND_ADDRESS_HIGH), 2);
+   PUSH_DATAh(&screen->base, push, hq->bo->offset + hq->offset);
+   PUSH_DATA (&screen->base, push, hq->bo->offset + hq->offset);
    if (nvc0->screen->compute) {
-      BEGIN_NVC0(push, NVC0_CP(COND_ADDRESS_HIGH), 3);
-      PUSH_DATAh(push, hq->bo->offset + hq->offset);
-      PUSH_DATA (push, hq->bo->offset + hq->offset);
-      PUSH_DATA (push, cond);
+      BEGIN_NVC0(&screen->base, push, NVC0_CP(COND_ADDRESS_HIGH), 3);
+      PUSH_DATAh(&screen->base, push, hq->bo->offset + hq->offset);
+      PUSH_DATA (&screen->base, push, hq->bo->offset + hq->offset);
+      PUSH_DATA (&screen->base, push, cond);
    }
 }
 

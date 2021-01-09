@@ -1162,9 +1162,9 @@ nva0_so_target_save_offset(struct pipe_context *pipe,
 
    if (serialize) {
       struct nouveau_pushbuf *push = nv50_context(pipe)->base.pushbuf;
-      PUSH_SPACE(push, 2);
+      PUSH_SPACE(NULL, push, 2);
       BEGIN_NV04(push, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    nv50_query(targ->pq)->index = index;

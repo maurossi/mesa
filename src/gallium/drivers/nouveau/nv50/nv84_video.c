@@ -493,61 +493,61 @@ nv84_create_decoder(struct pipe_context *context,
       surf.offset = dec->vpring->size - 0x1000;
       context->clear_render_target(context, &surf.base, &color, 0, 0, 1024, 1, false);
 
-      PUSH_SPACE(screen->pushbuf, 5);
+      PUSH_SPACE(NULL, screen->pushbuf, 5);
       PUSH_REFN(screen->pushbuf, dec->fence, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
       /* The clear_render_target is done via 3D engine, so use it to write to a
        * sempahore to indicate that it's done.
        */
       BEGIN_NV04(screen->pushbuf, NV50_3D(QUERY_ADDRESS_HIGH), 4);
       PUSH_DATAh(screen->pushbuf, dec->fence->offset);
-      PUSH_DATA (screen->pushbuf, dec->fence->offset);
-      PUSH_DATA (screen->pushbuf, 1);
-      PUSH_DATA (screen->pushbuf, 0xf010);
-      PUSH_KICK (screen->pushbuf);
+      PUSH_DATA (NULL, screen->pushbuf, dec->fence->offset);
+      PUSH_DATA (NULL, screen->pushbuf, 1);
+      PUSH_DATA (NULL, screen->pushbuf, 0xf010);
+      PUSH_KICK (screen, screen->pushbuf);
 
-      PUSH_SPACE(bsp_push, 2 + 12 + 2 + 4 + 3);
+      PUSH_SPACE(NULL, bsp_push, 2 + 12 + 2 + 4 + 3);
 
       BEGIN_NV04(bsp_push, SUBC_BSP(NV01_SUBCHAN_OBJECT), 1);
-      PUSH_DATA (bsp_push, dec->bsp->handle);
+      PUSH_DATA (NULL, bsp_push, dec->bsp->handle);
 
       BEGIN_NV04(bsp_push, SUBC_BSP(0x180), 11);
       for (i = 0; i < 11; i++)
-         PUSH_DATA(bsp_push, nv04_data.vram);
+         PUSH_DATA(NULL, bsp_push, nv04_data.vram);
       BEGIN_NV04(bsp_push, SUBC_BSP(0x1b8), 1);
-      PUSH_DATA (bsp_push, nv04_data.vram);
+      PUSH_DATA (NULL, bsp_push, nv04_data.vram);
 
       BEGIN_NV04(bsp_push, SUBC_BSP(0x600), 3);
       PUSH_DATAh(bsp_push, dec->bsp_fw->offset);
-      PUSH_DATA (bsp_push, dec->bsp_fw->offset);
-      PUSH_DATA (bsp_push, dec->bsp_fw->size);
+      PUSH_DATA (NULL, bsp_push, dec->bsp_fw->offset);
+      PUSH_DATA (NULL, bsp_push, dec->bsp_fw->size);
 
       BEGIN_NV04(bsp_push, SUBC_BSP(0x628), 2);
-      PUSH_DATA (bsp_push, dec->bsp_data->offset >> 8);
-      PUSH_DATA (bsp_push, dec->bsp_data->size);
-      PUSH_KICK (bsp_push);
+      PUSH_DATA (NULL, bsp_push, dec->bsp_data->offset >> 8);
+      PUSH_DATA (NULL, bsp_push, dec->bsp_data->size);
+      PUSH_KICK (screen, bsp_push);
    }
 
-   PUSH_SPACE(vp_push, 2 + 12 + 2 + 4 + 3);
+   PUSH_SPACE(NULL, vp_push, 2 + 12 + 2 + 4 + 3);
 
    BEGIN_NV04(vp_push, SUBC_VP(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (vp_push, dec->vp->handle);
+   PUSH_DATA (NULL, vp_push, dec->vp->handle);
 
    BEGIN_NV04(vp_push, SUBC_VP(0x180), 11);
    for (i = 0; i < 11; i++)
-      PUSH_DATA(vp_push, nv04_data.vram);
+      PUSH_DATA(NULL, vp_push, nv04_data.vram);
 
    BEGIN_NV04(vp_push, SUBC_VP(0x1b8), 1);
-   PUSH_DATA (vp_push, nv04_data.vram);
+   PUSH_DATA (NULL, vp_push, nv04_data.vram);
 
    BEGIN_NV04(vp_push, SUBC_VP(0x600), 3);
    PUSH_DATAh(vp_push, dec->vp_fw->offset);
-   PUSH_DATA (vp_push, dec->vp_fw->offset);
-   PUSH_DATA (vp_push, dec->vp_fw->size);
+   PUSH_DATA (NULL, vp_push, dec->vp_fw->offset);
+   PUSH_DATA (NULL, vp_push, dec->vp_fw->size);
 
    BEGIN_NV04(vp_push, SUBC_VP(0x628), 2);
-   PUSH_DATA (vp_push, dec->vp_data->offset >> 8);
-   PUSH_DATA (vp_push, dec->vp_data->size);
-   PUSH_KICK (vp_push);
+   PUSH_DATA (NULL, vp_push, dec->vp_data->offset >> 8);
+   PUSH_DATA (NULL, vp_push, dec->vp_data->size);
+   PUSH_KICK (screen, vp_push);
 
    return &dec->base;
 fail:

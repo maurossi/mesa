@@ -119,28 +119,28 @@ nv50_render_condition(struct pipe_context *pipe,
    nv50->cond_mode = mode;
 
    if (!pq) {
-      PUSH_SPACE(push, 2);
+      PUSH_SPACE(NULL, push, 2);
       BEGIN_NV04(push, NV50_3D(COND_MODE), 1);
-      PUSH_DATA (push, cond);
+      PUSH_DATA (NULL, push, cond);
       return;
    }
 
-   PUSH_SPACE(push, 9);
+   PUSH_SPACE(NULL, push, 9);
 
    if (wait && hq->state != NV50_HW_QUERY_STATE_READY) {
       BEGIN_NV04(push, SUBC_3D(NV50_GRAPH_SERIALIZE), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    PUSH_REFN (push, hq->bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
    BEGIN_NV04(push, NV50_3D(COND_ADDRESS_HIGH), 3);
    PUSH_DATAh(push, hq->bo->offset + hq->offset);
-   PUSH_DATA (push, hq->bo->offset + hq->offset);
-   PUSH_DATA (push, cond);
+   PUSH_DATA (NULL, push, hq->bo->offset + hq->offset);
+   PUSH_DATA (NULL, push, cond);
 
    BEGIN_NV04(push, NV50_2D(COND_ADDRESS_HIGH), 2);
    PUSH_DATAh(push, hq->bo->offset + hq->offset);
-   PUSH_DATA (push, hq->bo->offset + hq->offset);
+   PUSH_DATA (NULL, push, hq->bo->offset + hq->offset);
 }
 
 static void

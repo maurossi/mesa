@@ -119,7 +119,7 @@ nv84_decoder_vp_h264(struct nv84_decoder *dec,
    param2.mb_adaptive_frame_field_flag = desc->pps->sps->mb_adaptive_frame_field_flag;
    param2.is_reference = desc->is_reference;
 
-   PUSH_SPACE(push, 5 + 16 + 3 + 2 + 6 + (is_ref ? 2 : 0) + 3 + 2 + 4 + 2);
+   PUSH_SPACE(NULL, push, 5 + 16 + 3 + 2 + 6 + (is_ref ? 2 : 0) + 3 + 2 + 4 + 2);
 
    struct nouveau_bo *ref2_default = dest->full;
 
@@ -152,73 +152,73 @@ nv84_decoder_vp_h264(struct nv84_decoder *dec,
    /* Wait for BSP to have completed */
    BEGIN_NV04(push, SUBC_VP(0x10), 4);
    PUSH_DATAh(push, dec->fence->offset);
-   PUSH_DATA (push, dec->fence->offset);
-   PUSH_DATA (push, 2);
-   PUSH_DATA (push, 1); /* wait for sem == 2 */
+   PUSH_DATA (NULL, push, dec->fence->offset);
+   PUSH_DATA (NULL, push, 2);
+   PUSH_DATA (NULL, push, 1); /* wait for sem == 2 */
 
    /* VP step 1 */
    BEGIN_NV04(push, SUBC_VP(0x400), 15);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, param2.mbs);
-   PUSH_DATA (push, 0x3987654); /* each nibble probably a dma index */
-   PUSH_DATA (push, 0x55001); /* constant */
-   PUSH_DATA (push, dec->vp_params->offset >> 8);
-   PUSH_DATA (push, (dec->vpring->offset + dec->vpring_residual) >> 8);
-   PUSH_DATA (push, dec->vpring_ctrl);
-   PUSH_DATA (push, dec->vpring->offset >> 8);
-   PUSH_DATA (push, dec->bitstream->size / 2 - 0x700);
-   PUSH_DATA (push, (dec->mbring->offset + dec->mbring->size - 0x2000) >> 8);
-   PUSH_DATA (push, (dec->vpring->offset + dec->vpring_ctrl +
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, param2.mbs);
+   PUSH_DATA (NULL, push, 0x3987654); /* each nibble probably a dma index */
+   PUSH_DATA (NULL, push, 0x55001); /* constant */
+   PUSH_DATA (NULL, push, dec->vp_params->offset >> 8);
+   PUSH_DATA (NULL, push, (dec->vpring->offset + dec->vpring_residual) >> 8);
+   PUSH_DATA (NULL, push, dec->vpring_ctrl);
+   PUSH_DATA (NULL, push, dec->vpring->offset >> 8);
+   PUSH_DATA (NULL, push, dec->bitstream->size / 2 - 0x700);
+   PUSH_DATA (NULL, push, (dec->mbring->offset + dec->mbring->size - 0x2000) >> 8);
+   PUSH_DATA (NULL, push, (dec->vpring->offset + dec->vpring_ctrl +
                      dec->vpring_residual + dec->vpring_deblock) >> 8);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0x100008);
-   PUSH_DATA (push, dest->interlaced->offset >> 8);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0x100008);
+   PUSH_DATA (NULL, push, dest->interlaced->offset >> 8);
+   PUSH_DATA (NULL, push, 0);
 
    BEGIN_NV04(push, SUBC_VP(0x620), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    BEGIN_NV04(push, SUBC_VP(0x300), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    /* VP step 2 */
    BEGIN_NV04(push, SUBC_VP(0x400), 5);
-   PUSH_DATA (push, 0x54530201);
-   PUSH_DATA (push, (dec->vp_params->offset >> 8) + 0x4);
-   PUSH_DATA (push, (dec->vpring->offset + dec->vpring_ctrl +
+   PUSH_DATA (NULL, push, 0x54530201);
+   PUSH_DATA (NULL, push, (dec->vp_params->offset >> 8) + 0x4);
+   PUSH_DATA (NULL, push, (dec->vpring->offset + dec->vpring_ctrl +
                      dec->vpring_residual) >> 8);
-   PUSH_DATA (push, dest->interlaced->offset >> 8);
-   PUSH_DATA (push, dest->interlaced->offset >> 8);
+   PUSH_DATA (NULL, push, dest->interlaced->offset >> 8);
+   PUSH_DATA (NULL, push, dest->interlaced->offset >> 8);
 
    if (is_ref) {
       BEGIN_NV04(push, SUBC_VP(0x414), 1);
-      PUSH_DATA (push, dest->full->offset >> 8);
+      PUSH_DATA (NULL, push, dest->full->offset >> 8);
    }
 
    BEGIN_NV04(push, SUBC_VP(0x620), 2);
    PUSH_DATAh(push, dec->vp_fw2_offset);
-   PUSH_DATA (push, dec->vp_fw2_offset);
+   PUSH_DATA (NULL, push, dec->vp_fw2_offset);
 
    BEGIN_NV04(push, SUBC_VP(0x300), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    /* Set the semaphore back to 1 */
    BEGIN_NV04(push, SUBC_VP(0x610), 3);
    PUSH_DATAh(push, dec->fence->offset);
-   PUSH_DATA (push, dec->fence->offset);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, dec->fence->offset);
+   PUSH_DATA (NULL, push, 1);
 
    /* Write to the semaphore location, intr */
    BEGIN_NV04(push, SUBC_VP(0x304), 1);
-   PUSH_DATA (push, 0x101);
+   PUSH_DATA (NULL, push, 0x101);
 
    for (i = 0; i < 2; i++) {
       struct nv50_miptree *mt = nv50_miptree(dest->resources[i]);
       mt->base.status |= NOUVEAU_BUFFER_STATUS_GPU_WRITING;
    }
 
-   PUSH_KICK (push);
+   PUSH_KICK (NULL, push);
 }
 
 static inline int16_t inverse_quantize(int16_t val, uint8_t quant, int mpeg1) {
@@ -520,33 +520,33 @@ nv84_decoder_vp_mpeg12(struct nv84_decoder *dec,
 
    memcpy(dec->mpeg12_bo->map, &header, sizeof(header));
 
-   PUSH_SPACE(push, 10 + 3 + 2);
+   PUSH_SPACE(NULL, push, 10 + 3 + 2);
 
    nouveau_pushbuf_refn(push, bo_refs, num_refs);
 
    BEGIN_NV04(push, SUBC_VP(0x400), 9);
-   PUSH_DATA (push, 0x543210); /* each nibble possibly a dma index */
-   PUSH_DATA (push, 0x555001); /* constant */
-   PUSH_DATA (push, dec->mpeg12_bo->offset >> 8);
-   PUSH_DATA (push, (dec->mpeg12_bo->offset + 0x100) >> 8);
-   PUSH_DATA (push, (dec->mpeg12_bo->offset + 0x100 +
+   PUSH_DATA (NULL, push, 0x543210); /* each nibble possibly a dma index */
+   PUSH_DATA (NULL, push, 0x555001); /* constant */
+   PUSH_DATA (NULL, push, dec->mpeg12_bo->offset >> 8);
+   PUSH_DATA (NULL, push, (dec->mpeg12_bo->offset + 0x100) >> 8);
+   PUSH_DATA (NULL, push, (dec->mpeg12_bo->offset + 0x100 +
                      align(0x20 * mb(dec->base.width) *
                            mb(dec->base.height), 0x100)) >> 8);
-   PUSH_DATA (push, dest->interlaced->offset >> 8);
-   PUSH_DATA (push, ref1->interlaced->offset >> 8);
-   PUSH_DATA (push, ref2->interlaced->offset >> 8);
-   PUSH_DATA (push, 6 * 64 * 8 * header.mbs);
+   PUSH_DATA (NULL, push, dest->interlaced->offset >> 8);
+   PUSH_DATA (NULL, push, ref1->interlaced->offset >> 8);
+   PUSH_DATA (NULL, push, ref2->interlaced->offset >> 8);
+   PUSH_DATA (NULL, push, 6 * 64 * 8 * header.mbs);
 
    BEGIN_NV04(push, SUBC_VP(0x620), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    BEGIN_NV04(push, SUBC_VP(0x300), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    for (i = 0; i < 2; i++) {
       struct nv50_miptree *mt = nv50_miptree(dest->resources[i]);
       mt->base.status |= NOUVEAU_BUFFER_STATUS_GPU_WRITING;
    }
-   PUSH_KICK (push);
+   PUSH_KICK (NULL, push);
 }

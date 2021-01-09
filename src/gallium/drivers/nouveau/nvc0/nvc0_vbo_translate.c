@@ -11,6 +11,7 @@
 #include "nvc0/nvc0_3d.xml.h"
 
 struct push_context {
+   struct nvc0_context *nvc0;
    struct nouveau_pushbuf *push;
 
    struct translate *translate;
@@ -43,6 +44,7 @@ static void
 nvc0_push_context_init(struct nvc0_context *nvc0, struct push_context *ctx)
 {
    ctx->push = nvc0->base.pushbuf;
+   ctx->nvc0 = nvc0;
 
    ctx->translate = nvc0->vertex->translate;
    ctx->vertex_size = nvc0->vertex->size;
@@ -219,6 +221,7 @@ ef_toggle_search_seq(struct push_context *ctx, unsigned start, unsigned n)
 static inline void *
 nvc0_push_setup_vertex_array(struct nvc0_context *nvc0, const unsigned count)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = nvc0->base.pushbuf;
    struct nouveau_bo *bo;
    uint64_t va;
@@ -226,16 +229,16 @@ nvc0_push_setup_vertex_array(struct nvc0_context *nvc0, const unsigned count)
 
    void *const dest = nouveau_scratch_get(&nvc0->base, size, &va, &bo);
 
-   BEGIN_NVC0(push, NVC0_3D(VERTEX_ARRAY_START_HIGH(0)), 2);
-   PUSH_DATAh(push, va);
-   PUSH_DATA (push, va);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_ARRAY_START_HIGH(0)), 2);
+   PUSH_DATAh(&screen->base, push, va);
+   PUSH_DATA (&screen->base, push, va);
 
    if (nvc0->screen->eng3d->oclass < TU102_3D_CLASS)
-      BEGIN_NVC0(push, NVC0_3D(VERTEX_ARRAY_LIMIT_HIGH(0)), 2);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_ARRAY_LIMIT_HIGH(0)), 2);
    else
-      BEGIN_NVC0(push, SUBC_3D(TU102_3D_VERTEX_ARRAY_LIMIT_HIGH(0)), 2);
-   PUSH_DATAh(push, va + size - 1);
-   PUSH_DATA (push, va + size - 1);
+      BEGIN_NVC0(&screen->base, push, SUBC_3D(TU102_3D_VERTEX_ARRAY_LIMIT_HIGH(0)), 2);
+   PUSH_DATAh(&screen->base, push, va + size - 1);
+   PUSH_DATA (&screen->base, push, va + size - 1);
 
    BCTX_REFN_bo(nvc0->bufctx_3d, 3D_VTX_TMP, NOUVEAU_BO_GART | NOUVEAU_BO_RD,
                 bo);
@@ -247,6 +250,7 @@ nvc0_push_setup_vertex_array(struct nvc0_context *nvc0, const unsigned count)
 static void
 disp_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
 {
+   struct nvc0_screen *screen = ctx->nvc0->screen;
    struct nouveau_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    const uint8_t *restrict elts = (uint8_t *)ctx->idxbuf + start;
@@ -269,30 +273,30 @@ disp_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
          if (unlikely(ctx->edgeflag.enabled))
             nE = ef_toggle_search_i08(ctx, elts, nR);
 
-         PUSH_SPACE(push, 4);
+         PUSH_SPACE(&screen->base, push, 4);
          if (likely(nE >= 2)) {
-            BEGIN_NVC0(push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
-            PUSH_DATA (push, pos);
-            PUSH_DATA (push, nE);
+            BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
+            PUSH_DATA (&screen->base, push, pos);
+            PUSH_DATA (&screen->base, push, nE);
          } else
          if (nE) {
             if (pos <= 0xff) {
-               IMMED_NVC0(push, NVC0_3D(VB_ELEMENT_U32), pos);
+               IMMED_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), pos);
             } else {
-               BEGIN_NVC0(push, NVC0_3D(VB_ELEMENT_U32), 1);
-               PUSH_DATA (push, pos);
+               BEGIN_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), 1);
+               PUSH_DATA (&screen->base, push, pos);
             }
          }
          if (unlikely(nE != nR))
-            IMMED_NVC0(push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
+            IMMED_NVC0(&screen->base, push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
 
          pos += nE;
          elts += nE;
          nR -= nE;
       }
       if (count) {
-         BEGIN_NVC0(push, NVC0_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (push, 0xffffffff);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), 1);
+         PUSH_DATA (&screen->base, push, 0xffffffff);
          ++elts;
          ctx->dest += ctx->vertex_size;
          ++pos;
@@ -304,6 +308,7 @@ disp_vertices_i08(struct push_context *ctx, unsigned start, unsigned count)
 static void
 disp_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
 {
+   struct nvc0_screen *screen = ctx->nvc0->screen;
    struct nouveau_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    const uint16_t *restrict elts = (uint16_t *)ctx->idxbuf + start;
@@ -326,30 +331,30 @@ disp_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
          if (unlikely(ctx->edgeflag.enabled))
             nE = ef_toggle_search_i16(ctx, elts, nR);
 
-         PUSH_SPACE(push, 4);
+         PUSH_SPACE(&screen->base, push, 4);
          if (likely(nE >= 2)) {
-            BEGIN_NVC0(push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
-            PUSH_DATA (push, pos);
-            PUSH_DATA (push, nE);
+            BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
+            PUSH_DATA (&screen->base, push, pos);
+            PUSH_DATA (&screen->base, push, nE);
          } else
          if (nE) {
             if (pos <= 0xff) {
-               IMMED_NVC0(push, NVC0_3D(VB_ELEMENT_U32), pos);
+               IMMED_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), pos);
             } else {
-               BEGIN_NVC0(push, NVC0_3D(VB_ELEMENT_U32), 1);
-               PUSH_DATA (push, pos);
+               BEGIN_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), 1);
+               PUSH_DATA (&screen->base, push, pos);
             }
          }
          if (unlikely(nE != nR))
-            IMMED_NVC0(push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
+            IMMED_NVC0(&screen->base, push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
 
          pos += nE;
          elts += nE;
          nR -= nE;
       }
       if (count) {
-         BEGIN_NVC0(push, NVC0_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (push, 0xffffffff);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), 1);
+         PUSH_DATA (&screen->base, push, 0xffffffff);
          ++elts;
          ctx->dest += ctx->vertex_size;
          ++pos;
@@ -361,6 +366,7 @@ disp_vertices_i16(struct push_context *ctx, unsigned start, unsigned count)
 static void
 disp_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
 {
+   struct nvc0_screen *screen = ctx->nvc0->screen;
    struct nouveau_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    const uint32_t *restrict elts = (uint32_t *)ctx->idxbuf + start;
@@ -383,30 +389,30 @@ disp_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
          if (unlikely(ctx->edgeflag.enabled))
             nE = ef_toggle_search_i32(ctx, elts, nR);
 
-         PUSH_SPACE(push, 4);
+         PUSH_SPACE(&screen->base, push, 4);
          if (likely(nE >= 2)) {
-            BEGIN_NVC0(push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
-            PUSH_DATA (push, pos);
-            PUSH_DATA (push, nE);
+            BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
+            PUSH_DATA (&screen->base, push, pos);
+            PUSH_DATA (&screen->base, push, nE);
          } else
          if (nE) {
             if (pos <= 0xff) {
-               IMMED_NVC0(push, NVC0_3D(VB_ELEMENT_U32), pos);
+               IMMED_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), pos);
             } else {
-               BEGIN_NVC0(push, NVC0_3D(VB_ELEMENT_U32), 1);
-               PUSH_DATA (push, pos);
+               BEGIN_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), 1);
+               PUSH_DATA (&screen->base, push, pos);
             }
          }
          if (unlikely(nE != nR))
-            IMMED_NVC0(push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
+            IMMED_NVC0(&screen->base, push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
 
          pos += nE;
          elts += nE;
          nR -= nE;
       }
       if (count) {
-         BEGIN_NVC0(push, NVC0_3D(VB_ELEMENT_U32), 1);
-         PUSH_DATA (push, 0xffffffff);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(VB_ELEMENT_U32), 1);
+         PUSH_DATA (&screen->base, push, 0xffffffff);
          ++elts;
          ctx->dest += ctx->vertex_size;
          ++pos;
@@ -418,6 +424,7 @@ disp_vertices_i32(struct push_context *ctx, unsigned start, unsigned count)
 static void
 disp_vertices_seq(struct push_context *ctx, unsigned start, unsigned count)
 {
+   struct nvc0_screen *screen = ctx->nvc0->screen;
    struct nouveau_pushbuf *push = ctx->push;
    struct translate *translate = ctx->translate;
    unsigned pos = 0;
@@ -433,14 +440,14 @@ disp_vertices_seq(struct push_context *ctx, unsigned start, unsigned count)
       if (unlikely(ctx->edgeflag.enabled))
          nr = ef_toggle_search_seq(ctx, start + pos, nr);
 
-      PUSH_SPACE(push, 4);
+      PUSH_SPACE(&screen->base, push, 4);
       if (likely(nr)) {
-         BEGIN_NVC0(push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
-         PUSH_DATA (push, pos);
-         PUSH_DATA (push, nr);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_BUFFER_FIRST), 2);
+         PUSH_DATA (&screen->base, push, pos);
+         PUSH_DATA (&screen->base, push, nr);
       }
       if (unlikely(nr != count))
-         IMMED_NVC0(push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
+         IMMED_NVC0(&screen->base, push, NVC0_3D(EDGEFLAG), ef_toggle(ctx));
 
       pos += nr;
       count -= nr;
@@ -534,16 +541,16 @@ nvc0_push_vbo_indirect(struct nvc0_context *nvc0, const struct pipe_draw_info *i
       }
 
       if (nvc0->vertprog->vp.need_draw_parameters) {
-         PUSH_SPACE(push, 9);
-         BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
-         PUSH_DATA (push, NVC0_CB_AUX_SIZE);
-         PUSH_DATAh(push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(0));
-         PUSH_DATA (push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(0));
-         BEGIN_1IC0(push, NVC0_3D(CB_POS), 1 + 3);
-         PUSH_DATA (push, NVC0_CB_AUX_DRAW_INFO);
-         PUSH_DATA (push, single.index_bias);
-         PUSH_DATA (push, single.start_instance);
-         PUSH_DATA (push, single.drawid + i);
+         PUSH_SPACE(&screen->base, push, 9);
+         BEGIN_NVC0(&screen->base, push, NVC0_3D(CB_SIZE), 3);
+         PUSH_DATA (&screen->base, push, NVC0_CB_AUX_SIZE);
+         PUSH_DATAh(&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(0));
+         PUSH_DATA (&screen->base, push, screen->uniform_bo->offset + NVC0_CB_AUX_INFO(0));
+         BEGIN_1IC0(&screen->base, push, NVC0_3D(CB_POS), 1 + 3);
+         PUSH_DATA (&screen->base, push, NVC0_CB_AUX_DRAW_INFO);
+         PUSH_DATA (&screen->base, push, single.index_bias);
+         PUSH_DATA (&screen->base, push, single.start_instance);
+         PUSH_DATA (&screen->base, push, single.drawid + i);
       }
 
       nvc0_push_vbo(nvc0, &single, NULL, &sdraw);
@@ -559,6 +566,7 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
               const struct pipe_draw_indirect_info *indirect,
               const struct pipe_draw_start_count *draw)
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct push_context ctx;
    unsigned i, index_size;
    unsigned inst_count = info->instance_count;
@@ -571,7 +579,7 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
 
    if (nvc0->state.index_bias) {
       /* this is already taken care of by translate */
-      IMMED_NVC0(ctx.push, NVC0_3D(VB_ELEMENT_BASE), 0);
+      IMMED_NVC0(&screen->base, ctx.push, NVC0_3D(VB_ELEMENT_BASE), 0);
       nvc0->state.index_bias = 0;
    }
 
@@ -588,12 +596,12 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
        * We could also deactive PRIM_RESTART_WITH_DRAW_ARRAYS temporarily,
        * and add manual restart to disp_vertices_seq.
        */
-      BEGIN_NVC0(ctx.push, NVC0_3D(PRIM_RESTART_ENABLE), 2);
-      PUSH_DATA (ctx.push, 1);
-      PUSH_DATA (ctx.push, info->index_size ? 0xffffffff : info->restart_index);
+      BEGIN_NVC0(&screen->base, ctx.push, NVC0_3D(PRIM_RESTART_ENABLE), 2);
+      PUSH_DATA (&screen->base, ctx.push, 1);
+      PUSH_DATA (&screen->base, ctx.push, info->index_size ? 0xffffffff : info->restart_index);
    } else
    if (nvc0->state.prim_restart) {
-      IMMED_NVC0(ctx.push, NVC0_3D(PRIM_RESTART_ENABLE), 0);
+      IMMED_NVC0(&screen->base, ctx.push, NVC0_3D(PRIM_RESTART_ENABLE), 0);
    }
    nvc0->state.prim_restart = info->primitive_restart;
 
@@ -616,7 +624,7 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
 
    prim = nvc0_prim_gl(info->mode);
    do {
-      PUSH_SPACE(ctx.push, 9);
+      PUSH_SPACE(&screen->base, ctx.push, 9);
 
       ctx.dest = nvc0_push_setup_vertex_array(nvc0, vert_count);
       if (unlikely(!ctx.dest))
@@ -626,9 +634,9 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
          nvc0_push_upload_vertex_ids(&ctx, nvc0, info, draw);
 
       if (nvc0->screen->eng3d->oclass < GM107_3D_CLASS)
-         IMMED_NVC0(ctx.push, NVC0_3D(VERTEX_ARRAY_FLUSH), 0);
-      BEGIN_NVC0(ctx.push, NVC0_3D(VERTEX_BEGIN_GL), 1);
-      PUSH_DATA (ctx.push, prim);
+         IMMED_NVC0(&screen->base, ctx.push, NVC0_3D(VERTEX_ARRAY_FLUSH), 0);
+      BEGIN_NVC0(&screen->base, ctx.push, NVC0_3D(VERTEX_BEGIN_GL), 1);
+      PUSH_DATA (&screen->base, ctx.push, prim);
       switch (index_size) {
       case 1:
          disp_vertices_i08(&ctx, draw->start, vert_count);
@@ -644,8 +652,8 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
          disp_vertices_seq(&ctx, draw->start, vert_count);
          break;
       }
-      PUSH_SPACE(ctx.push, 1);
-      IMMED_NVC0(ctx.push, NVC0_3D(VERTEX_END_GL), 0);
+      PUSH_SPACE(&screen->base, ctx.push, 1);
+      IMMED_NVC0(&screen->base, ctx.push, NVC0_3D(VERTEX_END_GL), 0);
 
       if (--inst_count) {
          prim |= NVC0_3D_VERTEX_BEGIN_GL_INSTANCE_NEXT;
@@ -659,19 +667,19 @@ nvc0_push_vbo(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
    /* reset state and unmap buffers (no-op) */
 
    if (unlikely(!ctx.edgeflag.value)) {
-      PUSH_SPACE(ctx.push, 1);
-      IMMED_NVC0(ctx.push, NVC0_3D(EDGEFLAG), 1);
+      PUSH_SPACE(&screen->base, ctx.push, 1);
+      IMMED_NVC0(&screen->base, ctx.push, NVC0_3D(EDGEFLAG), 1);
    }
 
    if (unlikely(ctx.need_vertex_id)) {
-      PUSH_SPACE(ctx.push, 4);
-      IMMED_NVC0(ctx.push, NVC0_3D(VERTEX_ID_REPLACE), 0);
-      BEGIN_NVC0(ctx.push, NVC0_3D(VERTEX_ATTRIB_FORMAT(1)), 1);
-      PUSH_DATA (ctx.push,
+      PUSH_SPACE(&screen->base, ctx.push, 4);
+      IMMED_NVC0(&screen->base, ctx.push, NVC0_3D(VERTEX_ID_REPLACE), 0);
+      BEGIN_NVC0(&screen->base, ctx.push, NVC0_3D(VERTEX_ATTRIB_FORMAT(1)), 1);
+      PUSH_DATA (&screen->base, ctx.push,
                  NVC0_3D_VERTEX_ATTRIB_FORMAT_CONST |
                  NVC0_3D_VERTEX_ATTRIB_FORMAT_TYPE_FLOAT |
                  NVC0_3D_VERTEX_ATTRIB_FORMAT_SIZE_32);
-      IMMED_NVC0(ctx.push, NVC0_3D(VERTEX_ARRAY_FETCH(1)), 0);
+      IMMED_NVC0(&screen->base, ctx.push, NVC0_3D(VERTEX_ARRAY_FETCH(1)), 0);
    }
 
    if (info->index_size && !info->has_user_indices)
@@ -713,6 +721,7 @@ nvc0_push_upload_vertex_ids(struct push_context *ctx,
                             const struct pipe_draw_start_count *draw)
 
 {
+   struct nvc0_screen *screen = nvc0->screen;
    struct nouveau_pushbuf *push = ctx->push;
    struct nouveau_bo *bo;
    uint64_t va;
@@ -767,31 +776,31 @@ nvc0_push_upload_vertex_ids(struct push_context *ctx,
       break;
    }
 
-   PUSH_SPACE(push, 12);
+   PUSH_SPACE(&screen->base, push, 12);
 
    if (unlikely(nvc0->state.instance_elts & 2)) {
       nvc0->state.instance_elts &= ~2;
-      IMMED_NVC0(push, NVC0_3D(VERTEX_ARRAY_PER_INSTANCE(1)), 0);
+      IMMED_NVC0(&screen->base, push, NVC0_3D(VERTEX_ARRAY_PER_INSTANCE(1)), 0);
    }
 
-   BEGIN_NVC0(push, NVC0_3D(VERTEX_ATTRIB_FORMAT(a)), 1);
-   PUSH_DATA (push, format);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_ATTRIB_FORMAT(a)), 1);
+   PUSH_DATA (&screen->base, push, format);
 
-   BEGIN_NVC0(push, NVC0_3D(VERTEX_ARRAY_FETCH(1)), 3);
-   PUSH_DATA (push, NVC0_3D_VERTEX_ARRAY_FETCH_ENABLE | index_size);
-   PUSH_DATAh(push, va);
-   PUSH_DATA (push, va);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_ARRAY_FETCH(1)), 3);
+   PUSH_DATA (&screen->base, push, NVC0_3D_VERTEX_ARRAY_FETCH_ENABLE | index_size);
+   PUSH_DATAh(&screen->base, push, va);
+   PUSH_DATA (&screen->base, push, va);
 
    if (nvc0->screen->eng3d->oclass < TU102_3D_CLASS)
-      BEGIN_NVC0(push, NVC0_3D(VERTEX_ARRAY_LIMIT_HIGH(1)), 2);
+      BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_ARRAY_LIMIT_HIGH(1)), 2);
    else
-      BEGIN_NVC0(push, SUBC_3D(TU102_3D_VERTEX_ARRAY_LIMIT_HIGH(1)), 2);
-   PUSH_DATAh(push, va + draw->count * index_size - 1);
-   PUSH_DATA (push, va + draw->count * index_size - 1);
+      BEGIN_NVC0(&screen->base, push, SUBC_3D(TU102_3D_VERTEX_ARRAY_LIMIT_HIGH(1)), 2);
+   PUSH_DATAh(&screen->base, push, va + draw->count * index_size - 1);
+   PUSH_DATA (&screen->base, push, va + draw->count * index_size - 1);
 
 #define NVC0_3D_VERTEX_ID_REPLACE_SOURCE_ATTR_X(a) \
    (((0x80 + (a) * 0x10) / 4) << NVC0_3D_VERTEX_ID_REPLACE_SOURCE__SHIFT)
 
-   BEGIN_NVC0(push, NVC0_3D(VERTEX_ID_REPLACE), 1);
-   PUSH_DATA (push, NVC0_3D_VERTEX_ID_REPLACE_SOURCE_ATTR_X(a) | 1);
+   BEGIN_NVC0(&screen->base, push, NVC0_3D(VERTEX_ID_REPLACE), 1);
+   PUSH_DATA (&screen->base, push, NVC0_3D_VERTEX_ID_REPLACE_SOURCE_ATTR_X(a) | 1);
 }

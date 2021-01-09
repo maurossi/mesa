@@ -58,13 +58,13 @@ nouveau_vpe_synch(struct nouveau_decoder *dec) {
 #if 0
    if (dec->fence_map) {
       BEGIN_NV04(push, NV84_MPEG(QUERY_COUNTER), 1);
-      PUSH_DATA (push, ++dec->fence_seq);
+      PUSH_DATA (NULL, push, ++dec->fence_seq);
       PUSH_KICK (push);
       while (dec->fence_map[0] != dec->fence_seq)
          usleep(1000);
    } else
 #endif
-      PUSH_KICK(push);
+      PUSH_KICK(dec->screen, push);
 }
 
 static void
@@ -80,11 +80,11 @@ nouveau_vpe_fini(struct nouveau_decoder *dec) {
 
    BEGIN_NV04(push, NV31_MPEG(CMD_OFFSET), 2);
    PUSH_MTHDl(push, NV31_MPEG(CMD_OFFSET), dec->cmd_bo, 0, BCTX_ARGS);
-   PUSH_DATA (push, dec->ofs * 4);
+   PUSH_DATA (NULL, push, dec->ofs * 4);
 
    BEGIN_NV04(push, NV31_MPEG(DATA_OFFSET), 2);
    PUSH_MTHDl(push, NV31_MPEG(DATA_OFFSET), dec->data_bo, 0, BCTX_ARGS);
-   PUSH_DATA (push, dec->data_pos * 4);
+   PUSH_DATA (NULL, push, dec->data_pos * 4);
 
 #undef BCTX_ARGS
 
@@ -92,7 +92,7 @@ nouveau_vpe_fini(struct nouveau_decoder *dec) {
       return;
 
    BEGIN_NV04(push, NV31_MPEG(EXEC), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    nouveau_vpe_synch(dec);
    dec->ofs = dec->data_pos = dec->num_surfaces = 0;
@@ -591,36 +591,36 @@ nouveau_create_decoder(struct pipe_context *context,
    nouveau_pushbuf_space(push, 32, 4, 0);
 
    BEGIN_NV04(push, SUBC_MPEG(NV01_SUBCHAN_OBJECT), 1);
-   PUSH_DATA (push, dec->mpeg->handle);
+   PUSH_DATA (NULL, push, dec->mpeg->handle);
 
    BEGIN_NV04(push, NV31_MPEG(DMA_CMD), 1);
-   PUSH_DATA (push, nv04_data.gart);
+   PUSH_DATA (NULL, push, nv04_data.gart);
 
    BEGIN_NV04(push, NV31_MPEG(DMA_DATA), 1);
-   PUSH_DATA (push, nv04_data.gart);
+   PUSH_DATA (NULL, push, nv04_data.gart);
 
    BEGIN_NV04(push, NV31_MPEG(DMA_IMAGE), 1);
-   PUSH_DATA (push, nv04_data.vram);
+   PUSH_DATA (NULL, push, nv04_data.vram);
 
    BEGIN_NV04(push, NV31_MPEG(PITCH), 2);
-   PUSH_DATA (push, width | NV31_MPEG_PITCH_UNK);
-   PUSH_DATA (push, (height << NV31_MPEG_SIZE_H__SHIFT) | width);
+   PUSH_DATA (NULL, push, width | NV31_MPEG_PITCH_UNK);
+   PUSH_DATA (NULL, push, (height << NV31_MPEG_SIZE_H__SHIFT) | width);
 
    BEGIN_NV04(push, NV31_MPEG(FORMAT), 2);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    switch (templ->entrypoint) {
-      case PIPE_VIDEO_ENTRYPOINT_IDCT: PUSH_DATA (push, 1); break;
-      case PIPE_VIDEO_ENTRYPOINT_MC: PUSH_DATA (push, 0); break;
+      case PIPE_VIDEO_ENTRYPOINT_IDCT: PUSH_DATA (NULL, push, 1); break;
+      case PIPE_VIDEO_ENTRYPOINT_MC: PUSH_DATA (NULL, push, 0); break;
       default: assert(0);
    }
 
    if (is8274) {
       BEGIN_NV04(push, NV84_MPEG(DMA_QUERY), 1);
-      PUSH_DATA (push, nv04_data.vram);
+      PUSH_DATA (NULL, push, nv04_data.vram);
 #if 0
       BEGIN_NV04(push, NV84_MPEG(QUERY_OFFSET), 2);
-      PUSH_DATA (push, dec->fence_bo->offset);
-      PUSH_DATA (push, dec->fence_seq);
+      PUSH_DATA (NULL, push, dec->fence_bo->offset);
+      PUSH_DATA (NULL, push, dec->fence_seq);
 #endif
    }
 

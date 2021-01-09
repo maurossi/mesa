@@ -1,6 +1,8 @@
 #ifndef __NOUVEAU_SCREEN_H__
 #define __NOUVEAU_SCREEN_H__
 
+#include "c11/threads.h"
+
 #include "pipe/p_screen.h"
 #include "util/disk_cache.h"
 #include "util/u_atomic.h"
@@ -27,6 +29,7 @@ struct nouveau_screen {
    struct nouveau_object *channel;
    struct nouveau_client *client;
    struct nouveau_pushbuf *pushbuf;
+   mtx_t push_lock;
 
    int refcount;
 

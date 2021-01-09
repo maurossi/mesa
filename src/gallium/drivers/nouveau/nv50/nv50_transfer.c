@@ -75,36 +75,36 @@ nv50_m2mf_transfer_rect(struct nv50_context *nv50,
 
    if (nouveau_bo_memtype(src->bo)) {
       BEGIN_NV04(push, NV50_M2MF(LINEAR_IN), 6);
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, src->tile_mode);
-      PUSH_DATA (push, src->width * cpp);
-      PUSH_DATA (push, src->height);
-      PUSH_DATA (push, src->depth);
-      PUSH_DATA (push, src->z);
+      PUSH_DATA (NULL, push, 0);
+      PUSH_DATA (NULL, push, src->tile_mode);
+      PUSH_DATA (NULL, push, src->width * cpp);
+      PUSH_DATA (NULL, push, src->height);
+      PUSH_DATA (NULL, push, src->depth);
+      PUSH_DATA (NULL, push, src->z);
    } else {
       src_ofst += src->y * src->pitch + src->x * cpp;
 
       BEGIN_NV04(push, NV50_M2MF(LINEAR_IN), 1);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, 1);
       BEGIN_NV04(push, SUBC_M2MF(NV03_M2MF_PITCH_IN), 1);
-      PUSH_DATA (push, src->pitch);
+      PUSH_DATA (NULL, push, src->pitch);
    }
 
    if (nouveau_bo_memtype(dst->bo)) {
       BEGIN_NV04(push, NV50_M2MF(LINEAR_OUT), 6);
-      PUSH_DATA (push, 0);
-      PUSH_DATA (push, dst->tile_mode);
-      PUSH_DATA (push, dst->width * cpp);
-      PUSH_DATA (push, dst->height);
-      PUSH_DATA (push, dst->depth);
-      PUSH_DATA (push, dst->z);
+      PUSH_DATA (NULL, push, 0);
+      PUSH_DATA (NULL, push, dst->tile_mode);
+      PUSH_DATA (NULL, push, dst->width * cpp);
+      PUSH_DATA (NULL, push, dst->height);
+      PUSH_DATA (NULL, push, dst->depth);
+      PUSH_DATA (NULL, push, dst->z);
    } else {
       dst_ofst += dst->y * dst->pitch + dst->x * cpp;
 
       BEGIN_NV04(push, NV50_M2MF(LINEAR_OUT), 1);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, 1);
       BEGIN_NV04(push, SUBC_M2MF(NV03_M2MF_PITCH_OUT), 1);
-      PUSH_DATA (push, dst->pitch);
+      PUSH_DATA (NULL, push, dst->pitch);
    }
 
    while (height) {
@@ -115,27 +115,27 @@ nv50_m2mf_transfer_rect(struct nv50_context *nv50,
       PUSH_DATAh(push, dst->bo->offset + dst_ofst);
 
       BEGIN_NV04(push, SUBC_M2MF(NV03_M2MF_OFFSET_IN), 2);
-      PUSH_DATA (push, src->bo->offset + src_ofst);
-      PUSH_DATA (push, dst->bo->offset + dst_ofst);
+      PUSH_DATA (NULL, push, src->bo->offset + src_ofst);
+      PUSH_DATA (NULL, push, dst->bo->offset + dst_ofst);
 
       if (nouveau_bo_memtype(src->bo)) {
          BEGIN_NV04(push, NV50_M2MF(TILING_POSITION_IN), 1);
-         PUSH_DATA (push, (sy << 16) | (src->x * cpp));
+         PUSH_DATA (NULL, push, (sy << 16) | (src->x * cpp));
       } else {
          src_ofst += line_count * src->pitch;
       }
       if (nouveau_bo_memtype(dst->bo)) {
          BEGIN_NV04(push, NV50_M2MF(TILING_POSITION_OUT), 1);
-         PUSH_DATA (push, (dy << 16) | (dst->x * cpp));
+         PUSH_DATA (NULL, push, (dy << 16) | (dst->x * cpp));
       } else {
          dst_ofst += line_count * dst->pitch;
       }
 
       BEGIN_NV04(push, SUBC_M2MF(NV03_M2MF_LINE_LENGTH_IN), 4);
-      PUSH_DATA (push, nblocksx * cpp);
-      PUSH_DATA (push, line_count);
-      PUSH_DATA (push, (1 << 8) | (1 << 0));
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, nblocksx * cpp);
+      PUSH_DATA (NULL, push, line_count);
+      PUSH_DATA (NULL, push, (1 << 8) | (1 << 0));
+      PUSH_DATA (NULL, push, 0);
 
       height -= line_count;
       sy += line_count;
@@ -163,34 +163,34 @@ nv50_sifc_linear_u8(struct nouveau_context *nv,
    offset &= ~0xff;
 
    BEGIN_NV04(push, NV50_2D(DST_FORMAT), 2);
-   PUSH_DATA (push, G80_SURFACE_FORMAT_R8_UNORM);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, G80_SURFACE_FORMAT_R8_UNORM);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_2D(DST_PITCH), 5);
-   PUSH_DATA (push, 262144);
-   PUSH_DATA (push, 65536);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 262144);
+   PUSH_DATA (NULL, push, 65536);
+   PUSH_DATA (NULL, push, 1);
    PUSH_DATAh(push, dst->offset + offset);
-   PUSH_DATA (push, dst->offset + offset);
+   PUSH_DATA (NULL, push, dst->offset + offset);
    BEGIN_NV04(push, NV50_2D(SIFC_BITMAP_ENABLE), 2);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, G80_SURFACE_FORMAT_R8_UNORM);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, G80_SURFACE_FORMAT_R8_UNORM);
    BEGIN_NV04(push, NV50_2D(SIFC_WIDTH), 10);
-   PUSH_DATA (push, size);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 1);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, xcoord);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, size);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 1);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, xcoord);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    while (count) {
       unsigned nr = MIN2(count, NV04_PFIFO_MAX_PACKET_LEN);
 
       BEGIN_NI04(push, NV50_2D(SIFC_DATA), nr);
-      PUSH_DATAp(push, src, nr);
+      PUSH_DATAp(NULL, push, src, nr);
 
       src += nr;
       count -= nr;
@@ -214,9 +214,9 @@ nv50_m2mf_copy_linear(struct nouveau_context *nv,
    nouveau_pushbuf_validate(push);
 
    BEGIN_NV04(push, NV50_M2MF(LINEAR_IN), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
    BEGIN_NV04(push, NV50_M2MF(LINEAR_OUT), 1);
-   PUSH_DATA (push, 1);
+   PUSH_DATA (NULL, push, 1);
 
    while (size) {
       unsigned bytes = MIN2(size, 1 << 17);
@@ -225,13 +225,13 @@ nv50_m2mf_copy_linear(struct nouveau_context *nv,
       PUSH_DATAh(push, src->offset + srcoff);
       PUSH_DATAh(push, dst->offset + dstoff);
       BEGIN_NV04(push, SUBC_M2MF(NV03_M2MF_OFFSET_IN), 2);
-      PUSH_DATA (push, src->offset + srcoff);
-      PUSH_DATA (push, dst->offset + dstoff);
+      PUSH_DATA (NULL, push, src->offset + srcoff);
+      PUSH_DATA (NULL, push, dst->offset + dstoff);
       BEGIN_NV04(push, SUBC_M2MF(NV03_M2MF_LINE_LENGTH_IN), 4);
-      PUSH_DATA (push, bytes);
-      PUSH_DATA (push, 1);
-      PUSH_DATA (push, (1 << 8) | (1 << 0));
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, bytes);
+      PUSH_DATA (NULL, push, 1);
+      PUSH_DATA (NULL, push, (1 << 8) | (1 << 0));
+      PUSH_DATA (NULL, push, 0);
 
       srcoff += bytes;
       dstoff += bytes;
@@ -385,12 +385,12 @@ nv50_cb_bo_push(struct nouveau_context *nv,
    while (words) {
       unsigned nr = MIN2(words, NV04_PFIFO_MAX_PACKET_LEN);
 
-      PUSH_SPACE(push, nr + 3);
+      PUSH_SPACE(NULL, push, nr + 3);
       PUSH_REFN (push, bo, NOUVEAU_BO_WR | domain);
       BEGIN_NV04(push, NV50_3D(CB_ADDR), 1);
-      PUSH_DATA (push, (offset << 6) | bufid);
+      PUSH_DATA (NULL, push, (offset << 6) | bufid);
       BEGIN_NI04(push, NV50_3D(CB_DATA(0)), nr);
-      PUSH_DATAp(push, data, nr);
+      PUSH_DATAp(NULL, push, data, nr);
 
       words -= nr;
       data += nr;

@@ -177,7 +177,7 @@ nv50_hw_sm_begin_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
    }
 
    assert(cfg->num_counters <= 4);
-   PUSH_SPACE(push, 4 * 4);
+   PUSH_SPACE(NULL, push, 4 * 4);
 
    /* set sequence field to 0 (used to check if result is available) */
    for (i = 0; i < screen->MPsInTP; ++i) {
@@ -203,10 +203,10 @@ nv50_hw_sm_begin_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
 
       /* configure and reset the counter(s) */
       BEGIN_NV04(push, NV50_CP(MP_PM_CONTROL(c)), 1);
-      PUSH_DATA (push, (cfg->ctr[i].sig << 24) | (func << 8)
+      PUSH_DATA (NULL, push, (cfg->ctr[i].sig << 24) | (func << 8)
                         | cfg->ctr[i].unit | cfg->ctr[i].mode);
       BEGIN_NV04(push, NV50_CP(MP_PM_SET(c)), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
    return true;
 }
@@ -238,11 +238,11 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
    }
 
    /* disable all counting */
-   PUSH_SPACE(push, 8);
+   PUSH_SPACE(NULL, push, 8);
    for (c = 0; c < 4; c++) {
       if (screen->pm.mp_counter[c]) {
          BEGIN_NV04(push, NV50_CP(MP_PM_CONTROL(c)), 1);
-         PUSH_DATA (push, 0);
+         PUSH_DATA (NULL, push, 0);
       }
    }
 
@@ -257,9 +257,9 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
    BCTX_REFN_bo(nv50->bufctx_cp, CP_QUERY, NOUVEAU_BO_GART | NOUVEAU_BO_WR,
                 hq->bo);
 
-   PUSH_SPACE(push, 2);
+   PUSH_SPACE(NULL, push, 2);
    BEGIN_NV04(push, SUBC_CP(NV50_GRAPH_SERIALIZE), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
 
    pipe->bind_compute_state(pipe, screen->pm.prog);
    input[0] = hq->bo->offset + hq->base_offset;
@@ -277,7 +277,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
    nouveau_bufctx_reset(nv50->bufctx_cp, NV50_BIND_CP_QUERY);
 
    /* re-active other counters */
-   PUSH_SPACE(push, 8);
+   PUSH_SPACE(NULL, push, 8);
    mask = 0;
    for (c = 0; c < 4; c++) {
       const struct nv50_hw_sm_query_cfg *cfg;
@@ -298,7 +298,7 @@ nv50_hw_sm_end_query(struct nv50_context *nv50, struct nv50_hw_query *hq)
          func  = nv50_hw_sm_get_func(hsq->ctr[i]);
 
          BEGIN_NV04(push, NV50_CP(MP_PM_CONTROL(hsq->ctr[i])), 1);
-         PUSH_DATA (push, (cfg->ctr[i].sig << 24) | (func << 8)
+         PUSH_DATA (NULL, push, (cfg->ctr[i].sig << 24) | (func << 8)
                     | cfg->ctr[i].unit | cfg->ctr[i].mode);
       }
    }

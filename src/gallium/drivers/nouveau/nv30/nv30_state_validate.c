@@ -97,21 +97,21 @@ nv30_validate_fb(struct nv30_context *nv30)
       rt_format |= util_logbase2(h) << 24;
    }
 
-   if (!PUSH_SPACE(push, 64))
+   if (!PUSH_SPACE(NULL, push, 64))
       return;
    PUSH_RESET(push, BUFCTX_FB);
 
    BEGIN_NV04(push, SUBC_3D(0x1da4), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    BEGIN_NV04(push, NV30_3D(RT_HORIZ), 3);
-   PUSH_DATA (push, w << 16);
-   PUSH_DATA (push, h << 16);
-   PUSH_DATA (push, rt_format);
+   PUSH_DATA (NULL, push, w << 16);
+   PUSH_DATA (NULL, push, h << 16);
+   PUSH_DATA (NULL, push, rt_format);
    BEGIN_NV04(push, NV30_3D(VIEWPORT_TX_ORIGIN), 4);
-   PUSH_DATA (push, (y << 16) | x);
-   PUSH_DATA (push, 0);
-   PUSH_DATA (push, ((w - 1) << 16) | 0);
-   PUSH_DATA (push, ((h - 1) << 16) | 0);
+   PUSH_DATA (NULL, push, (y << 16) | x);
+   PUSH_DATA (NULL, push, 0);
+   PUSH_DATA (NULL, push, ((w - 1) << 16) | 0);
+   PUSH_DATA (NULL, push, ((h - 1) << 16) | 0);
 
    if ((nv30->state.rt_enable & NV30_3D_RT_ENABLE_COLOR0) || fb->zsbuf) {
       struct nv30_surface *rsf = nv30_surface(fb->cbufs[0]);
@@ -125,12 +125,12 @@ nv30_validate_fb(struct nv30_context *nv30)
 
       if (eng3d->oclass >= NV40_3D_CLASS) {
          BEGIN_NV04(push, NV40_3D(ZETA_PITCH), 1);
-         PUSH_DATA (push, zsf->pitch);
+         PUSH_DATA (NULL, push, zsf->pitch);
          BEGIN_NV04(push, NV40_3D(COLOR0_PITCH), 3);
-         PUSH_DATA (push, rsf->pitch);
+         PUSH_DATA (NULL, push, rsf->pitch);
       } else {
          BEGIN_NV04(push, NV30_3D(COLOR0_PITCH), 3);
-         PUSH_DATA (push, (zsf->pitch << 16) | rsf->pitch);
+         PUSH_DATA (NULL, push, (zsf->pitch << 16) | rsf->pitch);
       }
       PUSH_MTHDl(push, NV30_3D(COLOR0_OFFSET), BUFCTX_FB, rbo, rsf->offset & ~63,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
@@ -145,7 +145,7 @@ nv30_validate_fb(struct nv30_context *nv30)
       BEGIN_NV04(push, NV30_3D(COLOR1_OFFSET), 2);
       PUSH_MTHDl(push, NV30_3D(COLOR1_OFFSET), BUFCTX_FB, bo, sf->offset,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
-      PUSH_DATA (push, sf->pitch);
+      PUSH_DATA (NULL, push, sf->pitch);
    }
 
    if (nv30->state.rt_enable & NV40_3D_RT_ENABLE_COLOR2) {
@@ -156,7 +156,7 @@ nv30_validate_fb(struct nv30_context *nv30)
       PUSH_MTHDl(push, NV40_3D(COLOR2_OFFSET), BUFCTX_FB, bo, sf->offset,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
       BEGIN_NV04(push, NV40_3D(COLOR2_PITCH), 1);
-      PUSH_DATA (push, sf->pitch);
+      PUSH_DATA (NULL, push, sf->pitch);
    }
 
    if (nv30->state.rt_enable & NV40_3D_RT_ENABLE_COLOR3) {
@@ -167,7 +167,7 @@ nv30_validate_fb(struct nv30_context *nv30)
       PUSH_MTHDl(push, NV40_3D(COLOR3_OFFSET), BUFCTX_FB, bo, sf->offset,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
       BEGIN_NV04(push, NV40_3D(COLOR3_PITCH), 1);
-      PUSH_DATA (push, sf->pitch);
+      PUSH_DATA (NULL, push, sf->pitch);
    }
 }
 
@@ -182,10 +182,10 @@ nv30_validate_blend_colour(struct nv30_context *nv30)
       case PIPE_FORMAT_R16G16B16A16_FLOAT:
       case PIPE_FORMAT_R32G32B32A32_FLOAT:
          BEGIN_NV04(push, NV30_3D(BLEND_COLOR), 1);
-         PUSH_DATA (push, (_mesa_float_to_half(rgba[0]) <<  0) |
+         PUSH_DATA (NULL, push, (_mesa_float_to_half(rgba[0]) <<  0) |
                           (_mesa_float_to_half(rgba[1]) << 16));
          BEGIN_NV04(push, SUBC_3D(0x037c), 1);
-         PUSH_DATA (push, (_mesa_float_to_half(rgba[2]) <<  0) |
+         PUSH_DATA (NULL, push, (_mesa_float_to_half(rgba[2]) <<  0) |
                           (_mesa_float_to_half(rgba[3]) << 16));
          break;
       default:
@@ -194,7 +194,7 @@ nv30_validate_blend_colour(struct nv30_context *nv30)
    }
 
    BEGIN_NV04(push, NV30_3D(BLEND_COLOR), 1);
-   PUSH_DATA (push, (float_to_ubyte(rgba[3]) << 24) |
+   PUSH_DATA (NULL, push, (float_to_ubyte(rgba[3]) << 24) |
                     (float_to_ubyte(rgba[0]) << 16) |
                     (float_to_ubyte(rgba[1]) <<  8) |
                     (float_to_ubyte(rgba[2]) <<  0));
@@ -206,9 +206,9 @@ nv30_validate_stencil_ref(struct nv30_context *nv30)
    struct nouveau_pushbuf *push = nv30->base.pushbuf;
 
    BEGIN_NV04(push, NV30_3D(STENCIL_FUNC_REF(0)), 1);
-   PUSH_DATA (push, nv30->stencil_ref.ref_value[0]);
+   PUSH_DATA (NULL, push, nv30->stencil_ref.ref_value[0]);
    BEGIN_NV04(push, NV30_3D(STENCIL_FUNC_REF(1)), 1);
-   PUSH_DATA (push, nv30->stencil_ref.ref_value[1]);
+   PUSH_DATA (NULL, push, nv30->stencil_ref.ref_value[1]);
 }
 
 static void
@@ -217,7 +217,7 @@ nv30_validate_stipple(struct nv30_context *nv30)
    struct nouveau_pushbuf *push = nv30->base.pushbuf;
 
    BEGIN_NV04(push, NV30_3D(POLYGON_STIPPLE_PATTERN(0)), 32);
-   PUSH_DATAp(push, nv30->stipple.stipple, 32);
+   PUSH_DATAp(NULL, push, nv30->stipple.stipple, 32);
 }
 
 static void
@@ -234,11 +234,11 @@ nv30_validate_scissor(struct nv30_context *nv30)
 
    BEGIN_NV04(push, NV30_3D(SCISSOR_HORIZ), 2);
    if (rast_scissor) {
-      PUSH_DATA (push, ((s->maxx - s->minx) << 16) | s->minx);
-      PUSH_DATA (push, ((s->maxy - s->miny) << 16) | s->miny);
+      PUSH_DATA (NULL, push, ((s->maxx - s->minx) << 16) | s->minx);
+      PUSH_DATA (NULL, push, ((s->maxy - s->miny) << 16) | s->miny);
    } else {
-      PUSH_DATA (push, 0x10000000);
-      PUSH_DATA (push, 0x10000000);
+      PUSH_DATA (NULL, push, 0x10000000);
+      PUSH_DATA (NULL, push, 0x10000000);
    }
 }
 
@@ -254,21 +254,21 @@ nv30_validate_viewport(struct nv30_context *nv30)
    unsigned h = CLAMP(2.0f * fabsf(vp->scale[1]), 0, 4096);
 
    BEGIN_NV04(push, NV30_3D(VIEWPORT_TRANSLATE_X), 8);
-   PUSH_DATAf(push, vp->translate[0]);
-   PUSH_DATAf(push, vp->translate[1]);
-   PUSH_DATAf(push, vp->translate[2]);
-   PUSH_DATAf(push, 0.0f);
-   PUSH_DATAf(push, vp->scale[0]);
-   PUSH_DATAf(push, vp->scale[1]);
-   PUSH_DATAf(push, vp->scale[2]);
-   PUSH_DATAf(push, 0.0f);
+   PUSH_DATAf(NULL, push, vp->translate[0]);
+   PUSH_DATAf(NULL, push, vp->translate[1]);
+   PUSH_DATAf(NULL, push, vp->translate[2]);
+   PUSH_DATAf(NULL, push, 0.0f);
+   PUSH_DATAf(NULL, push, vp->scale[0]);
+   PUSH_DATAf(NULL, push, vp->scale[1]);
+   PUSH_DATAf(NULL, push, vp->scale[2]);
+   PUSH_DATAf(NULL, push, 0.0f);
    BEGIN_NV04(push, NV30_3D(DEPTH_RANGE_NEAR), 2);
-   PUSH_DATAf(push, vp->translate[2] - fabsf(vp->scale[2]));
-   PUSH_DATAf(push, vp->translate[2] + fabsf(vp->scale[2]));
+   PUSH_DATAf(NULL, push, vp->translate[2] - fabsf(vp->scale[2]));
+   PUSH_DATAf(NULL, push, vp->translate[2] + fabsf(vp->scale[2]));
 
    BEGIN_NV04(push, NV30_3D(VIEWPORT_HORIZ), 2);
-   PUSH_DATA (push, (w << 16) | x);
-   PUSH_DATA (push, (h << 16) | y);
+   PUSH_DATA (NULL, push, (w << 16) | x);
+   PUSH_DATA (NULL, push, (h << 16) | y);
 }
 
 static void
@@ -281,15 +281,15 @@ nv30_validate_clip(struct nv30_context *nv30)
    for (i = 0; i < 6; i++) {
       if (nv30->dirty & NV30_NEW_CLIP) {
          BEGIN_NV04(push, NV30_3D(VP_UPLOAD_CONST_ID), 5);
-         PUSH_DATA (push, i);
-         PUSH_DATAp(push, nv30->clip.ucp[i], 4);
+         PUSH_DATA (NULL, push, i);
+         PUSH_DATAp(NULL, push, nv30->clip.ucp[i], 4);
       }
       if (nv30->rast->pipe.clip_plane_enable & (1 << i))
          clpd_enable |= 2 << (4*i);
    }
 
    BEGIN_NV04(push, NV30_3D(VP_CLIP_PLANES_ENABLE), 1);
-   PUSH_DATA (push, clpd_enable);
+   PUSH_DATA (NULL, push, clpd_enable);
 }
 
 static void
@@ -297,8 +297,8 @@ nv30_validate_blend(struct nv30_context *nv30)
 {
    struct nouveau_pushbuf *push = nv30->base.pushbuf;
 
-   PUSH_SPACE(push, nv30->blend->size);
-   PUSH_DATAp(push, nv30->blend->data, nv30->blend->size);
+   PUSH_SPACE(NULL, push, nv30->blend->size);
+   PUSH_DATAp(NULL, push, nv30->blend->data, nv30->blend->size);
 }
 
 static void
@@ -306,8 +306,8 @@ nv30_validate_zsa(struct nv30_context *nv30)
 {
    struct nouveau_pushbuf *push = nv30->base.pushbuf;
 
-   PUSH_SPACE(push, nv30->zsa->size);
-   PUSH_DATAp(push, nv30->zsa->data, nv30->zsa->size);
+   PUSH_SPACE(NULL, push, nv30->zsa->size);
+   PUSH_DATAp(NULL, push, nv30->zsa->data, nv30->zsa->size);
 }
 
 static void
@@ -315,8 +315,8 @@ nv30_validate_rasterizer(struct nv30_context *nv30)
 {
    struct nouveau_pushbuf *push = nv30->base.pushbuf;
 
-   PUSH_SPACE(push, nv30->rast->size);
-   PUSH_DATAp(push, nv30->rast->data, nv30->rast->size);
+   PUSH_SPACE(NULL, push, nv30->rast->size);
+   PUSH_DATAp(NULL, push, nv30->rast->data, nv30->rast->size);
 }
 
 static void
@@ -335,7 +335,7 @@ nv30_validate_multisample(struct nv30_context *nv30)
       ctrl |= 0x00000001;
 
    BEGIN_NV04(push, NV30_3D(MULTISAMPLE_CONTROL), 1);
-   PUSH_DATA (push, ctrl);
+   PUSH_DATA (NULL, push, ctrl);
 }
 
 static void
@@ -345,9 +345,9 @@ nv30_validate_fragment(struct nv30_context *nv30)
    struct nv30_fragprog *fp = nv30->fragprog.program;
 
    BEGIN_NV04(push, NV30_3D(RT_ENABLE), 1);
-   PUSH_DATA (push, nv30->state.rt_enable & (fp ? ~fp->rt_enable : 0x1f));
+   PUSH_DATA (NULL, push, nv30->state.rt_enable & (fp ? ~fp->rt_enable : 0x1f));
    BEGIN_NV04(push, NV30_3D(COORD_CONVENTIONS), 1);
-   PUSH_DATA (push, (fp ? fp->coord_conventions : 0) | nv30->framebuffer.height);
+   PUSH_DATA (NULL, push, (fp ? fp->coord_conventions : 0) | nv30->framebuffer.height);
 }
 
 static void
@@ -373,7 +373,7 @@ nv30_validate_point_coord(struct nv30_context *nv30)
    }
 
    BEGIN_NV04(push, NV30_3D(POINT_SPRITE), 1);
-   PUSH_DATA (push, hw);
+   PUSH_DATA (NULL, push, hw);
 }
 
 struct state_validate {
@@ -506,18 +506,18 @@ nv30_state_validate(struct nv30_context *nv30, uint32_t mask, bool hwtnl)
 
    /*XXX*/
    BEGIN_NV04(push, NV30_3D(VTX_CACHE_INVALIDATE_1710), 1);
-   PUSH_DATA (push, 0);
+   PUSH_DATA (NULL, push, 0);
    if (nv30->screen->eng3d->oclass >= NV40_3D_CLASS) {
       BEGIN_NV04(push, NV40_3D(TEX_CACHE_CTL), 1);
-      PUSH_DATA (push, 2);
+      PUSH_DATA (NULL, push, 2);
       BEGIN_NV04(push, NV40_3D(TEX_CACHE_CTL), 1);
-      PUSH_DATA (push, 1);
+      PUSH_DATA (NULL, push, 1);
       BEGIN_NV04(push, NV30_3D(R1718), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       BEGIN_NV04(push, NV30_3D(R1718), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
       BEGIN_NV04(push, NV30_3D(R1718), 1);
-      PUSH_DATA (push, 0);
+      PUSH_DATA (NULL, push, 0);
    }
 
    LIST_FOR_EACH_ENTRY(bref, &bctx->current, thead) {
