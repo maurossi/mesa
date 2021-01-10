@@ -1005,6 +1005,12 @@ int crocus_get_driver_query_group_info(struct pipe_screen *pscreen,
                                      struct pipe_driver_query_group_info *info);
 
 struct pipe_rasterizer_state *crocus_get_rast_state(struct crocus_context *ctx);
+
+static inline bool crocus_check_conditional_render(struct crocus_context *ice)
+{
+   return ice->state.predicate != CROCUS_PREDICATE_STATE_DONT_RENDER;
+}
+
 #ifdef genX
 #  include "crocus_genx_protos.h"
 #else

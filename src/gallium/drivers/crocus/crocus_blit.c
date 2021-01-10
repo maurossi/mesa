@@ -419,7 +419,7 @@ crocus_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
      return;
    }
    if (info->render_condition_enable) {
-      if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
+      if (!crocus_check_conditional_render(ice))
          return;
 
       if (ice->state.predicate == CROCUS_PREDICATE_STATE_USE_BIT)

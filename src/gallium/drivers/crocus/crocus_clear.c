@@ -221,7 +221,7 @@ fast_clear_color(struct crocus_context *ice,
        * to resolve the predication, and then proceed.
        */
       ice->vtbl.resolve_conditional_render(ice);
-      if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
+      if (!crocus_check_conditional_render(ice))
          return;
 
       /* If we are clearing to a new clear value, we need to resolve fast
@@ -348,7 +348,7 @@ clear_color(struct crocus_context *ice,
    enum blorp_batch_flags blorp_flags = 0;
 
    if (render_condition_enabled) {
-      if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
+      if (!crocus_check_conditional_render(ice))
          return;
 
       if (ice->state.predicate == CROCUS_PREDICATE_STATE_USE_BIT)
@@ -480,7 +480,7 @@ fast_clear_depth(struct crocus_context *ice,
        * depth is changing is to stall on the CPU and resolve the predication.
        */
       ice->vtbl.resolve_conditional_render(ice);
-      if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
+      if (!crocus_check_conditional_render(ice))
          return;
 
       for (unsigned res_level = 0; res_level < res->surf.levels; res_level++) {
@@ -555,7 +555,7 @@ clear_depth_stencil(struct crocus_context *ice,
    enum blorp_batch_flags blorp_flags = 0;
 
    if (render_condition_enabled) {
-      if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
+      if (!crocus_check_conditional_render(ice))
          return;
 
       if (ice->state.predicate == CROCUS_PREDICATE_STATE_USE_BIT)

@@ -268,7 +268,7 @@ crocus_draw_vbo(struct pipe_context *ctx,
    const struct gen_device_info *devinfo = &screen->devinfo;
    struct crocus_batch *batch = &ice->batches[CROCUS_BATCH_RENDER];
 
-   if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
+   if (!crocus_check_conditional_render(ice))
       return;
 
    if (info->primitive_restart && !can_cut_index_handle_restart_index(ice, info)) {
@@ -382,7 +382,7 @@ crocus_launch_grid(struct pipe_context *ctx, const struct pipe_grid_info *grid)
    struct crocus_context *ice = (struct crocus_context *) ctx;
    struct crocus_batch *batch = &ice->batches[CROCUS_BATCH_COMPUTE];
 
-   if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
+   if (!crocus_check_conditional_render(ice))
       return;
 
    if (unlikely(INTEL_DEBUG & DEBUG_REEMIT))
