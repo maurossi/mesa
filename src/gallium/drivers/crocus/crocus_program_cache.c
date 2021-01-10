@@ -124,7 +124,7 @@ crocus_find_previous_compile(const struct crocus_context *ice,
  */
 static const struct crocus_compiled_shader *
 find_existing_assembly(struct hash_table *cache,
-                       enum crocus_program_cache_id cache_id,
+                       bool is_sf_clip,
                        const void *assembly,
                        unsigned assembly_size)
 {
@@ -132,13 +132,12 @@ find_existing_assembly(struct hash_table *cache,
       const struct keybox *keybox = entry->key;
       const struct crocus_compiled_shader *existing = entry->data;
 
-      if (keybox->cache_id != cache_id)
-         continue;
-
-      if (cache_id != CROCUS_CACHE_SF && cache_id != CROCUS_CACHE_CLIP)
+      if (existing->prog_data_size > 16) {
+         if (is_sf_clip)
+            continue;
          if (existing->prog_data->program_size != assembly_size)
             continue;
-
+      }
       if (memcmp(existing->map, assembly, assembly_size) == 0)
          return existing;
    }
@@ -212,7 +211,7 @@ crocus_upload_shader(struct crocus_context *ice,
       rzalloc_size(cache, sizeof(struct crocus_compiled_shader) +
                    ice->vtbl.derived_program_state_size(cache_id));
    const struct crocus_compiled_shader *existing =
-      find_existing_assembly(cache, cache_id, assembly, asm_size);
+      find_existing_assembly(cache, prog_data_size <= 16, assembly, asm_size);
 
    /* If we can find a matching prog in the cache already, then reuse the
     * existing stuff without creating new copy into the underlying buffer
@@ -231,6 +230,7 @@ crocus_upload_shader(struct crocus_context *ice,
    }
 
    shader->prog_data = prog_data;
+   shader->prog_data_size = prog_data_size;
    shader->streamout = streamout;
    shader->system_values = system_values;
    shader->num_system_values = num_system_values;
@@ -238,7 +238,7 @@ crocus_upload_shader(struct crocus_context *ice,
    shader->bt = *bt;
 
    ralloc_steal(shader, shader->prog_data);
-   if (cache_id != CROCUS_CACHE_SF && cache_id != CROCUS_CACHE_CLIP) {
+   if (prog_data_size > 16) {
      ralloc_steal(shader->prog_data, prog_data->param);
      ralloc_steal(shader->prog_data, prog_data->pull_param);
    }
@@ -342,6 +342,12 @@ cache_name(enum crocus_program_cache_id cache_id)
 {
    if (cache_id == CROCUS_CACHE_BLORP)
       return "BLORP";
+
+   if (cache_id == CROCUS_CACHE_SF)
+      return "SF";
+
+   if (cache_id == CROCUS_CACHE_CLIP)
+      return "CLIP";
 
    return _mesa_shader_stage_to_string(cache_id);
 }

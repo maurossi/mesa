@@ -342,6 +342,7 @@ struct crocus_compiled_shader {
 
    /** The program data (owned by the program cache hash table) */
    struct brw_stage_prog_data *prog_data;
+   uint32_t prog_data_size;
 
    /** A list of system values to be uploaded as uniforms. */
    enum brw_param_builtin *system_values;
