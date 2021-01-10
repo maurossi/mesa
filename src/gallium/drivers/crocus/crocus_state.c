@@ -6289,7 +6289,7 @@ crocus_upload_render_state(struct crocus_context *ice,
 
       crocus_emit_cmd(batch, GENX(3DSTATE_INDEX_BUFFER), ib) {
 #if !(GEN_VERSIONx10 == 75)
-         // XXX ib.CutIndexEnable =
+         ib.CutIndexEnable = draw->primitive_restart;
 #endif
          ib.IndexFormat = draw->index_size >> 1;
          ib.BufferStartingAddress = ro_bo(bo, offset);

@@ -39,6 +39,7 @@
 #include "intel/compiler/brw_eu_defines.h"
 #include "crocus_context.h"
 #include "crocus_defines.h"
+#include "util/u_prim_restart.h"
 #include "indices/u_primconvert.h"
 #include "util/u_prim.h"
 
@@ -52,6 +53,30 @@ prim_is_points_or_lines(const struct pipe_draw_info *draw)
           draw->mode == PIPE_PRIM_LINES ||
           draw->mode == PIPE_PRIM_LINE_LOOP ||
           draw->mode == PIPE_PRIM_LINE_STRIP;
+}
+
+static bool
+can_cut_index_handle_restart_index(struct crocus_context *ice,
+                                   const struct pipe_draw_info *draw)
+{
+   struct crocus_screen *screen = (struct crocus_screen*)ice->ctx.screen;
+   const struct gen_device_info *devinfo = &screen->devinfo;
+
+   /* Haswell can do it all. */
+   if (devinfo->is_haswell)
+      return true;
+
+   switch (draw->index_size) {
+   case 1:
+      return draw->restart_index == 0xff;
+   case 2:
+      return draw->restart_index == 0xffff;
+   case 4:
+      return draw->restart_index == 0xffffffff;
+   default:
+      unreachable("illegal index size\n");
+   }
+   return false;
 }
 
 /**
@@ -245,6 +270,11 @@ crocus_draw_vbo(struct pipe_context *ctx,
 
    if (ice->state.predicate == CROCUS_PREDICATE_STATE_DONT_RENDER)
       return;
+
+   if (info->primitive_restart && !can_cut_index_handle_restart_index(ice, info)) {
+       util_draw_vbo_without_prim_restart(ctx, info, indirect, draws);
+       return;
+   }
 
    if (devinfo->gen <= 5 && (info->mode == PIPE_PRIM_QUADS ||
                              info->mode == PIPE_PRIM_QUAD_STRIP ||
