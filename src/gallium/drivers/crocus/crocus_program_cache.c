@@ -124,13 +124,22 @@ crocus_find_previous_compile(const struct crocus_context *ice,
  */
 static const struct crocus_compiled_shader *
 find_existing_assembly(struct hash_table *cache,
+                       enum crocus_program_cache_id cache_id,
                        const void *assembly,
                        unsigned assembly_size)
 {
    hash_table_foreach(cache, entry) {
+      const struct keybox *keybox = entry->key;
       const struct crocus_compiled_shader *existing = entry->data;
-      if (existing->prog_data->program_size == assembly_size &&
-          memcmp(existing->map, assembly, assembly_size) == 0)
+
+      if (keybox->cache_id != cache_id)
+         continue;
+
+      if (cache_id != CROCUS_CACHE_SF && cache_id != CROCUS_CACHE_CLIP)
+         if (existing->prog_data->program_size != assembly_size)
+            continue;
+
+      if (memcmp(existing->map, assembly, assembly_size) == 0)
          return existing;
    }
    return NULL;
@@ -203,7 +212,7 @@ crocus_upload_shader(struct crocus_context *ice,
       rzalloc_size(cache, sizeof(struct crocus_compiled_shader) +
                    ice->vtbl.derived_program_state_size(cache_id));
    const struct crocus_compiled_shader *existing =
-      find_existing_assembly(cache, assembly, asm_size);
+      find_existing_assembly(cache, cache_id, assembly, asm_size);
 
    /* If we can find a matching prog in the cache already, then reuse the
     * existing stuff without creating new copy into the underlying buffer
@@ -229,7 +238,7 @@ crocus_upload_shader(struct crocus_context *ice,
    shader->bt = *bt;
 
    ralloc_steal(shader, shader->prog_data);
-   if (prog_data_size > 16) {
+   if (cache_id != CROCUS_CACHE_SF && cache_id != CROCUS_CACHE_CLIP) {
      ralloc_steal(shader->prog_data, prog_data->param);
      ralloc_steal(shader->prog_data, prog_data->pull_param);
    }
