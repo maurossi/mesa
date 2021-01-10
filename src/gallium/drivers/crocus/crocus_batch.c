@@ -177,6 +177,15 @@ decode_batch(struct crocus_batch *batch)
                    batch->exec_bos[0]->gtt_offset, false);
 }
 
+static void
+init_reloc_list(struct crocus_reloc_list *rlist, int count)
+{
+   rlist->reloc_count = 0;
+   rlist->reloc_array_size = count;
+   rlist->relocs = malloc(rlist->reloc_array_size *
+                          sizeof(struct drm_i915_gem_relocation_entry));
+}
+
 void
 crocus_init_batch(struct crocus_batch *batch,
 		  struct crocus_context *ice,
@@ -214,6 +223,9 @@ crocus_init_batch(struct crocus_batch *batch,
 
    util_dynarray_init(&batch->exec_fences, ralloc_context(NULL));
    util_dynarray_init(&batch->syncpts, ralloc_context(NULL));
+
+   init_reloc_list(&batch->command.relocs, 250);
+   init_reloc_list(&batch->state.relocs, 250);
 
    batch->exec_count = 0;
    batch->exec_array_size = 100;
@@ -316,15 +328,6 @@ crocus_use_bo(struct crocus_batch *batch, struct crocus_bo *bo, bool writable)
    return &batch->validation_list[batch->exec_count - 1];
 }
 
-static void
-init_reloc_list(struct crocus_reloc_list *rlist, int count)
-{
-   rlist->reloc_count = 0;
-   rlist->reloc_array_size = count;
-   rlist->relocs = malloc(rlist->reloc_array_size *
-                          sizeof(struct drm_i915_gem_relocation_entry));
-}
-
 static uint64_t
 emit_reloc(struct crocus_batch *batch,
            struct crocus_reloc_list *rlist, uint32_t offset,
@@ -425,14 +428,11 @@ create_batch(struct crocus_batch *batch)
                            "command buffer",
                            BATCH_SZ + BATCH_RESERVED(&screen->devinfo));
 
-   init_reloc_list(&batch->command.relocs, 250);
    crocus_use_bo(batch, batch->command.bo, false);
 
    recreate_growing_buffer(batch, &batch->state,
                            "state buffer",
                            STATE_SZ);
-   init_reloc_list(&batch->state.relocs, 250);
-
 
    batch->state.used = 1;
    crocus_use_bo(batch, batch->state.bo, false);
@@ -471,6 +471,8 @@ crocus_batch_free(struct crocus_batch *batch)
    for (int i = 0; i < batch->exec_count; i++) {
       crocus_bo_unreference(batch->exec_bos[i]);
    }
+   free(batch->command.relocs.relocs);
+   free(batch->state.relocs.relocs);
    free(batch->exec_bos);
    free(batch->validation_list);
 
@@ -868,6 +870,8 @@ _crocus_batch_flush(struct crocus_batch *batch, const char *file, int line)
       }
    }
 
+   batch->command.relocs.reloc_count = 0;
+   batch->state.relocs.reloc_count = 0;
    batch->exec_count = 0;
    batch->aperture_space = 0;
 
