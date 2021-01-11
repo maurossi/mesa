@@ -88,11 +88,7 @@ crocus_populate_sampler_prog_key_data(struct crocus_context *ice,
          }
       }
 
-      bool clamp[3];
-      ice->vtbl.get_sampler_clamp(ice->state.shaders[stage].samplers[s], clamp);
-      key->gl_clamp_mask[0] |= clamp[0] << s;
-      key->gl_clamp_mask[1] |= clamp[1] << s;
-      key->gl_clamp_mask[2] |= clamp[2] << s;
+      ice->vtbl.fill_clamp_mask(ice->state.shaders[stage].samplers[s], s, key->gl_clamp_mask);
    }
 }
 

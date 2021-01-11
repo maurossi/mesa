@@ -511,8 +511,9 @@ struct crocus_vtable {
                            struct brw_wm_prog_key *key);
    void (*populate_cs_key)(const struct crocus_context *ice,
                            struct brw_cs_prog_key *key);
-   void (*get_sampler_clamp)(const struct crocus_sampler_state *state,
-			     bool mask[3]);
+   void (*fill_clamp_mask)(const struct crocus_sampler_state *state,
+                           int s,
+                           uint32_t *clamp_mask);
    uint32_t (*mocs)(const struct crocus_bo *bo, const struct isl_device *isl_dev);
    void (*lost_genx_state)(struct crocus_context *ice, struct crocus_batch *batch);
 
