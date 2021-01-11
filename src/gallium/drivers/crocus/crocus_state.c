@@ -98,6 +98,7 @@
 #include "util/u_helpers.h"
 #include "util/u_memory.h"
 #include "util/u_prim.h"
+#include "util/half_float.h"
 #include "drm-uapi/i915_drm.h"
 #include "nir.h"
 #include "intel/compiler/brw_compiler.h"
@@ -1841,6 +1842,96 @@ crocus_upload_sampler_state(struct crocus_batch *batch,
    }
 }
 
+static void
+crocus_upload_border_color(struct crocus_batch *batch,
+                           struct crocus_sampler_state *cso,
+                           struct crocus_sampler_view *tex,
+                           uint32_t *bc_offset)
+{
+   /* We may need to swizzle the border color for format faking.
+    * A/LA formats are faked as R/RG with 000R or R00G swizzles.
+    * This means we need to move the border color's A channel into
+    * the R or G channels so that those read swizzles will move it
+    * back into A.
+    */
+   union pipe_color_union *color = &cso->border_color;
+   union pipe_color_union tmp;
+   if (tex) {
+      enum pipe_format internal_format = tex->res->internal_format;
+
+      if (util_format_is_alpha(internal_format)) {
+         unsigned char swz[4] = {
+            PIPE_SWIZZLE_W, PIPE_SWIZZLE_0,
+            PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
+         };
+         util_format_apply_color_swizzle(&tmp, color, swz, true);
+         color = &tmp;
+      } else if (util_format_is_luminance_alpha(internal_format) &&
+                 internal_format != PIPE_FORMAT_L8A8_SRGB) {
+         unsigned char swz[4] = {
+            PIPE_SWIZZLE_X, PIPE_SWIZZLE_W,
+            PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
+         };
+         util_format_apply_color_swizzle(&tmp, color, swz, true);
+         color = &tmp;
+      }
+   }
+   int alignment = 32;
+   //TODO  if (GEN_VERSIONx10 == 75 && (is_integer_format || is_stencil_sampling)) {
+   //alignment = 512;
+   uint32_t *sdc = stream_state(batch,
+                                GENX(SAMPLER_BORDER_COLOR_STATE_length) * sizeof(uint32_t),
+                                alignment, bc_offset);
+   struct GENX(SAMPLER_BORDER_COLOR_STATE) state = { 0 };
+
+#define ASSIGN(dst, src) \
+   do {                  \
+      dst = src;         \
+   } while (0)
+
+#define ASSIGNu16(dst, src) \
+   do {                     \
+      dst = (uint16_t)src;  \
+   } while (0)
+
+#define ASSIGNu8(dst, src) \
+   do {                    \
+      dst = (uint8_t)src;  \
+   } while (0)
+
+#define BORDER_COLOR_ATTR(macro, _color_type, src)              \
+   macro(state.BorderColor ## _color_type ## Red, src[0]);   \
+   macro(state.BorderColor ## _color_type ## Green, src[1]);   \
+   macro(state.BorderColor ## _color_type ## Blue, src[2]);   \
+   macro(state.BorderColor ## _color_type ## Alpha, src[3]);
+
+#if GEN_VERSIONx10 == 75
+   //TODO
+#elif GEN_GEN == 5 || GEN_GEN == 6
+   BORDER_COLOR_ATTR(UNCLAMPED_FLOAT_TO_UBYTE, Unorm, color->f);
+   BORDER_COLOR_ATTR(UNCLAMPED_FLOAT_TO_USHORT, Unorm16, color->f);
+   BORDER_COLOR_ATTR(UNCLAMPED_FLOAT_TO_SHORT, Snorm16, color->f);
+
+#define MESA_FLOAT_TO_HALF(dst, src)            \
+   dst = _mesa_float_to_half(src);
+
+   BORDER_COLOR_ATTR(MESA_FLOAT_TO_HALF, Float16, color->f);
+
+#undef MESA_FLOAT_TO_HALF
+
+   state.BorderColorSnorm8Red   = state.BorderColorSnorm16Red >> 8;
+   state.BorderColorSnorm8Green = state.BorderColorSnorm16Green >> 8;
+   state.BorderColorSnorm8Blue  = state.BorderColorSnorm16Blue >> 8;
+   state.BorderColorSnorm8Alpha = state.BorderColorSnorm16Alpha >> 8;
+
+   BORDER_COLOR_ATTR(ASSIGN, Float, color->f);
+
+#elif GEN_GEN == 4
+   BORDER_COLOR_ATTR(ASSIGN, , color->f);
+#endif
+   GENX(SAMPLER_BORDER_COLOR_STATE_pack)(batch, sdc, &state);
+}
+
 /**
  * Upload the sampler states into a contiguous area of GPU memory, for
  * for 3DSTATE_SAMPLER_STATE_POINTERS_*.
@@ -1886,36 +1977,9 @@ crocus_upload_sampler_states(struct crocus_context *ice,
          unsigned border_color_offset = 0;
          if (state->needs_border_color) {
             ice->state.need_border_colors |= 1 << stage;
-
-            /* We may need to swizzle the border color for format faking.
-             * A/LA formats are faked as R/RG with 000R or R00G swizzles.
-             * This means we need to move the border color's A channel into
-             * the R or G channels so that those read swizzles will move it
-             * back into A.
-             */
-            union pipe_color_union *color = &state->border_color;
-            union pipe_color_union tmp;
-            if (tex) {
-               enum pipe_format internal_format = tex->res->internal_format;
-
-               if (util_format_is_alpha(internal_format)) {
-                  unsigned char swz[4] = {
-                     PIPE_SWIZZLE_W, PIPE_SWIZZLE_0,
-                     PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
-                  };
-                  util_format_apply_color_swizzle(&tmp, color, swz, true);
-                  color = &tmp;
-               } else if (util_format_is_luminance_alpha(internal_format) &&
-                          internal_format != PIPE_FORMAT_L8A8_SRGB) {
-                  unsigned char swz[4] = {
-                     PIPE_SWIZZLE_X, PIPE_SWIZZLE_W,
-                     PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
-                  };
-                  util_format_apply_color_swizzle(&tmp, color, swz, true);
-                  color = &tmp;
-               }
-            }
+            crocus_upload_border_color(batch, state, tex, &border_color_offset);
          }
+
          crocus_upload_sampler_state(batch, state, border_color_offset, map);
       }
 
