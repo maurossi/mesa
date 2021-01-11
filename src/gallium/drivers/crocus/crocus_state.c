@@ -1929,6 +1929,10 @@ crocus_upload_border_color(struct crocus_batch *batch,
 #elif GEN_GEN == 4
    BORDER_COLOR_ATTR(ASSIGN, , color->f);
 #endif
+
+#undef ASSIGN
+#undef BORDER_COLOR_ATTR
+
    GENX(SAMPLER_BORDER_COLOR_STATE_pack)(batch, sdc, &state);
 }
 
