@@ -377,6 +377,10 @@ crocus_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
    assert((info->mask & PIPE_MASK_RGBA) == PIPE_MASK_RGBA ||
           (info->mask & PIPE_MASK_RGBA) == 0);
 
+   if (info->render_condition_enable)
+      if (!crocus_check_conditional_render(ice))
+         return;
+
    if (devinfo->gen <= 5) {
      if (!ice->vtbl.blit_blt(batch, info)) {
 
@@ -419,9 +423,6 @@ crocus_blit(struct pipe_context *ctx, const struct pipe_blit_info *info)
      return;
    }
    if (info->render_condition_enable) {
-      if (!crocus_check_conditional_render(ice))
-         return;
-
       if (ice->state.predicate == CROCUS_PREDICATE_STATE_USE_BIT)
          blorp_flags |= BLORP_BATCH_PREDICATE_ENABLE;
    }
