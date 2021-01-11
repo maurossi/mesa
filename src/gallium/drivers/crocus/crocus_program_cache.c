@@ -124,7 +124,7 @@ crocus_find_previous_compile(const struct crocus_context *ice,
  */
 static const struct crocus_compiled_shader *
 find_existing_assembly(struct hash_table *cache,
-                       bool is_sf_clip,
+                       void *map,
                        const void *assembly,
                        unsigned assembly_size)
 {
@@ -132,13 +132,10 @@ find_existing_assembly(struct hash_table *cache,
       const struct keybox *keybox = entry->key;
       const struct crocus_compiled_shader *existing = entry->data;
 
-      if (existing->prog_data_size > 16) {
-         if (is_sf_clip)
+      if (existing->map_size != assembly_size)
             continue;
-         if (existing->prog_data->program_size != assembly_size)
-            continue;
-      }
-      if (memcmp(existing->map, assembly, assembly_size) == 0)
+
+      if (memcmp(map + existing->offset, assembly, assembly_size) == 0)
          return existing;
    }
    return NULL;
@@ -211,7 +208,7 @@ crocus_upload_shader(struct crocus_context *ice,
       rzalloc_size(cache, sizeof(struct crocus_compiled_shader) +
                    ice->vtbl.derived_program_state_size(cache_id));
    const struct crocus_compiled_shader *existing =
-      find_existing_assembly(cache, prog_data_size <= 16, assembly, asm_size);
+      find_existing_assembly(cache, ice->shaders.cache_bo_map, assembly, asm_size);
 
    /* If we can find a matching prog in the cache already, then reuse the
     * existing stuff without creating new copy into the underlying buffer
@@ -221,10 +218,10 @@ crocus_upload_shader(struct crocus_context *ice,
     */
    if (existing) {
       shader->offset = existing->offset;
-      shader->map = existing->map;
+      shader->map_size = existing->map_size;
    } else {
       shader->offset = crocus_alloc_item_data(ice, asm_size);
-      shader->map = (ice->shaders.cache_bo_map + shader->offset);
+      shader->map_size = asm_size;
 
       memcpy(ice->shaders.cache_bo_map + shader->offset, assembly, asm_size);
    }
@@ -362,7 +359,7 @@ crocus_print_program_cache(struct crocus_context *ice)
       const struct keybox *keybox = entry->key;
       struct crocus_compiled_shader *shader = entry->data;
       fprintf(stderr, "%s:\n", cache_name(keybox->cache_id));
-      brw_disassemble(devinfo, shader->map, 0,
+      brw_disassemble(devinfo, ice->shaders.cache_bo_map + shader->offset, 0,
                       shader->prog_data->program_size, NULL, stderr);
    }
 }

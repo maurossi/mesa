@@ -1133,7 +1133,9 @@ crocus_compile_vs(struct crocus_context *ice,
 			   prog_data, sizeof(*vs_prog_data), so_decls, system_values, num_system_values,
                          num_cbufs, &bt);
 
-   crocus_disk_cache_store(screen->disk_cache, ish, shader, key, sizeof(*key));
+   crocus_disk_cache_store(screen->disk_cache, ish, shader,
+                           ice->shaders.cache_bo_map,
+                           key, sizeof(*key));
 
    ralloc_free(mem_ctx);
    return shader;
@@ -1342,7 +1344,9 @@ crocus_compile_tcs(struct crocus_context *ice,
                          num_cbufs, &bt);
 
    if (ish)
-      crocus_disk_cache_store(screen->disk_cache, ish, shader, key, sizeof(*key));
+      crocus_disk_cache_store(screen->disk_cache, ish, shader,
+                              ice->shaders.cache_bo_map,
+                              key, sizeof(*key));
 
    ralloc_free(mem_ctx);
    return shader;
@@ -1470,7 +1474,9 @@ crocus_compile_tes(struct crocus_context *ice,
 			   prog_data, sizeof(*tes_prog_data), so_decls, system_values, num_system_values,
                          num_cbufs, &bt);
 
-   crocus_disk_cache_store(screen->disk_cache, ish, shader, key, sizeof(*key));
+   crocus_disk_cache_store(screen->disk_cache, ish, shader,
+                           ice->shaders.cache_bo_map,
+                           key, sizeof(*key));
 
    ralloc_free(mem_ctx);
    return shader;
@@ -1591,7 +1597,9 @@ crocus_compile_gs(struct crocus_context *ice,
 			   prog_data, sizeof(*gs_prog_data), so_decls, system_values, num_system_values,
                          num_cbufs, &bt);
 
-   crocus_disk_cache_store(screen->disk_cache, ish, shader, key, sizeof(*key));
+   crocus_disk_cache_store(screen->disk_cache, ish, shader,
+                           ice->shaders.cache_bo_map,
+                           key, sizeof(*key));
 
    ralloc_free(mem_ctx);
    return shader;
@@ -1704,7 +1712,9 @@ crocus_compile_fs(struct crocus_context *ice,
 			   prog_data, sizeof(*fs_prog_data), NULL, system_values, num_system_values,
                          num_cbufs, &bt);
 
-   crocus_disk_cache_store(screen->disk_cache, ish, shader, key, sizeof(*key));
+   crocus_disk_cache_store(screen->disk_cache, ish, shader,
+                           ice->shaders.cache_bo_map,
+                           key, sizeof(*key));
 
    ralloc_free(mem_ctx);
    return shader;
@@ -2235,7 +2245,9 @@ crocus_compile_cs(struct crocus_context *ice,
 			   prog_data, sizeof(*cs_prog_data), NULL, system_values, num_system_values,
                          num_cbufs, &bt);
 
-   crocus_disk_cache_store(screen->disk_cache, ish, shader, key, sizeof(*key));
+   crocus_disk_cache_store(screen->disk_cache, ish, shader,
+                           ice->shaders.cache_bo_map,
+                           key, sizeof(*key));
 
    ralloc_free(mem_ctx);
    return shader;

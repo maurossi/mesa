@@ -341,8 +341,8 @@ struct crocus_compiled_shader {
    /** Reference to the uploaded assembly. */
    uint32_t offset;
 
-   /** Pointer to the assembly in the BO's map. */
-   void *map;
+   /* asm size in map */
+   uint32_t map_size;
 
    /** The program data (owned by the program cache hash table) */
    struct brw_stage_prog_data *prog_data;
@@ -930,10 +930,11 @@ uint32_t crocus_bti_to_group_index(const struct crocus_binding_table *bt,
 /* crocus_disk_cache.c */
 
 void crocus_disk_cache_store(struct disk_cache *cache,
-                           const struct crocus_uncompiled_shader *ish,
-                           const struct crocus_compiled_shader *shader,
-                           const void *prog_key,
-                           uint32_t prog_key_size);
+                             const struct crocus_uncompiled_shader *ish,
+                             const struct crocus_compiled_shader *shader,
+                             void *map,
+                             const void *prog_key,
+                             uint32_t prog_key_size);
 struct crocus_compiled_shader *
 crocus_disk_cache_retrieve(struct crocus_context *ice,
                          const struct crocus_uncompiled_shader *ish,

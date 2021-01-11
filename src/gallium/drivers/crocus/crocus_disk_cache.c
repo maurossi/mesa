@@ -76,10 +76,11 @@ crocus_disk_cache_compute_key(struct disk_cache *cache,
  */
 void
 crocus_disk_cache_store(struct disk_cache *cache,
-                      const struct crocus_uncompiled_shader *ish,
-                      const struct crocus_compiled_shader *shader,
-                      const void *prog_key,
-                      uint32_t prog_key_size)
+                        const struct crocus_uncompiled_shader *ish,
+                        const struct crocus_compiled_shader *shader,
+                        void *map,
+                        const void *prog_key,
+                        uint32_t prog_key_size)
 {
 #ifdef ENABLE_SHADER_CACHE
    if (!cache)
@@ -110,7 +111,7 @@ crocus_disk_cache_store(struct disk_cache *cache,
     * 6. Binding table
     */
    blob_write_bytes(&blob, shader->prog_data, brw_prog_data_size(stage));
-   blob_write_bytes(&blob, shader->map, shader->prog_data->program_size);
+   blob_write_bytes(&blob, map + shader->offset, shader->prog_data->program_size);
    blob_write_bytes(&blob, &shader->num_system_values, sizeof(unsigned));
    blob_write_bytes(&blob, shader->system_values,
                     shader->num_system_values * sizeof(enum brw_param_builtin));
