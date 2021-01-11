@@ -1669,11 +1669,15 @@ wrap_mode_needs_border_color(unsigned wrap_mode)
  * Gallium CSO for sampler state.
  */
 struct crocus_sampler_state {
+   struct pipe_sampler_state pstate;
    union pipe_color_union border_color;
    bool needs_border_color;
-
    bool clamp[3];
-   uint32_t sampler_state[GENX(SAMPLER_STATE_length)];
+   unsigned wrap_s;
+   unsigned wrap_t;
+   unsigned wrap_r;
+   unsigned mag_img_filter;
+   float min_lod;
 };
 
 /**
@@ -1698,24 +1702,26 @@ crocus_create_sampler_state(struct pipe_context *ctx,
 
    bool either_nearest = state->min_img_filter == PIPE_TEX_FILTER_NEAREST ||
       state->mag_img_filter == PIPE_TEX_FILTER_NEAREST;
-   unsigned wrap_s = translate_wrap(state->wrap_s, either_nearest);
-   unsigned wrap_t = translate_wrap(state->wrap_t, either_nearest);
-   unsigned wrap_r = translate_wrap(state->wrap_r, either_nearest);
+   cso->wrap_s = translate_wrap(state->wrap_s, either_nearest);
+   cso->wrap_t = translate_wrap(state->wrap_t, either_nearest);
+   cso->wrap_r = translate_wrap(state->wrap_r, either_nearest);
+
+   cso->pstate = *state;
 
    memcpy(&cso->border_color, &state->border_color, sizeof(cso->border_color));
 
-   cso->needs_border_color = wrap_mode_needs_border_color(wrap_s) ||
-                             wrap_mode_needs_border_color(wrap_t) ||
-                             wrap_mode_needs_border_color(wrap_r);
+   cso->needs_border_color = wrap_mode_needs_border_color(cso->wrap_s) ||
+                             wrap_mode_needs_border_color(cso->wrap_t) ||
+                             wrap_mode_needs_border_color(cso->wrap_r);
 
    if (state->seamless_cube_map) {
       // TODO haswell workaround
-      wrap_s = TCM_CUBE;
-      wrap_t = TCM_CUBE;
-      wrap_r = TCM_CUBE;
+      cso->wrap_s = TCM_CUBE;
+      cso->wrap_t = TCM_CUBE;
+      cso->wrap_r = TCM_CUBE;
    }
-   float min_lod = state->min_lod;
-   unsigned mag_img_filter = state->mag_img_filter;
+   cso->min_lod = state->min_lod;
+   cso->mag_img_filter = state->mag_img_filter;
 
    if (state->min_img_filter != PIPE_TEX_FILTER_NEAREST &&
        state->mag_img_filter != PIPE_TEX_FILTER_NEAREST) {
@@ -1730,19 +1736,60 @@ crocus_create_sampler_state(struct pipe_context *ctx,
    // XXX: explain this code ported from ilo...I don't get it at all...
    if (state->min_mip_filter == PIPE_TEX_MIPFILTER_NONE &&
        state->min_lod > 0.0f) {
-      min_lod = 0.0f;
-      mag_img_filter = state->min_img_filter;
+      cso->min_lod = 0.0f;
+      cso->mag_img_filter = state->min_img_filter;
    }
-   _crocus_pack_state(&ice->batches[0], GENX(SAMPLER_STATE), cso->sampler_state, samp) {
-      samp.TCXAddressControlMode = wrap_s;
-      samp.TCYAddressControlMode = wrap_t;
-      samp.TCZAddressControlMode = wrap_r;
+
+   return cso;
+}
+
+/**
+ * The pipe->bind_sampler_states() driver hook.
+ */
+static void
+crocus_bind_sampler_states(struct pipe_context *ctx,
+                         enum pipe_shader_type p_stage,
+                         unsigned start, unsigned count,
+                         void **states)
+{
+   struct crocus_context *ice = (struct crocus_context *) ctx;
+   gl_shader_stage stage = stage_from_pipe(p_stage);
+   struct crocus_shader_state *shs = &ice->state.shaders[stage];
+
+   assert(start + count <= CROCUS_MAX_TEXTURE_SAMPLERS);
+
+   bool dirty = false;
+
+   for (int i = 0; i < count; i++) {
+      if (shs->samplers[start + i] != states[i]) {
+         shs->samplers[start + i] = states[i];
+         dirty = true;
+      }
+   }
+
+   if (dirty) {
+      ice->state.dirty |= CROCUS_DIRTY_WM;
+      ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_VS << stage;
+      ice->state.dirty |= ice->state.dirty_for_nos[CROCUS_NOS_TEXTURES];
+   }
+}
+
+static void
+crocus_upload_sampler_state(struct crocus_batch *batch,
+                            struct crocus_sampler_state *cso,
+                            void *map)
+{
+   struct pipe_sampler_state *state = &cso->pstate;
+   _crocus_pack_state(batch, GENX(SAMPLER_STATE), map, samp) {
+      samp.TCXAddressControlMode = cso->wrap_s;
+      samp.TCYAddressControlMode = cso->wrap_t;
+      samp.TCZAddressControlMode = cso->wrap_r;
       samp.CubeSurfaceControlMode = state->seamless_cube_map;
 #if GEN_GEN >= 6
       samp.NonnormalizedCoordinateEnable = !state->normalized_coords;
 #endif
       samp.MinModeFilter = state->min_img_filter;
-      samp.MagModeFilter = mag_img_filter;
+      samp.MagModeFilter = cso->mag_img_filter;
       samp.MipModeFilter = translate_mip_filter(state->min_mip_filter);
       samp.MaximumAnisotropy = RATIO21;
 
@@ -1780,43 +1827,11 @@ crocus_create_sampler_state(struct pipe_context *ctx,
       const float hw_max_lod = GEN_GEN >= 7 ? 14 : 13;
 
       samp.LODPreClampEnable = true;
-      samp.MinLOD = CLAMP(min_lod, 0, hw_max_lod);
+      samp.MinLOD = CLAMP(cso->min_lod, 0, hw_max_lod);
       samp.MaxLOD = CLAMP(state->max_lod, 0, hw_max_lod);
       samp.TextureLODBias = CLAMP(state->lod_bias, -16, 15);
 
       /* .BorderColorPointer is filled in by crocus_bind_sampler_states. */
-   }
-   return cso;
-}
-
-/**
- * The pipe->bind_sampler_states() driver hook.
- */
-static void
-crocus_bind_sampler_states(struct pipe_context *ctx,
-                         enum pipe_shader_type p_stage,
-                         unsigned start, unsigned count,
-                         void **states)
-{
-   struct crocus_context *ice = (struct crocus_context *) ctx;
-   gl_shader_stage stage = stage_from_pipe(p_stage);
-   struct crocus_shader_state *shs = &ice->state.shaders[stage];
-
-   assert(start + count <= CROCUS_MAX_TEXTURE_SAMPLERS);
-
-   bool dirty = false;
-
-   for (int i = 0; i < count; i++) {
-      if (shs->samplers[start + i] != states[i]) {
-         shs->samplers[start + i] = states[i];
-         dirty = true;
-      }
-   }
-
-   if (dirty) {
-      ice->state.dirty |= CROCUS_DIRTY_WM;
-      ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_VS << stage;
-      ice->state.dirty |= ice->state.dirty_for_nos[CROCUS_NOS_TEXTURES];
    }
 }
 
@@ -1851,14 +1866,7 @@ crocus_upload_sampler_states(struct crocus_context *ice,
    if (unlikely(!map))
       return;
 
-//   struct pipe_resource *res = shs->sampler_table.res;
-//   shs->sampler_table.offset +=
-//      crocus_bo_offset_from_base_address(crocus_resource_bo(res));
-
    crocus_record_state_size(batch->state_sizes, shs->sampler_table.offset, size);
-
-   /* Make sure all land in the same BO */
-   // TODO crocus_border_color_pool_reserve(ice, CROCUS_MAX_TEXTURE_SAMPLERS);
 
    ice->state.need_border_colors &= ~(1 << stage);
 
@@ -1869,7 +1877,7 @@ crocus_upload_sampler_states(struct crocus_context *ice,
       if (!state) {
          memset(map, 0, 4 * GENX(SAMPLER_STATE_length));
       } else if (!state->needs_border_color) {
-         memcpy(map, state->sampler_state, 4 * GENX(SAMPLER_STATE_length));
+         crocus_upload_sampler_state(batch, state, map);
       } else {
          ice->state.need_border_colors |= 1 << stage;
 
@@ -1901,19 +1909,6 @@ crocus_upload_sampler_states(struct crocus_context *ice,
                color = &tmp;
             }
          }
-
-         /* Stream out the border color and merge the pointer. */
-         /* TODO
-         uint32_t offset = crocus_upload_border_color(ice, color);
-
-         uint32_t dynamic[GENX(SAMPLER_STATE_length)];
-         crocus_pack_state(GENX(SAMPLER_STATE), dynamic, dyns) {
-            dyns.BorderColorPointer = offset;
-         }
-
-         for (uint32_t j = 0; j < GENX(SAMPLER_STATE_length); j++)
-            map[j] = state->sampler_state[j] | dynamic[j];
-         */
       }
 
       map += GENX(SAMPLER_STATE_length);
@@ -5348,11 +5343,6 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       }
 #endif
    }
-
-/* TODO
-   if (ice->state.need_border_colors)
-      crocus_use_pinned_bo(batch, ice->state.border_color_pool.bo, false);
-*/
 
    if (dirty & CROCUS_DIRTY_MULTISAMPLE) {
 #if GEN_GEN >= 6
