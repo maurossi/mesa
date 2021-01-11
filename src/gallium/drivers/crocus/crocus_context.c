@@ -325,3 +325,21 @@ crocus_create_context(struct pipe_screen *pscreen, void *priv, unsigned flags)
 
    return ctx;
 }
+
+bool
+crocus_sw_check_cond_render(struct crocus_context *ice)
+{
+   struct crocus_query *q = ice->condition.query;
+   union pipe_query_result result;
+
+   bool wait = ice->condition.mode == PIPE_RENDER_COND_WAIT ||
+      ice->condition.mode == PIPE_RENDER_COND_BY_REGION_WAIT;
+   if (!q)
+      return true;
+
+   bool ret = ice->ctx.get_query_result(&ice->ctx, (void *)q, wait, &result);
+   if (!ret)
+      return true;
+
+   return ice->condition.condition ? result.u64 == 0 : result.u64 != 0;
+}

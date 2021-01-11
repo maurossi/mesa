@@ -255,6 +255,10 @@ enum crocus_predicate_state {
     * MI_PREDICATE command so the predicate enable bit needs to be checked.
     */
    CROCUS_PREDICATE_STATE_USE_BIT,
+   /* In this case, either MI_PREDICATE doesn't exist or we lack the
+    * necessary kernel features to use it.  Stall for the query result.
+    */
+   CROCUS_PREDICATE_STATE_STALL_FOR_QUERY,
 };
 
 /** @} */
@@ -643,6 +647,7 @@ struct crocus_context {
    struct {
       struct crocus_query *query;
       bool condition;
+      enum pipe_render_cond_flag mode;
    } condition;
 
    struct gen_perf_context *perf_ctx;
@@ -726,6 +731,7 @@ struct crocus_context {
 
       /** Current conditional rendering mode */
       enum crocus_predicate_state predicate;
+      bool predicate_supported;
 
       /**
        * Query BO with a MI_PREDICATE_RESULT snapshot calculated on the
@@ -1006,8 +1012,11 @@ int crocus_get_driver_query_group_info(struct pipe_screen *pscreen,
 
 struct pipe_rasterizer_state *crocus_get_rast_state(struct crocus_context *ctx);
 
+bool crocus_sw_check_cond_render(struct crocus_context *ice);
 static inline bool crocus_check_conditional_render(struct crocus_context *ice)
 {
+   if (ice->state.predicate == CROCUS_PREDICATE_STATE_STALL_FOR_QUERY)
+      return crocus_sw_check_cond_render(ice);
    return ice->state.predicate != CROCUS_PREDICATE_STATE_DONT_RENDER;
 }
 

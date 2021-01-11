@@ -852,6 +852,7 @@ crocus_render_condition(struct pipe_context *ctx,
    ice->state.compute_predicate = NULL;
    ice->condition.query = q;
    ice->condition.condition = condition;
+   ice->condition.mode = mode;
 
    if (!q) {
       ice->state.predicate = CROCUS_PREDICATE_STATE_RENDER;
@@ -871,7 +872,7 @@ crocus_render_condition(struct pipe_context *ctx,
 #if GEN_GEN == 7
       set_predicate_for_result(ice, q, condition);
 #else
-      // XXX set predicate based on CPU value
+      ice->state.predicate = CROCUS_PREDICATE_STATE_STALL_FOR_QUERY;
 #endif
    }
 }
