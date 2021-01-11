@@ -444,7 +444,7 @@ crocus_get_shader_param(struct pipe_screen *pscreen,
       return 0;
    case PIPE_SHADER_CAP_MAX_TEXTURE_SAMPLERS:
    case PIPE_SHADER_CAP_MAX_SAMPLER_VIEWS:
-      return CROCUS_MAX_TEXTURE_SAMPLERS;
+      return devinfo->is_haswell ? CROCUS_MAX_TEXTURE_SAMPLERS : 16;
    case PIPE_SHADER_CAP_MAX_SHADER_IMAGES:
       return devinfo->gen >= 7 ? CROCUS_MAX_TEXTURE_SAMPLERS : 0;
    case PIPE_SHADER_CAP_MAX_SHADER_BUFFERS:
