@@ -2369,23 +2369,6 @@ crocus_create_uncompiled_shader(struct pipe_context *ctx,
 
    nir_sweep(nir);
 
-   if (nir->constant_data_size > 0) {
-      unsigned data_offset;
-      assert(0); //TODO
-#if 0
-      
-//      u_upload_data(ice->shaders.uploader, 0, nir->constant_data_size,
-//                    32, nir->constant_data, &data_offset, &ish->const_data);
-
-      struct pipe_shader_buffer psb = {
-         .buffer = ish->const_data,
-         .buffer_offset = data_offset,
-         .buffer_size = nir->constant_data_size,
-      };
-      crocus_upload_ubo_ssbo_surf_state(ice, &psb, &ish->const_data_state, false);
-#endif
-   }
-
    ish->program_id = get_new_program_id(screen);
    ish->nir = nir;
    if (so_info) {
