@@ -255,23 +255,19 @@ crocus_lower_storage_image_derefs(nir_shader *nir)
 static bool
 crocus_fix_edge_flags(nir_shader *nir)
 {
-   if (nir->info.stage != MESA_SHADER_VERTEX)
+   if (nir->info.stage != MESA_SHADER_VERTEX) {
+      nir_shader_preserve_all_metadata(nir);
       return false;
-
-   nir_variable *var = NULL;
-   nir_foreach_shader_out_variable(v, nir) {
-      if (v->data.location == VARYING_SLOT_EDGE) {
-         var = v;
-         break;
-      }
    }
 
-   if (!var)
+   nir_variable *var = nir_find_variable_with_location(nir, nir_var_shader_out,
+                                                       VARYING_SLOT_EDGE);
+   if (!var) {
+      nir_shader_preserve_all_metadata(nir);
       return false;
+   }
 
-   exec_node_remove(&var->node);
    var->data.mode = nir_var_shader_temp;
-   //TODOexec_list_push_tail(&nir->globals, &var->node);
    nir->info.outputs_written &= ~VARYING_BIT_EDGE;
    nir->info.inputs_read &= ~VERT_BIT_EDGEFLAG;
    nir_fixup_deref_modes(nir);
@@ -282,6 +278,8 @@ crocus_fix_edge_flags(nir_shader *nir)
                                         nir_metadata_dominance |
                                         nir_metadata_live_ssa_defs |
                                         nir_metadata_loop_analysis);
+      } else {
+         nir_metadata_preserve(f->impl, nir_metadata_all);
       }
    }
 
