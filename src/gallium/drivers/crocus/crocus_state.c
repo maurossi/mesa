@@ -5658,6 +5658,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          vs.MaximumNumberofThreads =
             CLAMP(batch->ice->urb.nr_vs_entries / 2, 1, batch->screen->devinfo.max_vs_threads) - 1;
          vs.StatisticsEnable = false;
+         vs.SamplerStatePointer = ro_bo(batch->state.bo, ice->state.shaders[MESA_SHADER_VERTEX].sampler_offset);
 #endif
 #if GEN_GEN == 5
          /* Force single program flow on Ironlake.  We cannot reliably get
