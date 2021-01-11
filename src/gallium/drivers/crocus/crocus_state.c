@@ -1673,7 +1673,6 @@ struct crocus_sampler_state {
    struct pipe_sampler_state pstate;
    union pipe_color_union border_color;
    bool needs_border_color;
-   bool clamp[3];
    unsigned wrap_s;
    unsigned wrap_t;
    unsigned wrap_r;
@@ -1723,16 +1722,6 @@ crocus_create_sampler_state(struct pipe_context *ctx,
    }
    cso->min_lod = state->min_lod;
    cso->mag_img_filter = state->mag_img_filter;
-
-   if (state->min_img_filter != PIPE_TEX_FILTER_NEAREST &&
-       state->mag_img_filter != PIPE_TEX_FILTER_NEAREST) {
-      if (state->wrap_s == PIPE_TEX_WRAP_CLAMP)
-         cso->clamp[0] = true;
-      else if (state->wrap_t == PIPE_TEX_WRAP_CLAMP)
-         cso->clamp[1] = true;
-      else if (state->wrap_r == PIPE_TEX_WRAP_CLAMP)
-         cso->clamp[2] = true;
-   }
 
    // XXX: explain this code ported from ilo...I don't get it at all...
    if (state->min_mip_filter == PIPE_TEX_MIPFILTER_NONE &&
