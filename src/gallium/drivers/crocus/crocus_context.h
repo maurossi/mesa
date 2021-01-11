@@ -717,6 +717,8 @@ struct crocus_context {
       bool vs_uses_draw_params;
       bool vs_uses_derived_draw_params;
       bool vs_needs_sgvs_element;
+      bool vs_uses_vertexid;
+      bool vs_uses_instanceid;
 
       /** Do vertex shader uses edge flag ? */
       bool vs_needs_edge_flag;

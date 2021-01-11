@@ -1187,7 +1187,9 @@ crocus_update_compiled_vs(struct crocus_context *ice)
 
       if (ice->state.vs_uses_draw_params != uses_draw_params ||
           ice->state.vs_uses_derived_draw_params != uses_derived_draw_params ||
-          ice->state.vs_needs_edge_flag != ish->needs_edge_flag) {
+          ice->state.vs_needs_edge_flag != ish->needs_edge_flag ||
+         ice->state.vs_uses_vertexid != vs_prog_data->uses_vertexid ||
+         ice->state.vs_uses_instanceid != vs_prog_data->uses_instanceid) {
          ice->state.dirty |= CROCUS_DIRTY_VERTEX_BUFFERS |
                              CROCUS_DIRTY_VERTEX_ELEMENTS;
       }
@@ -1195,6 +1197,8 @@ crocus_update_compiled_vs(struct crocus_context *ice)
       ice->state.vs_uses_derived_draw_params = uses_derived_draw_params;
       ice->state.vs_needs_sgvs_element = needs_sgvs_element;
       ice->state.vs_needs_edge_flag = ish->needs_edge_flag;
+      ice->state.vs_uses_vertexid = vs_prog_data->uses_vertexid;
+      ice->state.vs_uses_instanceid = vs_prog_data->uses_instanceid;
    }
 }
 

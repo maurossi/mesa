@@ -6269,8 +6269,8 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
                ve.SourceElementFormat = ISL_FORMAT_R32G32_UINT;
                ve.Component0Control = base_ctrl;
                ve.Component1Control = base_ctrl;
-               ve.Component2Control = VFCOMP_STORE_0;
-               ve.Component3Control = VFCOMP_STORE_0;
+               ve.Component2Control = ice->state.vs_uses_vertexid ? VFCOMP_STORE_VID : VFCOMP_STORE_0;
+               ve.Component3Control = ice->state.vs_uses_instanceid ? VFCOMP_STORE_IID : VFCOMP_STORE_0;
             }
             ve_pack_dest += GENX(VERTEX_ELEMENT_STATE_length);
          }
