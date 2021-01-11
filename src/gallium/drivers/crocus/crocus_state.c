@@ -5056,6 +5056,36 @@ set_depth_stencil_bits(struct crocus_context *ice, DEPTH_STENCIL_GENXML *ds)
 }
 
 static void
+emit_vertex_buffer_state(struct crocus_batch *batch,
+                         unsigned buffer_id,
+                         struct crocus_bo *bo,
+                         unsigned start_offset,
+                         unsigned end_offset,
+                         unsigned stride,
+                         unsigned step_rate,
+                         uint32_t **map)
+{
+   const unsigned vb_dwords = GENX(VERTEX_BUFFER_STATE_length);
+   _crocus_pack_state(batch, GENX(VERTEX_BUFFER_STATE), *map, vb) {
+      vb.BufferStartingAddress = ro_bo(bo, start_offset);
+      vb.VertexBufferIndex = buffer_id;
+      vb.BufferPitch = stride;
+#if GEN_GEN == 7
+      vb.AddressModifyEnable = true;
+#endif
+#if GEN_GEN >= 6
+      vb.MOCS = mocs(bo, &batch->screen->isl_dev);
+#endif
+      vb.BufferAccessType = step_rate ? INSTANCEDATA : VERTEXDATA;
+      vb.InstanceDataStepRate = step_rate;
+#if GEN_GEN >= 5
+      vb.EndAddress = ro_bo(bo, end_offset - 1);
+#endif
+   }
+   *map += vb_dwords;
+}
+
+static void
 crocus_upload_dirty_render_state(struct crocus_context *ice,
                                struct crocus_batch *batch,
                                const struct pipe_draw_info *draw)
@@ -6133,64 +6163,11 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    }
 
    if (dirty & CROCUS_DIRTY_VERTEX_BUFFERS) {
-      uint32_t count = util_bitcount(ice->state.bound_vertex_buffers);
+      const uint32_t user_count = util_bitcount(ice->state.bound_vertex_buffers);
+      const uint32_t count = user_count +
+         ice->state.vs_uses_draw_params + ice->state.vs_uses_derived_draw_params;
       uint32_t dynamic_bound = ice->state.bound_vertex_buffers;
 
-#if 0 //TODO 
-      if (ice->state.vs_uses_draw_params) {
-         assert(ice->draw.draw_params.res);
-
-         struct crocus_vertex_buffer_state *state =
-            &(ice->state.genx->vertex_buffers[count]);
-         pipe_resource_reference(&state->resource, ice->draw.draw_params.res);
-         struct crocus_resource *res = (void *) state->resource;
-
-         crocus_pack_state(GENX(VERTEX_BUFFER_STATE), state->state, vb) {
-            vb.VertexBufferIndex = count;
-            vb.BufferPitch = 0;
-            vb.BufferStartingAddress =
-               ro_bo(NULL, res->bo->gtt_offset +
-                           (int) ice->draw.draw_params.offset);
-            // XXX
-            vb.EndAddress = ro_bo(NULL, 0xffff);
-#if GEN_GEN >= 6
-            vb.MOCS = mocs(res->bo, &batch->screen->isl_dev);
-#endif
-#if GEN_GEN >= 7
-            vb.AddressModifyEnable = true;
-#endif
-         }
-         dynamic_bound |= 1ull << count;
-         count++;
-      }
-
-      if (ice->state.vs_uses_derived_draw_params) {
-         struct crocus_vertex_buffer_state *state =
-            &(ice->state.genx->vertex_buffers[count]);
-         pipe_resource_reference(&state->resource,
-                                 ice->draw.derived_draw_params.res);
-         struct crocus_resource *res = (void *) ice->draw.derived_draw_params.res;
-
-         crocus_pack_state(GENX(VERTEX_BUFFER_STATE), state->state, vb) {
-            vb.VertexBufferIndex = count;
-            vb.BufferPitch = 0;
-
-            vb.BufferStartingAddress =
-               ro_bo(NULL, res->bo->gtt_offset +
-                           (int) ice->draw.derived_draw_params.offset);
-            // XXX
-            vb.EndAddress = ro_bo(NULL, 0xffff);
-#if GEN_GEN >= 6
-            vb.MOCS = mocs(res->bo, &batch->screen->isl_dev);
-#endif
-#if GEN_GEN >= 7
-            vb.AddressModifyEnable = true;
-#endif
-         }
-         dynamic_bound |= 1ull << count;
-         count++;
-      }
-#endif
       if (count) {
          const unsigned vb_dwords = GENX(VERTEX_BUFFER_STATE_length);
 
@@ -6202,32 +6179,42 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          map += 1;
 
          uint32_t bound = dynamic_bound;
+         int i;
          while (bound) {
-            const int i = u_bit_scan(&bound);
+            i = u_bit_scan(&bound);
             struct pipe_vertex_buffer *buf = &ice->state.vertex_buffers[i];
             struct crocus_resource *res = (struct crocus_resource *)buf->buffer.resource;
             uint32_t step_rate = 0;
+            const unsigned padding =
+               (!(GEN_VERSIONx10 == 75) && !batch->screen->devinfo.is_baytrail) * 2;
+            const unsigned end = res->base.width0 + padding;
             for (unsigned ve = 0; ve < ice->state.cso_vertex_elements->count; ve++)
                if (ice->state.cso_vertex_elements->vbo_index[ve] == i)
                   step_rate = ice->state.cso_vertex_elements->instance_divisor[ve];
 
-            _crocus_pack_state(batch, GENX(VERTEX_BUFFER_STATE), map, vb) {
-               vb.BufferStartingAddress = ro_bo(res->bo, buf->buffer_offset);
-               vb.VertexBufferIndex = i;
-               vb.BufferPitch = buf->stride;
-#if GEN_GEN == 7
-               vb.AddressModifyEnable = true;
-#endif
-#if GEN_GEN >= 6
-               vb.MOCS = mocs(res->bo, &batch->screen->isl_dev);
-#endif
-               vb.BufferAccessType = step_rate ? INSTANCEDATA : VERTEXDATA;
-               vb.InstanceDataStepRate = step_rate;
-#if GEN_GEN >= 5
-               vb.EndAddress = ro_bo(res->bo, res->base.width0 - 1);
-#endif
-            }
-            map += vb_dwords;
+            emit_vertex_buffer_state(batch, i, res->bo,
+                                     buf->buffer_offset,
+                                     end,
+                                     buf->stride,
+                                     step_rate,
+                                     &map);
+         }
+         i = user_count;
+         if (ice->state.vs_uses_draw_params) {
+            struct crocus_resource *res = (struct crocus_resource *)ice->draw.draw_params.res;
+            emit_vertex_buffer_state(batch, i++,
+                                     res->bo,
+                                     ice->draw.draw_params.offset,
+                                     ice->draw.draw_params.res->width0,
+                                     0, 0, &map);
+         }
+         if (ice->state.vs_uses_derived_draw_params) {
+            struct crocus_resource *res = (struct crocus_resource *)ice->draw.derived_draw_params.res;
+            emit_vertex_buffer_state(batch, i++,
+                                     res->bo,
+                                     ice->draw.derived_draw_params.offset,
+                                     ice->draw.derived_draw_params.res->width0,
+                                     0, 0, &map);
          }
       }
    }
@@ -6258,7 +6245,6 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
             &dynamic_ves[1 + (cso->count - ice->state.vs_needs_edge_flag) *
                          GENX(VERTEX_ELEMENT_STATE_length)];
 
-         // XXX svgs shouldn't be a thing for pre-gen8?
          if (ice->state.vs_needs_sgvs_element) {
             uint32_t base_ctrl = ice->state.vs_uses_draw_params ?
                                  VFCOMP_STORE_SRC : VFCOMP_STORE_0;
@@ -6271,6 +6257,9 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
                ve.Component1Control = base_ctrl;
                ve.Component2Control = ice->state.vs_uses_vertexid ? VFCOMP_STORE_VID : VFCOMP_STORE_0;
                ve.Component3Control = ice->state.vs_uses_instanceid ? VFCOMP_STORE_IID : VFCOMP_STORE_0;
+#if GEN_GEN < 5
+               ve.DestinationElementOffset = cso->count * 4;
+#endif
             }
             ve_pack_dest += GENX(VERTEX_ELEMENT_STATE_length);
          }
@@ -6285,6 +6274,9 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
                ve.Component1Control = VFCOMP_STORE_SRC;
                ve.Component2Control = VFCOMP_STORE_0;
                ve.Component3Control = VFCOMP_STORE_0;
+#if GEN_GEN < 5
+               ve.DestinationElementOffset = (cso->count + ice->state.vs_needs_sgvs_element) * 4;
+#endif
             }
             ve_pack_dest += GENX(VERTEX_ELEMENT_STATE_length);
          }
