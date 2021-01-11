@@ -1777,6 +1777,7 @@ crocus_bind_sampler_states(struct pipe_context *ctx,
 static void
 crocus_upload_sampler_state(struct crocus_batch *batch,
                             struct crocus_sampler_state *cso,
+                            uint32_t border_color_offset,
                             void *map)
 {
    struct pipe_sampler_state *state = &cso->pstate;
@@ -1831,7 +1832,12 @@ crocus_upload_sampler_state(struct crocus_batch *batch,
       samp.MaxLOD = CLAMP(state->max_lod, 0, hw_max_lod);
       samp.TextureLODBias = CLAMP(state->lod_bias, -16, 15);
 
-      /* .BorderColorPointer is filled in by crocus_bind_sampler_states. */
+#if GEN_GEN < 6
+      samp.BorderColorPointer =
+         ro_bo(batch->state.bo, border_color_offset);
+#else
+      samp.BorderColorPointer = border_color_offset;
+#endif
    }
 }
 
@@ -1876,39 +1882,41 @@ crocus_upload_sampler_states(struct crocus_context *ice,
 
       if (!state) {
          memset(map, 0, 4 * GENX(SAMPLER_STATE_length));
-      } else if (!state->needs_border_color) {
-         crocus_upload_sampler_state(batch, state, map);
       } else {
-         ice->state.need_border_colors |= 1 << stage;
+         unsigned border_color_offset = 0;
+         if (state->needs_border_color) {
+            ice->state.need_border_colors |= 1 << stage;
 
-         /* We may need to swizzle the border color for format faking.
-          * A/LA formats are faked as R/RG with 000R or R00G swizzles.
-          * This means we need to move the border color's A channel into
-          * the R or G channels so that those read swizzles will move it
-          * back into A.
-          */
-         union pipe_color_union *color = &state->border_color;
-         union pipe_color_union tmp;
-         if (tex) {
-            enum pipe_format internal_format = tex->res->internal_format;
+            /* We may need to swizzle the border color for format faking.
+             * A/LA formats are faked as R/RG with 000R or R00G swizzles.
+             * This means we need to move the border color's A channel into
+             * the R or G channels so that those read swizzles will move it
+             * back into A.
+             */
+            union pipe_color_union *color = &state->border_color;
+            union pipe_color_union tmp;
+            if (tex) {
+               enum pipe_format internal_format = tex->res->internal_format;
 
-            if (util_format_is_alpha(internal_format)) {
-               unsigned char swz[4] = {
-                  PIPE_SWIZZLE_W, PIPE_SWIZZLE_0,
-                  PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
-               };
-               util_format_apply_color_swizzle(&tmp, color, swz, true);
-               color = &tmp;
-            } else if (util_format_is_luminance_alpha(internal_format) &&
-                       internal_format != PIPE_FORMAT_L8A8_SRGB) {
-               unsigned char swz[4] = {
-                  PIPE_SWIZZLE_X, PIPE_SWIZZLE_W,
-                  PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
-               };
-               util_format_apply_color_swizzle(&tmp, color, swz, true);
-               color = &tmp;
+               if (util_format_is_alpha(internal_format)) {
+                  unsigned char swz[4] = {
+                     PIPE_SWIZZLE_W, PIPE_SWIZZLE_0,
+                     PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
+                  };
+                  util_format_apply_color_swizzle(&tmp, color, swz, true);
+                  color = &tmp;
+               } else if (util_format_is_luminance_alpha(internal_format) &&
+                          internal_format != PIPE_FORMAT_L8A8_SRGB) {
+                  unsigned char swz[4] = {
+                     PIPE_SWIZZLE_X, PIPE_SWIZZLE_W,
+                     PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
+                  };
+                  util_format_apply_color_swizzle(&tmp, color, swz, true);
+                  color = &tmp;
+               }
             }
          }
+         crocus_upload_sampler_state(batch, state, border_color_offset, map);
       }
 
       map += GENX(SAMPLER_STATE_length);
