@@ -755,7 +755,7 @@ crocus_screen_create(int fd, const struct pipe_screen_config *config)
    screen->compiler->shader_debug_log = crocus_shader_debug_log;
    screen->compiler->shader_perf_log = crocus_shader_perf_log;
    screen->compiler->supports_pull_constants = false;
-   screen->compiler->supports_shader_constants = true;
+   screen->compiler->supports_shader_constants = false;
    screen->compiler->compact_params = false;
 
    if (screen->devinfo.gen == 7) {
