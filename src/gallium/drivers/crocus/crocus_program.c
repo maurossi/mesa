@@ -418,6 +418,9 @@ crocus_setup_uniforms(const struct brw_compiler *compiler,
             load_ubo->num_components = intrin->num_components;
             load_ubo->src[0] = nir_src_for_ssa(temp_const_ubo_name);
             load_ubo->src[1] = nir_src_for_ssa(offset);
+            nir_intrinsic_set_align(load_ubo, 4, 0);
+            nir_intrinsic_set_range_base(load_ubo, 0);
+            nir_intrinsic_set_range(load_ubo, ~0);
             nir_ssa_dest_init(&load_ubo->instr, &load_ubo->dest,
                               intrin->dest.ssa.num_components,
                               intrin->dest.ssa.bit_size,
@@ -510,6 +513,9 @@ crocus_setup_uniforms(const struct brw_compiler *compiler,
          load->num_components = comps;
          load->src[0] = nir_src_for_ssa(temp_ubo_name);
          load->src[1] = nir_src_for_ssa(offset);
+         nir_intrinsic_set_align(load, 4, 0);
+         nir_intrinsic_set_range_base(load, 0);
+         nir_intrinsic_set_range(load, ~0);
          nir_ssa_dest_init(&load->instr, &load->dest, comps, 32, NULL);
          nir_builder_instr_insert(&b, &load->instr);
          nir_ssa_def_rewrite_uses(&intrin->dest.ssa,
