@@ -2065,6 +2065,7 @@ static void
 upload_surface_states(struct u_upload_mgr *mgr,
                       struct crocus_surface_state *surf_state)
 {
+#if GEN_GEN >= 7
    const unsigned surf_size = 4 * GENX(RENDER_SURFACE_STATE_length);
    const unsigned bytes = surf_state->num_states * surf_size;
 
@@ -2076,6 +2077,7 @@ upload_surface_states(struct u_upload_mgr *mgr,
 
    if (map)
       memcpy(map, surf_state->cpu, bytes);
+#endif
 }
 
 /**
@@ -2250,7 +2252,7 @@ crocus_create_sampler_view(struct pipe_context *ctx,
 
    alloc_surface_states(&isv->surface_state, isv->res->aux.sampler_usages);
 
-   isv->surface_state.bo_address = isv->res->bo->gtt_offset;
+   //   isv->surface_state.bo_address = isv->res->bo->gtt_offset;
 
    isl_surf_usage_flags_t usage = ISL_SURF_USAGE_TEXTURE_BIT;
 
