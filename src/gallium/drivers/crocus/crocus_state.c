@@ -4591,7 +4591,7 @@ emit_surface(struct crocus_context *ice,
              unsigned idx,
              bool writeable,
              enum isl_aux_usage aux_usage,
-             struct pipe_rt_blend_state *gen4_rt_state)
+             const struct pipe_rt_blend_state *gen4_rt_state)
 {
    struct crocus_surface *surf = (void *) p_surf;
    UNUSED struct isl_device *isl_dev = &batch->screen->isl_dev;
