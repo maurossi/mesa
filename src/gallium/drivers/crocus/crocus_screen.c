@@ -162,7 +162,6 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_TGSI_ARRAY_COMPONENTS:
    case PIPE_CAP_GLSL_TESS_LEVELS_AS_INPUTS:
    case PIPE_CAP_NIR_COMPACT_ARRAYS:
-   case PIPE_CAP_DRAW_PARAMETERS:
    case PIPE_CAP_TGSI_FS_POSITION_IS_SYSVAL:
    case PIPE_CAP_TGSI_FS_FACE_IS_INTEGER_SYSVAL:
    case PIPE_CAP_INVALIDATE_BUFFER:
@@ -204,6 +203,7 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_TEXTURE_SHADOW_LOD:
    case PIPE_CAP_LOAD_CONSTBUF:
    case PIPE_CAP_PACKED_UNIFORMS:
+   case PIPE_CAP_DRAW_PARAMETERS:
       return devinfo->gen >= 6;
    case PIPE_CAP_FBFETCH:
       return BRW_MAX_DRAW_BUFFERS;
