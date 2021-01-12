@@ -2065,7 +2065,7 @@ static void
 upload_surface_states(struct u_upload_mgr *mgr,
                       struct crocus_surface_state *surf_state)
 {
-#if GEN_GEN >= 7
+#if 0
    const unsigned surf_size = 4 * GENX(RENDER_SURFACE_STATE_length);
    const unsigned bytes = surf_state->num_states * surf_size;
 
@@ -4597,12 +4597,15 @@ emit_surface(struct crocus_context *ice,
    UNUSED struct isl_device *isl_dev = &batch->screen->isl_dev;
    struct crocus_resource *res = (void *) p_surf->texture;
    uint32_t offset = 0;
+
+#if GEN_GEN <= 5
    uint32_t write_disables = 0;
 
    write_disables |= (gen4_rt_state->colormask & PIPE_MASK_A) ? 0x0 : 0x8;
    write_disables |= (gen4_rt_state->colormask & PIPE_MASK_R) ? 0x0 : 0x4;
    write_disables |= (gen4_rt_state->colormask & PIPE_MASK_G) ? 0x0 : 0x2;
    write_disables |= (gen4_rt_state->colormask & PIPE_MASK_B) ? 0x0 : 0x1;
+#endif
    struct isl_view *view = &surf->view;
    union isl_color_value clear_color = { .u32 = { 0, 0, 0, 0 } };
    uint32_t *surf_state = stream_state(batch, isl_dev->ss.size, isl_dev->ss.align, &offset);
