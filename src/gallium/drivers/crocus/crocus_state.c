@@ -320,22 +320,14 @@ translate_wrap(unsigned pipe_wrap, bool either_nearest)
    return map[pipe_wrap];
 }
 
-// TODO: these should probably allocate within the state bo
-/**
- * Allocate space for some indirect state.
- *
- * Return a pointer to the map (to fill it out) and a state ref (for
- * referring to the state in GPU commands).
- */
 static void *
 upload_state(struct u_upload_mgr *uploader,
              struct crocus_state_ref *ref,
              unsigned size,
              unsigned alignment)
 {
-   void *p = NULL;
-   u_upload_alloc(uploader, 0, size, alignment, &ref->offset, &ref->res, &p);
-   return p;
+  //   assert(0);
+  return NULL;
 }
 
 /**
@@ -2113,7 +2105,7 @@ update_surface_state_addrs(struct u_upload_mgr *mgr,
    }
 
    /* Next, upload the updated copies to a GPU buffer. */
-   upload_surface_states(mgr, surf_state);
+   //   upload_surface_states(mgr, surf_state);
 
    surf_state->bo_address = bo->gtt_offset;
 

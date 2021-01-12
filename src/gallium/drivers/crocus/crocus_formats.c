@@ -345,6 +345,18 @@ static enum isl_format get_gen4_texture_format(enum pipe_format pformat, enum is
       return ISL_FORMAT_L16_UNORM;
    case PIPE_FORMAT_L16A16_UNORM:
       return ISL_FORMAT_L16A16_UNORM;
+   case PIPE_FORMAT_A16_FLOAT:
+      return ISL_FORMAT_A16_FLOAT;
+   case PIPE_FORMAT_L16_FLOAT:
+      return ISL_FORMAT_L16_FLOAT;
+   case PIPE_FORMAT_L16A16_FLOAT:
+      return ISL_FORMAT_L16A16_FLOAT;
+   case PIPE_FORMAT_A32_FLOAT:
+      return ISL_FORMAT_A32_FLOAT;
+   case PIPE_FORMAT_L32_FLOAT:
+      return ISL_FORMAT_L32_FLOAT;
+   case PIPE_FORMAT_L32A32_FLOAT:
+      return ISL_FORMAT_L32A32_FLOAT;
    default:
       return def_format;
    }
