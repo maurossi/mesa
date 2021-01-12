@@ -211,20 +211,6 @@ crocus_predraw_resolve_framebuffer(struct crocus_context *ice,
       }
    }
 
-   if (devinfo->gen == 8 && nir->info.outputs_read != 0) {
-      for (unsigned i = 0; i < cso_fb->nr_cbufs; i++) {
-         if (cso_fb->cbufs[i]) {
-            struct crocus_surface *surf = (void *) cso_fb->cbufs[i];
-            struct crocus_resource *res = (void *) cso_fb->cbufs[i]->texture;
-
-            crocus_resource_prepare_texture(ice, batch, res, surf->view.format,
-                                          surf->view.base_level, 1,
-                                          surf->view.base_array_layer,
-                                          surf->view.array_len);
-         }
-      }
-   }
-
    if (ice->state.dirty & (CROCUS_DIRTY_BINDINGS_FS | CROCUS_DIRTY_BLEND_STATE)) {
       for (unsigned i = 0; i < cso_fb->nr_cbufs; i++) {
          struct crocus_surface *surf = (void *) cso_fb->cbufs[i];
@@ -558,8 +544,6 @@ sample_with_depth_aux(const struct gen_device_info *devinfo,
 {
    switch (res->aux.usage) {
    case ISL_AUX_USAGE_HIZ:
-      if (devinfo->has_sample_with_hiz)
-         break;
       return false;
    case ISL_AUX_USAGE_HIZ_CCS:
       return false;
@@ -1431,11 +1415,6 @@ crocus_resource_render_aux_usage(struct crocus_context *ice,
        * formats.  However, there are issues with blending where it doesn't
        * properly apply the sRGB curve to the clear color when blending.
        */
-      if (devinfo->gen >= 9 && blend_enabled &&
-          isl_format_is_srgb(render_format) &&
-          !isl_color_value_is_zero_one(res->aux.clear_color, render_format))
-         return ISL_AUX_USAGE_NONE;
-
       if (res->aux.usage == ISL_AUX_USAGE_CCS_E &&
           format_ccs_e_compat_with_resource(devinfo, res, render_format))
          return ISL_AUX_USAGE_CCS_E;
