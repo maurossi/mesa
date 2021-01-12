@@ -1842,16 +1842,16 @@ crocus_upload_border_color(struct crocus_batch *batch,
 
       if (util_format_is_alpha(internal_format)) {
          unsigned char swz[4] = {
-            PIPE_SWIZZLE_W, PIPE_SWIZZLE_0,
-            PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
+            PIPE_SWIZZLE_0, PIPE_SWIZZLE_0,
+            PIPE_SWIZZLE_0, PIPE_SWIZZLE_W,
          };
          util_format_apply_color_swizzle(&tmp, color, swz, true);
          color = &tmp;
       } else if (util_format_is_luminance_alpha(internal_format) &&
                  internal_format != PIPE_FORMAT_L8A8_SRGB) {
          unsigned char swz[4] = {
-            PIPE_SWIZZLE_X, PIPE_SWIZZLE_W,
-            PIPE_SWIZZLE_0, PIPE_SWIZZLE_0
+            PIPE_SWIZZLE_X, PIPE_SWIZZLE_X,
+            PIPE_SWIZZLE_X, PIPE_SWIZZLE_W
          };
          util_format_apply_color_swizzle(&tmp, color, swz, true);
          color = &tmp;
