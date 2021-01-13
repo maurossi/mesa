@@ -68,12 +68,14 @@ nouveau_fence_emit(struct nouveau_fence *fence)
 
    ++fence->ref;
 
+   mtx_lock(&screen->fence.list_lock);
    if (screen->fence.tail)
       screen->fence.tail->next = fence;
    else
       screen->fence.head = fence;
 
    screen->fence.tail = fence;
+   mtx_unlock(&screen->fence.list_lock);
 
    screen->fence.emit(&screen->base, &fence->sequence);
 
@@ -81,8 +83,8 @@ nouveau_fence_emit(struct nouveau_fence *fence)
    fence->state = NOUVEAU_FENCE_STATE_EMITTED;
 }
 
-void
-nouveau_fence_del(struct nouveau_fence *fence)
+static void
+nouveau_fence_del_unlocked(struct nouveau_fence *fence)
 {
    struct nouveau_fence *it;
    struct nouveau_screen *screen = fence->screen;
@@ -109,6 +111,29 @@ nouveau_fence_del(struct nouveau_fence *fence)
    FREE(fence);
 }
 
+static inline void
+nouveau_fence_ref_unlocked(struct nouveau_fence *fence, struct nouveau_fence **ref)
+{
+   if (fence)
+      ++fence->ref;
+
+   if (*ref) {
+      if (--(*ref)->ref == 0)
+         nouveau_fence_del_unlocked(*ref);
+   }
+
+   *ref = fence;
+}
+
+void
+nouveau_fence_del(struct nouveau_fence *fence)
+{
+   struct nouveau_screen *screen = fence->screen;
+   mtx_lock(&screen->fence.list_lock);
+   nouveau_fence_del_unlocked(fence);
+   mtx_unlock(&screen->fence.list_lock);
+}
+
 void
 nouveau_fence_cleanup(struct nouveau_screen *screen)
 {
@@ -132,12 +157,15 @@ nouveau_fence_update(struct nouveau_screen *screen, bool flushed)
 {
    struct nouveau_fence *fence;
    struct nouveau_fence *next = NULL;
+
+   assert(mtx_trylock(&pushbuf_data(screen->pushbuf)->push_lock) == thrd_busy);
    u32 sequence = screen->fence.update(&screen->base);
 
    if (screen->fence.sequence_ack == sequence)
       return;
    screen->fence.sequence_ack = sequence;
 
+   mtx_lock(&screen->fence.list_lock);
    for (fence = screen->fence.head; fence; fence = next) {
       next = fence->next;
       sequence = fence->sequence;
@@ -145,7 +173,7 @@ nouveau_fence_update(struct nouveau_screen *screen, bool flushed)
       fence->state = NOUVEAU_FENCE_STATE_SIGNALLED;
 
       nouveau_fence_trigger_work(fence);
-      nouveau_fence_ref(NULL, &fence);
+      nouveau_fence_ref_unlocked(NULL, &fence);
 
       if (sequence == screen->fence.sequence_ack)
          break;
@@ -153,6 +181,7 @@ nouveau_fence_update(struct nouveau_screen *screen, bool flushed)
    screen->fence.head = next;
    if (!next)
       screen->fence.tail = NULL;
+   mtx_unlock(&screen->fence.list_lock);
 
    if (flushed) {
       for (fence = next; fence; fence = fence->next)
@@ -253,6 +282,7 @@ nouveau_fence_wait(struct nouveau_fence *fence, struct pipe_debug_callback *debu
 void
 nouveau_fence_next(struct nouveau_screen *screen)
 {
+   assert(mtx_trylock(&pushbuf_data(screen->pushbuf)->push_lock) == thrd_busy);
    if (screen->fence.current->state < NOUVEAU_FENCE_STATE_EMITTING) {
       if (screen->fence.current->ref > 1)
          nouveau_fence_emit(screen->fence.current);
