@@ -316,6 +316,8 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    pscreen->fence_reference = nouveau_screen_fence_ref;
    pscreen->fence_finish = nouveau_screen_fence_finish;
 
+   mtx_init(&screen->fence.list_lock, mtx_plain);
+
    nouveau_disk_cache_create(screen);
 
    screen->transfer_pushbuf_threshold = 192;
@@ -369,6 +371,7 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    close(fd);
 
    disk_cache_destroy(screen->disk_shader_cache);
+   mtx_destroy(&screen->fence.list_lock);
 }
 
 static void
