@@ -849,6 +849,7 @@ nve4_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
    struct nouveau_bo *desc_bo;
    int ret;
 
+   PUSH_ACQ(push);
    desc = nve4_compute_alloc_launch_desc(&nvc0->base, &desc_bo, &desc_gpuaddr);
    if (!desc) {
       ret = -1;
@@ -940,6 +941,7 @@ out:
    nouveau_scratch_done(&nvc0->base);
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_DESC);
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_BINDLESS);
+   PUSH_DONE(push);
 }
 
 

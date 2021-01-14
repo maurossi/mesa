@@ -245,6 +245,7 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
       nv50_m2mf_rect_setup(&srect, src, src_level,
                            src_box->x, src_box->y, src_box->z);
 
+      PUSH_ACQ(nvc0->screen->base.pushbuf);
       for (i = 0; i < src_box->depth; ++i) {
          nvc0->m2mf_copy_rect(nvc0, &drect, &srect, nx, ny);
 
@@ -258,6 +259,7 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
          else
             srect.base += src_mt->layer_stride;
       }
+      PUSH_REL(nvc0->screen->base.pushbuf);
       return;
    }
 
@@ -266,8 +268,7 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
 
    BCTX_REFN(nvc0->bufctx, 2D, nv04_resource(src), RD);
    BCTX_REFN(nvc0->bufctx, 2D, nv04_resource(dst), WR);
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
-   nouveau_pushbuf_validate(nvc0->base.pushbuf);
+   PUSH_BUFCTX(nvc0->base.pushbuf, nvc0->bufctx);
 
    for (; dst_layer < dstz + src_box->depth; ++dst_layer, ++src_layer) {
       ret = nvc0_2d_texture_do_copy(nvc0->base.pushbuf,
@@ -298,8 +299,9 @@ nvc0_clear_render_target(struct pipe_context *pipe,
 
    assert(dst->texture->target != PIPE_BUFFER);
 
+   PUSH_ACQ(push);
    if (!PUSH_SPACE(push, 32 + sf->depth))
-      return;
+      goto out;
 
    PUSH_REFN (push, res->bo, res->domain | NOUVEAU_BO_WR);
 
@@ -364,6 +366,9 @@ nvc0_clear_render_target(struct pipe_context *pipe,
       IMMED_NVC0(push, NVC0_3D(COND_MODE), nvc0->cond_condmode);
 
    nvc0->dirty_3d |= NVC0_NEW_3D_FRAMEBUFFER;
+
+out:
+   PUSH_REL(push);
 }
 
 static void
@@ -378,8 +383,8 @@ nvc0_clear_buffer_push_nvc0(struct pipe_context *pipe,
    unsigned i;
 
    nouveau_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nvc0->bufctx);
-   nouveau_pushbuf_validate(push);
+   PUSH_BUFCTX(push, nvc0->bufctx);
+   PUSH_VALIDATE(push);
 
    unsigned count = (size + 3) / 4;
    unsigned data_words = data_size / 4;
@@ -427,8 +432,8 @@ nvc0_clear_buffer_push_nve4(struct pipe_context *pipe,
    unsigned i;
 
    nouveau_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nvc0->bufctx);
-   nouveau_pushbuf_validate(push);
+   PUSH_BUFCTX(push, nvc0->bufctx);
+   PUSH_VALIDATE(push);
 
    unsigned count = (size + 3) / 4;
    unsigned data_words = data_size / 4;
@@ -546,9 +551,10 @@ nvc0_clear_buffer(struct pipe_context *pipe,
 
    assert(size % data_size == 0);
 
+   PUSH_ACQ(push);
    if (data_size == 12) {
       nvc0_clear_buffer_push(pipe, res, offset, size, data, data_size);
-      return;
+      goto out;
    }
 
    if (offset & 0xff) {
@@ -558,7 +564,7 @@ nvc0_clear_buffer(struct pipe_context *pipe,
       offset += fixup_size;
       size -= fixup_size;
       if (!size)
-         return;
+         goto out;
    }
 
    elements = size / data_size;
@@ -569,7 +575,7 @@ nvc0_clear_buffer(struct pipe_context *pipe,
    assert(width > 0);
 
    if (!PUSH_SPACE(push, 40))
-      return;
+         goto out;
 
    PUSH_REFN (push, buf->bo, buf->domain | NOUVEAU_BO_WR);
 
@@ -614,6 +620,8 @@ nvc0_clear_buffer(struct pipe_context *pipe,
    }
 
    nvc0->dirty_3d |= NVC0_NEW_3D_FRAMEBUFFER;
+out:
+   PUSH_REL(push);
 }
 
 static void
@@ -700,9 +708,13 @@ nvc0_clear(struct pipe_context *pipe, unsigned buffers,
    unsigned i, j, k;
    uint32_t mode = 0;
 
+   PUSH_ACQ(push);
+
    /* don't need NEW_BLEND, COLOR_MASK doesn't affect CLEAR_BUFFERS */
-   if (!nvc0_state_validate_3d(nvc0, NVC0_NEW_3D_FRAMEBUFFER))
+   if (!nvc0_state_validate_3d(nvc0, NVC0_NEW_3D_FRAMEBUFFER)) {
+      PUSH_DONE(push);
       return;
+   }
 
    if (scissor_state) {
       uint32_t minx = scissor_state->minx;
@@ -781,6 +793,8 @@ nvc0_clear(struct pipe_context *pipe, unsigned buffers,
       PUSH_DATA (push, fb->width << 16);
       PUSH_DATA (push, fb->height << 16);
    }
+
+   PUSH_DONE(push);
 }
 
 static void
@@ -1327,7 +1341,7 @@ nvc0_blit_3d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
                 NOUVEAU_BO_GART | NOUVEAU_BO_RD, vtxbuf_bo);
    BCTX_REFN_bo(nvc0->bufctx_3d, 3D_TEXT,
                 NV_VRAM_DOMAIN(&screen->base) | NOUVEAU_BO_RD, screen->text);
-   nouveau_pushbuf_validate(push);
+   PUSH_VALIDATE(push);
 
    BEGIN_NVC0(push, NVC0_3D(VERTEX_ARRAY_FETCH(0)), 4);
    PUSH_DATA (push, NVC0_3D_VERTEX_ARRAY_FETCH_ENABLE | stride <<
@@ -1548,8 +1562,8 @@ nvc0_blit_eng2d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
 
    BCTX_REFN(nvc0->bufctx, 2D, &dst->base, WR);
    BCTX_REFN(nvc0->bufctx, 2D, &src->base, RD);
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
-   if (nouveau_pushbuf_validate(nvc0->base.pushbuf))
+   PUSH_BUFCTX(nvc0->base.pushbuf, nvc0->bufctx);
+   if (PUSH_VALIDATE(nvc0->base.pushbuf))
       return;
 
    for (i = 0; i < info->dst.box.depth; ++i) {
@@ -1684,6 +1698,7 @@ nvc0_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
    if (info->num_window_rectangles > 0 || info->window_rectangle_include)
       eng3d = true;
 
+   PUSH_ACQ(push);
    if (nvc0->screen->num_occlusion_queries_active)
       IMMED_NVC0(push, NVC0_3D(SAMPLECNT_ENABLE), 0);
 
@@ -1694,6 +1709,7 @@ nvc0_blit(struct pipe_context *pipe, const struct pipe_blit_info *info)
 
    if (nvc0->screen->num_occlusion_queries_active)
       IMMED_NVC0(push, NVC0_3D(SAMPLECNT_ENABLE), 1);
+   PUSH_REL(push);
 
    NOUVEAU_DRV_STAT(&nvc0->screen->base, tex_blit_count, 1);
 }
