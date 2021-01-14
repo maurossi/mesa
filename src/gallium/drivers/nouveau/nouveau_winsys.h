@@ -66,6 +66,11 @@ PUSH_KICK(struct nouveau_pushbuf *push)
    nouveau_pushbuf_kick(push, push->channel);
 }
 
+static inline struct nouveau_bufctx *
+PUSH_BUFCTX(struct nouveau_pushbuf *push, struct nouveau_bufctx *ctx)
+{
+   return nouveau_pushbuf_bufctx(push, ctx);
+}
 
 #define NOUVEAU_RESOURCE_FLAG_LINEAR   (PIPE_RESOURCE_FLAG_DRV_PRIV << 0)
 #define NOUVEAU_RESOURCE_FLAG_DRV_PRIV (PIPE_RESOURCE_FLAG_DRV_PRIV << 1)

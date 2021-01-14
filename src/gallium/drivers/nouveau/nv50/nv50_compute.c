@@ -213,7 +213,7 @@ nv50_compute_upload_input(struct nv50_context *nv50, const uint32_t *input)
       memcpy(bo->map + offset, input, size);
 
       nouveau_bufctx_refn(nv50->bufctx, 0, bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
-      nouveau_pushbuf_bufctx(push, nv50->bufctx);
+      PUSH_BUFCTX(push, nv50->bufctx);
       nouveau_pushbuf_validate(push);
 
       BEGIN_NV04(push, NV50_CP(USER_PARAM(0)), size / 4);

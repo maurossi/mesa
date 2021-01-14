@@ -256,7 +256,7 @@ nv50_resource_copy_region(struct pipe_context *pipe,
 
    BCTX_REFN(nv50->bufctx, 2D, nv04_resource(src), RD);
    BCTX_REFN(nv50->bufctx, 2D, nv04_resource(dst), WR);
-   nouveau_pushbuf_bufctx(nv50->base.pushbuf, nv50->bufctx);
+   PUSH_BUFCTX(nv50->base.pushbuf, nv50->bufctx);
    nouveau_pushbuf_validate(nv50->base.pushbuf);
 
    for (; dst_layer < dstz + src_box->depth; ++dst_layer, ++src_layer) {
@@ -632,7 +632,7 @@ nv50_clear_buffer_push(struct pipe_context *pipe,
    unsigned data_words = data_size / 4;
 
    nouveau_bufctx_refn(nv50->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nv50->bufctx);
+   PUSH_BUFCTX(push, nv50->bufctx);
    nouveau_pushbuf_validate(push);
 
    offset &= ~0xff;
@@ -1615,7 +1615,7 @@ nv50_blit_eng2d(struct nv50_context *nv50, const struct pipe_blit_info *info)
 
    BCTX_REFN(nv50->bufctx, 2D, &dst->base, WR);
    BCTX_REFN(nv50->bufctx, 2D, &src->base, RD);
-   nouveau_pushbuf_bufctx(nv50->base.pushbuf, nv50->bufctx);
+   PUSH_BUFCTX(nv50->base.pushbuf, nv50->bufctx);
    if (nouveau_pushbuf_validate(nv50->base.pushbuf))
       return;
 

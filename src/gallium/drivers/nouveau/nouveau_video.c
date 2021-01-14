@@ -587,7 +587,7 @@ nouveau_create_decoder(struct pipe_context *context,
    dec->fence_map[0] = 0;
 #endif
 
-   nouveau_pushbuf_bufctx(dec->push, dec->bufctx);
+   PUSH_BUFCTX(dec->push, dec->bufctx);
    nouveau_pushbuf_space(push, 32, 4, 0);
 
    BEGIN_NV04(push, SUBC_MPEG(NV01_SUBCHAN_OBJECT), 1);

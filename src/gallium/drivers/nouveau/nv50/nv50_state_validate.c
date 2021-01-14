@@ -558,7 +558,7 @@ nv50_state_validate(struct nv50_context *nv50, uint32_t mask,
 
       nv50_bufctx_fence(bufctx, false);
    }
-   nouveau_pushbuf_bufctx(nv50->base.pushbuf, bufctx);
+   PUSH_BUFCTX(nv50->base.pushbuf, bufctx);
    ret = nouveau_pushbuf_validate(nv50->base.pushbuf);
 
    return !ret;

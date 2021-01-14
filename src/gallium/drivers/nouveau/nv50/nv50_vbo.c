@@ -924,7 +924,7 @@ cleanup:
 
    nv50_release_user_vbufs(nv50);
 
-   nouveau_pushbuf_bufctx(push, NULL);
+   PUSH_BUFCTX(push, NULL);
 
    nouveau_bufctx_reset(nv50->bufctx_3d, NV50_BIND_3D_INDEX);
 }

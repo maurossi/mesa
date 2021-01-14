@@ -266,7 +266,7 @@ nvc0_resource_copy_region(struct pipe_context *pipe,
 
    BCTX_REFN(nvc0->bufctx, 2D, nv04_resource(src), RD);
    BCTX_REFN(nvc0->bufctx, 2D, nv04_resource(dst), WR);
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
+   PUSH_BUFCTX(nvc0->base.pushbuf, nvc0->bufctx);
    nouveau_pushbuf_validate(nvc0->base.pushbuf);
 
    for (; dst_layer < dstz + src_box->depth; ++dst_layer, ++src_layer) {
@@ -378,7 +378,7 @@ nvc0_clear_buffer_push_nvc0(struct pipe_context *pipe,
    unsigned i;
 
    nouveau_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nvc0->bufctx);
+   PUSH_BUFCTX(push, nvc0->bufctx);
    nouveau_pushbuf_validate(push);
 
    unsigned count = (size + 3) / 4;
@@ -427,7 +427,7 @@ nvc0_clear_buffer_push_nve4(struct pipe_context *pipe,
    unsigned i;
 
    nouveau_bufctx_refn(nvc0->bufctx, 0, buf->bo, buf->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nvc0->bufctx);
+   PUSH_BUFCTX(push, nvc0->bufctx);
    nouveau_pushbuf_validate(push);
 
    unsigned count = (size + 3) / 4;
@@ -1527,7 +1527,7 @@ nvc0_blit_eng2d(struct nvc0_context *nvc0, const struct pipe_blit_info *info)
 
    BCTX_REFN(nvc0->bufctx, 2D, &dst->base, WR);
    BCTX_REFN(nvc0->bufctx, 2D, &src->base, RD);
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, nvc0->bufctx);
+   PUSH_BUFCTX(nvc0->base.pushbuf, nvc0->bufctx);
    if (nouveau_pushbuf_validate(nvc0->base.pushbuf))
       return;
 

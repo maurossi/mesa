@@ -440,14 +440,14 @@ nv84_create_decoder(struct pipe_context *context,
    *(uint32_t *)dec->fence->map = 0;
 
    if (is_h264) {
-      nouveau_pushbuf_bufctx(bsp_push, dec->bsp_bufctx);
+      PUSH_BUFCTX(bsp_push, dec->bsp_bufctx);
       nouveau_bufctx_refn(dec->bsp_bufctx, 0,
                           dec->bsp_fw, NOUVEAU_BO_VRAM | NOUVEAU_BO_RD);
       nouveau_bufctx_refn(dec->bsp_bufctx, 0,
                           dec->bsp_data, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
    }
 
-   nouveau_pushbuf_bufctx(vp_push, dec->vp_bufctx);
+   PUSH_BUFCTX(vp_push, dec->vp_bufctx);
    nouveau_bufctx_refn(dec->vp_bufctx, 0, dec->vp_fw,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RD);
    nouveau_bufctx_refn(dec->vp_bufctx, 0, dec->vp_data,
