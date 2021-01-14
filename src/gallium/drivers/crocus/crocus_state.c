@@ -3226,7 +3226,15 @@ crocus_set_vertex_buffers(struct pipe_context *ctx,
                                 buffers, start_slot, count, unbind_num_trailing_slots,
                                 take_ownership);
 
-//   res->bind_history |= PIPE_BIND_VERTEX_BUFFER;   
+   for (unsigned i = 0; i < count; i++) {
+      struct pipe_vertex_buffer *state =
+         &ice->state.vertex_buffers[start_slot + i];
+
+      if (!state->is_user_buffer && state->buffer.resource) {
+         struct crocus_resource *res = (void *)state->buffer.resource;
+         res->bind_history |= PIPE_BIND_VERTEX_BUFFER;
+      }
+   }
    ice->state.dirty |= CROCUS_DIRTY_VERTEX_BUFFERS;
 }
 
@@ -6761,27 +6769,16 @@ crocus_rebind_buffer(struct crocus_context *ice,
                                  PIPE_BIND_COMPUTE_RESOURCE |
                                  PIPE_BIND_GLOBAL)));
 
-#if 0//TODO
    if (res->bind_history & PIPE_BIND_VERTEX_BUFFER) {
       uint64_t bound_vbs = ice->state.bound_vertex_buffers;
       while (bound_vbs) {
          const int i = u_bit_scan64(&bound_vbs);
-         struct crocus_vertex_buffer_state *state = &genx->vertex_buffers[i];
+         struct pipe_vertex_buffer *buffer = &ice->state.vertex_buffers[i];
 
-         /* Update the CPU struct */
-         STATIC_ASSERT(GENX(VERTEX_BUFFER_STATE_BufferStartingAddress_start) == 32);
-         STATIC_ASSERT(GENX(VERTEX_BUFFER_STATE_BufferStartingAddress_bits) == 32);
-         uint32_t *addr = (uint32_t *) &state->state[1];
-         struct crocus_bo *bo = crocus_resource_bo(state->resource);
-
-         // XXX relocs!
-         if (*addr != bo->gtt_offset + state->offset) {
-            *addr = bo->gtt_offset + state->offset;
+         if (!buffer->is_user_buffer && res == buffer->buffer.resource)
             ice->state.dirty |= CROCUS_DIRTY_VERTEX_BUFFERS;
-         }
       }
    }
-#endif
 
    /* We don't need to handle PIPE_BIND_INDEX_BUFFER here: we re-emit
     * the 3DSTATE_INDEX_BUFFER packet whenever the address changes.
