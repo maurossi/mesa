@@ -160,8 +160,8 @@ nvc0_create_decoder(struct pipe_context *context,
                                   data, size, &dec->channel[i]);
 
          if (!ret)
-            ret = nouveau_pushbuf_new(screen->client, dec->channel[i], 4,
-                                   32 * 1024, true, &dec->pushbuf[i]);
+            ret = nouveau_pushbuf_create(screen->client, dec->channel[i], 4,
+                                         32 * 1024, true, &dec->pushbuf[i]);
          if (ret)
             break;
       }

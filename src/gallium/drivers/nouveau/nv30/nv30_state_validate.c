@@ -498,9 +498,9 @@ nv30_state_validate(struct nv30_context *nv30, uint32_t mask, bool hwtnl)
       nv30->dirty &= ~mask;
    }
 
-   nouveau_pushbuf_bufctx(push, bctx);
-   if (nouveau_pushbuf_validate(push)) {
-      nouveau_pushbuf_bufctx(push, NULL);
+   PUSH_BUFCTX(push, bctx);
+   if (PUSH_VALIDATE(push)) {
+      PUSH_BUFCTX(push, NULL);
       return false;
    }
 
@@ -541,5 +541,5 @@ nv30_state_validate(struct nv30_context *nv30, uint32_t mask, bool hwtnl)
 void
 nv30_state_release(struct nv30_context *nv30)
 {
-   nouveau_pushbuf_bufctx(nv30->base.pushbuf, NULL);
+   PUSH_BUFCTX(nv30->base.pushbuf, NULL);
 }
