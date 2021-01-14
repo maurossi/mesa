@@ -1,6 +1,12 @@
 #ifndef NOUVEAU_WINSYS_H
 #define NOUVEAU_WINSYS_H
 
+#include <assert.h>
+
+#include "util/timespec.h"
+
+#include "c11/threads.h"
+
 #include <stdint.h>
 #include <inttypes.h>
 
@@ -8,6 +14,7 @@
 
 #include "drm-uapi/drm.h"
 #include <nouveau.h>
+#include "nouveau_screen.h"
 
 #ifndef NV04_PFIFO_MAX_PACKET_LEN
 #define NV04_PFIFO_MAX_PACKET_LEN 2047
@@ -25,6 +32,7 @@ PUSH_AVAIL(struct nouveau_pushbuf *push)
 static inline bool
 PUSH_SPACE(struct nouveau_pushbuf *push, uint32_t size)
 {
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
    /* Provide a buffer so that fences always have room to be emitted */
    size += 8;
    if (PUSH_AVAIL(push) < size)
@@ -35,12 +43,14 @@ PUSH_SPACE(struct nouveau_pushbuf *push, uint32_t size)
 static inline void
 PUSH_DATA(struct nouveau_pushbuf *push, uint32_t data)
 {
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
    *push->cur++ = data;
 }
 
 static inline void
 PUSH_DATAp(struct nouveau_pushbuf *push, const void *data, uint32_t size)
 {
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
    memcpy(push->cur, data, size * 4);
    push->cur += size;
 }
@@ -48,6 +58,7 @@ PUSH_DATAp(struct nouveau_pushbuf *push, const void *data, uint32_t size)
 static inline void
 PUSH_DATAb(struct nouveau_pushbuf *push, const void *data, uint32_t size)
 {
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
    memcpy(push->cur, data, size);
    push->cur += DIV_ROUND_UP(size, 4);
 }
@@ -61,11 +72,60 @@ PUSH_DATAf(struct nouveau_pushbuf *push, float f)
 }
 
 static inline void
-PUSH_KICK(struct nouveau_pushbuf *push)
+PUSH_ACQ(struct nouveau_pushbuf *push)
 {
-   nouveau_pushbuf_kick(push, push->channel);
+   simple_mtx_lock(&pushbuf_data(push)->push_lock);
 }
 
+static inline int
+PUSH_KICK(struct nouveau_pushbuf *push)
+{
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
+   return nouveau_pushbuf_kick(push, push->channel);
+}
+
+static inline void
+PUSH_REL(struct nouveau_pushbuf *push)
+{
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
+   simple_mtx_unlock(&pushbuf_data(push)->push_lock);
+}
+
+static inline int
+PUSH_DONE(struct nouveau_pushbuf *push)
+{
+   int res = PUSH_KICK(push);
+   PUSH_REL(push);
+   return res;
+}
+
+static inline struct nouveau_bufctx *
+PUSH_BUFCTX(struct nouveau_pushbuf *push, struct nouveau_bufctx *ctx)
+{
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
+   return nouveau_pushbuf_bufctx(push, ctx);
+}
+
+static inline int
+PUSH_VALIDATE(struct nouveau_pushbuf *push)
+{
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
+   return nouveau_pushbuf_validate(push);
+}
+
+static inline int
+PUSH_BO_MAP(struct nouveau_pushbuf *push, struct nouveau_bo *bo, uint32_t access, struct nouveau_client *client)
+{
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
+   return nouveau_bo_map(bo, access, client);
+}
+
+static inline int
+PUSH_BO_WAIT(struct nouveau_pushbuf *push, struct nouveau_bo *bo, uint32_t access, struct nouveau_client *client)
+{
+   simple_mtx_assert_locked(&pushbuf_data(push)->push_lock);
+   return nouveau_bo_wait(bo, access, client);
+}
 
 #define NOUVEAU_RESOURCE_FLAG_LINEAR   (PIPE_RESOURCE_FLAG_DRV_PRIV << 0)
 #define NOUVEAU_RESOURCE_FLAG_DRV_PRIV (PIPE_RESOURCE_FLAG_DRV_PRIV << 1)

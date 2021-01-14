@@ -172,6 +172,7 @@ nvc0_hw_begin_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    }
    hq->sequence++;
 
+   PUSH_ACQ(push);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -227,6 +228,7 @@ nvc0_hw_begin_query(struct nvc0_context *nvc0, struct nvc0_query *q)
       break;
    }
    hq->state = NVC0_HW_QUERY_STATE_ACTIVE;
+   PUSH_REL(push);
    return ret;
 }
 
@@ -249,6 +251,7 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    }
    hq->state = NVC0_HW_QUERY_STATE_ENDED;
 
+   PUSH_ACQ(push);
    switch (q->type) {
    case PIPE_QUERY_OCCLUSION_COUNTER:
    case PIPE_QUERY_OCCLUSION_PREDICATE:
@@ -312,6 +315,7 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
       nouveau_fence_ref(nvc0->screen->base.fence.current, &hq->fence);
       FENCE_DONE(&nvc0->screen->base.fence);
    }
+   PUSH_REL(push);
 }
 
 static bool
@@ -336,12 +340,17 @@ nvc0_hw_get_query_result(struct nvc0_context *nvc0, struct nvc0_query *q,
          if (hq->state != NVC0_HW_QUERY_STATE_FLUSHED) {
             hq->state = NVC0_HW_QUERY_STATE_FLUSHED;
             /* flush for silly apps that spin on GL_QUERY_RESULT_AVAILABLE */
-            PUSH_KICK(nvc0->base.pushbuf);
+            PUSH_ACQ(nvc0->base.pushbuf);
+            PUSH_DONE(nvc0->base.pushbuf);
          }
          return false;
       }
-      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nvc0->screen->base.client))
+      PUSH_ACQ(nvc0->base.pushbuf);
+      if (PUSH_BO_WAIT(nvc0->base.pushbuf, hq->bo, NOUVEAU_BO_RD, nvc0->screen->base.client)) {
+         PUSH_REL(nvc0->base.pushbuf);
          return false;
+      }
+      PUSH_REL(nvc0->base.pushbuf);
       NOUVEAU_DRV_STAT(&nvc0->screen->base, query_sync_count, 1);
    }
    hq->state = NVC0_HW_QUERY_STATE_READY;
@@ -415,9 +424,11 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
       if (hq->state != NVC0_HW_QUERY_STATE_READY)
          nvc0_hw_query_update(nvc0->screen->base.client, q);
       uint32_t ready[2] = {hq->state == NVC0_HW_QUERY_STATE_READY};
+      PUSH_ACQ(push);
       nvc0->base.push_cb(&nvc0->base, buf, offset,
                          result_type >= PIPE_QUERY_TYPE_I64 ? 2 : 1,
                          ready);
+      PUSH_REL(push);
 
       util_range_add(&buf->base, &buf->valid_buffer_range, offset,
                      offset + (result_type >= PIPE_QUERY_TYPE_I64 ? 8 : 4));
@@ -445,6 +456,7 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
    if (wait && hq->state != NVC0_HW_QUERY_STATE_READY)
       nvc0_hw_query_fifo_wait(nvc0, q);
 
+   PUSH_ACQ(push);
    nouveau_pushbuf_space(push, 32, 2, 3);
    PUSH_REFN (push, hq->bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
    PUSH_REFN (push, buf->bo, buf->domain | NOUVEAU_BO_WR);
@@ -517,6 +529,7 @@ nvc0_hw_get_query_result_resource(struct nvc0_context *nvc0,
    }
    PUSH_DATAh(push, buf->address + offset);
    PUSH_DATA (push, buf->address + offset);
+   PUSH_REL(push);
 
    util_range_add(&buf->base, &buf->valid_buffer_range, offset,
                   offset + (result_type >= PIPE_QUERY_TYPE_I64 ? 8 : 4));
