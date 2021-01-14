@@ -559,7 +559,7 @@ nvc0_prim_gl(unsigned prim)
 static void
 nvc0_draw_vbo_kick_notify(struct nouveau_pushbuf *push)
 {
-   struct nvc0_screen *screen = push->user_priv;
+   struct nvc0_screen *screen = pushbuf_data(push)->priv;
 
    FENCE_ACQ(&screen->base.fence);
    nouveau_fence_update(&screen->base, true);
@@ -966,6 +966,7 @@ nvc0_draw_vbo(struct pipe_context *pipe, const struct pipe_draw_info *info,
       (!indirect || indirect->count_from_stream_output) && info->index_size &&
       (nvc0->vb_elt_limit >= (draws[0].count * 2));
 
+   PUSH_ACQ(push);
    /* Check whether we want to switch vertex-submission mode. */
    if (nvc0->vbo_user && !(nvc0->dirty_3d & (NVC0_NEW_3D_ARRAYS | NVC0_NEW_3D_VERTEX))) {
       if (nvc0->vbo_push_hint != !!nvc0->state.vbo_mode)
@@ -1139,7 +1140,8 @@ cleanup:
 
    nvc0_release_user_vbufs(nvc0);
 
-   nouveau_pushbuf_bufctx(push, NULL);
+   PUSH_BUFCTX(push, NULL);
+   PUSH_REL(push);
 
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEXT);
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_IDX);

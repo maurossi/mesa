@@ -138,7 +138,9 @@ nouveau_buffer_destroy(struct pipe_screen *pscreen,
       return;
    }
 
+   PUSH_ACQ(nouveau_screen(pscreen)->pushbuf);
    nouveau_buffer_release_gpu_storage(res);
+   PUSH_REL(nouveau_screen(pscreen)->pushbuf);
 
    if (res->data && !(res->status & NOUVEAU_BUFFER_STATUS_USER_MEMORY))
       align_free(res->data);
@@ -178,7 +180,7 @@ nouveau_transfer_staging(struct nouveau_context *nv,
          nouveau_mm_allocate(nv->screen->mm_GART, size, &tx->bo, &tx->offset);
       if (tx->bo) {
          tx->offset += adj;
-         if (!nouveau_bo_map(tx->bo, 0, NULL))
+         if (!PUSH_BO_MAP(nv->pushbuf, tx->bo, 0, NULL))
             tx->map = (uint8_t *)tx->bo->map + tx->offset;
       }
    }
@@ -201,7 +203,7 @@ nouveau_transfer_read(struct nouveau_context *nv, struct nouveau_transfer *tx)
    nv->copy_data(nv, tx->bo, tx->offset, NOUVEAU_BO_GART,
                  buf->bo, buf->offset + base, buf->domain, size);
 
-   if (nouveau_bo_wait(tx->bo, NOUVEAU_BO_RD, nv->client))
+   if (PUSH_BO_WAIT(nv->pushbuf, tx->bo, NOUVEAU_BO_RD, nv->client))
       return false;
 
    if (buf->data)
@@ -451,6 +453,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
       usage |= PIPE_MAP_DISCARD_RANGE | PIPE_MAP_UNSYNCHRONIZED;
 
    if (buf->domain == NOUVEAU_BO_VRAM) {
+      PUSH_ACQ(nv->screen->pushbuf);
       if (usage & NOUVEAU_TRANSFER_DISCARD) {
          /* Set up a staging area for the user to write to. It will be copied
           * back into VRAM on unmap. */
@@ -478,6 +481,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
                nouveau_buffer_cache(nv, buf);
          }
       }
+      PUSH_REL(nv->screen->pushbuf);
       return buf->data ? (buf->data + box->x) : tx->map;
    } else
    if (unlikely(buf->domain == 0)) {
@@ -499,9 +503,11 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
     * wait on the whole slab and instead use the logic below to return a
     * reasonable buffer for that case.
     */
-   ret = nouveau_bo_map(buf->bo,
-                        buf->mm ? 0 : nouveau_screen_transfer_flags(usage),
-                        nv->client);
+   PUSH_ACQ(nv->screen->pushbuf);
+   ret = PUSH_BO_MAP(nv->pushbuf, buf->bo,
+                     buf->mm ? 0 : nouveau_screen_transfer_flags(usage),
+                     nv->client);
+   PUSH_REL(nv->screen->pushbuf);
    if (ret) {
       FREE(tx);
       return NULL;
@@ -517,6 +523,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
     * complete its operation, or set up a staging area to perform our work in.
     */
    if (nouveau_buffer_busy(buf, usage & PIPE_MAP_READ_WRITE)) {
+      PUSH_ACQ(nv->screen->pushbuf);
       if (unlikely(usage & (PIPE_MAP_DISCARD_WHOLE_RESOURCE |
                             PIPE_MAP_PERSISTENT))) {
          /* Discarding was not possible, must sync because
@@ -532,8 +539,9 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
       if (nouveau_buffer_busy(buf, PIPE_MAP_READ)) {
          if (usage & PIPE_MAP_DONTBLOCK)
             map = NULL;
-         else
+         else {
             nouveau_buffer_sync(nv, buf, usage & PIPE_MAP_READ_WRITE);
+         }
       } else {
          /* It is expected that the returned buffer be a representation of the
           * data in question, so we must copy it over from the buffer. */
@@ -542,6 +550,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
             memcpy(tx->map, map, box->width);
          map = tx->map;
       }
+      PUSH_REL(nv->screen->pushbuf);
    }
    if (!map)
       FREE(tx);
@@ -555,11 +564,15 @@ nouveau_buffer_transfer_flush_region(struct pipe_context *pipe,
                                      struct pipe_transfer *transfer,
                                      const struct pipe_box *box)
 {
+   struct nouveau_context *nv = nouveau_context(pipe);
    struct nouveau_transfer *tx = nouveau_transfer(transfer);
    struct nv04_resource *buf = nv04_resource(transfer->resource);
 
-   if (tx->map)
+   if (tx->map) {
+      PUSH_ACQ(nv->screen->pushbuf);
       nouveau_transfer_write(nouveau_context(pipe), tx, box->x, box->width);
+      PUSH_REL(nv->screen->pushbuf);
+   }
 
    util_range_add(&buf->base, &buf->valid_buffer_range,
                   tx->base.box.x + box->x,
@@ -586,8 +599,11 @@ nouveau_buffer_transfer_unmap(struct pipe_context *pipe,
 
    if (tx->base.usage & PIPE_MAP_WRITE) {
       if (!(tx->base.usage & PIPE_MAP_FLUSH_EXPLICIT)) {
-         if (tx->map)
+         if (tx->map) {
+            PUSH_ACQ(nv->screen->pushbuf);
             nouveau_transfer_write(nv, tx, 0, tx->base.box.width);
+            PUSH_REL(nv->screen->pushbuf);
+         }
 
          util_range_add(&buf->base, &buf->valid_buffer_range,
                         tx->base.box.x, tx->base.box.x + tx->base.box.width);
@@ -604,7 +620,9 @@ nouveau_buffer_transfer_unmap(struct pipe_context *pipe,
    if (!tx->bo && (tx->base.usage & PIPE_MAP_WRITE))
       NOUVEAU_DRV_STAT(nv->screen, buf_write_bytes_direct, tx->base.box.width);
 
+   PUSH_ACQ(nv->screen->pushbuf);
    nouveau_buffer_transfer_del(nv, tx);
+   PUSH_REL(nv->screen->pushbuf);
    FREE(tx);
 }
 
@@ -620,9 +638,11 @@ nouveau_copy_buffer(struct nouveau_context *nv,
    assert(!(src->status & NOUVEAU_BUFFER_STATUS_USER_PTR));
 
    if (likely(dst->domain) && likely(src->domain)) {
+      PUSH_ACQ(nv->pushbuf);
       nv->copy_data(nv,
                     dst->bo, dst->offset + dstx, dst->domain,
                     src->bo, src->offset + srcx, src->domain, size);
+      PUSH_REL(nv->pushbuf);
 
       dst->status |= NOUVEAU_BUFFER_STATUS_GPU_WRITING;
       FENCE_ACQ(&nv->screen->fence);
@@ -669,10 +689,10 @@ nouveau_resource_map_offset(struct nouveau_context *nv,
       unsigned rw;
       rw = (flags & NOUVEAU_BO_WR) ? PIPE_MAP_WRITE : PIPE_MAP_READ;
       nouveau_buffer_sync(nv, res, rw);
-      if (nouveau_bo_map(res->bo, 0, NULL))
+      if (PUSH_BO_MAP(nv->pushbuf, res->bo, 0, NULL))
          return NULL;
    } else {
-      if (nouveau_bo_map(res->bo, flags, nv->client))
+      if (PUSH_BO_MAP(nv->pushbuf, res->bo, flags, nv->client))
          return NULL;
    }
    return (uint8_t *)res->bo->map + res->offset + offset;
@@ -828,7 +848,7 @@ nouveau_buffer_data_fetch(struct nouveau_context *nv, struct nv04_resource *buf,
 {
    if (!nouveau_buffer_malloc(buf))
       return false;
-   if (nouveau_bo_map(bo, NOUVEAU_BO_RD, nv->client))
+   if (PUSH_BO_MAP(nv->pushbuf, bo, NOUVEAU_BO_RD, nv->client))
       return false;
    memcpy(buf->data, (uint8_t *)bo->map + offset, size);
    return true;
@@ -853,7 +873,7 @@ nouveau_buffer_migrate(struct nouveau_context *nv,
    if (new_domain == NOUVEAU_BO_GART && old_domain == 0) {
       if (!nouveau_buffer_allocate(screen, buf, new_domain))
          return false;
-      ret = nouveau_bo_map(buf->bo, 0, nv->client);
+      ret = PUSH_BO_MAP(nv->pushbuf, buf->bo, 0, nv->client);
       if (ret)
          return ret;
       memcpy((uint8_t *)buf->bo->map + buf->offset, buf->data, size);
@@ -923,7 +943,7 @@ nouveau_user_buffer_upload(struct nouveau_context *nv,
    if (!nouveau_buffer_reallocate(screen, buf, NOUVEAU_BO_GART))
       return false;
 
-   ret = nouveau_bo_map(buf->bo, 0, nv->client);
+   ret = PUSH_BO_MAP(nv->pushbuf, buf->bo, 0, nv->client);
    if (ret)
       return false;
    memcpy((uint8_t *)buf->bo->map + buf->offset + base, buf->data + base, size);
@@ -1024,7 +1044,7 @@ nouveau_scratch_runout(struct nouveau_context *nv, unsigned size)
 
    ret = nouveau_scratch_bo_alloc(nv, &nv->scratch.runout->bo[n], size);
    if (!ret) {
-      ret = nouveau_bo_map(nv->scratch.runout->bo[n], 0, NULL);
+      ret = PUSH_BO_MAP(nv->pushbuf, nv->scratch.runout->bo[n], 0, NULL);
       if (ret)
          nouveau_bo_ref(NULL, &nv->scratch.runout->bo[--nv->scratch.runout->nr]);
    }
@@ -1062,7 +1082,7 @@ nouveau_scratch_next(struct nouveau_context *nv, unsigned size)
    nv->scratch.offset = 0;
    nv->scratch.end = nv->scratch.bo_size;
 
-   ret = nouveau_bo_map(bo, NOUVEAU_BO_WR, nv->client);
+   ret = PUSH_BO_MAP(nv->pushbuf, bo, NOUVEAU_BO_WR, nv->client);
    if (!ret)
       nv->scratch.map = bo->map;
    return !ret;
