@@ -1,12 +1,16 @@
 #ifndef __NOUVEAU_SCREEN_H__
 #define __NOUVEAU_SCREEN_H__
 
+#include "c11/threads.h"
+
 #include "pipe/p_screen.h"
 #include "util/disk_cache.h"
 #include "util/u_atomic.h"
 #include "util/u_memory.h"
 
 #include "nouveau_fence.h"
+
+#include <nouveau.h>
 
 #ifndef NDEBUG
 # define NOUVEAU_ENABLE_DRIVER_STATISTICS
@@ -147,5 +151,23 @@ int nouveau_screen_init(struct nouveau_screen *, struct nouveau_device *);
 void nouveau_screen_fini(struct nouveau_screen *);
 
 void nouveau_screen_init_vdec(struct nouveau_screen *);
+
+struct nouveau_pushbuf_data {
+   mtx_t push_lock;
+   void *priv;
+};
+
+static inline struct nouveau_pushbuf_data *
+pushbuf_data(struct nouveau_pushbuf *push)
+{
+   return push->user_priv;
+}
+
+int
+nouveau_pushbuf_create(struct nouveau_client *, struct nouveau_object *chan,
+                       int nr, uint32_t size, bool immediate,
+                       struct nouveau_pushbuf **);
+void
+nouveau_pushbuf_destroy(struct nouveau_pushbuf **);
 
 #endif

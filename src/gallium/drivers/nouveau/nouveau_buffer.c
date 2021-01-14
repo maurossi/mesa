@@ -185,7 +185,7 @@ nouveau_transfer_read(struct nouveau_context *nv, struct nouveau_transfer *tx)
    nv->copy_data(nv, tx->bo, tx->offset, NOUVEAU_BO_GART,
                  buf->bo, buf->offset + base, buf->domain, size);
 
-   if (nouveau_bo_wait(tx->bo, NOUVEAU_BO_RD, nv->client))
+   if (PUSH_BO_WAIT(nv->pushbuf, tx->bo, NOUVEAU_BO_RD, nv->client))
       return false;
 
    if (buf->data)
@@ -417,6 +417,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
       usage |= PIPE_MAP_DISCARD_RANGE | PIPE_MAP_UNSYNCHRONIZED;
 
    if (buf->domain == NOUVEAU_BO_VRAM) {
+      PUSH_ACQ(nv->screen->pushbuf);
       if (usage & NOUVEAU_TRANSFER_DISCARD) {
          /* Set up a staging area for the user to write to. It will be copied
           * back into VRAM on unmap. */
@@ -444,6 +445,7 @@ nouveau_buffer_transfer_map(struct pipe_context *pipe,
                nouveau_buffer_cache(nv, buf);
          }
       }
+      PUSH_REL(nv->screen->pushbuf);
       return buf->data ? (buf->data + box->x) : tx->map;
    } else
    if (unlikely(buf->domain == 0)) {
@@ -521,11 +523,15 @@ nouveau_buffer_transfer_flush_region(struct pipe_context *pipe,
                                      struct pipe_transfer *transfer,
                                      const struct pipe_box *box)
 {
+   struct nouveau_context *nv = nouveau_context(pipe);
    struct nouveau_transfer *tx = nouveau_transfer(transfer);
    struct nv04_resource *buf = nv04_resource(transfer->resource);
 
-   if (tx->map)
+   if (tx->map) {
+      PUSH_ACQ(nv->screen->pushbuf);
       nouveau_transfer_write(nouveau_context(pipe), tx, box->x, box->width);
+      PUSH_REL(nv->screen->pushbuf);
+   }
 
    util_range_add(&buf->base, &buf->valid_buffer_range,
                   tx->base.box.x + box->x,
@@ -548,8 +554,11 @@ nouveau_buffer_transfer_unmap(struct pipe_context *pipe,
 
    if (tx->base.usage & PIPE_MAP_WRITE) {
       if (!(tx->base.usage & PIPE_MAP_FLUSH_EXPLICIT)) {
-         if (tx->map)
+         if (tx->map) {
+            PUSH_ACQ(nv->screen->pushbuf);
             nouveau_transfer_write(nv, tx, 0, tx->base.box.width);
+            PUSH_REL(nv->screen->pushbuf);
+         }
 
          util_range_add(&buf->base, &buf->valid_buffer_range,
                         tx->base.box.x, tx->base.box.x + tx->base.box.width);

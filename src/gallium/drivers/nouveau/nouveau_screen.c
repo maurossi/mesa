@@ -90,12 +90,14 @@ nouveau_screen_fence_finish(struct pipe_screen *screen,
 {
    bool res;
 
+   PUSH_ACQ(nouveau_screen(screen)->pushbuf);
    FENCE_ACQ(&nouveau_screen(screen)->fence);
    if (!timeout)
       res = nouveau_fence_signalled(nouveau_fence(pfence));
    else
       res = nouveau_fence_wait(nouveau_fence(pfence), NULL);
    FENCE_DONE(&nouveau_screen(screen)->fence);
+   PUSH_REL(nouveau_screen(screen)->pushbuf);
 
    return res;
 }
@@ -298,9 +300,9 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
    ret = nouveau_client_new(screen->device, &screen->client);
    if (ret)
       goto err;
-   ret = nouveau_pushbuf_new(screen->client, screen->channel,
-                             4, 512 * 1024, 1,
-                             &screen->pushbuf);
+   ret = nouveau_pushbuf_create(screen->client, screen->channel,
+                                4, 512 * 1024, 1,
+                                &screen->pushbuf);
    if (ret)
       goto err;
 
@@ -366,7 +368,7 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    nouveau_mm_destroy(screen->mm_GART);
    nouveau_mm_destroy(screen->mm_VRAM);
 
-   nouveau_pushbuf_del(&screen->pushbuf);
+   nouveau_pushbuf_destroy(&screen->pushbuf);
 
    nouveau_client_del(&screen->client);
    nouveau_object_del(&screen->channel);
@@ -395,4 +397,29 @@ void
 nouveau_context_init(struct nouveau_context *context)
 {
    context->pipe.set_debug_callback = nouveau_set_debug_callback;
+}
+
+int
+nouveau_pushbuf_create(struct nouveau_client *client, struct nouveau_object *chan,
+                       int nr, uint32_t size, bool immediate,
+                       struct nouveau_pushbuf **push)
+{
+   int ret = nouveau_pushbuf_new(client, chan, nr, size, immediate, push);
+   if (ret)
+      return ret;
+
+   (*push)->user_priv = MALLOC_STRUCT(nouveau_pushbuf_data);
+   if (!(*push)->user_priv)
+      return -ENOMEM;
+
+   mtx_init(&pushbuf_data(*push)->push_lock, mtx_timed);
+
+   return 0;
+}
+
+void
+nouveau_pushbuf_destroy(struct nouveau_pushbuf **push)
+{
+   mtx_destroy(&pushbuf_data(*push)->push_lock);
+   nouveau_pushbuf_del(push);
 }
