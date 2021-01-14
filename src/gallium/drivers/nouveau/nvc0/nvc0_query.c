@@ -142,13 +142,16 @@ nvc0_render_condition(struct pipe_context *pipe,
    nvc0->cond_mode = mode;
 
    if (!pq) {
+      PUSH_ACQ(push);
       PUSH_SPACE(push, 2);
       IMMED_NVC0(push, NVC0_3D(COND_MODE), cond);
       if (nvc0->screen->compute)
          IMMED_NVC0(push, NVC0_CP(COND_MODE), cond);
+      PUSH_REL(push);
       return;
    }
 
+   PUSH_ACQ(push);
    if (wait && hq->state != NVC0_HW_QUERY_STATE_READY)
       nvc0_hw_query_fifo_wait(nvc0, q);
 
@@ -167,6 +170,7 @@ nvc0_render_condition(struct pipe_context *pipe,
       PUSH_DATA (push, hq->bo->offset + hq->offset);
       PUSH_DATA (push, cond);
    }
+   PUSH_REL(push);
 }
 
 int

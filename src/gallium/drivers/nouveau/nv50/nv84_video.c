@@ -187,7 +187,7 @@ nv84_decoder_begin_frame_mpeg12(struct pipe_video_codec *decoder,
    struct pipe_mpeg12_picture_desc *desc = (struct pipe_mpeg12_picture_desc *)picture;
    int i;
 
-   nouveau_bo_wait(dec->mpeg12_bo, NOUVEAU_BO_RDWR, dec->client);
+   PUSH_BO_WAIT(dec->vp_pushbuf, dec->mpeg12_bo, NOUVEAU_BO_RDWR, dec->client);
    dec->mpeg12_mb_info = dec->mpeg12_bo->map + 0x100;
    dec->mpeg12_data = dec->mpeg12_bo->map + 0x100 +
       align(0x20 * mb(dec->base.width) * mb(dec->base.height), 0x100);
@@ -247,11 +247,11 @@ nv84_decoder_destroy(struct pipe_video_codec *decoder)
    nouveau_object_del(&dec->vp);
 
    nouveau_bufctx_del(&dec->bsp_bufctx);
-   nouveau_pushbuf_del(&dec->bsp_pushbuf);
+   nouveau_pushbuf_destroy(&dec->bsp_pushbuf);
    nouveau_object_del(&dec->bsp_channel);
 
    nouveau_bufctx_del(&dec->vp_bufctx);
-   nouveau_pushbuf_del(&dec->vp_pushbuf);
+   nouveau_pushbuf_destroy(&dec->vp_pushbuf);
    nouveau_object_del(&dec->vp_channel);
 
    nouveau_client_del(&dec->client);
@@ -335,8 +335,8 @@ nv84_create_decoder(struct pipe_context *context,
       if (ret)
          goto fail;
 
-      ret = nouveau_pushbuf_new(dec->client, dec->bsp_channel, 4,
-                                32 * 1024, true, &dec->bsp_pushbuf);
+      ret = nouveau_pushbuf_create(dec->client, dec->bsp_channel, 4,
+                                   32 * 1024, true, &dec->bsp_pushbuf);
       if (ret)
          goto fail;
 
@@ -350,8 +350,8 @@ nv84_create_decoder(struct pipe_context *context,
                             &nv04_data, sizeof(nv04_data), &dec->vp_channel);
    if (ret)
       goto fail;
-   ret = nouveau_pushbuf_new(dec->client, dec->vp_channel, 4,
-                             32 * 1024, true, &dec->vp_pushbuf);
+   ret = nouveau_pushbuf_create(dec->client, dec->vp_channel, 4,
+                                32 * 1024, true, &dec->vp_pushbuf);
    if (ret)
       goto fail;
 
@@ -440,14 +440,14 @@ nv84_create_decoder(struct pipe_context *context,
    *(uint32_t *)dec->fence->map = 0;
 
    if (is_h264) {
-      nouveau_pushbuf_bufctx(bsp_push, dec->bsp_bufctx);
+      PUSH_BUFCTX(bsp_push, dec->bsp_bufctx);
       nouveau_bufctx_refn(dec->bsp_bufctx, 0,
                           dec->bsp_fw, NOUVEAU_BO_VRAM | NOUVEAU_BO_RD);
       nouveau_bufctx_refn(dec->bsp_bufctx, 0,
                           dec->bsp_data, NOUVEAU_BO_VRAM | NOUVEAU_BO_RDWR);
    }
 
-   nouveau_pushbuf_bufctx(vp_push, dec->vp_bufctx);
+   PUSH_BUFCTX(vp_push, dec->vp_bufctx);
    nouveau_bufctx_refn(dec->vp_bufctx, 0, dec->vp_fw,
                        NOUVEAU_BO_VRAM | NOUVEAU_BO_RD);
    nouveau_bufctx_refn(dec->vp_bufctx, 0, dec->vp_data,
