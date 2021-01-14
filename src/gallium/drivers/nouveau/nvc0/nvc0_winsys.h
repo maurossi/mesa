@@ -41,6 +41,7 @@ nvc0_add_resident(struct nouveau_bufctx *bufctx, int bin,
 static inline void
 PUSH_REFN(struct nouveau_pushbuf *push, struct nouveau_bo *bo, uint32_t flags)
 {
+   assert(mtx_trylock(&pushbuf_data(push)->push_lock) == thrd_busy);
    struct nouveau_pushbuf_refn ref = { bo, flags };
    nouveau_pushbuf_refn(push, &ref, 1);
 }
@@ -106,12 +107,14 @@ nouveau_bo_memtype(const struct nouveau_bo *bo)
 static inline void
 PUSH_DATAh(struct nouveau_pushbuf *push, uint64_t data)
 {
+   assert(mtx_trylock(&pushbuf_data(push)->push_lock) == thrd_busy);
    *push->cur++ = (uint32_t)(data >> 32);
 }
 
 static inline void
 BEGIN_NVC0(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 {
+   assert(mtx_trylock(&pushbuf_data(push)->push_lock) == thrd_busy);
 #ifndef NVC0_PUSH_EXPLICIT_SPACE_CHECKING
    PUSH_SPACE(push, size + 1);
 #endif
@@ -121,6 +124,7 @@ BEGIN_NVC0(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 static inline void
 BEGIN_NIC0(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 {
+   assert(mtx_trylock(&pushbuf_data(push)->push_lock) == thrd_busy);
 #ifndef NVC0_PUSH_EXPLICIT_SPACE_CHECKING
    PUSH_SPACE(push, size + 1);
 #endif
@@ -130,6 +134,7 @@ BEGIN_NIC0(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 static inline void
 BEGIN_1IC0(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 {
+   assert(mtx_trylock(&pushbuf_data(push)->push_lock) == thrd_busy);
 #ifndef NVC0_PUSH_EXPLICIT_SPACE_CHECKING
    PUSH_SPACE(push, size + 1);
 #endif
@@ -139,6 +144,7 @@ BEGIN_1IC0(struct nouveau_pushbuf *push, int subc, int mthd, unsigned size)
 static inline void
 IMMED_NVC0(struct nouveau_pushbuf *push, int subc, int mthd, uint16_t data)
 {
+   assert(mtx_trylock(&pushbuf_data(push)->push_lock) == thrd_busy);
 #ifndef NVC0_PUSH_EXPLICIT_SPACE_CHECKING
    PUSH_SPACE(push, 1);
 #endif

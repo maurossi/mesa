@@ -193,6 +193,7 @@ nouveau_fence_kick(struct nouveau_fence *fence)
    struct nouveau_pushbuf *push = screen->pushbuf;
 
    simple_mtx_assert_locked(&fence_list->lock);
+   assert(mtx_trylock(&pushbuf_data(push)->push_lock) == thrd_busy);
 
    /* wtf, someone is waiting on a fence in flush_notify handler? */
    assert(fence->state != NOUVEAU_FENCE_STATE_EMITTING);
@@ -211,7 +212,7 @@ nouveau_fence_kick(struct nouveau_fence *fence)
        * temporarily unlock
        */
       simple_mtx_unlock(&fence_list->lock);
-      bool res = nouveau_pushbuf_kick(push, push->channel);
+      bool res = PUSH_KICK(screen->pushbuf);
       simple_mtx_lock(&fence_list->lock);
       if (res)
          return false;
@@ -240,6 +241,9 @@ nouveau_fence_wait(struct nouveau_fence *fence, struct pipe_debug_callback *debu
 
    if (!nouveau_fence_kick(fence))
       return false;
+
+   /* waiting on not flushed fences makes no sense */
+   assert(fence->state >= NOUVEAU_FENCE_STATE_FLUSHED);
 
    do {
       if (fence->state == NOUVEAU_FENCE_STATE_SIGNALLED) {
