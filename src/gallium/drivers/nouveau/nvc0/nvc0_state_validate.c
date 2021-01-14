@@ -964,7 +964,6 @@ nvc0_state_validate(struct nvc0_context *nvc0, uint32_t mask,
                     uint32_t *dirty, struct nouveau_bufctx *bufctx)
 {
    uint32_t state_mask;
-   int ret;
    unsigned i;
 
    if (nvc0->screen->cur_ctx != nvc0)
@@ -984,10 +983,8 @@ nvc0_state_validate(struct nvc0_context *nvc0, uint32_t mask,
       nvc0_bufctx_fence(nvc0, bufctx, false);
    }
 
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, bufctx);
-   ret = nouveau_pushbuf_validate(nvc0->base.pushbuf);
-
-   return !ret;
+   PUSH_BUFCTX(nvc0->base.pushbuf, bufctx);
+   return !PUSH_KICK(nvc0->base.pushbuf);
 }
 
 bool
