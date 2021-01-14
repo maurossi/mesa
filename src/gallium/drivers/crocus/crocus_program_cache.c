@@ -266,8 +266,7 @@ crocus_blorp_lookup_shader(struct blorp_batch *blorp_batch,
       return false;
 
    struct crocus_bo *bo = ice->shaders.cache_bo;
-   *kernel_out =
-      crocus_bo_offset_from_base_address(bo) + shader->offset;
+   *kernel_out = shader->offset;
    *((void **) prog_data_out) = shader->prog_data;
 
    return true;
@@ -298,8 +297,7 @@ crocus_blorp_upload_shader(struct blorp_batch *blorp_batch,
 			   prog_data, prog_data_size, NULL, NULL, 0, 0, &bt);
 
    struct crocus_bo *bo = ice->shaders.cache_bo;
-   *kernel_out =
-      crocus_bo_offset_from_base_address(bo) + shader->offset;
+   *kernel_out = shader->offset;
    *((void **) prog_data_out) = shader->prog_data;
 
    return true;
