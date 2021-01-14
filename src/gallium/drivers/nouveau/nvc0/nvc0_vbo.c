@@ -1138,7 +1138,7 @@ cleanup:
 
    nvc0_release_user_vbufs(nvc0);
 
-   nouveau_pushbuf_bufctx(push, NULL);
+   PUSH_BUFCTX(push, NULL);
 
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_TEXT);
    nouveau_bufctx_reset(nvc0->bufctx_3d, NVC0_BIND_3D_IDX);
