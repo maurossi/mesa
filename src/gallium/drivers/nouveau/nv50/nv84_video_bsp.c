@@ -103,7 +103,7 @@ nv84_decoder_bsp(struct nv84_decoder *dec,
       { dec->fence, NOUVEAU_BO_RDWR | NOUVEAU_BO_VRAM },
    };
 
-   nouveau_bo_wait(dec->fence, NOUVEAU_BO_RDWR, dec->client);
+   PUSH_BO_WAIT(push, dec->fence, NOUVEAU_BO_RDWR, dec->client);
 
    STATIC_ASSERT(sizeof(struct iparm) == 0x530);
 

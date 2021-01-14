@@ -83,10 +83,11 @@ nvc0_flush(struct pipe_context *pipe,
    struct nvc0_context *nvc0 = nvc0_context(pipe);
    struct nouveau_screen *screen = &nvc0->screen->base;
 
+   PUSH_ACQ(nvc0->base.pushbuf);
    if (fence)
       nouveau_fence_ref(screen->fence.current, (struct nouveau_fence **)fence);
 
-   PUSH_KICK(nvc0->base.pushbuf); /* fencing handled in kick_notify */
+   PUSH_DONE(nvc0->base.pushbuf); /* fencing handled in kick_notify */
 
    nouveau_context_update_frame_stats(&nvc0->base);
 }
@@ -110,6 +111,7 @@ nvc0_memory_barrier(struct pipe_context *pipe, unsigned flags)
    if (!(flags & ~PIPE_BARRIER_UPDATE))
       return;
 
+   PUSH_ACQ(push);
    if (flags & PIPE_BARRIER_MAPPED_BUFFER) {
       for (i = 0; i < nvc0->num_vtxbufs; ++i) {
          if (!nvc0->vtxbuf[i].buffer.resource && !nvc0->vtxbuf[i].is_user_buffer)
@@ -150,6 +152,7 @@ nvc0_memory_barrier(struct pipe_context *pipe, unsigned flags)
     */
    if (flags & PIPE_BARRIER_TEXTURE)
       IMMED_NVC0(push, NVC0_3D(TEX_CACHE_CTL), 0);
+   PUSH_REL(push);
 
    if (flags & PIPE_BARRIER_CONSTANT_BUFFER)
       nvc0->cb_dirty = true;
@@ -256,8 +259,9 @@ nvc0_destroy(struct pipe_context *pipe)
    /* Unset bufctx, we don't want to revalidate any resources after the flush.
     * Other contexts will always set their bufctx again on action calls.
     */
-   nouveau_pushbuf_bufctx(nvc0->base.pushbuf, NULL);
-   nouveau_pushbuf_kick(nvc0->base.pushbuf, nvc0->base.pushbuf->channel);
+   PUSH_ACQ(nvc0->base.pushbuf);
+   PUSH_BUFCTX(nvc0->base.pushbuf, NULL);
+   PUSH_DONE(nvc0->base.pushbuf);
 
    nvc0_context_unreference_resources(nvc0);
    nvc0_blitctx_destroy(nvc0);
@@ -278,7 +282,7 @@ nvc0_destroy(struct pipe_context *pipe)
 void
 nvc0_default_kick_notify(struct nouveau_pushbuf *push)
 {
-   struct nvc0_screen *screen = push->user_priv;
+   struct nvc0_screen *screen = pushbuf_data(push)->priv;
 
    if (screen) {
       FENCE_ACQ(&screen->base.fence);
@@ -414,6 +418,7 @@ struct pipe_context *
 nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
 {
    struct nvc0_screen *screen = nvc0_screen(pscreen);
+   struct nouveau_pushbuf *push = screen->base.pushbuf;
    struct nvc0_context *nvc0;
    struct pipe_context *pipe;
    int ret;
@@ -483,6 +488,7 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    pipe->create_video_codec = nvc0_create_decoder;
    pipe->create_video_buffer = nvc0_video_buffer_create;
 
+   PUSH_ACQ(push);
    /* shader builtin library is per-screen, but we need a context for m2mf */
    nvc0_program_library_upload(nvc0);
    nvc0_program_init_tcp_empty(nvc0);
@@ -502,7 +508,7 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    if (!screen->cur_ctx) {
       nvc0->state = screen->save_state;
       screen->cur_ctx = nvc0;
-      nouveau_pushbuf_bufctx(screen->base.pushbuf, nvc0->bufctx);
+      PUSH_BUFCTX(screen->base.pushbuf, nvc0->bufctx);
    }
    screen->base.pushbuf->kick_notify = nvc0_default_kick_notify;
 
@@ -546,6 +552,7 @@ nvc0_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
    // not to do it.
    if (!screen->tsc.entries[0])
       nvc0_upload_tsc0(nvc0);
+   PUSH_DONE(push);
 
    // On Fermi, mark samplers dirty so that the proper binding can happen
    if (screen->base.class_3d < NVE4_3D_CLASS) {

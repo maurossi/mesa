@@ -867,6 +867,7 @@ nve4_launch_grid(struct pipe_context *pipe, const struct pipe_grid_info *info)
                         resident->flags);
    }
 
+   PUSH_ACQ(push);
    ret = !nve4_state_validate_cp(nvc0, ~0);
    if (ret)
       goto out;
@@ -940,6 +941,7 @@ out:
    nouveau_scratch_done(&nvc0->base);
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_DESC);
    nouveau_bufctx_reset(nvc0->bufctx_cp, NVC0_BIND_CP_BINDLESS);
+   PUSH_DONE(push);
 }
 
 
