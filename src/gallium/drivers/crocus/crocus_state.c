@@ -5996,7 +5996,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          if (wm_prog_data->uses_kill ||
              ice->state.cso_zsa->cso.alpha_enabled ||
              ice->state.cso_blend->alpha_to_coverage ||
-             GEN_GEN >= 6 && wm_prog_data->uses_omask)
+             (GEN_GEN >= 6 && wm_prog_data->uses_omask))
             wm.PixelShaderKillsPixel = true;
 
          if (has_writeable_rt(ice->state.cso_blend, fs_info) || writes_depth || wm.PixelShaderKillsPixel ||
