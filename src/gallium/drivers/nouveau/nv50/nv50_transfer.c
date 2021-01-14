@@ -66,7 +66,7 @@ nv50_2d_transfer_rect(struct nv50_context *nv50,
 
    nouveau_bufctx_refn(bctx, 0, src->bo, src->domain | NOUVEAU_BO_RD);
    nouveau_bufctx_refn(bctx, 0, dst->bo, dst->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, bctx);
+   PUSH_BUFCTX(push, bctx);
    nouveau_pushbuf_validate(push);
 
    uint32_t format;
@@ -196,7 +196,7 @@ nv50_m2mf_transfer_rect(struct nv50_context *nv50,
 
    nouveau_bufctx_refn(bctx, 0, src->bo, src->domain | NOUVEAU_BO_RD);
    nouveau_bufctx_refn(bctx, 0, dst->bo, dst->domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, bctx);
+   PUSH_BUFCTX(push, bctx);
    nouveau_pushbuf_validate(push);
 
    if (nouveau_bo_memtype(src->bo)) {
@@ -283,7 +283,7 @@ nv50_sifc_linear_u8(struct nouveau_context *nv,
    unsigned xcoord = offset & 0xff;
 
    nouveau_bufctx_refn(nv50->bufctx, 0, dst, domain | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, nv50->bufctx);
+   PUSH_BUFCTX(push, nv50->bufctx);
    nouveau_pushbuf_validate(push);
 
    offset &= ~0xff;
@@ -336,7 +336,7 @@ nv50_m2mf_copy_linear(struct nouveau_context *nv,
 
    nouveau_bufctx_refn(bctx, 0, src, srcdom | NOUVEAU_BO_RD);
    nouveau_bufctx_refn(bctx, 0, dst, dstdom | NOUVEAU_BO_WR);
-   nouveau_pushbuf_bufctx(push, bctx);
+   PUSH_BUFCTX(push, bctx);
    nouveau_pushbuf_validate(push);
 
    BEGIN_NV04(push, NV50_M2MF(LINEAR_IN), 1);
