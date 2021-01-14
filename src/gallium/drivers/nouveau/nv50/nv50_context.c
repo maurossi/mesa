@@ -175,7 +175,7 @@ nv50_destroy(struct pipe_context *pipe)
    if (nv50->base.pipe.stream_uploader)
       u_upload_destroy(nv50->base.pipe.stream_uploader);
 
-   nouveau_pushbuf_bufctx(nv50->base.pushbuf, NULL);
+   PUSH_BUFCTX(nv50->base.pushbuf, NULL);
    nouveau_pushbuf_kick(nv50->base.pushbuf, nv50->base.pushbuf->channel);
 
    nv50_context_unreference_resources(nv50);
@@ -329,7 +329,7 @@ nv50_create(struct pipe_screen *pscreen, void *priv, unsigned ctxflags)
        */
       nv50->state = screen->save_state;
       screen->cur_ctx = nv50;
-      nouveau_pushbuf_bufctx(screen->base.pushbuf, nv50->bufctx);
+      PUSH_BUFCTX(screen->base.pushbuf, nv50->bufctx);
    }
    nv50->base.pushbuf->kick_notify = nv50_default_kick_notify;
 
