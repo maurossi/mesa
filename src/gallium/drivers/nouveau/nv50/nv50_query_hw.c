@@ -290,7 +290,7 @@ nv50_hw_get_query_result(struct nv50_context *nv50, struct nv50_query *q,
          }
          return false;
       }
-      if (nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, nv50->screen->base.client))
+      if (PUSH_BO_WAIT(nv50->base.pushbuf, hq->bo, NOUVEAU_BO_RD, nv50->screen->base.client))
          return false;
    }
    hq->state = NV50_HW_QUERY_STATE_READY;
@@ -438,7 +438,7 @@ nv50_hw_query_pushbuf_submit(struct nouveau_pushbuf *push, uint16_t method,
 
    nv50_hw_query_update(q);
    if (hq->state != NV50_HW_QUERY_STATE_READY)
-      nouveau_bo_wait(hq->bo, NOUVEAU_BO_RD, push->client);
+      PUSH_BO_WAIT(push, hq->bo, NOUVEAU_BO_RD, push->client);
    hq->state = NV50_HW_QUERY_STATE_READY;
 
    BEGIN_NV04(push, SUBC_3D(method), 1);
