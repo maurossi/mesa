@@ -47,11 +47,11 @@
 #include "crocus_context.h"
 #include "nir/tgsi_to_nir.h"
 
-#define KEY_INIT_NO_ID(gen)                              \
+#define KEY_INIT_NO_ID()                              \
    .base.subgroup_size_type = BRW_SUBGROUP_SIZE_UNIFORM, \
    .base.tex.swizzles[0 ... MAX_SAMPLERS - 1] = 0x688,   \
    .base.tex.compressed_multisample_layout_mask = ~0
-#define KEY_INIT(gen) .base.program_string_id = ish->program_id, KEY_INIT_NO_ID(gen)
+#define KEY_INIT() .base.program_string_id = ish->program_id, KEY_INIT_NO_ID()
 
 static uint32_t
 crocus_get_texture_swizzle(const struct crocus_context *ice,
@@ -1150,8 +1150,7 @@ crocus_update_compiled_vs(struct crocus_context *ice)
       ice->shaders.uncompiled[MESA_SHADER_VERTEX];
    struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
    const struct gen_device_info *devinfo = &screen->devinfo;
-
-   struct brw_vs_prog_key key = { KEY_INIT(devinfo->gen) };
+   struct brw_vs_prog_key key = { KEY_INIT() };
 
    if (ish->nos & (1ull << CROCUS_NOS_TEXTURES))
       crocus_populate_sampler_prog_key_data(ice, devinfo, MESA_SHADER_VERTEX, ish, false, &key.base.tex);
@@ -1370,7 +1369,7 @@ crocus_update_compiled_tcs(struct crocus_context *ice)
    const struct shader_info *tes_info =
       crocus_get_shader_info(ice, MESA_SHADER_TESS_EVAL);
    struct brw_tcs_prog_key key = {
-      KEY_INIT_NO_ID(devinfo->gen),
+      KEY_INIT_NO_ID(),
       .base.program_string_id = tcs ? tcs->program_id : 0,
       .tes_primitive_mode = tes_info->tess.primitive_mode,
       .input_vertices =
@@ -1493,10 +1492,7 @@ crocus_update_compiled_tes(struct crocus_context *ice)
    struct crocus_shader_state *shs = &ice->state.shaders[MESA_SHADER_TESS_EVAL];
    struct crocus_uncompiled_shader *ish =
       ice->shaders.uncompiled[MESA_SHADER_TESS_EVAL];
-   struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
-   const struct gen_device_info *devinfo = &screen->devinfo;
-
-   struct brw_tes_prog_key key = { KEY_INIT(devinfo->gen) };
+   struct brw_tes_prog_key key = { KEY_INIT() };
    get_unified_tess_slots(ice, &key.inputs_read, &key.patch_inputs_read);
    ice->vtbl.populate_tes_key(ice, &ish->nir->info, last_vue_stage(ice), &key);
 
@@ -1620,9 +1616,7 @@ crocus_update_compiled_gs(struct crocus_context *ice)
    struct crocus_compiled_shader *shader = NULL;
 
    if (ish) {
-      struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
-      const struct gen_device_info *devinfo = &screen->devinfo;
-      struct brw_gs_prog_key key = { KEY_INIT(devinfo->gen) };
+      struct brw_gs_prog_key key = { KEY_INIT() };
       ice->vtbl.populate_gs_key(ice, &ish->nir->info, last_vue_stage(ice), &key);
 
       shader =
@@ -1733,7 +1727,7 @@ crocus_update_compiled_fs(struct crocus_context *ice)
    struct crocus_shader_state *shs = &ice->state.shaders[MESA_SHADER_FRAGMENT];
    struct crocus_uncompiled_shader *ish =
       ice->shaders.uncompiled[MESA_SHADER_FRAGMENT];
-   struct brw_wm_prog_key key = { KEY_INIT(devinfo->gen) };
+   struct brw_wm_prog_key key = { KEY_INIT() };
 
    if (ish->nos & (1ull << CROCUS_NOS_TEXTURES))
       crocus_populate_sampler_prog_key_data(ice, devinfo, MESA_SHADER_FRAGMENT, ish, false, &key.base.tex);
@@ -2260,9 +2254,7 @@ crocus_update_compiled_cs(struct crocus_context *ice)
    struct crocus_uncompiled_shader *ish =
       ice->shaders.uncompiled[MESA_SHADER_COMPUTE];
 
-   struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
-   const struct gen_device_info *devinfo = &screen->devinfo;
-   struct brw_cs_prog_key key = { KEY_INIT(devinfo->gen) };
+   struct brw_cs_prog_key key = { KEY_INIT() };
    ice->vtbl.populate_cs_key(ice, &key);
 
    struct crocus_compiled_shader *old = ice->shaders.prog[CROCUS_CACHE_CS];
@@ -2363,10 +2355,8 @@ crocus_create_uncompiled_shader(struct pipe_context *ctx,
                               nir_shader *nir,
                               const struct pipe_stream_output_info *so_info)
 {
-   struct crocus_context *ice = (void *)ctx;
    struct crocus_screen *screen = (struct crocus_screen *)ctx->screen;
    const struct gen_device_info *devinfo = &screen->devinfo;
-
    struct crocus_uncompiled_shader *ish =
       calloc(1, sizeof(struct crocus_uncompiled_shader));
    if (!ish)
@@ -2436,8 +2426,7 @@ crocus_create_vs_state(struct pipe_context *ctx,
       ish->nos |= (1ull << CROCUS_NOS_RASTERIZER);
 
    if (screen->precompile) {
-      const struct gen_device_info *devinfo = &screen->devinfo;
-      struct brw_vs_prog_key key = { KEY_INIT(devinfo->gen) };
+      struct brw_vs_prog_key key = { KEY_INIT() };
 
       if (!crocus_disk_cache_retrieve(ice, ish, &key, sizeof(key)))
          crocus_compile_vs(ice, ish, &key);
@@ -2458,9 +2447,8 @@ crocus_create_tcs_state(struct pipe_context *ctx,
 
    if (screen->precompile) {
       const unsigned _GL_TRIANGLES = 0x0004;
-      const struct gen_device_info *devinfo = &screen->devinfo;
       struct brw_tcs_prog_key key = {
-         KEY_INIT(devinfo->gen),
+         KEY_INIT(),
          // XXX: make sure the linker fills this out from the TES...
          .tes_primitive_mode =
             info->tess.primitive_mode ? info->tess.primitive_mode
@@ -2498,9 +2486,8 @@ crocus_create_tes_state(struct pipe_context *ctx,
       ish->nos |= (1ull << CROCUS_NOS_RASTERIZER);
 
    if (screen->precompile) {
-      const struct gen_device_info *devinfo = &screen->devinfo;
       struct brw_tes_prog_key key = {
-         KEY_INIT(devinfo->gen),
+         KEY_INIT(),
          // XXX: not ideal, need TCS output/TES input unification
          .inputs_read = info->inputs_read,
          .patch_inputs_read = info->patch_inputs_read,
@@ -2526,8 +2513,7 @@ crocus_create_gs_state(struct pipe_context *ctx,
       ish->nos |= (1ull << CROCUS_NOS_RASTERIZER);
 
    if (screen->precompile) {
-      const struct gen_device_info *devinfo = &screen->devinfo;
-      struct brw_gs_prog_key key = { KEY_INIT(devinfo->gen) };
+      struct brw_gs_prog_key key = { KEY_INIT() };
 
       if (!crocus_disk_cache_retrieve(ice, ish, &key, sizeof(key)))
          crocus_compile_gs(ice, ish, &key);
@@ -2568,7 +2554,7 @@ crocus_create_fs_state(struct pipe_context *ctx,
 
       const struct gen_device_info *devinfo = &screen->devinfo;
       struct brw_wm_prog_key key = {
-         KEY_INIT(devinfo->gen),
+         KEY_INIT(),
          .nr_color_regions = util_bitcount(color_outputs),
          .coherent_fb_fetch = false,
          .input_slots_valid =
@@ -2602,8 +2588,7 @@ crocus_create_compute_state(struct pipe_context *ctx,
    // XXX: disallow more than 64KB of shared variables
 
    if (screen->precompile) {
-      const struct gen_device_info *devinfo = &screen->devinfo;
-      struct brw_cs_prog_key key = { KEY_INIT(devinfo->gen) };
+      struct brw_cs_prog_key key = { KEY_INIT() };
 
       if (!crocus_disk_cache_retrieve(ice, ish, &key, sizeof(key)))
          crocus_compile_cs(ice, ish, &key);
@@ -2763,8 +2748,6 @@ static void
 crocus_bind_fs_state(struct pipe_context *ctx, void *state)
 {
    struct crocus_context *ice = (struct crocus_context *) ctx;
-   struct crocus_screen *screen = (struct crocus_screen *) ctx->screen;
-   const struct gen_device_info *devinfo = &screen->devinfo;
    struct crocus_uncompiled_shader *old_ish =
       ice->shaders.uncompiled[MESA_SHADER_FRAGMENT];
    struct crocus_uncompiled_shader *new_ish = state;
