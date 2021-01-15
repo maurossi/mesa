@@ -63,7 +63,6 @@ stream_state(struct crocus_batch *batch,
              uint32_t *out_offset,
              struct crocus_bo **out_bo)
 {
-   void *ptr = NULL;
    uint32_t offset = ALIGN(batch->state.used, alignment);
 
    if (offset + size >= BATCH_SZ && !batch->no_wrap) {
@@ -158,7 +157,6 @@ blorp_alloc_dynamic_state(struct blorp_batch *blorp_batch,
                           uint32_t alignment,
                           uint32_t *offset)
 {
-   struct crocus_context *ice = blorp_batch->blorp->driver_ctx;
    struct crocus_batch *batch = blorp_batch->driver_batch;
 
    return stream_state(batch, size, alignment, offset, NULL);
@@ -190,7 +188,6 @@ blorp_alloc_vertex_buffer(struct blorp_batch *blorp_batch,
                           uint32_t size,
                           struct blorp_address *addr)
 {
-   struct crocus_context *ice = blorp_batch->blorp->driver_ctx;
    struct crocus_batch *batch = blorp_batch->driver_batch;
    struct crocus_bo *bo;
    uint32_t offset;
@@ -256,9 +253,8 @@ blorp_emit_urb_config(struct blorp_batch *blorp_batch,
 {
    struct crocus_context *ice = blorp_batch->blorp->driver_ctx;
    struct crocus_batch *batch = blorp_batch->driver_batch;
-
 #if GEN_GEN <= 5
-   ice->vtbl.calculate_urb_fence(blorp_batch->driver_batch, 0, vs_entry_size, sf_entry_size);
+   ice->vtbl.calculate_urb_fence(batch, 0, vs_entry_size, sf_entry_size);
 #else
    unsigned size[4] = { vs_entry_size, 1, 1, 1 };
 
