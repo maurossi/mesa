@@ -6103,20 +6103,16 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    }
 
    if (dirty & CROCUS_DIRTY_POLYGON_STIPPLE) {
-#if 0
       crocus_emit_cmd(batch, GENX(3DSTATE_POLY_STIPPLE_PATTERN), poly) {
          for (int i = 0; i < 32; i++) {
             poly.PatternRow[i] = ice->state.poly_stipple.stipple[i];
          }
       }
-#endif
    }
 
    if (dirty & CROCUS_DIRTY_LINE_STIPPLE) {
-#if 0
       struct crocus_rasterizer_state *cso = ice->state.cso_rast;
       crocus_batch_emit(batch, cso->line_stipple, sizeof(cso->line_stipple));
-#endif
    }
 
 #if GEN_GEN <= 5
