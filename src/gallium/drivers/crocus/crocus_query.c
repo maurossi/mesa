@@ -114,7 +114,7 @@ struct crocus_query_so_overflow {
    } stream[4];
 };
 
-#if GEN_GEN == 7
+#if GEN_VERSIONx10 == 75
 static struct mi_value
 query_mem64(struct crocus_query *q, uint32_t offset)
 {
@@ -175,7 +175,6 @@ crocus_pipelined_write(struct crocus_batch *batch,
                      enum pipe_control_flags flags,
                      unsigned offset)
 {
-   const struct gen_device_info *devinfo = &batch->screen->devinfo;
    struct crocus_bo *bo = crocus_resource_bo(q->query_state_ref.res);
 
    crocus_emit_pipe_control_write(batch, "query: pipelined snapshot write",
@@ -187,7 +186,9 @@ static void
 write_value(struct crocus_context *ice, struct crocus_query *q, unsigned offset)
 {
    struct crocus_batch *batch = &ice->batches[q->batch_idx];
+#if GEN_GEN >= 6
    struct crocus_bo *bo = crocus_resource_bo(q->query_state_ref.res);
+#endif
 
    if (!crocus_is_query_pipelined(q)) {
       crocus_emit_pipe_control_flush(batch,
@@ -344,8 +345,7 @@ calculate_result_on_cpu(const struct gen_device_info *devinfo,
    q->ready = true;
 }
 
-#if GEN_GEN == 7
-
+#if GEN_VERSIONx10 == 75
 /**
  * Calculate the streamout overflow for stream \p idx:
  *
@@ -359,9 +359,9 @@ calc_overflow_for_stream(struct mi_builder *b,
 #define C(counter, i) query_mem64(q, \
    offsetof(struct crocus_query_so_overflow, stream[idx].counter[i]))
 
-//   return mi_isub(b, mi_isub(b, C(num_prims, 1), C(num_prims, 0)),
-//                         mi_isub(b, C(prim_storage_needed, 1),
-//                                        C(prim_storage_needed, 0)));
+   return mi_isub(b, mi_isub(b, C(num_prims, 1), C(num_prims, 0)),
+                         mi_isub(b, C(prim_storage_needed, 1),
+                                        C(prim_storage_needed, 0)));
 #undef C
    return mi_imm(idx);
 }
@@ -377,11 +377,12 @@ calc_overflow_any_stream(struct mi_builder *b, struct crocus_query *q)
       stream_result[i] = calc_overflow_for_stream(b, q, i);
 
    struct mi_value result = stream_result[0];
-//   for (int i = 1; i < MAX_VERTEX_STREAMS; i++)
-//      result = mi_ior(b, result, stream_result[i]);
+   for (int i = 1; i < MAX_VERTEX_STREAMS; i++)
+      result = mi_ior(b, result, stream_result[i]);
 
    return result;
 }
+
 
 static bool
 query_is_boolean(enum pipe_query_type type)
@@ -424,21 +425,20 @@ calculate_result_on_gpu(const struct gen_device_info *devinfo,
        * launch an actual shader to calculate this with full precision.
        */
       uint32_t scale = 1000000000ull / devinfo->timestamp_frequency;
-//      result = mi_iand(b, mi_imm((1ull << 36) - 1),
-//                           mi_imul_imm(b, start_val, scale));
+      result = mi_iand(b, mi_imm((1ull << 36) - 1),
+                       mi_imul_imm(b, start_val, scale));
       break;
    }
    case PIPE_QUERY_TIME_ELAPSED: {
       /* TODO: This discards fractional bits (see above). */
       uint32_t scale = 1000000000ull / devinfo->timestamp_frequency;
-//      result = mi_imul_imm(b, mi_isub(b, end_val, start_val), scale);
+      result = mi_imul_imm(b, mi_isub(b, end_val, start_val), scale);
       break;
    }
    default:
-      //     result = mi_isub(b, end_val, start_val);
+      result = mi_isub(b, end_val, start_val);
       break;
    }
-#if GEN_IS_HASWELL
    /* WaDividePSInvocationCountBy4:HSW,BDW */
    if (GEN_GEN == 7 && devinfo->is_haswell &&
        q->type == PIPE_QUERY_PIPELINE_STATISTICS_SINGLE &&
@@ -447,7 +447,6 @@ calculate_result_on_gpu(const struct gen_device_info *devinfo,
 
    if (query_is_boolean(q->type))
       result = mi_iand(b, mi_nz(b, result), mi_imm(1));
-#endif
 
    return result;
 }
@@ -731,6 +730,7 @@ crocus_get_query_result_resource(struct pipe_context *ctx,
       return;
    }
 
+#if GEN_VERSIONx10 == 75
    bool predicated = !wait && !q->stalled;
 
    struct mi_builder b;
@@ -744,10 +744,11 @@ crocus_get_query_result_resource(struct pipe_context *ctx,
    if (predicated) {
       mi_store(&b, mi_reg32(MI_PREDICATE_RESULT),
                    mi_mem64(ro_bo(query_bo, snapshots_landed_offset)));
-//      mi_store_if(&b, dst, result);
+      mi_store_if(&b, dst, result);
    } else {
       mi_store(&b, dst, result);
    }
+#endif
 }
 #endif
 
@@ -798,6 +799,7 @@ set_predicate_for_result(struct crocus_context *ice,
                                 "conditional rendering: set predicate",
                                 PIPE_CONTROL_FLUSH_ENABLE);
    q->stalled = true;
+#if GEN_VERSIONx10 == 75
 
    struct mi_builder b;
    mi_builder_init(&b, &batch->screen->devinfo, batch);
@@ -817,13 +819,13 @@ set_predicate_for_result(struct crocus_context *ice,
          query_mem64(q, offsetof(struct crocus_query_snapshots, start));
       struct mi_value end =
          query_mem64(q, offsetof(struct crocus_query_snapshots, end));
-//      result = mi_isub(&b, end, start);
+      result = mi_isub(&b, end, start);
       break;
    }
    }
 
-//   result = inverted ? mi_z(&b, result) : mi_nz(&b, result);
-//   result = mi_iand(&b, result, mi_imm(1));
+   result = inverted ? mi_z(&b, result) : mi_nz(&b, result);
+   result = mi_iand(&b, result, mi_imm(1));
 
    /* We immediately set the predicate on the render batch, as all the
     * counters come from 3D operations.  However, we may need to predicate
@@ -835,6 +837,7 @@ set_predicate_for_result(struct crocus_context *ice,
    mi_store(&b, mi_reg32(MI_PREDICATE_RESULT), result);
    mi_store(&b, query_mem64(q, offsetof(struct crocus_query_snapshots,
                                             predicate_result)), result);
+#endif
    ice->state.compute_predicate = bo;
 }
 #endif
