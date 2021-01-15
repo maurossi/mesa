@@ -129,7 +129,6 @@ find_existing_assembly(struct hash_table *cache,
                        unsigned assembly_size)
 {
    hash_table_foreach(cache, entry) {
-      const struct keybox *keybox = entry->key;
       const struct crocus_compiled_shader *existing = entry->data;
 
       if (existing->map_size != assembly_size)
@@ -194,7 +193,7 @@ crocus_upload_shader(struct crocus_context *ice,
                    uint32_t key_size,
                    const void *key,
                    const void *assembly,
-		   uint32_t asm_size,
+                   uint32_t asm_size,
                    struct brw_stage_prog_data *prog_data,
                    uint32_t prog_data_size,
                    uint32_t *streamout,
@@ -258,14 +257,12 @@ crocus_blorp_lookup_shader(struct blorp_batch *blorp_batch,
 {
    struct blorp_context *blorp = blorp_batch->blorp;
    struct crocus_context *ice = blorp->driver_ctx;
-   struct crocus_batch *batch = blorp_batch->driver_batch;
    struct crocus_compiled_shader *shader =
       crocus_find_cached_shader(ice, CROCUS_CACHE_BLORP, key_size, key);
 
    if (!shader)
       return false;
 
-   struct crocus_bo *bo = ice->shaders.cache_bo;
    *kernel_out = shader->offset;
    *((void **) prog_data_out) = shader->prog_data;
 
@@ -283,7 +280,6 @@ crocus_blorp_upload_shader(struct blorp_batch *blorp_batch,
 {
    struct blorp_context *blorp = blorp_batch->blorp;
    struct crocus_context *ice = blorp->driver_ctx;
-   struct crocus_batch *batch = blorp_batch->driver_batch;
 
    struct brw_stage_prog_data *prog_data = ralloc_size(NULL, prog_data_size);
    memcpy(prog_data, prog_data_templ, prog_data_size);
@@ -293,10 +289,9 @@ crocus_blorp_upload_shader(struct blorp_batch *blorp_batch,
 
    struct crocus_compiled_shader *shader =
       crocus_upload_shader(ice, CROCUS_CACHE_BLORP, key_size, key, kernel,
-			   kernel_size,
-			   prog_data, prog_data_size, NULL, NULL, 0, 0, &bt);
+                           kernel_size,
+                           prog_data, prog_data_size, NULL, NULL, 0, 0, &bt);
 
-   struct crocus_bo *bo = ice->shaders.cache_bo;
    *kernel_out = shader->offset;
    *((void **) prog_data_out) = shader->prog_data;
 
