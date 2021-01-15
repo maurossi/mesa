@@ -57,10 +57,21 @@ static uint32_t
 crocus_get_texture_swizzle(const struct crocus_context *ice,
                            const struct crocus_sampler_view *t)
 {
-   uint32_t swiz = (t->base.swizzle_r) |
-      (t->base.swizzle_g << 3) |
-      (t->base.swizzle_b << 6) |
-      (t->base.swizzle_a << 9);
+   const struct util_format_description *desc = util_format_description(t->base.format);
+   uint32_t swiz = 0;
+   uint8_t state_swiz[4];
+
+   state_swiz[0] = t->base.swizzle_r;
+   state_swiz[1] = t->base.swizzle_g;
+   state_swiz[2] = t->base.swizzle_b;
+   state_swiz[3] = t->base.swizzle_a;
+
+   for (int i = 0; i < 4; i++) {
+      if (desc->swizzle[state_swiz[i]] == PIPE_SWIZZLE_0 || desc->swizzle[state_swiz[i]] == PIPE_SWIZZLE_1)
+         swiz |= desc->swizzle[state_swiz[i]] << (i * 3);
+      else
+         swiz |= state_swiz[i] << (i * 3);
+   }
    return swiz;
 }
 
