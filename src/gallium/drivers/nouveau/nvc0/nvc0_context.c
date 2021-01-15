@@ -244,11 +244,13 @@ nvc0_destroy(struct pipe_context *pipe)
 {
    struct nvc0_context *nvc0 = nvc0_context(pipe);
 
+   simple_mtx_lock(&nvc0->screen->cur_ctx_lock);
    if (nvc0->screen->cur_ctx == nvc0) {
       nvc0->screen->cur_ctx = NULL;
       nvc0->screen->save_state = nvc0->state;
       nvc0->screen->save_state.tfb = NULL;
    }
+   simple_mtx_unlock(&nvc0->screen->cur_ctx_lock);
 
    if (nvc0->base.pipe.stream_uploader)
       u_upload_destroy(nvc0->base.pipe.stream_uploader);
@@ -284,9 +286,11 @@ nvc0_default_kick_notify(struct nouveau_pushbuf *push)
       FENCE_ACQ(&screen->base.fence);
       nouveau_fence_next(&screen->base);
       nouveau_fence_update(&screen->base, true);
+      simple_mtx_lock(&screen->cur_ctx_lock);
       if (screen->cur_ctx)
          screen->cur_ctx->state.flushed = true;
       FENCE_DONE(&screen->base.fence);
+      simple_mtx_unlock(&screen->cur_ctx_lock);
       NOUVEAU_DRV_STAT(&screen->base, pushbuf_count, 1);
    }
 }
