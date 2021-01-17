@@ -1766,7 +1766,7 @@ crocus_update_compiled_fs(struct crocus_context *ice)
                           CROCUS_DIRTY_CONSTANTS_FS |
                           CROCUS_DIRTY_WM |
                           CROCUS_DIRTY_CLIP |
-                          CROCUS_DIRTY_SBE;
+                          CROCUS_DIRTY_GEN7_SBE;
       shs->sysvals_need_upload = true;
    }
 }
@@ -1799,7 +1799,7 @@ update_last_vue_map(struct crocus_context *ice,
    }
 
    if (changed_slots || (old_map && old_map->separate != vue_map->separate)) {
-      ice->state.dirty |= CROCUS_DIRTY_SBE |
+      ice->state.dirty |= CROCUS_DIRTY_GEN7_SBE |
 	CROCUS_DIRTY_UNCOMPILED_FS;
    }
 

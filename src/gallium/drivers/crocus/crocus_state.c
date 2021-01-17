@@ -1617,30 +1617,35 @@ crocus_bind_rasterizer_state(struct pipe_context *ctx, void *state)
       /* Try to avoid re-emitting 3DSTATE_LINE_STIPPLE, it's non-pipelined */
       if (cso_changed_memcmp(line_stipple))
          ice->state.dirty |= CROCUS_DIRTY_LINE_STIPPLE;
-
+#if GEN_GEN >= 6
       if (cso_changed(half_pixel_center))
-         ice->state.dirty |= CROCUS_DIRTY_MULTISAMPLE;
+         ice->state.dirty |= CROCUS_DIRTY_GEN6_MULTISAMPLE;
+#endif
 
       if (cso_changed(line_stipple_enable) || cso_changed(poly_stipple_enable))
          ice->state.dirty |= CROCUS_DIRTY_WM;
 
+#if GEN_GEN >= 6
       if (cso_changed(rasterizer_discard))
          ice->state.dirty |= CROCUS_DIRTY_STREAMOUT | CROCUS_DIRTY_CLIP;
 
       if (cso_changed(flatshade_first))
          ice->state.dirty |= CROCUS_DIRTY_STREAMOUT;
+#endif
 
       if (cso_changed(depth_clip_near) || cso_changed(depth_clip_far) ||
           cso_changed(clip_halfz))
          ice->state.dirty |= CROCUS_DIRTY_CC_VIEWPORT;
 
+#if GEN_GEN >= 7
       if (cso_changed(sprite_coord_enable) ||
           cso_changed(sprite_coord_mode) ||
           cso_changed(light_twoside))
-         ice->state.dirty |= CROCUS_DIRTY_SBE;
+         ice->state.dirty |= CROCUS_DIRTY_GEN7_SBE;
 
       if (cso_changed(conservative_rasterization))
          ice->state.dirty |= CROCUS_DIRTY_FS;
+#endif
    }
 
    ice->state.cso_rast = new_cso;
@@ -2748,7 +2753,7 @@ crocus_set_sample_mask(struct pipe_context *ctx, unsigned sample_mask)
     * st/mesa may pass us 0xffffffff though, meaning "enable all samples".
     */
    ice->state.sample_mask = sample_mask & 0xff;
-   ice->state.dirty |= CROCUS_DIRTY_SAMPLE_MASK;
+   ice->state.dirty |= CROCUS_DIRTY_GEN6_SAMPLE_MASK;
 }
 
 /**
@@ -2850,7 +2855,7 @@ crocus_set_framebuffer_state(struct pipe_context *ctx,
    unsigned layers = util_framebuffer_get_num_layers(state);
 
    if (cso->samples != samples) {
-      ice->state.dirty |= CROCUS_DIRTY_MULTISAMPLE;
+      ice->state.dirty |= CROCUS_DIRTY_GEN6_MULTISAMPLE;
    }
 
    if (cso->nr_cbufs != state->nr_cbufs) {
@@ -3452,7 +3457,7 @@ crocus_set_stream_output_targets(struct pipe_context *ctx,
       /* REMOVE 3D state so buffer from here */
    }
 
-   ice->state.dirty |= CROCUS_DIRTY_SO_BUFFERS;
+   ice->state.dirty |= CROCUS_DIRTY_GEN7_SO_BUFFERS;
 }
 
 /**
@@ -5335,7 +5340,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #endif
    }
 
-   if (dirty & CROCUS_DIRTY_MULTISAMPLE) {
+   if (dirty & CROCUS_DIRTY_GEN6_MULTISAMPLE) {
 #if GEN_GEN >= 6
       crocus_emit_cmd(batch, GENX(3DSTATE_MULTISAMPLE), ms) {
          ms.PixelLocation =
@@ -5366,13 +5371,13 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #endif
    }
 
-   if (dirty & CROCUS_DIRTY_SAMPLE_MASK) {
 #if GEN_GEN >= 6
+   if (dirty & CROCUS_DIRTY_GEN6_SAMPLE_MASK) {
       crocus_emit_cmd(batch, GENX(3DSTATE_SAMPLE_MASK), ms) {
          ms.SampleMask = ice->state.sample_mask & (GEN_GEN == 6 ? 0xf : 0xff);
       }
-#endif
    }
+#endif
 
    for (int stage = 0; stage <= MESA_SHADER_FRAGMENT; stage++) {
       if (!(dirty & (CROCUS_DIRTY_VS << stage)))
@@ -5458,7 +5463,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #if GEN_GEN >= 7
    // XXX what about SO for earlier gens?
    if (ice->state.streamout_active) {
-      if (dirty & CROCUS_DIRTY_SO_BUFFERS) {
+      if (dirty & CROCUS_DIRTY_GEN7_SO_BUFFERS) {
          crocus_batch_emit(batch, genx->so_buffers,
                          4 * 4 * GENX(3DSTATE_SO_BUFFER_length));
          for (int i = 0; i < 4; i++) {
@@ -5919,7 +5924,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    }
 
 #if GEN_GEN >= 7
-   if (dirty & CROCUS_DIRTY_SBE) {
+   if (dirty & CROCUS_DIRTY_GEN7_SBE) {
       crocus_emit_sbe(batch, ice);
    }
 #endif
@@ -6160,7 +6165,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    }
 
 #if GEN_VERSIONx10 == 75
-   if (dirty & CROCUS_DIRTY_VF) {
+   if (dirty & CROCUS_DIRTY_GEN75_VF) {
       crocus_emit_cmd(batch, GENX(3DSTATE_VF), vf) {
          if (draw->primitive_restart) {
             vf.IndexedDrawCutIndexEnable = true;

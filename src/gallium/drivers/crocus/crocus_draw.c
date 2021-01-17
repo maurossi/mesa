@@ -125,7 +125,8 @@ crocus_update_draw_info(struct crocus_context *ice,
 
    if (ice->state.primitive_restart != info->primitive_restart ||
        ice->state.cut_index != info->restart_index) {
-      ice->state.dirty |= CROCUS_DIRTY_VF;
+      if (screen->devinfo.is_haswell)
+         ice->state.dirty |= CROCUS_DIRTY_GEN75_VF;
       ice->state.primitive_restart = info->primitive_restart;
       ice->state.cut_index = info->restart_index;
    }
@@ -290,7 +291,7 @@ crocus_draw_vbo(struct pipe_context *ctx,
     * write offsets, changing the behavior.
     */
    if (unlikely(INTEL_DEBUG & DEBUG_REEMIT))
-      ice->state.dirty |= CROCUS_ALL_DIRTY_FOR_RENDER & ~CROCUS_DIRTY_SO_BUFFERS;
+      ice->state.dirty |= CROCUS_ALL_DIRTY_FOR_RENDER & ~CROCUS_DIRTY_GEN7_SO_BUFFERS;
 
    crocus_update_draw_info(ice, info);
 

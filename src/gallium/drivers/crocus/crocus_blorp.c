@@ -317,7 +317,7 @@ crocus_blorp_exec(struct blorp_batch *blorp_batch,
     */
 
    uint64_t skip_bits = (CROCUS_DIRTY_POLYGON_STIPPLE |
-                         CROCUS_DIRTY_SO_BUFFERS |
+                         CROCUS_DIRTY_GEN7_SO_BUFFERS |
                          CROCUS_DIRTY_SO_DECL_LIST |
                          CROCUS_DIRTY_LINE_STIPPLE |
                          CROCUS_ALL_DIRTY_FOR_COMPUTE |
@@ -327,7 +327,7 @@ crocus_blorp_exec(struct blorp_batch *blorp_batch,
                          CROCUS_DIRTY_UNCOMPILED_TES |
                          CROCUS_DIRTY_UNCOMPILED_GS |
                          CROCUS_DIRTY_UNCOMPILED_FS |
-                         CROCUS_DIRTY_VF |
+                         CROCUS_DIRTY_GEN75_VF |
                          CROCUS_DIRTY_URB |
                          CROCUS_DIRTY_SF_CL_VIEWPORT |
                          CROCUS_DIRTY_SAMPLER_STATES_VS |
