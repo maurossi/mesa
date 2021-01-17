@@ -2063,62 +2063,6 @@ alloc_surface_states(struct crocus_surface_state *surf_state,
    assert(surf_state->cpu);
 }
 
-/**
- * Upload the CPU side SURFACE_STATEs into a GPU buffer.
- */
-static void
-upload_surface_states(struct u_upload_mgr *mgr,
-                      struct crocus_surface_state *surf_state)
-{
-#if 0
-   const unsigned surf_size = 4 * GENX(RENDER_SURFACE_STATE_length);
-   const unsigned bytes = surf_state->num_states * surf_size;
-
-   void *map =
-      upload_state(mgr, &surf_state->ref, bytes, SURFACE_STATE_ALIGNMENT);
-
-   surf_state->ref.offset +=
-      crocus_bo_offset_from_base_address(crocus_resource_bo(surf_state->ref.res));
-
-   if (map)
-      memcpy(map, surf_state->cpu, bytes);
-#endif
-}
-
-/**
- * Update resource addresses in a set of SURFACE_STATE descriptors,
- * and re-upload them if necessary.
- */
-static bool
-update_surface_state_addrs(struct u_upload_mgr *mgr,
-                           struct crocus_surface_state *surf_state,
-                           struct crocus_bo *bo)
-{
-   if (surf_state->bo_address == bo->gtt_offset)
-      return false;
-
-   STATIC_ASSERT(GENX(RENDER_SURFACE_STATE_SurfaceBaseAddress_start) % 32 == 0);
-   STATIC_ASSERT(GENX(RENDER_SURFACE_STATE_SurfaceBaseAddress_bits) == 32);
-   // TODO: redo for relocs
-
-   uint32_t *ss_addr = (uint32_t *) &surf_state->cpu[GENX(RENDER_SURFACE_STATE_SurfaceBaseAddress_start) / 32];
-
-   /* First, update the CPU copies.  We assume no other fields exist in
-    * the QWord containing Surface Base Address.
-    */
-   for (unsigned i = 0; i < surf_state->num_states; i++) {
-      *ss_addr = *ss_addr - surf_state->bo_address + bo->gtt_offset;
-      ss_addr = ((void *) ss_addr) + SURFACE_STATE_ALIGNMENT;
-   }
-
-   /* Next, upload the updated copies to a GPU buffer. */
-   //   upload_surface_states(mgr, surf_state);
-
-   surf_state->bo_address = bo->gtt_offset;
-
-   return true;
-}
-
 #if GEN_GEN == 7
 // TODO: check if this is needed for gen7, originally gen8
 /**
@@ -2317,8 +2261,6 @@ crocus_create_sampler_view(struct pipe_context *ctx,
                                 tmpl->u.buf.offset, tmpl->u.buf.size);
    }
 
-//   upload_surface_states(ice->state.surface_uploader, &isv->surface_state);
-
    return &isv->base;
 }
 
@@ -2344,7 +2286,6 @@ crocus_create_surface(struct pipe_context *ctx,
                     struct pipe_resource *tex,
                     const struct pipe_surface *tmpl)
 {
-   struct crocus_context *ice = (struct crocus_context *) ctx;
    struct crocus_screen *screen = (struct crocus_screen *)ctx->screen;
    const struct gen_device_info *devinfo = &screen->devinfo;
 
@@ -2464,14 +2405,6 @@ crocus_create_surface(struct pipe_context *ctx,
 #endif
       }
 
-      upload_surface_states(ice->state.surface_uploader, &surf->surface_state);
-
-#if GEN_GEN == 7
-      // TODO: check if this is needed
-      upload_surface_states(ice->state.surface_uploader,
-                            &surf->surface_state_read);
-#endif
-
       return psurf;
    }
 
@@ -2552,8 +2485,6 @@ crocus_create_surface(struct pipe_context *ctx,
    };
 
    isl_surf_fill_state_s(&screen->isl_dev, surf->surface_state.cpu, &f);
-
-   upload_surface_states(ice->state.surface_uploader, &surf->surface_state);
 
    return psurf;
 }
@@ -2692,8 +2623,6 @@ crocus_set_shader_images(struct pipe_context *ctx,
             fill_buffer_image_param(&image_params[start_slot + i],
                                     img->format, img->u.buf.size);
          }
-
-         upload_surface_states(ice->state.surface_uploader, &iv->surface_state);
       } else {
          pipe_resource_reference(&iv->base.resource, NULL);
          pipe_resource_reference(&iv->surface_state.ref.res, NULL);
@@ -2738,9 +2667,6 @@ crocus_set_sampler_views(struct pipe_context *ctx,
          view->res->bind_stages |= 1 << stage;
 
          shs->bound_sampler_views |= 1 << (start + i);
-
-         update_surface_state_addrs(ice->state.surface_uploader,
-                                    &view->surface_state, view->res->bo);
       }
    }
 
@@ -4568,32 +4494,6 @@ surf_state_offset_for_aux(struct crocus_resource *res,
 }
 
 
-static void
-update_clear_value(struct crocus_context *ice,
-                   struct crocus_batch *batch,
-                   struct crocus_resource *res,
-                   struct crocus_surface_state *surf_state,
-                   unsigned all_aux_modes,
-                   struct isl_view *view)
-{
-   UNUSED struct isl_device *isl_dev = &batch->screen->isl_dev;
-   UNUSED unsigned aux_modes = all_aux_modes;
-
-   // TODO: check if this is needed
-   /* TODO: Could update rather than re-filling */
-   alloc_surface_states(surf_state, all_aux_modes);
-
-   void *map = surf_state->cpu;
-
-   while (aux_modes) {
-      enum isl_aux_usage aux_usage = u_bit_scan(&aux_modes);
-      fill_surface_state(isl_dev, map, res, &res->surf, view, aux_usage,
-                         0, 0, 0);
-      map += SURFACE_STATE_ALIGNMENT;
-   }
-
-   upload_surface_states(ice->state.surface_uploader, surf_state);
-}
 #endif
 
 static uint32_t
@@ -6801,31 +6701,11 @@ crocus_rebind_buffer(struct crocus_context *ice,
       }
 
       if (res->bind_history & PIPE_BIND_SAMPLER_VIEW) {
-         uint32_t bound_sampler_views = shs->bound_sampler_views;
-         while (bound_sampler_views) {
-            const int i = u_bit_scan(&bound_sampler_views);
-            struct crocus_sampler_view *isv = shs->textures[i];
-            struct crocus_bo *bo = isv->res->bo;
-
-            if (update_surface_state_addrs(ice->state.surface_uploader,
-                                           &isv->surface_state, bo)) {
-               ice->state.dirty |= CROCUS_DIRTY_BINDINGS_VS << s;
-            }
-         }
+         assert(0);
       }
 
       if (res->bind_history & PIPE_BIND_SHADER_IMAGE) {
-         uint32_t bound_image_views = shs->bound_image_views;
-         while (bound_image_views) {
-            const int i = u_bit_scan(&bound_image_views);
-            struct crocus_image_view *iv = &shs->image[i];
-            struct crocus_bo *bo = crocus_resource_bo(iv->base.resource);
-
-            if (update_surface_state_addrs(ice->state.surface_uploader,
-                                           &iv->surface_state, bo)) {
-               ice->state.dirty |= CROCUS_DIRTY_BINDINGS_VS << s;
-            }
-         }
+         assert(0);
       }
    }
 }
