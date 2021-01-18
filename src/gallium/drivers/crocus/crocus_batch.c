@@ -219,7 +219,12 @@ crocus_init_batch(struct crocus_batch *batch,
    batch->valid_reloc_flags = EXEC_OBJECT_WRITE;
    if (devinfo->gen == 6)
       batch->valid_reloc_flags |= EXEC_OBJECT_NEEDS_GTT;
-   batch->use_shadow_copy = !devinfo->has_llc;
+
+   if (INTEL_DEBUG & DEBUG_BATCH) {
+      /* The shadow doesn't get relocs written so state decode fails. */
+      batch->use_shadow_copy = false;
+   } else
+      batch->use_shadow_copy = !devinfo->has_llc;
 
    util_dynarray_init(&batch->exec_fences, ralloc_context(NULL));
    util_dynarray_init(&batch->syncpts, ralloc_context(NULL));
@@ -415,7 +420,10 @@ recreate_growing_buffer(struct crocus_batch *batch,
    grow->partial_bo = NULL;
    grow->partial_bo_map = NULL;
    grow->partial_bytes = 0;
-   grow->map = crocus_bo_map(NULL, grow->bo, MAP_READ | MAP_WRITE);
+   if (batch->use_shadow_copy)
+      grow->map = realloc(grow->map, grow->bo->size);
+   else
+      grow->map = crocus_bo_map(NULL, grow->bo, MAP_READ | MAP_WRITE);
    grow->map_next = grow->map;
 }
 
@@ -467,6 +475,11 @@ crocus_batch_free(struct crocus_batch *batch)
 {
    struct crocus_screen *screen = batch->screen;
    struct crocus_bufmgr *bufmgr = screen->bufmgr;
+
+   if (batch->use_shadow_copy) {
+      free(batch->command.map);
+      free(batch->state.map);
+   }
 
    for (int i = 0; i < batch->exec_count; i++) {
       crocus_bo_unreference(batch->exec_bos[i]);
@@ -556,7 +569,7 @@ crocus_grow_buffer(struct crocus_batch *batch, bool grow_state,
    /* Copy existing data to the new larger buffer */
    grow->partial_bo_map = grow->map;
 
-   if (0) {//batch->use_shadow_copy) {
+   if (batch->use_shadow_copy) {
       /* We can't safely use realloc, as it may move the existing buffer,
        * breaking existing pointers the caller may still be using.  Just
        * malloc a new copy and memcpy it like the normal BO path.
@@ -729,6 +742,15 @@ crocus_batch_check_for_reset(struct crocus_batch *batch)
 static int
 submit_batch(struct crocus_batch *batch)
 {
+
+   if (batch->use_shadow_copy) {
+      void *bo_map = crocus_bo_map(batch->dbg, batch->command.bo, MAP_WRITE);
+      memcpy(bo_map, batch->command.map, crocus_batch_bytes_used(batch));
+
+      bo_map = crocus_bo_map(batch->dbg, batch->state.bo, MAP_WRITE);
+      memcpy(bo_map, batch->state.map, batch->state.used);
+   }
+
    crocus_bo_unmap(batch->command.bo);
    crocus_bo_unmap(batch->state.bo);
 
