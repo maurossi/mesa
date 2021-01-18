@@ -296,7 +296,11 @@ crocus_blorp_exec(struct blorp_batch *blorp_batch,
    batch->no_wrap = true;
 #if GEN_GEN == 6
    /* Emit workaround flushes when we switch from drawing to blorping. */
-//TODO   brw_emit_post_sync_nonzero_flush(brw);
+   crocus_emit_post_sync_nonzero_flush(batch);
+#endif
+
+#if GEN_GEN >= 6
+   crocus_emit_depth_stall_flushes(batch);
 #endif
 
    blorp_emit(blorp_batch, GENX(3DSTATE_DRAWING_RECTANGLE), rect) {

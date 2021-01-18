@@ -902,7 +902,8 @@ void crocus_emit_pipe_control_write(struct crocus_batch *batch,
                                   struct crocus_bo *bo, uint32_t offset,
                                   uint64_t imm);
 void crocus_emit_mi_flush(struct crocus_batch *batch);
-
+void crocus_emit_depth_stall_flushes(struct crocus_batch *batch);
+void crocus_emit_post_sync_nonzero_flush(struct crocus_batch *batch);
 void crocus_emit_end_of_pipe_sync(struct crocus_batch *batch,
                                 const char *reason, uint32_t flags);
 void crocus_flush_all_caches(struct crocus_batch *batch);

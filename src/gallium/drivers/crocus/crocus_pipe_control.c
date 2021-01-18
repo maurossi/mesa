@@ -59,7 +59,10 @@ crocus_emit_pipe_control_flush(struct crocus_batch *batch,
                              const char *reason,
                              uint32_t flags)
 {
-   if ((flags & PIPE_CONTROL_CACHE_FLUSH_BITS) &&
+   const struct gen_device_info *devinfo = &batch->screen->devinfo;
+
+   if (devinfo->gen >= 6 &&
+       (flags & PIPE_CONTROL_CACHE_FLUSH_BITS) &&
        (flags & PIPE_CONTROL_CACHE_INVALIDATE_BITS)) {
       /* A pipe control command with flush and invalidate bits set
        * simultaneously is an inherently racy operation on Gen6+ if the
@@ -95,6 +98,30 @@ crocus_emit_pipe_control_write(struct crocus_batch *batch,
                              uint64_t imm)
 {
    batch->vtbl->emit_raw_pipe_control(batch, reason, flags, bo, offset, imm);
+}
+
+/**
+ * Restriction [DevSNB, DevIVB]:
+ *
+ * Prior to changing Depth/Stencil Buffer state (i.e. any combination of
+ * 3DSTATE_DEPTH_BUFFER, 3DSTATE_CLEAR_PARAMS, 3DSTATE_STENCIL_BUFFER,
+ * 3DSTATE_HIER_DEPTH_BUFFER) SW must first issue a pipelined depth stall
+ * (PIPE_CONTROL with Depth Stall bit set), followed by a pipelined depth
+ * cache flush (PIPE_CONTROL with Depth Flush Bit set), followed by
+ * another pipelined depth stall (PIPE_CONTROL with Depth Stall bit set),
+ * unless SW can otherwise guarantee that the pipeline from WM onwards is
+ * already flushed (e.g., via a preceding MI_FLUSH).
+ */
+void
+crocus_emit_depth_stall_flushes(struct crocus_batch *batch)
+{
+   const struct gen_device_info *devinfo = &batch->screen->devinfo;
+
+   assert(devinfo->gen >= 6);
+
+   crocus_emit_pipe_control_flush(batch, "depth stall", PIPE_CONTROL_DEPTH_STALL);
+   crocus_emit_pipe_control_flush(batch, "depth stall", PIPE_CONTROL_DEPTH_CACHE_FLUSH);
+   crocus_emit_pipe_control_flush(batch, "depth stall", PIPE_CONTROL_DEPTH_STALL);
 }
 
 /*
@@ -186,6 +213,56 @@ crocus_emit_mi_flush(struct crocus_batch *batch)
    }
    crocus_emit_pipe_control_flush(batch, "mi flush", flags);
 }
+
+/**
+ * Emits a PIPE_CONTROL with a non-zero post-sync operation, for
+ * implementing two workarounds on gen6.  From section 1.4.7.1
+ * "PIPE_CONTROL" of the Sandy Bridge PRM volume 2 part 1:
+ *
+ * [DevSNB-C+{W/A}] Before any depth stall flush (including those
+ * produced by non-pipelined state commands), software needs to first
+ * send a PIPE_CONTROL with no bits set except Post-Sync Operation !=
+ * 0.
+ *
+ * [Dev-SNB{W/A}]: Before a PIPE_CONTROL with Write Cache Flush Enable
+ * =1, a PIPE_CONTROL with any non-zero post-sync-op is required.
+ *
+ * And the workaround for these two requires this workaround first:
+ *
+ * [Dev-SNB{W/A}]: Pipe-control with CS-stall bit set must be sent
+ * BEFORE the pipe-control with a post-sync op and no write-cache
+ * flushes.
+ *
+ * And this last workaround is tricky because of the requirements on
+ * that bit.  From section 1.4.7.2.3 "Stall" of the Sandy Bridge PRM
+ * volume 2 part 1:
+ *
+ *     "1 of the following must also be set:
+ *      - Render Target Cache Flush Enable ([12] of DW1)
+ *      - Depth Cache Flush Enable ([0] of DW1)
+ *      - Stall at Pixel Scoreboard ([1] of DW1)
+ *      - Depth Stall ([13] of DW1)
+ *      - Post-Sync Operation ([13] of DW1)
+ *      - Notify Enable ([8] of DW1)"
+ *
+ * The cache flushes require the workaround flush that triggered this
+ * one, so we can't use it.  Depth stall would trigger the same.
+ * Post-sync nonzero is what triggered this second workaround, so we
+ * can't use that one either.  Notify enable is IRQs, which aren't
+ * really our business.  That leaves only stall at scoreboard.
+ */
+void
+crocus_emit_post_sync_nonzero_flush(struct crocus_batch *batch)
+{
+   crocus_emit_pipe_control_flush(batch, "nonzero",
+                                  PIPE_CONTROL_CS_STALL |
+                                  PIPE_CONTROL_STALL_AT_SCOREBOARD);
+
+   crocus_emit_pipe_control_write(batch, "nonzero",
+                                  PIPE_CONTROL_WRITE_IMMEDIATE,
+                                  batch->screen->workaround_bo, 0, 0);
+}
+
 /**
  * Flush and invalidate all caches (for debugging purposes).
  */

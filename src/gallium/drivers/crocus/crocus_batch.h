@@ -95,6 +95,7 @@ struct crocus_batch {
    unsigned primary_batch_size;
 
    bool state_base_address_emitted;
+   uint8_t pipe_controls_since_last_cs_stall;
 
    uint32_t hw_ctx_id;
 

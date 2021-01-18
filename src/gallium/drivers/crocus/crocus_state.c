@@ -953,10 +953,10 @@ static void
 gen7_emit_cs_stall_flush(struct crocus_batch *batch)
 {
   crocus_emit_pipe_control_write(batch,
-				 "workaround",
-				 PIPE_CONTROL_CS_STALL
-				 | PIPE_CONTROL_WRITE_IMMEDIATE,
-				 batch->screen->workaround_bo, 0, 0);
+                                 "workaround",
+                                 PIPE_CONTROL_CS_STALL
+                                 | PIPE_CONTROL_WRITE_IMMEDIATE,
+                                 batch->screen->workaround_bo, 0, 0);
 }
 #endif
 
@@ -4839,42 +4839,16 @@ setup_constant_buffers(struct crocus_context *ice,
 
 #if GEN_GEN == 7
 static void
-gen7_depth_flush(struct crocus_batch *batch)
-{
-   /* From the Haswell PRM, documentation for 3DSTATE_DEPTH_BUFFER:
-    *
-    *    "Restriction: Prior to changing Depth/Stencil Buffer state (i.e., any
-    *    combination of 3DSTATE_DEPTH_BUFFER, 3DSTATE_CLEAR_PARAMS,
-    *    3DSTATE_STENCIL_BUFFER, 3DSTATE_HIER_DEPTH_BUFFER) SW must first
-    *    issue a pipelined depth stall (PIPE_CONTROL with Depth Stall bit
-    *    set), followed by a pipelined depth cache flush (PIPE_CONTROL with
-    *    Depth Flush Bit set, followed by another pipelined depth stall
-    *    (PIPE_CONTROL with Depth Stall Bit set), unless SW can otherwise
-    *    guarantee that the pipeline from WM onwards is already flushed (e.g.,
-    *    via a preceding MI_FLUSH)."
-    */
-   crocus_emit_pipe_control_flush(batch,
-                                  "depth flush",
-                                  PIPE_CONTROL_DEPTH_STALL);
-   crocus_emit_pipe_control_flush(batch,
-                                  "depth flush",
-                                  PIPE_CONTROL_DEPTH_CACHE_FLUSH);
-   crocus_emit_pipe_control_flush(batch,
-                                  "depth flush",
-                                  PIPE_CONTROL_DEPTH_STALL);
-}
-
-static void
 gen7_emit_vs_workaround_flush(struct crocus_batch *batch)
 {
    ASSERTED const struct gen_device_info *devinfo = &batch->screen->devinfo;
 
    assert(devinfo->gen == 7);
    crocus_emit_pipe_control_write(batch,
-				  "vs workaround",
-				  PIPE_CONTROL_WRITE_IMMEDIATE
-				  | PIPE_CONTROL_DEPTH_STALL,
-				  batch->screen->workaround_bo, 0, 0);
+                                  "vs workaround",
+                                  PIPE_CONTROL_WRITE_IMMEDIATE
+                                  | PIPE_CONTROL_DEPTH_STALL,
+                                  batch->screen->workaround_bo, 0, 0);
 }
 
 static void
@@ -5968,8 +5942,8 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
    if (dirty & CROCUS_DIRTY_DEPTH_BUFFER) {
       struct isl_device *isl_dev = &batch->screen->isl_dev;
-#if GEN_GEN == 7
-      gen7_depth_flush(batch);
+#if GEN_GEN >= 6
+      crocus_emit_depth_stall_flushes(batch);
 #endif
       void *batch_ptr;
       struct crocus_resource *zres, *sres;
@@ -6732,7 +6706,7 @@ flags_to_post_sync_op(uint32_t flags)
    return 0;
 }
 
-/**
+/*
  * Do the given flags have a Post Sync or LRI Post Sync operation?
  */
 static enum pipe_control_flags
@@ -6789,22 +6763,28 @@ crocus_emit_raw_pipe_control(struct crocus_batch *batch,
     * We do these now because they may add post-sync operations or CS stalls.
     */
 
-   // TODO: check if this applies
-   if (flags & PIPE_CONTROL_VF_CACHE_INVALIDATE) {
-      /* Project: BDW, SKL+ (stopping at CNL) / Argument: VF Invalidate
+   if (GEN_GEN == 6 && (flags & PIPE_CONTROL_RENDER_TARGET_FLUSH)) {
+      /* Hardware workaround: SNB B-Spec says:
        *
-       * "'Post Sync Operation' must be enabled to 'Write Immediate Data' or
-       *  'Write PS Depth Count' or 'Write Timestamp'."
+       *    "[Dev-SNB{W/A}]: Before a PIPE_CONTROL with Write Cache Flush
+       *     Enable = 1, a PIPE_CONTROL with any non-zero post-sync-op is
+       *     required."
        */
-      if (!bo) {
-         flags |= PIPE_CONTROL_WRITE_IMMEDIATE;
-         post_sync_flags |= PIPE_CONTROL_WRITE_IMMEDIATE;
-         non_lri_post_sync_flags |= PIPE_CONTROL_WRITE_IMMEDIATE;
-         bo = batch->screen->workaround_bo;
-      }
+      crocus_emit_post_sync_nonzero_flush(batch);
    }
 
-   if (flags & PIPE_CONTROL_DEPTH_STALL) {
+   if (!(GEN_VERSIONx10 == 75) && (flags & PIPE_CONTROL_DEPTH_STALL)) {
+      /* Project: PRE-HSW / Argument: Depth Stall
+       *
+       * "The following bits must be clear:
+       *  - Render Target Cache Flush Enable ([12] of DW1)
+       *  - Depth Cache Flush Enable ([0] of DW1)"
+       */
+      assert(!(flags & (PIPE_CONTROL_RENDER_TARGET_FLUSH |
+                        PIPE_CONTROL_DEPTH_CACHE_FLUSH)));
+   }
+
+   if (GEN_GEN >= 6 && (flags & PIPE_CONTROL_DEPTH_STALL)) {
       /* From the PIPE_CONTROL instruction table, bit 13 (Depth Stall Enable):
        *
        *    "This bit must be DISABLED for operations other than writing
@@ -6818,6 +6798,14 @@ crocus_emit_raw_pipe_control(struct crocus_batch *batch,
        *
        * We ignore the supposed restriction and do nothing.
        */
+   }
+
+   if (!(GEN_VERSIONx10 == 75) && (flags & PIPE_CONTROL_DEPTH_CACHE_FLUSH)) {
+      /* Project: PRE-HSW / Argument: Depth Cache Flush
+       *
+       * "Depth Stall must be clear ([13] of DW1)."
+       */
+      assert(!(flags & PIPE_CONTROL_DEPTH_STALL));
    }
 
    if (flags & (PIPE_CONTROL_RENDER_TARGET_FLUSH |
@@ -6862,6 +6850,18 @@ crocus_emit_raw_pipe_control(struct crocus_batch *batch,
        *     Invalidate bit set."
        */
       flags |= PIPE_CONTROL_CS_STALL;
+   }
+
+   if ((GEN_VERSIONx10 == 75)) {
+      /* From the PIPE_CONTROL page itself:
+       *
+       *    "HSW - Programming Note: PIPECONTROL with RO Cache Invalidation:
+       *     Prior to programming a PIPECONTROL command with any of the RO
+       *     cache invalidation bit set, program a PIPECONTROL flush command
+       *     with “CS stall” bit and “HDC Flush” bit set."
+       *
+       * TODO: Actually implement this.  What's an HDC Flush?
+       */
    }
 
    if (flags & PIPE_CONTROL_FLUSH_LLC) {
@@ -6934,7 +6934,18 @@ crocus_emit_raw_pipe_control(struct crocus_batch *batch,
       assert(non_lri_post_sync_flags != 0);
    }
 
-   if (flags & PIPE_CONTROL_TLB_INVALIDATE) {
+   if (GEN_GEN >= 6 && (flags & PIPE_CONTROL_TLB_INVALIDATE)) {
+      /* Project: SNB, IVB, HSW / Argument: TLB inv
+       *
+       * "{All SKUs}{All Steppings}: Post-Sync Operation ([15:14] of DW1)
+       *  must be set to something other than '0'."
+       *
+       * For now, we just assert that the caller does this.
+       */
+      assert(non_lri_post_sync_flags != 0);
+   }
+
+   if (GEN_GEN >= 7 && (flags & PIPE_CONTROL_TLB_INVALIDATE)) {
       /* Project: IVB+ / Argument: TLB inv
        *
        *    "Requires stall bit ([20] of DW1) set."
@@ -6951,47 +6962,26 @@ crocus_emit_raw_pipe_control(struct crocus_batch *batch,
       flags |= PIPE_CONTROL_CS_STALL;
    }
 
-   /* "GPGPU specific workarounds" (both post-sync and flush) ------------ */
+   /* Implement the WaCsStallAtEveryFourthPipecontrol workaround on IVB, BYT:
+    *
+    * "Every 4th PIPE_CONTROL command, not counting the PIPE_CONTROL with
+    *  only read-cache-invalidate bit(s) set, must have a CS_STALL bit set."
+    *
+    * Note that the kernel does CS stalls between batches, so we only need
+    * to count them within a batch.  We currently naively count every 4, and
+    * don't skip the ones with only read-cache-invalidate bits set.  This
+    * may or may not be a problem...
+    */
+   if (GEN_GEN == 7 && !(GEN_VERSIONx10 == 75)) {
+      if (flags & PIPE_CONTROL_CS_STALL) {
+         /* If we're doing a CS stall, reset the counter and carry on. */
+         batch->pipe_controls_since_last_cs_stall = 0;
+      }
 
-   if (IS_COMPUTE_PIPELINE(batch)) {
-      // TODO: check if this is needed on gen7
-      if (GEN_GEN == 7 && (post_sync_flags ||
-                           (flags & (PIPE_CONTROL_NOTIFY_ENABLE |
-                                     PIPE_CONTROL_DEPTH_STALL |
-                                     PIPE_CONTROL_RENDER_TARGET_FLUSH |
-                                     PIPE_CONTROL_DEPTH_CACHE_FLUSH |
-                                     PIPE_CONTROL_DATA_CACHE_FLUSH)))) {
-         /* Project: BDW / Arguments:
-          *
-          * - LRI Post Sync Operation   [23]
-          * - Post Sync Op              [15:14]
-          * - Notify En                 [8]
-          * - Depth Stall               [13]
-          * - Render Target Cache Flush [12]
-          * - Depth Cache Flush         [0]
-          * - DC Flush Enable           [5]
-          *
-          *    "Requires stall bit ([20] of DW) set for all GPGPU and Media
-          *     Workloads."
-          */
+      /* If this is the fourth pipe control without a CS stall, do one now. */
+      if (++batch->pipe_controls_since_last_cs_stall == 4) {
+         batch->pipe_controls_since_last_cs_stall = 0;
          flags |= PIPE_CONTROL_CS_STALL;
-
-         /* Also, from the PIPE_CONTROL instruction table, bit 20:
-          *
-          *    "Project: BDW
-          *     This bit must be always set when PIPE_CONTROL command is
-          *     programmed by GPGPU and MEDIA workloads, except for the cases
-          *     when only Read Only Cache Invalidation bits are set (State
-          *     Cache Invalidation Enable, Instruction cache Invalidation
-          *     Enable, Texture Cache Invalidation Enable, Constant Cache
-          *     Invalidation Enable). This is to WA FFDOP CG issue, this WA
-          *     need not implemented when FF_DOP_CG is disable via "Fixed
-          *     Function DOP Clock Gate Disable" bit in RC_PSMI_CTRL register."
-          *
-          * It sounds like we could avoid CS stalls in some cases, but we
-          * don't currently bother.  This list isn't exactly the list above,
-          * either...
-          */
       }
    }
 
@@ -7172,17 +7162,79 @@ crocus_emit_mi_report_perf_count(struct crocus_batch *batch,
 #endif
 }
 
-#if GEN_VERSIONx10 == 75
+/**
+ * From the PRM, Volume 2a:
+ *
+ *    "Indirect State Pointers Disable
+ *
+ *    At the completion of the post-sync operation associated with this pipe
+ *    control packet, the indirect state pointers in the hardware are
+ *    considered invalid; the indirect pointers are not saved in the context.
+ *    If any new indirect state commands are executed in the command stream
+ *    while the pipe control is pending, the new indirect state commands are
+ *    preserved.
+ *
+ *    [DevIVB+]: Using Invalidate State Pointer (ISP) only inhibits context
+ *    restoring of Push Constant (3DSTATE_CONSTANT_*) commands. Push Constant
+ *    commands are only considered as Indirect State Pointers. Once ISP is
+ *    issued in a context, SW must initialize by programming push constant
+ *    commands for all the shaders (at least to zero length) before attempting
+ *    any rendering operation for the same context."
+ *
+ * 3DSTATE_CONSTANT_* packets are restored during a context restore,
+ * even though they point to a BO that has been already unreferenced at
+ * the end of the previous batch buffer. This has been fine so far since
+ * we are protected by these scratch page (every address not covered by
+ * a BO should be pointing to the scratch page). But on CNL, it is
+ * causing a GPU hang during context restore at the 3DSTATE_CONSTANT_*
+ * instruction.
+ *
+ * The flag "Indirect State Pointers Disable" in PIPE_CONTROL tells the
+ * hardware to ignore previous 3DSTATE_CONSTANT_* packets during a
+ * context restore, so the mentioned hang doesn't happen. However,
+ * software must program push constant commands for all stages prior to
+ * rendering anything, so we flag them as dirty.
+ *
+ * Finally, we also make sure to stall at pixel scoreboard to make sure the
+ * constants have been loaded into the EUs prior to disable the push constants
+ * so that it doesn't hang a previous 3DPRIMITIVE.
+ */
+#if GEN_GEN >= 7
+static void
+gen7_emit_isp_disable(struct crocus_batch *batch)
+{
+   crocus_emit_raw_pipe_control(batch, "isp disable",
+                                 PIPE_CONTROL_STALL_AT_SCOREBOARD |
+                                 PIPE_CONTROL_CS_STALL,
+                                 NULL, 0, 0);
+   crocus_emit_raw_pipe_control(batch, "isp disable",
+                                PIPE_CONTROL_INDIRECT_STATE_POINTERS_DISABLE |
+                                PIPE_CONTROL_CS_STALL,
+                                NULL, 0, 0);
+
+   struct crocus_context *ice = batch->ice;
+   ice->state.dirty |= (CROCUS_DIRTY_CONSTANTS_VS |
+                        CROCUS_DIRTY_CONSTANTS_TCS |
+                        CROCUS_DIRTY_CONSTANTS_TES |
+                        CROCUS_DIRTY_CONSTANTS_GS |
+                        CROCUS_DIRTY_CONSTANTS_FS);
+}
+#endif
+
+#if GEN_GEN >= 7
 static void
 crocus_state_finish_batch(struct crocus_batch *batch)
 {
+#if GEN_VERSIONx10 == 75
    crocus_emit_mi_flush(batch);
    crocus_emit_cmd(batch, GENX(3DSTATE_CC_STATE_POINTERS), ptr) {
       ptr.ColorCalcStatePointer = batch->ice->shaders.cc_offset;
    }
 
    crocus_emit_pipe_control_flush(batch, "hsw wa", PIPE_CONTROL_RENDER_TARGET_FLUSH |
-				  PIPE_CONTROL_CS_STALL);
+                                  PIPE_CONTROL_CS_STALL);
+#endif
+   gen7_emit_isp_disable(batch);
 }
 #endif
 
@@ -7291,7 +7343,7 @@ genX(init_state)(struct crocus_context *ice)
    ice->vtbl.populate_cs_key = crocus_populate_cs_key;
    ice->vtbl.mocs = mocs;
    ice->vtbl.lost_genx_state = crocus_lost_genx_state;
-#if GEN_VERSIONx10 == 75
+#if GEN_GEN >= 7
    ice->vtbl.finish_batch = crocus_state_finish_batch;
 #endif
 #if GEN_GEN <= 5
