@@ -234,9 +234,9 @@ crocus_init_batch(struct crocus_batch *batch,
    batch->validation_list =
       malloc(batch->exec_array_size * sizeof(batch->validation_list[0]));
 
-   batch->cache.render = _mesa_hash_table_create(NULL, _mesa_hash_pointer,
+   batch->cache.render = _mesa_hash_table_create(NULL, NULL,
                                                  _mesa_key_pointer_equal);
-   batch->cache.depth = _mesa_set_create(NULL, _mesa_hash_pointer,
+   batch->cache.depth = _mesa_set_create(NULL, NULL,
                                          _mesa_key_pointer_equal);
 
    memset(batch->other_batches, 0, sizeof(batch->other_batches));
