@@ -349,16 +349,21 @@ crocus_cache_sets_clear(struct crocus_batch *batch)
 void
 crocus_flush_depth_and_render_caches(struct crocus_batch *batch)
 {
-   crocus_emit_pipe_control_flush(batch,
-                                "cache tracker: render-to-texture",
-                                PIPE_CONTROL_DEPTH_CACHE_FLUSH |
-                                PIPE_CONTROL_RENDER_TARGET_FLUSH |
-                                PIPE_CONTROL_CS_STALL);
+   const struct gen_device_info *devinfo = &batch->screen->devinfo;
+   if (devinfo->gen >= 6) {
+      crocus_emit_pipe_control_flush(batch,
+                                     "cache tracker: render-to-texture",
+                                     PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+                                     PIPE_CONTROL_RENDER_TARGET_FLUSH |
+                                     PIPE_CONTROL_CS_STALL);
 
-   crocus_emit_pipe_control_flush(batch,
-                                "cache tracker: render-to-texture",
-                                PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE |
-                                PIPE_CONTROL_CONST_CACHE_INVALIDATE);
+      crocus_emit_pipe_control_flush(batch,
+                                     "cache tracker: render-to-texture",
+                                     PIPE_CONTROL_TEXTURE_CACHE_INVALIDATE |
+                                     PIPE_CONTROL_CONST_CACHE_INVALIDATE);
+   } else {
+      crocus_emit_mi_flush(batch);
+   }
 
    crocus_cache_sets_clear(batch);
 }
