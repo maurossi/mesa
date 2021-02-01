@@ -710,64 +710,26 @@ anv_AcquireImageANDROID(
    ANV_FROM_HANDLE(anv_device, device, device_h);
    VkResult result = VK_SUCCESS;
 
-   if (nativeFenceFd != -1) {
-      /* As a simple, firstpass implementation of VK_ANDROID_native_buffer, we
-       * block on the nativeFenceFd. This may introduce latency and is
-       * definitiely inefficient, yet it's correct.
-       *
-       * FINISHME(chadv): Import the nativeFenceFd into the VkSemaphore and
-       * VkFence.
-       */
-      if (sync_wait(nativeFenceFd, /*timeout*/ -1) < 0) {
-         result = vk_errorf(device, device, VK_ERROR_DEVICE_LOST,
-                            "%s: failed to wait on nativeFenceFd=%d",
-                            __func__, nativeFenceFd);
-      }
-
-      /* From VK_ANDROID_native_buffer's pseudo spec
-       * (https://source.android.com/devices/graphics/implement-vulkan):
-       *
-       *    The driver takes ownership of the fence fd and is responsible for
-       *    closing it [...] even if vkAcquireImageANDROID fails and returns
-       *    an error.
-       */
-      close(nativeFenceFd);
-
-      if (result != VK_SUCCESS)
-         return result;
+   if (semaphore_h) {
+      const VkImportSemaphoreFdInfoKHR info = {
+         .sType = VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR,
+         .semaphore = semaphore_h,
+         .flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT,
+         .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
+         .fd = nativeFenceFd,
+      };
+      anv_ImportSemaphoreFdKHR(device_h, &info);
    }
 
-   if (semaphore_h || fence_h) {
-      /* Thanks to implicit sync, the image is ready for GPU access.  But we
-       * must still put the semaphore into the "submit" state; otherwise the
-       * client may get unexpected behavior if the client later uses it as
-       * a wait semaphore.
-       *
-       * Because we blocked above on the nativeFenceFd, the image is also
-       * ready for foreign-device access (including CPU access). But we must
-       * still signal the fence; otherwise the client may get unexpected
-       * behavior if the client later waits on it.
-       *
-       * For some values of anv_semaphore_type, we must submit the semaphore
-       * to execbuf in order to signal it.  Likewise for anv_fence_type.
-       * Instead of open-coding here the signal operation for each
-       * anv_semaphore_type and anv_fence_type, we piggy-back on
-       * vkQueueSubmit.
-       */
-      const VkSubmitInfo submit = {
-         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-         .waitSemaphoreCount = 0,
-         .commandBufferCount = 0,
-         .signalSemaphoreCount = (semaphore_h ? 1 : 0),
-         .pSignalSemaphores = &semaphore_h,
+   if (fence_h) {
+      const VkImportFenceFdInfoKHR info = {
+         .sType = VK_STRUCTURE_TYPE_IMPORT_FENCE_FD_INFO_KHR,
+         .fence = fence_h,
+         .flags = VK_FENCE_IMPORT_TEMPORARY_BIT,
+         .handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT,
+         .fd = nativeFenceFd,
       };
-
-      result = anv_QueueSubmit(anv_queue_to_handle(&device->queue), 1,
-                               &submit, fence_h);
-      if (result != VK_SUCCESS) {
-         return vk_errorf(device, device, result,
-                          "anv_QueueSubmit failed inside %s", __func__);
-      }
+      anv_ImportFenceFdKHR(device_h, &info);
    }
 
    return VK_SUCCESS;
