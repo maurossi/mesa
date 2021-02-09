@@ -13,12 +13,6 @@
 
 struct pipe_debug_callback;
 
-struct nouveau_fence_work {
-   struct list_head list;
-   void (*func)(void *);
-   void *data;
-};
-
 struct nouveau_fence {
    struct nouveau_fence *next;
    struct nouveau_screen *screen;
@@ -29,33 +23,35 @@ struct nouveau_fence {
    struct list_head work;
 };
 
+struct nouveau_fence_work {
+   struct list_head list;
+   void (*func)(void *);
+   void *data;
+};
+
+struct nouveau_fence_list {
+   struct nouveau_fence *head;
+   struct nouveau_fence *tail;
+   struct nouveau_fence *current;
+   uint32_t sequence;
+   uint32_t sequence_ack;
+   void (*emit)(struct pipe_screen *, uint32_t *sequence);
+   uint32_t (*update)(struct pipe_screen *);
+};
+
 void nouveau_fence_emit(struct nouveau_fence *);
 void nouveau_fence_del(struct nouveau_fence *);
 
 bool nouveau_fence_new(struct nouveau_screen *, struct nouveau_fence **);
-void nouveau_fence_cleanup(struct nouveau_screen *);
+void nouveau_fence_cleanup(struct nouveau_fence_list *);
 bool nouveau_fence_work(struct nouveau_fence *, void (*)(void *), void *);
 void nouveau_fence_update(struct nouveau_screen *, bool flushed);
 void nouveau_fence_next(struct nouveau_screen *);
 bool nouveau_fence_wait(struct nouveau_fence *, struct pipe_debug_callback *);
 bool nouveau_fence_signalled(struct nouveau_fence *);
+void nouveau_fence_ref(struct nouveau_fence *, struct nouveau_fence **);
 
 void nouveau_fence_unref_bo(void *data); /* generic unref bo callback */
-
-
-static inline void
-nouveau_fence_ref(struct nouveau_fence *fence, struct nouveau_fence **ref)
-{
-   if (fence)
-      ++fence->ref;
-
-   if (*ref) {
-      if (--(*ref)->ref == 0)
-         nouveau_fence_del(*ref);
-   }
-
-   *ref = fence;
-}
 
 static inline struct nouveau_fence *
 nouveau_fence(struct pipe_fence_handle *fence)
