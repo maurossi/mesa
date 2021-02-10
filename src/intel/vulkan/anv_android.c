@@ -710,29 +710,76 @@ anv_AcquireImageANDROID(
    ANV_FROM_HANDLE(anv_device, device, device_h);
    VkResult result = VK_SUCCESS;
 
-   if (semaphore_h) {
+   /* From https://source.android.com/devices/graphics/implement-vulkan :
+    *
+    *    "The driver takes ownership of the fence file descriptor and closes
+    *    the fence file descriptor when no longer needed. The driver must do
+    *    so even if neither a semaphore or fence object is provided, or even
+    *    if vkAcquireImageANDROID fails and returns an error."
+    *
+    * The Vulkan spec for VkImportFence/SemaphoreFdKHR(), however, requires
+    * the file descriptor to be left alone on failure.
+    */
+   int semaphore_fd = -1, fence_fd = -1;
+   if (nativeFenceFd >= 0) {
+      if (semaphore_h != VK_NULL_HANDLE && fence_h != VK_NULL_HANDLE) {
+         /* We have both so we have to import the sync file twice. One of
+          * them needs to be a dup.
+          */
+         semaphore_fd = nativeFenceFd;
+         fence_fd = dup(nativeFenceFd);
+         if (fence_fd < 0) {
+            close(nativeFenceFd);
+            if (errno == EMFILE) {
+               return vk_error(VK_ERROR_TOO_MANY_OBJECTS);
+            } else {
+               /* We don't know what error this is */
+               return vk_error(VK_ERROR_OUT_OF_HOST_MEMORY);
+            }
+         }
+      } else if (semaphore_h != VK_NULL_HANDLE) {
+         semaphore_fd = nativeFenceFd;
+      } else if (fence_h == VK_NULL_HANDLE) {
+         fence_fd = nativeFenceFd;
+      } else {
+         /* Nothing to import into so we have to close the file */
+         close(nativeFenceFd);
+      }
+   }
+
+   VkResult result = VK_SUCCESS;
+   if (semaphore_h != VK_NULL_HANDLE) {
       const VkImportSemaphoreFdInfoKHR info = {
          .sType = VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR,
          .semaphore = semaphore_h,
          .flags = VK_SEMAPHORE_IMPORT_TEMPORARY_BIT,
          .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT,
-         .fd = nativeFenceFd,
+         .fd = semaphore_fd,
       };
-      anv_ImportSemaphoreFdKHR(device_h, &info);
+      result = anv_ImportSemaphoreFdKHR(device_h, &info);
+      if (result == VK_SUCCESS)
+         semaphore_fd = -1; /* ANV took ownership */
    }
 
-   if (fence_h) {
+   if (result == VK_SUCCESS && fence_h != VK_NULL_HANDLE) {
       const VkImportFenceFdInfoKHR info = {
          .sType = VK_STRUCTURE_TYPE_IMPORT_FENCE_FD_INFO_KHR,
          .fence = fence_h,
          .flags = VK_FENCE_IMPORT_TEMPORARY_BIT,
          .handleType = VK_EXTERNAL_FENCE_HANDLE_TYPE_SYNC_FD_BIT,
-         .fd = nativeFenceFd,
+         .fd = fence_fd,
       };
-      anv_ImportFenceFdKHR(device_h, &info);
+      result = anv_ImportFenceFdKHR(device_h, &info);
+      if (result == VK_SUCCESS)
+         fence_fd = -1; /* ANV took ownership */
    }
 
-   return VK_SUCCESS;
+   if (semaphore_fd >= 0)
+      close(semaphore_fd);
+   if (fence_fd >= 0)
+      close(fence_fd);
+
+   return result;
 }
 
 VkResult
