@@ -747,7 +747,6 @@ anv_AcquireImageANDROID(
       }
    }
 
-   VkResult result = VK_SUCCESS;
    if (semaphore_h != VK_NULL_HANDLE) {
       const VkImportSemaphoreFdInfoKHR info = {
          .sType = VK_STRUCTURE_TYPE_IMPORT_SEMAPHORE_FD_INFO_KHR,
