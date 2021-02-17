@@ -689,7 +689,9 @@ nvc0_screen_destroy(struct pipe_screen *pscreen)
    if (!nouveau_drm_screen_unref(&screen->base))
       return;
 
+   FENCE_ACQ(&screen->base.fence);
    nouveau_fence_cleanup(&screen->base.fence);
+   FENCE_DONE(&screen->base.fence);
 
    if (screen->base.pushbuf)
       screen->base.pushbuf->user_priv = NULL;
