@@ -4,6 +4,7 @@
 
 #include "util/u_inlines.h"
 #include "util/list.h"
+#include "util/simple_mtx.h"
 
 #define NOUVEAU_FENCE_STATE_AVAILABLE 0
 #define NOUVEAU_FENCE_STATE_EMITTING  1
@@ -16,7 +17,7 @@ struct pipe_debug_callback;
 struct nouveau_fence {
    struct nouveau_fence *next;
    struct nouveau_screen *screen;
-   int state;
+   int state; // TODO: hide
    int ref;
    uint32_t sequence;
    uint32_t work_count;
@@ -35,9 +36,22 @@ struct nouveau_fence_list {
    struct nouveau_fence *current;
    uint32_t sequence;
    uint32_t sequence_ack;
+   simple_mtx_t lock;
    void (*emit)(struct pipe_screen *, uint32_t *sequence);
    uint32_t (*update)(struct pipe_screen *);
 };
+
+static inline void
+nouveau_fence_list_init(struct nouveau_fence_list *fence_list)
+{
+   simple_mtx_init(&fence_list->lock, mtx_plain);
+}
+
+static inline void
+nouveau_fence_list_destroy(struct nouveau_fence_list *fence_list)
+{
+   simple_mtx_destroy(&fence_list->lock);
+}
 
 void nouveau_fence_emit(struct nouveau_fence *);
 void nouveau_fence_del(struct nouveau_fence *);
@@ -57,6 +71,18 @@ static inline struct nouveau_fence *
 nouveau_fence(struct pipe_fence_handle *fence)
 {
    return (struct nouveau_fence *)fence;
+}
+
+static inline void
+FENCE_ACQ(struct nouveau_fence_list *fence_list)
+{
+   simple_mtx_lock(&fence_list->lock);
+}
+
+static inline void
+FENCE_DONE(struct nouveau_fence_list *fence_list)
+{
+   simple_mtx_unlock(&fence_list->lock);
 }
 
 #endif // __NOUVEAU_FENCE_H__
