@@ -43,9 +43,12 @@ nvc0_hw_query_allocate(struct nvc0_context *nvc0, struct nvc0_query *q,
       if (hq->mm) {
          if (hq->state == NVC0_HW_QUERY_STATE_READY)
             nouveau_mm_free(hq->mm);
-         else
+         else {
+            FENCE_ACQ(&screen->base.fence);
             nouveau_fence_work(screen->base.fence.current,
                                nouveau_mm_free_work, hq->mm);
+            FENCE_DONE(&screen->base.fence);
+         }
       }
    }
    if (size) {
@@ -99,8 +102,10 @@ nvc0_hw_query_update(struct nouveau_client *cli, struct nvc0_query *q)
    struct nvc0_hw_query *hq = nvc0_hw_query(q);
 
    if (hq->is64bit) {
+      FENCE_ACQ(&hq->fence->screen->fence);
       if (nouveau_fence_signalled(hq->fence))
          hq->state = NVC0_HW_QUERY_STATE_READY;
+      FENCE_DONE(&hq->fence->screen->fence);
    } else {
       if (hq->data[0] == hq->sequence)
          hq->state = NVC0_HW_QUERY_STATE_READY;
@@ -118,7 +123,9 @@ nvc0_hw_destroy_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    }
 
    nvc0_hw_query_allocate(nvc0, q, 0);
+   FENCE_ACQ(&nvc0->screen->base.fence);
    nouveau_fence_ref(NULL, &hq->fence);
+   FENCE_DONE(&nvc0->screen->base.fence);
    FREE(hq);
 }
 
@@ -300,8 +307,11 @@ nvc0_hw_end_query(struct nvc0_context *nvc0, struct nvc0_query *q)
    default:
       break;
    }
-   if (hq->is64bit)
+   if (hq->is64bit) {
+      FENCE_ACQ(&nvc0->screen->base.fence);
       nouveau_fence_ref(nvc0->screen->base.fence.current, &hq->fence);
+      FENCE_DONE(&nvc0->screen->base.fence);
+   }
 }
 
 static bool
@@ -642,8 +652,11 @@ nvc0_hw_query_fifo_wait(struct nvc0_context *nvc0, struct nvc0_query *q)
    unsigned offset = hq->offset;
 
    /* ensure the query's fence has been emitted */
-   if (hq->is64bit && hq->fence->state < NOUVEAU_FENCE_STATE_EMITTED)
+   if (hq->is64bit && hq->fence->state < NOUVEAU_FENCE_STATE_EMITTED) {
+      FENCE_ACQ(&nvc0->screen->base.fence);
       nouveau_fence_emit(hq->fence);
+      FENCE_DONE(&nvc0->screen->base.fence);
+   }
 
    PUSH_SPACE(push, 5);
    PUSH_REFN (push, hq->bo, NOUVEAU_BO_GART | NOUVEAU_BO_RD);
