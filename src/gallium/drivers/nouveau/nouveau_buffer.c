@@ -78,8 +78,11 @@ release_allocation(struct nouveau_mm_allocation **mm,
 inline void
 nouveau_buffer_release_gpu_storage(struct nv04_resource *buf)
 {
+   struct nouveau_screen *screen = nouveau_screen(buf->base.screen);
+
    assert(!(buf->status & NOUVEAU_BUFFER_STATUS_USER_PTR));
 
+   FENCE_ACQ(&screen->fence);
    if (buf->fence && buf->fence->state < NOUVEAU_FENCE_STATE_FLUSHED) {
       nouveau_fence_work(buf->fence, nouveau_fence_unref_bo, buf->bo);
       buf->bo = NULL;
@@ -89,6 +92,7 @@ nouveau_buffer_release_gpu_storage(struct nv04_resource *buf)
 
    if (buf->mm)
       release_allocation(&buf->mm, buf->fence);
+   FENCE_DONE(&screen->fence);
 
    if (buf->domain == NOUVEAU_BO_VRAM)
       NOUVEAU_DRV_STAT_RES(buf, buf_obj_current_bytes_vid, -(uint64_t)buf->base.width0);
@@ -123,8 +127,10 @@ nouveau_buffer_destroy(struct pipe_screen *pscreen,
    if (res->data && !(res->status & NOUVEAU_BUFFER_STATUS_USER_MEMORY))
       align_free(res->data);
 
+   FENCE_ACQ(&nouveau_screen(pscreen)->fence);
    nouveau_fence_ref(NULL, &res->fence);
    nouveau_fence_ref(NULL, &res->fence_wr);
+   FENCE_DONE(&nouveau_screen(pscreen)->fence);
 
    util_range_destroy(&res->valid_buffer_range);
 
@@ -217,8 +223,10 @@ nouveau_transfer_write(struct nouveau_context *nv, struct nouveau_transfer *tx,
    else
       nv->push_data(nv, buf->bo, buf->offset + base, buf->domain, size, data);
 
+   FENCE_ACQ(&nv->screen->fence);
    nouveau_fence_ref(nv->screen->fence.current, &buf->fence);
    nouveau_fence_ref(nv->screen->fence.current, &buf->fence_wr);
+   FENCE_DONE(&nv->screen->fence);
 }
 
 /* Does a CPU wait for the buffer's backing data to become reliably accessible
@@ -287,10 +295,12 @@ nouveau_buffer_transfer_del(struct nouveau_context *nv,
 {
    if (tx->map) {
       if (likely(tx->bo)) {
+         FENCE_ACQ(&nv->screen->fence);
          nouveau_fence_work(nv->screen->fence.current,
                             nouveau_fence_unref_bo, tx->bo);
          if (tx->mm)
             release_allocation(&tx->mm, nv->screen->fence.current);
+         FENCE_DONE(&nv->screen->fence);
       } else {
          align_free(tx->map -
                     (tx->base.box.x & NOUVEAU_MIN_BUFFER_MAP_ALIGN_MASK));

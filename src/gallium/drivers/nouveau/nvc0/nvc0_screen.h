@@ -163,9 +163,11 @@ nvc0_resource_fence(struct nv04_resource *res, uint32_t flags)
    struct nvc0_screen *screen = nvc0_screen(res->base.screen);
 
    if (res->mm) {
+      FENCE_ACQ(&screen->base.fence);
       nouveau_fence_ref(screen->base.fence.current, &res->fence);
       if (flags & NOUVEAU_BO_WR)
          nouveau_fence_ref(screen->base.fence.current, &res->fence_wr);
+      FENCE_DONE(&screen->base.fence);
    }
 }
 
