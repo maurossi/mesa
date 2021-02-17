@@ -77,7 +77,9 @@ nouveau_screen_fence_ref(struct pipe_screen *pscreen,
                          struct pipe_fence_handle **ptr,
                          struct pipe_fence_handle *pfence)
 {
+   FENCE_ACQ(&nouveau_screen(pscreen)->fence);
    nouveau_fence_ref(nouveau_fence(pfence), (struct nouveau_fence **)ptr);
+   FENCE_DONE(&nouveau_screen(pscreen)->fence);
 }
 
 static bool
@@ -86,10 +88,16 @@ nouveau_screen_fence_finish(struct pipe_screen *screen,
                             struct pipe_fence_handle *pfence,
                             uint64_t timeout)
 {
-   if (!timeout)
-      return nouveau_fence_signalled(nouveau_fence(pfence));
+   bool res;
 
-   return nouveau_fence_wait(nouveau_fence(pfence), NULL);
+   FENCE_ACQ(&nouveau_screen(screen)->fence);
+   if (!timeout)
+      res = nouveau_fence_signalled(nouveau_fence(pfence));
+   else
+      res = nouveau_fence_wait(nouveau_fence(pfence), NULL);
+   FENCE_DONE(&nouveau_screen(screen)->fence);
+
+   return res;
 }
 
 
@@ -331,6 +339,7 @@ nouveau_screen_init(struct nouveau_screen *screen, struct nouveau_device *dev)
       PIPE_BIND_COMMAND_ARGS_BUFFER;
 
    memset(&mm_config, 0, sizeof(mm_config));
+   nouveau_fence_list_init(&screen->fence);
 
    screen->mm_GART = nouveau_mm_create(dev,
                                        NOUVEAU_BO_GART | NOUVEAU_BO_MAP,
@@ -367,6 +376,7 @@ nouveau_screen_fini(struct nouveau_screen *screen)
    close(fd);
 
    disk_cache_destroy(screen->disk_shader_cache);
+   nouveau_fence_list_destroy(&screen->fence);
 }
 
 static void
