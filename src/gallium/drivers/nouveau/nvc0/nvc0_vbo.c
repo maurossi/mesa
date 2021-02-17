@@ -561,7 +561,9 @@ nvc0_draw_vbo_kick_notify(struct nouveau_pushbuf *push)
 {
    struct nvc0_screen *screen = push->user_priv;
 
+   FENCE_ACQ(&screen->base.fence);
    nouveau_fence_update(&screen->base, true);
+   FENCE_DONE(&screen->base.fence);
 
    NOUVEAU_DRV_STAT(&screen->base, pushbuf_count, 1);
 }
@@ -816,12 +818,14 @@ nvc0_draw_indirect(struct nvc0_context *nvc0, const struct pipe_draw_info *info,
 
    PUSH_SPACE(push, 7);
 
+   FENCE_ACQ(&screen->base.fence);
    /* must make FIFO wait for engines idle before continuing to process */
    if ((buf->fence_wr && !nouveau_fence_signalled(buf->fence_wr)) ||
        (buf_count && buf_count->fence_wr &&
         !nouveau_fence_signalled(buf_count->fence_wr))) {
       IMMED_NVC0(push, SUBC_3D(NV10_SUBCHAN_REF_CNT), 0);
    }
+   FENCE_DONE(&screen->base.fence);
 
    /* Queue things up to let the macros write params to the driver constbuf */
    BEGIN_NVC0(push, NVC0_3D(CB_SIZE), 3);
