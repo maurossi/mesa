@@ -743,7 +743,7 @@ brw_postdraw_set_buffers_need_resolve(struct brw_context *brw)
          brw_depth_cache_add_bo(brw, depth_irb->mt->bo);
    }
 
-   if (stencil_irb && brw->stencil_write_enabled) {
+   if (stencil_irb && stencil_irb->mt && brw->stencil_write_enabled) {
       struct brw_mipmap_tree *stencil_mt =
          stencil_irb->mt->stencil_mt != NULL ?
          stencil_irb->mt->stencil_mt : stencil_irb->mt;
