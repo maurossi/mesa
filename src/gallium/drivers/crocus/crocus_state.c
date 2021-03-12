@@ -5601,6 +5601,12 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          vs.KernelStartPointer = KSP(ice, ice->shaders.prog[MESA_SHADER_VERTEX]);
          vs.Enable = true;
 
+         if (vue_prog_data->base.total_scratch) {
+            struct crocus_bo *bo = crocus_get_scratch_space(ice, vue_prog_data->base.total_scratch, MESA_SHADER_VERTEX);
+            vs.PerThreadScratchSpace = ffs(vue_prog_data->base.total_scratch) - 11;
+            vs.ScratchSpaceBasePointer = rw_bo(bo, 0);
+	 }
+
          vs.MaximumNumberofThreads = (batch->screen->devinfo.max_vs_threads / 2)- 1;
          vs.FloatingPointMode  = vue_prog_data->base.use_alt_mode;
          vs.DispatchGRFStartRegisterForURBData = vue_prog_data->base.dispatch_grf_start_reg;
@@ -5868,6 +5874,12 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 	 wm.PixelShaderComputedDepthMode = wm_prog_data->computed_depth_mode;
 	 wm.PixelShaderUsesInputCoverageMask = wm_prog_data->uses_sample_mask;
 #else
+         if (wm_prog_data->base.total_scratch) {
+            struct crocus_bo *bo = crocus_get_scratch_space(ice, wm_prog_data->base.total_scratch, MESA_SHADER_FRAGMENT);
+            wm.PerThreadScratchSpace = ffs(wm_prog_data->base.total_scratch) - 11;
+            wm.ScratchSpaceBasePointer = rw_bo(bo, 0);
+	 }
+
 	 wm.PixelShaderComputedDepth = writes_depth;
 
 #endif
