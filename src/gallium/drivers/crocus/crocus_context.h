@@ -532,6 +532,7 @@ struct crocus_vtable {
                            const struct pipe_box *src_box);
    void (*calculate_urb_fence)(struct crocus_batch *batch, unsigned csize,
                                unsigned vsize, unsigned sfsize);
+   void (*batch_reset_dirty)(struct crocus_batch *batch);
 };
 
 /**

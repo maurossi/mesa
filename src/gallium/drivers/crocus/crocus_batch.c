@@ -456,8 +456,7 @@ crocus_batch_reset(struct crocus_batch *batch)
    batch->primary_batch_size = 0;
    batch->contains_draw = false;
    batch->state_base_address_emitted = false;
-   batch->ice->state.dirty |= CROCUS_ALL_DIRTY_BINDINGS | CROCUS_DIRTY_DEPTH_BUFFER | CROCUS_DIRTY_VERTEX_ELEMENTS | CROCUS_DIRTY_CC_VIEWPORT |
-      CROCUS_DIRTY_SF_CL_VIEWPORT | CROCUS_DIRTY_CLIP;
+   batch->ice->vtbl.batch_reset_dirty(batch);
 
    create_batch(batch);
    assert(batch->command.bo->index == 0);

@@ -7250,6 +7250,14 @@ crocus_state_finish_batch(struct crocus_batch *batch)
 }
 #endif
 
+static void
+crocus_batch_reset_dirty(struct crocus_batch *batch)
+{
+   batch->ice->state.dirty |= CROCUS_ALL_DIRTY_BINDINGS | CROCUS_DIRTY_DEPTH_BUFFER | CROCUS_DIRTY_VERTEX_ELEMENTS | CROCUS_DIRTY_CC_VIEWPORT |
+      CROCUS_DIRTY_SF_CL_VIEWPORT | CROCUS_DIRTY_CLIP | CROCUS_DIRTY_BLEND_STATE | CROCUS_DIRTY_COLOR_CALC_STATE;
+
+}
+
 #if GEN_VERSIONx10 == 75
 struct pipe_rasterizer_state *crocus_get_rast_state(struct crocus_context *ice)
 {
@@ -7363,6 +7371,7 @@ genX(init_state)(struct crocus_context *ice)
    ice->vtbl.calculate_urb_fence = crocus_calculate_urb_fence;
 #endif
    ice->vtbl.fill_clamp_mask = crocus_fill_clamp_mask;
+   ice->vtbl.batch_reset_dirty = crocus_batch_reset_dirty;
    ice->state.dirty = ~0ull;
 
    ice->state.statistics_counters_enabled = true;
