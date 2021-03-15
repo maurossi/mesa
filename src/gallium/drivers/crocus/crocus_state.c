@@ -7253,9 +7253,30 @@ crocus_state_finish_batch(struct crocus_batch *batch)
 static void
 crocus_batch_reset_dirty(struct crocus_batch *batch)
 {
-   batch->ice->state.dirty |= CROCUS_ALL_DIRTY_BINDINGS | CROCUS_DIRTY_DEPTH_BUFFER | CROCUS_DIRTY_VERTEX_ELEMENTS | CROCUS_DIRTY_CC_VIEWPORT |
-      CROCUS_DIRTY_SF_CL_VIEWPORT | CROCUS_DIRTY_CLIP | CROCUS_DIRTY_BLEND_STATE | CROCUS_DIRTY_COLOR_CALC_STATE;
+   /* for GEN4/5 need to reemit anything that ends up in the state batch that points to anything in the state batch
+    * as the old state batch won't still be available.
+    */
+   batch->ice->state.dirty |= CROCUS_ALL_DIRTY_BINDINGS | CROCUS_DIRTY_DEPTH_BUFFER |
+     CROCUS_DIRTY_CLIP | CROCUS_DIRTY_COLOR_CALC_STATE;
 
+   batch->ice->state.dirty |= CROCUS_DIRTY_VERTEX_ELEMENTS | CROCUS_DIRTY_VERTEX_BUFFERS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_VS | CROCUS_DIRTY_SAMPLER_STATES_PS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_FS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_VS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_VS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_GS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CC_VIEWPORT | CROCUS_DIRTY_SF_CL_VIEWPORT;
+   batch->ice->state.dirty |= CROCUS_DIRTY_BLEND_STATE;
+#if GEN_GEN >= 6
+   /* SCISSOR_STATE */
+#endif
+#if GEN_GEN <= 5
+   /* dirty the SF state on gen4/5 */
+   batch->ice->state.dirty |= CROCUS_DIRTY_RASTER;
+#endif
+#if GEN_GEN < 7
+   batch->ice->state.dirty |= CROCUS_DIRTY_WM;
+#endif
 }
 
 #if GEN_VERSIONx10 == 75
