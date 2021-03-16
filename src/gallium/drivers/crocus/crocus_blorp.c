@@ -363,7 +363,7 @@ crocus_blorp_exec(struct blorp_batch *blorp_batch,
       skip_bits |= CROCUS_DIRTY_DEPTH_BUFFER;
 
    if (!params->wm_prog_data)
-      skip_bits |= CROCUS_DIRTY_BLEND_STATE | CROCUS_DIRTY_PS_BLEND;
+      skip_bits |= CROCUS_DIRTY_BLEND_STATE;
 
    ice->state.dirty |= ~skip_bits;
 

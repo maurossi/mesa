@@ -2771,7 +2771,7 @@ crocus_bind_fs_state(struct pipe_context *ctx, void *state)
    if (!old_ish || !new_ish ||
        (old_ish->nir->info.outputs_written & color_bits) !=
        (new_ish->nir->info.outputs_written & color_bits))
-      ice->state.dirty |= CROCUS_DIRTY_PS_BLEND;
+      ice->state.dirty |= CROCUS_DIRTY_WM;
 
    bind_shader_state((void *) ctx, state, MESA_SHADER_FRAGMENT);
 }

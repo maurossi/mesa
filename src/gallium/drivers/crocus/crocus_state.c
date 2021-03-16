@@ -1296,7 +1296,6 @@ crocus_bind_blend_state(struct pipe_context *ctx, void *state)
    ice->state.cso_blend = cso;
    ice->state.blend_enables = cso ? cso->blend_enables : 0;
 
-   ice->state.dirty |= CROCUS_DIRTY_PS_BLEND;
    ice->state.dirty |= CROCUS_DIRTY_BINDINGS_FS;
    ice->state.dirty |= CROCUS_DIRTY_BLEND_STATE;
    ice->state.dirty |= CROCUS_DIRTY_COLOR_CALC_STATE;
@@ -1383,7 +1382,7 @@ crocus_bind_zsa_state(struct pipe_context *ctx, void *state)
          ice->state.dirty |= CROCUS_DIRTY_COLOR_CALC_STATE;
 
       if (cso_changed(cso.alpha_enabled))
-         ice->state.dirty |= CROCUS_DIRTY_PS_BLEND | CROCUS_DIRTY_BLEND_STATE;
+         ice->state.dirty |= CROCUS_DIRTY_BLEND_STATE;
 
       if (cso_changed(cso.alpha_func))
          ice->state.dirty |= CROCUS_DIRTY_BLEND_STATE;

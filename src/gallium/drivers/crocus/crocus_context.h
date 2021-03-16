@@ -82,7 +82,7 @@ enum {
 #define CROCUS_DIRTY_WM_DEPTH_STENCIL         (1ull <<  3)
 #define CROCUS_DIRTY_CC_VIEWPORT              (1ull <<  4)
 #define CROCUS_DIRTY_SF_CL_VIEWPORT           (1ull <<  5)
-#define CROCUS_DIRTY_PS_BLEND                 (1ull <<  6)
+//removed
 #define CROCUS_DIRTY_BLEND_STATE              (1ull <<  7)
 #define CROCUS_DIRTY_RASTER                   (1ull <<  8)
 #define CROCUS_DIRTY_CLIP                     (1ull <<  9)
