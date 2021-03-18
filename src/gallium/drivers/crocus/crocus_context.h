@@ -916,10 +916,6 @@ void crocus_flush_all_caches(struct crocus_batch *batch);
 void crocus_init_flush_functions(struct pipe_context *ctx);
 
 /* crocus_program.c */
-void crocus_upload_ubo_ssbo_surf_state(struct crocus_context *ice,
-                                     struct pipe_shader_buffer *buf,
-                                     struct crocus_state_ref *surf_state,
-                                     bool ssbo);
 const struct shader_info *crocus_get_shader_info(const struct crocus_context *ice,
                                                gl_shader_stage stage);
 struct crocus_bo *crocus_get_scratch_space(struct crocus_context *ice,

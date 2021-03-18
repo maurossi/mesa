@@ -130,49 +130,6 @@ get_new_program_id(struct crocus_screen *screen)
    return p_atomic_inc_return(&screen->program_id);
 }
 
-static void *
-upload_state(struct u_upload_mgr *uploader,
-             struct crocus_state_ref *ref,
-             unsigned size,
-             unsigned alignment)
-{
-   void *p = NULL;
-   u_upload_alloc(uploader, 0, size, alignment, &ref->offset, &ref->res, &p);
-   return p;
-}
-
-void
-crocus_upload_ubo_ssbo_surf_state(struct crocus_context *ice,
-                                struct pipe_shader_buffer *buf,
-                                struct crocus_state_ref *surf_state,
-                                bool ssbo)
-{
-   struct pipe_context *ctx = &ice->ctx;
-   struct crocus_screen *screen = (struct crocus_screen *) ctx->screen;
-
-   void *map =
-      upload_state(ice->state.surface_uploader, surf_state,
-                   screen->isl_dev.ss.size, 64);
-   if (!unlikely(map)) {
-      surf_state->res = NULL;
-      return;
-   }
-
-   struct crocus_resource *res = (void *) buf->buffer;
-   struct crocus_bo *surf_bo = crocus_resource_bo(surf_state->res);
-   surf_state->offset += crocus_bo_offset_from_base_address(surf_bo);
-
-   isl_buffer_fill_state(&screen->isl_dev, map,
-                         .address = res->bo->gtt_offset + res->offset +
-                                    buf->buffer_offset,
-                         .size_B = buf->buffer_size - res->offset,
-                         .format = ssbo ? ISL_FORMAT_RAW
-                                        : ISL_FORMAT_R32G32B32A32_FLOAT,
-                         .swizzle = ISL_SWIZZLE_IDENTITY,
-                         .stride_B = 1,
-                         .mocs = ice->vtbl.mocs(res->bo, &screen->isl_dev));
-}
-
 static nir_ssa_def *
 get_aoa_deref_offset(nir_builder *b,
                      nir_deref_instr *deref,
@@ -1826,7 +1783,6 @@ crocus_update_pull_constant_descriptors(struct crocus_context *ice,
       struct pipe_shader_buffer *cbuf = &shs->constbuf[i];
       struct crocus_state_ref *surf_state = &shs->constbuf_surf_state[i];
       if (!surf_state->res && cbuf->buffer) {
-         crocus_upload_ubo_ssbo_surf_state(ice, cbuf, surf_state, false);
          any_new_descriptors = true;
       }
    }

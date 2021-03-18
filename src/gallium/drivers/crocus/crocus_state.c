@@ -3072,9 +3072,6 @@ upload_sysvals(struct crocus_context *ice,
    }
 
    cbuf->buffer_size = upload_size;
-   crocus_upload_ubo_ssbo_surf_state(ice, cbuf,
-                                   &shs->constbuf_surf_state[sysval_cbuf_index], false);
-
    shs->sysvals_need_upload = false;
 }
 
@@ -3105,16 +3102,12 @@ crocus_set_shader_buffers(struct pipe_context *ctx,
       if (buffers && buffers[i].buffer) {
          struct crocus_resource *res = (void *) buffers[i].buffer;
          struct pipe_shader_buffer *ssbo = &shs->ssbo[start_slot + i];
-         struct crocus_state_ref *surf_state =
-            &shs->ssbo_surf_state[start_slot + i];
          pipe_resource_reference(&ssbo->buffer, &res->base);
          ssbo->buffer_offset = buffers[i].buffer_offset;
          ssbo->buffer_size =
             MIN2(buffers[i].buffer_size, res->bo->size - ssbo->buffer_offset);
 
          shs->bound_ssbos |= 1 << (start_slot + i);
-
-         crocus_upload_ubo_ssbo_surf_state(ice, ssbo, surf_state, true);
 
          res->bind_history |= PIPE_BIND_SHADER_BUFFER;
          res->bind_stages |= 1 << stage;
