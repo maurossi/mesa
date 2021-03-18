@@ -128,6 +128,8 @@ struct crocus_bufmgr {
    struct list_head zombie_list;
 
    bool has_llc:1;
+   bool has_mmap_offset:1;
+   bool has_tiling_uapi:1;
    bool bo_reuse:1;
 };
 
@@ -733,11 +735,74 @@ print_flags(unsigned flags)
 }
 
 static void *
-crocus_bo_map_cpu(struct pipe_debug_callback *dbg,
-                struct crocus_bo *bo, unsigned flags)
+crocus_bo_gem_mmap_legacy(struct pipe_debug_callback *dbg,
+                        struct crocus_bo *bo, bool wc)
 {
    struct crocus_bufmgr *bufmgr = bo->bufmgr;
 
+   struct drm_i915_gem_mmap mmap_arg = {
+      .handle = bo->gem_handle,
+      .size = bo->size,
+      .flags = wc ? I915_MMAP_WC : 0,
+   };
+
+   int ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_MMAP, &mmap_arg);
+   if (ret != 0) {
+      DBG("%s:%d: Error mapping buffer %d (%s): %s .\n",
+          __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
+      return NULL;
+   }
+   void *map = (void *) (uintptr_t) mmap_arg.addr_ptr;
+
+   return map;
+}
+
+static void *
+crocus_bo_gem_mmap_offset(struct pipe_debug_callback *dbg, struct crocus_bo *bo,
+                        bool wc)
+{
+   struct crocus_bufmgr *bufmgr = bo->bufmgr;
+
+   struct drm_i915_gem_mmap_offset mmap_arg = {
+      .handle = bo->gem_handle,
+      .flags = wc ? I915_MMAP_OFFSET_WC : I915_MMAP_OFFSET_WB,
+   };
+
+   /* Get the fake offset back */
+   int ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &mmap_arg);
+   if (ret != 0) {
+      DBG("%s:%d: Error preparing buffer %d (%s): %s .\n",
+          __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
+      return NULL;
+   }
+
+   /* And map it */
+   void *map = mmap(0, bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
+                    bufmgr->fd, mmap_arg.offset);
+   if (map == MAP_FAILED) {
+      DBG("%s:%d: Error mapping buffer %d (%s): %s .\n",
+          __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
+      return NULL;
+   }
+
+   return map;
+}
+
+static void *
+crocus_bo_gem_mmap(struct pipe_debug_callback *dbg, struct crocus_bo *bo, bool wc)
+{
+   struct crocus_bufmgr *bufmgr = bo->bufmgr;
+
+   if (bufmgr->has_mmap_offset)
+      return crocus_bo_gem_mmap_offset(dbg, bo, wc);
+   else
+      return crocus_bo_gem_mmap_legacy(dbg, bo, wc);
+}
+
+static void *
+crocus_bo_map_cpu(struct pipe_debug_callback *dbg,
+                struct crocus_bo *bo, unsigned flags)
+{
    /* We disallow CPU maps for writing to non-coherent buffers, as the
     * CPU map can become invalidated when a batch is flushed out, which
     * can happen at unpredictable times.  You should use WC maps instead.
@@ -747,17 +812,11 @@ crocus_bo_map_cpu(struct pipe_debug_callback *dbg,
    if (!bo->map_cpu) {
       DBG("crocus_bo_map_cpu: %d (%s)\n", bo->gem_handle, bo->name);
 
-      struct drm_i915_gem_mmap mmap_arg = {
-         .handle = bo->gem_handle,
-         .size = bo->size,
-      };
-      int ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_MMAP, &mmap_arg);
-      if (ret != 0) {
-         DBG("%s:%d: Error mapping buffer %d (%s): %s .\n",
-             __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
+      void *map = crocus_bo_gem_mmap(dbg, bo, false);
+      if (!map) {
          return NULL;
       }
-      void *map = (void *) (uintptr_t) mmap_arg.addr_ptr;
+
       VG_DEFINED(map, bo->size);
 
       if (p_atomic_cmpxchg(&bo->map_cpu, NULL, map)) {
@@ -802,24 +861,14 @@ static void *
 crocus_bo_map_wc(struct pipe_debug_callback *dbg,
                struct crocus_bo *bo, unsigned flags)
 {
-   struct crocus_bufmgr *bufmgr = bo->bufmgr;
-
    if (!bo->map_wc) {
       DBG("crocus_bo_map_wc: %d (%s)\n", bo->gem_handle, bo->name);
 
-      struct drm_i915_gem_mmap mmap_arg = {
-         .handle = bo->gem_handle,
-         .size = bo->size,
-         .flags = I915_MMAP_WC,
-      };
-      int ret = intel_ioctl(bufmgr->fd, DRM_IOCTL_I915_GEM_MMAP, &mmap_arg);
-      if (ret != 0) {
-         DBG("%s:%d: Error mapping buffer %d (%s): %s .\n",
-             __FILE__, __LINE__, bo->gem_handle, bo->name, strerror(errno));
+      void *map = crocus_bo_gem_mmap(dbg, bo, true);
+      if (!map) {
          return NULL;
       }
 
-      void *map = (void *) (uintptr_t) mmap_arg.addr_ptr;
       VG_DEFINED(map, bo->size);
 
       if (p_atomic_cmpxchg(&bo->map_wc, NULL, map)) {
@@ -866,6 +915,11 @@ crocus_bo_map_gtt(struct pipe_debug_callback *dbg,
                 struct crocus_bo *bo, unsigned flags)
 {
    struct crocus_bufmgr *bufmgr = bo->bufmgr;
+
+   /* If we don't support get/set_tiling, there's no support for GTT mapping
+    * either (it won't do any de-tiling for us).
+    */
+   assert(bufmgr->has_tiling_uapi);
 
    /* Get a mapping of the buffer if we haven't before. */
    if (bo->map_gtt == NULL) {
@@ -1412,6 +1466,18 @@ crocus_gtt_size(int fd)
    return 0;
 }
 
+static int
+gem_param(int fd, int name)
+{
+   int v = -1; /* No param uses (yet) the sign bit, reserve it for errors */
+
+   struct drm_i915_getparam gp = { .param = name, .value = &v };
+   if (intel_ioctl(fd, DRM_IOCTL_I915_GETPARAM, &gp))
+      return -1;
+
+   return v;
+}
+
 /**
  * Initializes the GEM buffer manager, which uses the kernel to allocate, map,
  * and manage map buffer objections.
@@ -1446,7 +1512,9 @@ crocus_bufmgr_init(struct gen_device_info *devinfo, int fd, bool bo_reuse)
    list_inithead(&bufmgr->zombie_list);
 
    bufmgr->has_llc = devinfo->has_llc;
+   bufmgr->has_tiling_uapi = devinfo->has_tiling_uapi;
    bufmgr->bo_reuse = bo_reuse;
+   bufmgr->has_mmap_offset = gem_param(fd, I915_PARAM_MMAP_GTT_VERSION) >= 4;
 
    init_cache_buckets(bufmgr);
 
