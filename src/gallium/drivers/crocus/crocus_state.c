@@ -7102,9 +7102,21 @@ crocus_batch_reset_dirty(struct crocus_batch *batch)
      CROCUS_DIRTY_CLIP | CROCUS_DIRTY_COLOR_CALC_STATE;
 
    batch->ice->state.dirty |= CROCUS_DIRTY_VERTEX_ELEMENTS | CROCUS_DIRTY_VERTEX_BUFFERS;
-   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_VS | CROCUS_DIRTY_SAMPLER_STATES_PS;
-   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_FS;
+
+   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_VS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_TES;
+   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_TCS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_GS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_PS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_CS;
+
    batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_VS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_TES;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_TCS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_GS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_FS;
+   batch->ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_CS;
+
    batch->ice->state.dirty |= CROCUS_DIRTY_VS;
    batch->ice->state.dirty |= CROCUS_DIRTY_GS;
    batch->ice->state.dirty |= CROCUS_DIRTY_CC_VIEWPORT | CROCUS_DIRTY_SF_CL_VIEWPORT;
