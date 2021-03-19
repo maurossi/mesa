@@ -1031,6 +1031,36 @@ emit_pipeline_select(struct crocus_batch *batch, uint32_t pipeline)
 #endif
 }
 
+/**
+ * The following diagram shows how we partition the URB:
+ *
+ *        16kB or 32kB               Rest of the URB space
+ *   __________-__________   _________________-_________________
+ *  /                     \ /                                   \
+ * +-------------------------------------------------------------+
+ * |  VS/HS/DS/GS/FS Push  |           VS/HS/DS/GS URB           |
+ * |       Constants       |               Entries               |
+ * +-------------------------------------------------------------+
+ *
+ * Notably, push constants must be stored at the beginning of the URB
+ * space, while entries can be stored anywhere.  Ivybridge and Haswell
+ * GT1/GT2 have a maximum constant buffer size of 16kB, while Haswell GT3
+ * doubles this (32kB).
+ *
+ * Ivybridge and Haswell GT1/GT2 allow push constants to be located (and
+ * sized) in increments of 1kB.  Haswell GT3 requires them to be located and
+ * sized in increments of 2kB.
+ *
+ * Currently we split the constant buffer space evenly among whatever stages
+ * are active.  This is probably not ideal, but simple.
+ *
+ * Ivybridge GT1 and Haswell GT1 have 128kB of URB space.
+ * Ivybridge GT2 and Haswell GT2 have 256kB of URB space.
+ * Haswell GT3 has 512kB of URB space.
+ *
+ * See "Volume 2a: 3D Pipeline," section 1.8, "Volume 1b: Configurations",
+ * and the documentation for 3DSTATE_PUSH_CONSTANT_ALLOC_xS.
+ */
 #if GEN_GEN == 7
 static void
 crocus_alloc_push_constants(struct crocus_batch *batch)
