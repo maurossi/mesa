@@ -4461,7 +4461,13 @@ crocus_update_surface_base_address(struct crocus_batch *batch)
 
       sba.DynamicStateBaseAddress = ro_bo(batch->state.bo, 0);
 
+      /* Dynamic state upper bound.  Although the documentation says that
+       * programming it to zero will cause it to be ignored, that is a lie.
+       * If this isn't programmed to a real bound, the sampler border color
+       * pointer is rejected, causing border color to mysteriously fail.
+       */
       sba.DynamicStateAccessUpperBoundModifyEnable = true;
+      sba.DynamicStateAccessUpperBound = ro_bo(NULL, 0xfffff000);
 #endif
    }
 
