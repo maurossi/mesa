@@ -5270,7 +5270,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #endif
    }
 
-   if (dirty) {
+   if (dirty & CROCUS_DIRTY_VS) {
       const struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data);
 
 #if GEN_GEN == 7
