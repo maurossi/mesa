@@ -2890,6 +2890,10 @@ crocus_set_framebuffer_state(struct pipe_context *ctx,
 
    if (cso->zsbuf || state->zsbuf) {
       ice->state.dirty |= CROCUS_DIRTY_DEPTH_BUFFER;
+
+      /* update SF's depth buffer format */
+      if (GEN_GEN == 7 && cso->zsbuf)
+         ice->state.dirty |= CROCUS_DIRTY_RASTER;
    }
 
    /* wm thread dispatch enable */
@@ -5557,6 +5561,20 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          sf.PointSpriteTextureCoordinateEnable = point_sprite_enables;
          sf.ConstantInterpolationEnable = wm_prog_data->flat_inputs;
          sf.NumberofSFOutputAttributes = wm_prog_data->num_varying_inputs;
+#endif
+
+#if GEN_GEN == 7
+         if (ice->state.framebuffer.zsbuf) {
+            struct crocus_resource *zres, *sres;
+               crocus_get_depth_stencil_resources(&batch->screen->devinfo,
+                                                  ice->state.framebuffer.zsbuf->texture,
+                                                  &zres, &sres);
+            /* ANV thinks that the stencil-ness doesn't matter, this is just
+             * about handling polygon offset scaling.
+             */
+            sf.DepthBufferSurfaceFormat = isl_format_get_depth_format(zres->surf.format, false);
+
+         }
 #endif
       }
       crocus_emit_merge(batch, cso->sf, dynamic_sf,
