@@ -486,10 +486,6 @@ struct crocus_vtable {
                                      uint32_t offset_in_bytes,
                                      uint32_t report_id);
 
-   unsigned (*derived_program_state_size)(enum crocus_program_cache_id id);
-   void (*store_derived_program_state)(struct crocus_context *ice,
-                                       enum crocus_program_cache_id cache_id,
-                                       struct crocus_compiled_shader *shader);
    uint32_t *(*create_so_decl_list)(const struct pipe_stream_output_info *sol,
                                     const struct brw_vue_map *vue_map);
    void (*populate_vs_key)(const struct crocus_context *ice,

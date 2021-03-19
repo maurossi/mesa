@@ -204,8 +204,7 @@ crocus_upload_shader(struct crocus_context *ice,
 {
    struct hash_table *cache = ice->shaders.cache;
    struct crocus_compiled_shader *shader =
-      rzalloc_size(cache, sizeof(struct crocus_compiled_shader) +
-                   ice->vtbl.derived_program_state_size(cache_id));
+      rzalloc_size(cache, sizeof(struct crocus_compiled_shader));
    const struct crocus_compiled_shader *existing =
       find_existing_assembly(cache, ice->shaders.cache_bo_map, assembly, asm_size);
 
@@ -240,9 +239,6 @@ crocus_upload_shader(struct crocus_context *ice,
    }
    ralloc_steal(shader, shader->streamout);
    ralloc_steal(shader, shader->system_values);
-
-   /* Store the 3DSTATE shader packets and other derived state. */
-   ice->vtbl.store_derived_program_state(ice, cache_id, shader);
 
    struct keybox *keybox = make_keybox(shader, cache_id, key, key_size);
    _mesa_hash_table_insert(ice->shaders.cache, keybox, shader);

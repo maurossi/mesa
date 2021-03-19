@@ -4145,281 +4145,6 @@ KSP(const struct crocus_context *ice, const struct crocus_compiled_shader *shade
       pkt.ScratchSpaceBasePointer = rw_bo(NULL, scratch_addr);            \
    }
 
-#if 0
-/**
- * Encode most of 3DSTATE_VS based on the compiled shader.
- */
-static void
-crocus_store_vs_state(struct crocus_context *ice,
-                    const struct gen_device_info *devinfo,
-                    struct crocus_compiled_shader *shader)
-{
-   struct brw_stage_prog_data *prog_data = shader->prog_data;
-   struct brw_vue_prog_data *vue_prog_data = (void *) prog_data;
-#if GEN_GEN >= 6
-   crocus_pack_command(GENX(3DSTATE_VS), shader->derived_data, vs) {
-      INIT_THREAD_DISPATCH_FIELDS(vs, Vertex, MESA_SHADER_VERTEX);
-      vs.MaximumNumberofThreads = devinfo->max_vs_threads - 1;
-// XXX gen < 6 + gen == 5 stuff goes here
-   }
-#endif
-}
-
-/**
- * Encode most of 3DSTATE_HS based on the compiled shader.
- */
-static void
-crocus_store_tcs_state(struct crocus_context *ice,
-                     const struct gen_device_info *devinfo,
-                     struct crocus_compiled_shader *shader)
-{
-#if GEN_GEN >= 7
-   struct brw_stage_prog_data *prog_data = shader->prog_data;
-   struct brw_vue_prog_data *vue_prog_data = (void *) prog_data;
-   struct brw_tcs_prog_data *tcs_prog_data = (void *) prog_data;
-
-   crocus_pack_command(GENX(3DSTATE_HS), shader->derived_data, hs) {
-      INIT_THREAD_DISPATCH_FIELDS(hs, Vertex, MESA_SHADER_TESS_CTRL);
-
-      hs.InstanceCount = tcs_prog_data->instances - 1;
-      hs.MaximumNumberofThreads = devinfo->max_tcs_threads - 1;
-      hs.IncludeVertexHandles = true;
-   }
-#endif
-}
-
-/**
- * Encode 3DSTATE_TE and most of 3DSTATE_DS based on the compiled shader.
- */
-static void
-crocus_store_tes_state(struct crocus_context *ice,
-                     const struct gen_device_info *devinfo,
-                     struct crocus_compiled_shader *shader)
-{
-#if GEN_GEN >= 7
-   struct brw_stage_prog_data *prog_data = shader->prog_data;
-   struct brw_vue_prog_data *vue_prog_data = (void *) prog_data;
-   struct brw_tes_prog_data *tes_prog_data = (void *) prog_data;
-
-   uint32_t *te_state = (void *) shader->derived_data;
-   uint32_t *ds_state = te_state + GENX(3DSTATE_TE_length);
-
-   crocus_pack_command(GENX(3DSTATE_TE), te_state, te) {
-      te.Partitioning = tes_prog_data->partitioning;
-      te.OutputTopology = tes_prog_data->output_topology;
-      te.TEDomain = tes_prog_data->domain;
-      te.TEEnable = true;
-      te.MaximumTessellationFactorOdd = 63.0;
-      te.MaximumTessellationFactorNotOdd = 64.0;
-   }
-
-   crocus_pack_command(GENX(3DSTATE_DS), ds_state, ds) {
-      INIT_THREAD_DISPATCH_FIELDS(ds, Patch, MESA_SHADER_TESS_EVAL);
-
-//      ds.DispatchMode = DISPATCH_MODE_SIMD8_SINGLE_PATCH;
-      ds.MaximumNumberofThreads = devinfo->max_tes_threads - 1;
-      ds.ComputeWCoordinateEnable =
-         tes_prog_data->domain == BRW_TESS_DOMAIN_TRI;
-
-//      ds.UserClipDistanceCullTestEnableBitmask =
-//         vue_prog_data->cull_distance_mask;
-   }
-#endif
-}
-
-/**
- * Encode most of 3DSTATE_GS based on the compiled shader.
- */
-static void
-crocus_store_gs_state(struct crocus_context *ice,
-                    const struct gen_device_info *devinfo,
-                    struct crocus_compiled_shader *shader)
-{
-// Actually pre-gen6 also uses GS for xfb or something
-#if GEN_GEN >= 6
-   struct brw_stage_prog_data *prog_data = shader->prog_data;
-   struct brw_vue_prog_data *vue_prog_data = (void *) prog_data;
-   struct brw_gs_prog_data *gs_prog_data = (void *) prog_data;
-
-   crocus_pack_command(GENX(3DSTATE_GS), shader->derived_data, gs) {
-      INIT_THREAD_DISPATCH_FIELDS(gs, Vertex, MESA_SHADER_GEOMETRY);
-
-#if GEN_GEN >= 7
-      gs.OutputVertexSize = gs_prog_data->output_vertex_size_hwords * 2 - 1;
-      gs.OutputTopology = gs_prog_data->output_topology;
-      gs.ControlDataHeaderSize =
-         gs_prog_data->control_data_header_size_hwords;
-      gs.InstanceControl = gs_prog_data->invocations - 1;
-      gs.DispatchMode = DISPATCH_MODE_SIMD8;
-      gs.IncludePrimitiveID = gs_prog_data->include_primitive_id;
-      gs.ControlDataFormat = gs_prog_data->control_data_format;
-#endif
-      gs.ReorderMode = TRAILING;
-      gs.MaximumNumberofThreads = devinfo->max_gs_threads - 1;
-#if GEN_GEN < 7
-      gs.SOStatisticsEnable = true;
-      // if xfb, gs.SVBIPayloadEnable = active
-
-      /* GEN6_GS_SPF_MODE and GEN6_GS_VECTOR_MASK_ENABLE are enabled as it
-       * was previously done for gen6.
-       *
-       * TODO: test with both disabled to see if the HW is behaving
-       * as expected, like in gen7.
-       */
-      gs.SingleProgramFlow = true;
-      gs.VectorMaskEnable = true;
-#endif
-   }
-#endif
-}
-
-/**
- * Encode most of 3DSTATE_PS and 3DSTATE_PS_EXTRA based on the shader.
- */
-static void
-crocus_store_fs_state(struct crocus_context *ice,
-                    const struct gen_device_info *devinfo,
-                    struct crocus_compiled_shader *shader)
-{
-#if 0
-   struct brw_stage_prog_data *prog_data = shader->prog_data;
-   struct brw_wm_prog_data *wm_prog_data = (void *) shader->prog_data;
-
-   uint32_t *ps_state = (void *) shader->derived_data;
-
-   crocus_pack_command(GENX(3DSTATE_PS), ps_state, ps) {
-      ps.VectorMaskEnable = true;
-      // XXX: WABTPPrefetchDisable, see above, drop at C0
-      ps.BindingTableEntryCount = shader->bt.size_bytes / 4;
-      ps.FloatingPointMode = prog_data->use_alt_mode;
-      ps.MaximumNumberofThreads = devinfo->max_wm_threads - 1;
-
-      ps.PushConstantEnable = prog_data->ubo_ranges[0].length > 0;
-
-      /* From the documentation for this packet:
-       * "If the PS kernel does not need the Position XY Offsets to
-       *  compute a Position Value, then this field should be programmed
-       *  to POSOFFSET_NONE."
-       *
-       * "SW Recommendation: If the PS kernel needs the Position Offsets
-       *  to compute a Position XY value, this field should match Position
-       *  ZW Interpolation Mode to ensure a consistent position.xyzw
-       *  computation."
-       *
-       * We only require XY sample offsets. So, this recommendation doesn't
-       * look useful at the moment.  We might need this in future.
-       */
-      ps.PositionXYOffsetSelect =
-         wm_prog_data->uses_pos_offset ? POSOFFSET_SAMPLE : POSOFFSET_NONE;
-
-      if (prog_data->total_scratch) {
-         struct crocus_bo *bo =
-            crocus_get_scratch_space(ice, prog_data->total_scratch,
-                                   MESA_SHADER_FRAGMENT);
-         uint32_t scratch_addr = bo->gtt_offset;
-         ps.PerThreadScratchSpace = ffs(prog_data->total_scratch) - 11;
-         ps.ScratchSpaceBasePointer = rw_bo(NULL, scratch_addr);
-      }
-   }
-#endif
-}
-
-/**
- * Compute the size of the derived data (shader command packets).
- *
- * This must match the data written by the crocus_store_xs_state() functions.
- */
-static void
-crocus_store_cs_state(struct crocus_context *ice,
-                    const struct gen_device_info *devinfo,
-                    struct crocus_compiled_shader *shader)
-{
-#if GEN_GEN == 7
-   struct brw_stage_prog_data *prog_data = shader->prog_data;
-   struct brw_cs_prog_data *cs_prog_data = (void *) shader->prog_data;
-   void *map = shader->derived_data;
-
-   crocus_pack_state(GENX(INTERFACE_DESCRIPTOR_DATA), map, desc) {
-      desc.KernelStartPointer = KSP(ice, shader);
-      desc.ConstantURBEntryReadLength = cs_prog_data->push.per_thread.regs;
-      desc.SharedLocalMemorySize =
-         encode_slm_size(GEN_GEN, prog_data->total_shared);
-      desc.BarrierEnable = cs_prog_data->uses_barrier;
-#if GEN_VERSIONx10 == 75
-      desc.CrossThreadConstantDataReadLength =
-         cs_prog_data->push.cross_thread.regs;
-#endif
-   }
-#endif
-}
-#endif
-
-static unsigned
-crocus_derived_program_state_size(enum crocus_program_cache_id cache_id)
-{
-   assert(cache_id <= CROCUS_CACHE_CLIP);
-
-   static const unsigned dwords[] = {
-#if GEN_GEN >= 6
-      [CROCUS_CACHE_VS] = GENX(3DSTATE_VS_length),
-      [CROCUS_CACHE_GS] = GENX(3DSTATE_GS_length),
-#endif
-#if GEN_GEN >= 7
-      [CROCUS_CACHE_TCS] = GENX(3DSTATE_HS_length),
-      [CROCUS_CACHE_TES] = GENX(3DSTATE_TE_length) + GENX(3DSTATE_DS_length),
-      [CROCUS_CACHE_FS] = GENX(3DSTATE_PS_length),
-      [CROCUS_CACHE_CS] = GENX(INTERFACE_DESCRIPTOR_DATA_length),
-#endif
-      [CROCUS_CACHE_BLORP] = 0,
-      [CROCUS_CACHE_SF] = 0,
-      [CROCUS_CACHE_CLIP] = 0,
-   };
-
-   return sizeof(uint32_t) * dwords[cache_id];
-}
-
-/**
- * Create any state packets corresponding to the given shader stage
- * (i.e. 3DSTATE_VS) and save them as "derived data" in the shader variant.
- * This means that we can look up a program in the in-memory cache and
- * get most of the state packet without having to reconstruct it.
- */
-static void
-crocus_store_derived_program_state(struct crocus_context *ice,
-                                 enum crocus_program_cache_id cache_id,
-                                 struct crocus_compiled_shader *shader)
-{
-#if 0
-   struct crocus_screen *screen = (void *) ice->ctx.screen;
-   const struct gen_device_info *devinfo = &screen->devinfo;
-   switch (cache_id) {
-   case CROCUS_CACHE_VS:
-      crocus_store_vs_state(ice, devinfo, shader);
-      break;
-   case CROCUS_CACHE_TCS:
-      crocus_store_tcs_state(ice, devinfo, shader);
-      break;
-   case CROCUS_CACHE_TES:
-      crocus_store_tes_state(ice, devinfo, shader);
-      break;
-   case CROCUS_CACHE_GS:
-      crocus_store_gs_state(ice, devinfo, shader);
-      break;
-   case CROCUS_CACHE_FS:
-      crocus_store_fs_state(ice, devinfo, shader);
-      break;
-   case CROCUS_CACHE_CS:
-      crocus_store_cs_state(ice, devinfo, shader);
-   case CROCUS_CACHE_BLORP:
-   case CROCUS_CACHE_SF:
-   case CROCUS_CACHE_CLIP:
-      break;
-   default:
-      break;
-   }
-#endif
-}
-
 /* ------------------------------------------------------------------- */
 #if GEN_GEN == 7
 static const uint32_t push_constant_opcodes[] = {
@@ -5345,86 +5070,58 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    }
 #endif
 
-   for (int stage = 0; stage <= MESA_SHADER_FRAGMENT; stage++) {
-      if (!(dirty & (CROCUS_DIRTY_VS << stage)))
-         continue;
-
-      struct crocus_compiled_shader *shader = ice->shaders.prog[stage];
-
-      if (shader) {
-         if (stage == MESA_SHADER_FRAGMENT) {
 #if GEN_GEN >= 7
-            struct brw_stage_prog_data *prog_data = shader->prog_data;
-            struct brw_wm_prog_data *wm_prog_data = (void *) shader->prog_data;
+   struct crocus_compiled_shader *shader = ice->shaders.prog[MESA_SHADER_FRAGMENT];
+   if ((dirty & CROCUS_DIRTY_FS) && shader) {
+      struct brw_stage_prog_data *prog_data = shader->prog_data;
+      struct brw_wm_prog_data *wm_prog_data = (void *) shader->prog_data;
 
-            crocus_emit_cmd(batch, GENX(3DSTATE_PS), ps) {
-               ps._8PixelDispatchEnable = wm_prog_data->dispatch_8;
-               ps._16PixelDispatchEnable = wm_prog_data->dispatch_16;
-               ps._32PixelDispatchEnable = wm_prog_data->dispatch_32;
+      crocus_emit_cmd(batch, GENX(3DSTATE_PS), ps) {
+         ps._8PixelDispatchEnable = wm_prog_data->dispatch_8;
+         ps._16PixelDispatchEnable = wm_prog_data->dispatch_16;
+         ps._32PixelDispatchEnable = wm_prog_data->dispatch_32;
 
-               ps.DispatchGRFStartRegisterForConstantSetupData0 =
-                  brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
-               ps.DispatchGRFStartRegisterForConstantSetupData1 =
-                  brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
-               ps.DispatchGRFStartRegisterForConstantSetupData2 =
-                  brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
+         ps.DispatchGRFStartRegisterForConstantSetupData0 =
+            brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
+         ps.DispatchGRFStartRegisterForConstantSetupData1 =
+            brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
+         ps.DispatchGRFStartRegisterForConstantSetupData2 =
+            brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
 
-               ps.KernelStartPointer0 = KSP(ice, shader) +
-                  brw_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
-               ps.KernelStartPointer1 = KSP(ice, shader) +
-                  brw_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
-               ps.KernelStartPointer2 = KSP(ice, shader) +
-                  brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
+         ps.KernelStartPointer0 = KSP(ice, shader) +
+            brw_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
+         ps.KernelStartPointer1 = KSP(ice, shader) +
+            brw_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
+         ps.KernelStartPointer2 = KSP(ice, shader) +
+            brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
 
-	       // XXX: WABTPPrefetchDisable, see above, drop at C0
-	       ps.BindingTableEntryCount = shader->bt.size_bytes / 4;
-	       ps.FloatingPointMode = prog_data->use_alt_mode;
-	       ps.MaximumNumberofThreads = batch->screen->devinfo.max_wm_threads - 1;
+         // XXX: WABTPPrefetchDisable, see above, drop at C0
+         ps.BindingTableEntryCount = shader->bt.size_bytes / 4;
+         ps.FloatingPointMode = prog_data->use_alt_mode;
+         ps.MaximumNumberofThreads = batch->screen->devinfo.max_wm_threads - 1;
 
-	       ps.PushConstantEnable = prog_data->ubo_ranges[0].length > 0;
+         ps.PushConstantEnable = prog_data->ubo_ranges[0].length > 0;
 
-	       ps.oMaskPresenttoRenderTarget = wm_prog_data->uses_omask;
-	       ps.AttributeEnable = (wm_prog_data->num_varying_inputs != 0);
-	       /* From the documentation for this packet:
-		* "If the PS kernel does not need the Position XY Offsets to
-		*  compute a Position Value, then this field should be programmed
-		*  to POSOFFSET_NONE."
-		*
-		* "SW Recommendation: If the PS kernel needs the Position Offsets
-		*  to compute a Position XY value, this field should match Position
-		*  ZW Interpolation Mode to ensure a consistent position.xyzw
-		*  computation."
-		*
-		* We only require XY sample offsets. So, this recommendation doesn't
-		* look useful at the moment.  We might need this in future.
-		*/
-	       ps.PositionXYOffsetSelect =
-		  wm_prog_data->uses_pos_offset ? POSOFFSET_SAMPLE : POSOFFSET_NONE;
-            }
-
-	    //            uint32_t *shader_ps = (uint32_t *) shader->derived_data;
-	    //            crocus_emit_merge(batch, shader_ps, ps_state,
-	    //                            GENX(3DSTATE_PS_length));
-#endif
-         } else {
-            crocus_batch_emit(batch, shader->derived_data,
-                            crocus_derived_program_state_size(stage));
-// TODO: VS constants for gen6
-         }
-      } else {
-         if (stage == MESA_SHADER_TESS_EVAL) {
-#if GEN_GEN >= 7
-            crocus_emit_cmd(batch, GENX(3DSTATE_HS), hs);
-            crocus_emit_cmd(batch, GENX(3DSTATE_TE), te);
-            crocus_emit_cmd(batch, GENX(3DSTATE_DS), ds);
-#endif
-         } else if (stage == MESA_SHADER_GEOMETRY) {
-#if GEN_GEN >= 6
-            crocus_emit_cmd(batch, GENX(3DSTATE_GS), gs);
-#endif
-         }
+         ps.oMaskPresenttoRenderTarget = wm_prog_data->uses_omask;
+         ps.AttributeEnable = (wm_prog_data->num_varying_inputs != 0);
+         /* From the documentation for this packet:
+          * "If the PS kernel does not need the Position XY Offsets to
+          *  compute a Position Value, then this field should be programmed
+          *  to POSOFFSET_NONE."
+          *
+          * "SW Recommendation: If the PS kernel needs the Position Offsets
+          *  to compute a Position XY value, this field should match Position
+          *  ZW Interpolation Mode to ensure a consistent position.xyzw
+          *  computation."
+          *
+          * We only require XY sample offsets. So, this recommendation doesn't
+          * look useful at the moment.  We might need this in future.
+          */
+         ps.PositionXYOffsetSelect =
+            wm_prog_data->uses_pos_offset ? POSOFFSET_SAMPLE : POSOFFSET_NONE;
       }
    }
+#endif
 
 #if GEN_GEN >= 7
    // XXX what about SO for earlier gens?
@@ -7362,9 +7059,7 @@ genX(init_state)(struct crocus_context *ice)
    ice->vtbl.store_data_imm64 = crocus_store_data_imm64;
    ice->vtbl.copy_mem_mem = crocus_copy_mem_mem;
 #endif
-   ice->vtbl.derived_program_state_size = crocus_derived_program_state_size;
    ice->vtbl.update_surface_base_address = crocus_update_surface_base_address;
-   ice->vtbl.store_derived_program_state = crocus_store_derived_program_state;
 #if GEN_GEN == 7
    ice->vtbl.create_so_decl_list = crocus_create_so_decl_list;
 #endif
