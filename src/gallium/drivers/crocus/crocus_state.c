@@ -384,6 +384,7 @@ emit_state(struct crocus_batch *batch,
 #if GEN_GEN <= 5
 static void
 upload_pipelined_state_pointers(struct crocus_batch *batch,
+                                bool gs_active, uint32_t gs_offset,
                                 uint32_t vs_offset, uint32_t sf_offset,
                                 uint32_t clip_offset, uint32_t wm_offset, uint32_t cc_offset)
 {
@@ -394,7 +395,9 @@ upload_pipelined_state_pointers(struct crocus_batch *batch,
 
    crocus_emit_cmd(batch, GENX(3DSTATE_PIPELINED_POINTERS), pp) {
       pp.PointertoVSState = ro_bo(batch->state.bo, vs_offset);
-      pp.GSEnable = false;
+      pp.GSEnable = gs_active;
+      if (gs_active)
+         pp.PointertoGSState = ro_bo(batch->state.bo, gs_offset);
       pp.ClipEnable = true;
       pp.PointertoCLIPState = ro_bo(batch->state.bo, clip_offset);
       pp.PointertoSFState = ro_bo(batch->state.bo, sf_offset);
@@ -5318,6 +5321,135 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #endif
       }
    }
+
+   if (dirty & CROCUS_DIRTY_GS) {
+      struct crocus_compiled_shader *shader = ice->shaders.prog[MESA_SHADER_GEOMETRY];
+      bool active = GEN_GEN >= 6 && shader;
+#if GEN_GEN >= 6
+      crocus_emit_cmd(batch, GENX(3DSTATE_GS), gs) {
+#else
+      uint32_t *gs_ptr = stream_state(batch,
+                                      GENX(GS_STATE_length) * 4, 32, &ice->shaders.gs_offset);
+      dirty |= CROCUS_DIRTY_GEN5_PIPELINED_POINTERS;
+      _crocus_pack_state(batch, GENX(GS_STATE), gs_ptr, gs) {
+#endif
+
+#if GEN_GEN >= 6
+         if (active) {
+            const struct brw_gs_prog_data *gs_prog_data = brw_gs_prog_data(shader->prog_data);
+            const struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(shader->prog_data);
+            const struct brw_stage_prog_data *prog_data = &gs_prog_data->base.base;
+
+            INIT_THREAD_DISPATCH_FIELDS(gs, Vertex, MESA_SHADER_GEOMETRY);
+#if GEN_GEN >= 7
+            gs.OutputVertexSize = gs_prog_data->output_vertex_size_hwords * 2 - 1;
+            gs.OutputTopology = gs_prog_data->output_topology;
+            gs.ControlDataHeaderSize =
+               gs_prog_data->control_data_header_size_hwords;
+
+            gs.InstanceControl = gs_prog_data->invocations - 1;
+            gs.DispatchMode = vue_prog_data->dispatch_mode;
+
+            gs.IncludePrimitiveID = gs_prog_data->include_primitive_id;
+
+            gs.ControlDataFormat = gs_prog_data->control_data_format;
+#endif
+
+            /* Note: the meaning of the GEN7_GS_REORDER_TRAILING bit changes between
+             * Ivy Bridge and Haswell.
+             *
+             * On Ivy Bridge, setting this bit causes the vertices of a triangle
+             * strip to be delivered to the geometry shader in an order that does
+             * not strictly follow the OpenGL spec, but preserves triangle
+             * orientation.  For example, if the vertices are (1, 2, 3, 4, 5), then
+             * the geometry shader sees triangles:
+             *
+             * (1, 2, 3), (2, 4, 3), (3, 4, 5)
+             *
+             * (Clearing the bit is even worse, because it fails to preserve
+             * orientation).
+             *
+             * Triangle strips with adjacency always ordered in a way that preserves
+             * triangle orientation but does not strictly follow the OpenGL spec,
+             * regardless of the setting of this bit.
+             *
+             * On Haswell, both triangle strips and triangle strips with adjacency
+             * are always ordered in a way that preserves triangle orientation.
+             * Setting this bit causes the ordering to strictly follow the OpenGL
+             * spec.
+             *
+             * So in either case we want to set the bit.  Unfortunately on Ivy
+             * Bridge this will get the order close to correct but not perfect.
+             */
+            gs.ReorderMode = TRAILING;
+            gs.MaximumNumberofThreads = (batch->screen->devinfo.max_gs_threads - 1);
+
+#if GEN_GEN < 7
+            gs.SOStatisticsEnable = true;
+            //            if (gs_prog->info.has_transform_feedback_varyings)
+            //               gs.SVBIPayloadEnable = 0//TODO
+
+            /* GEN6_GS_SPF_MODE and GEN6_GS_VECTOR_MASK_ENABLE are enabled as it
+             * was previously done for gen6.
+             *
+             * TODO: test with both disabled to see if the HW is behaving
+             * as expected, like in gen7.
+             */
+            gs.SingleProgramFlow = true;
+            gs.VectorMaskEnable = true;
+#endif
+         }
+#endif
+#if GEN_GEN <= 6
+         if (!active && ice->shaders.ff_gs_prog) {
+            const struct brw_gs_prog_data *gs_prog_data = (struct brw_gs_prog_data *)ice->shaders.ff_gs_prog->prog_data;
+            /* In gen6, transform feedback for the VS stage is done with an
+             * ad-hoc GS program. This function provides the needed 3DSTATE_GS
+             * for this.
+             */
+            gs.KernelStartPointer = KSP(ice, ice->shaders.ff_gs_prog);
+            gs.SingleProgramFlow = true;
+            gs.DispatchGRFStartRegisterForURBData = GEN_GEN == 6 ? 2 : 1;
+            gs.VertexURBEntryReadLength = gs_prog_data->base.urb_read_length;
+
+#if GEN_GEN <= 5
+            gs.GRFRegisterCount =
+               DIV_ROUND_UP(gs_prog_data->base.total_grf, 16) - 1;
+            /* BRW_NEW_URB_FENCE */
+            gs.NumberofURBEntries = batch->ice->urb.nr_gs_entries;
+            gs.URBEntryAllocationSize = batch->ice->urb.vsize - 1;
+            gs.MaximumNumberofThreads = batch->ice->urb.nr_gs_entries >= 8 ? 1 : 0;
+            gs.FloatingPointMode = FLOATING_POINT_MODE_Alternate;
+#else
+            gs.Enable = true;
+            gs.VectorMaskEnable = true;
+            gs.SVBIPayloadEnable = true;
+            gs.SVBIPostIncrementEnable = true;
+            //            gs.SVBIPostIncrementValue =TODO
+            //               gs_prog_data->base.svbi_postincrement_value;
+            gs.SOStatisticsEnable = true;
+            gs.MaximumNumberofThreads = batch->screen->devinfo.max_gs_threads - 1;
+#endif
+         }
+#endif
+         if (!active && !ice->shaders.ff_gs_prog) {
+            gs.DispatchGRFStartRegisterForURBData = 1;
+#if GEN_GEN >= 7
+            gs.IncludeVertexHandles = true;
+#endif
+         }
+#if GEN_GEN >= 6
+         gs.StatisticsEnable = true;
+#endif
+#if GEN_GEN == 5 || GEN_GEN == 6
+         gs.RenderingEnabled = true;
+#endif
+#if GEN_GEN <= 5
+         //TODO  gs.MaximumVPIndex = brw->clip.viewport_count - 1;
+#endif
+      }
+   }
+
    if (dirty & CROCUS_DIRTY_RASTER) {
       struct crocus_rasterizer_state *cso = ice->state.cso_rast;
 
@@ -5685,7 +5817,9 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
 #if GEN_GEN <= 5
    if (dirty & CROCUS_DIRTY_GEN5_PIPELINED_POINTERS)
-      upload_pipelined_state_pointers(batch, ice->shaders.vs_offset, ice->shaders.sf_offset, ice->shaders.clip_offset, ice->shaders.wm_offset, ice->shaders.cc_offset);
+      upload_pipelined_state_pointers(batch, false, ice->shaders.gs_offset,
+                                      ice->shaders.vs_offset, ice->shaders.sf_offset,
+                                      ice->shaders.clip_offset, ice->shaders.wm_offset, ice->shaders.cc_offset);
    crocus_upload_urb_fence(batch);
 
    crocus_emit_cmd(batch, GENX(CS_URB_STATE), cs);

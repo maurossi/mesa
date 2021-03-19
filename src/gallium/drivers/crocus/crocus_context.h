@@ -621,10 +621,13 @@ struct crocus_context {
       /* gen 4/5 clip/sf progs */
       struct crocus_compiled_shader *clip_prog;
       struct crocus_compiled_shader *sf_prog;
+      /* gen4/5 prims, gen6 streamout */
+      struct crocus_compiled_shader *ff_gs_prog;
       uint32_t clip_offset;
       uint32_t sf_offset;
       uint32_t wm_offset;
       uint32_t vs_offset;
+      uint32_t gs_offset;
       uint32_t cc_offset;
 
       /** Is a GS or TES outputting points or lines? */
