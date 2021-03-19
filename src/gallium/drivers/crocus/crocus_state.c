@@ -4140,9 +4140,8 @@ KSP(const struct crocus_context *ice, const struct crocus_compiled_shader *shade
    if (prog_data->total_scratch) {                                        \
       struct crocus_bo *bo =                                                \
          crocus_get_scratch_space(ice, prog_data->total_scratch, stage);    \
-      uint32_t scratch_addr = bo->gtt_offset;                             \
       pkt.PerThreadScratchSpace = ffs(prog_data->total_scratch) - 11;     \
-      pkt.ScratchSpaceBasePointer = rw_bo(NULL, scratch_addr);            \
+      pkt.ScratchSpaceBasePointer = rw_bo(bo, 0);                         \
    }
 
 /* ------------------------------------------------------------------- */
@@ -5271,12 +5270,14 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    }
 
    if (dirty & CROCUS_DIRTY_VS) {
-      const struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data);
-
+      struct crocus_compiled_shader *shader = ice->shaders.prog[MESA_SHADER_VERTEX];
+      const struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(shader->prog_data);
+      const struct brw_stage_prog_data *prog_data = &vue_prog_data->base;
 #if GEN_GEN == 7
       if (batch->screen->devinfo.is_ivybridge)
 	 gen7_emit_vs_workaround_flush(batch);
 #endif
+
 
 #if GEN_GEN >= 6
       crocus_emit_cmd(batch, GENX(3DSTATE_VS), vs) {
@@ -5285,28 +5286,15 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
                                       GENX(VS_STATE_length) * 4, 32, &ice->shaders.vs_offset);
       dirty |= CROCUS_DIRTY_GEN5_PIPELINED_POINTERS;
       _crocus_pack_state(batch, GENX(VS_STATE), vs_ptr, vs) {
-
 #endif
-         vs.KernelStartPointer = KSP(ice, ice->shaders.prog[MESA_SHADER_VERTEX]);
-         vs.Enable = true;
-
-         if (vue_prog_data->base.total_scratch) {
-            struct crocus_bo *bo = crocus_get_scratch_space(ice, vue_prog_data->base.total_scratch, MESA_SHADER_VERTEX);
-            vs.PerThreadScratchSpace = ffs(vue_prog_data->base.total_scratch) - 11;
-            vs.ScratchSpaceBasePointer = rw_bo(bo, 0);
-	 }
+         INIT_THREAD_DISPATCH_FIELDS(vs, Vertex, MESA_SHADER_VERTEX);
 
          vs.MaximumNumberofThreads = (batch->screen->devinfo.max_vs_threads / 2)- 1;
-         vs.FloatingPointMode  = vue_prog_data->base.use_alt_mode;
-         vs.DispatchGRFStartRegisterForURBData = vue_prog_data->base.dispatch_grf_start_reg;
-
-         vs.VertexURBEntryReadLength = vue_prog_data->urb_read_length;
-
-         vs.BindingTableEntryCount = ice->shaders.prog[MESA_SHADER_VERTEX]->bt.size_bytes / 4;
 
 #if GEN_GEN < 6
          vs.GRFRegisterCount = DIV_ROUND_UP(vue_prog_data->total_grf, 16) - 1;
-	 vs.ConstantURBEntryReadLength = vue_prog_data->base.curb_read_length;
+         vs.ConstantURBEntryReadLength = vue_prog_data->base.curb_read_length;
+         vs.ConstantURBEntryReadOffset = 0; //TODO
 
          vs.NumberofURBEntries = batch->ice->urb.nr_vs_entries >> (GEN_GEN == 5 ? 2 : 0);
          vs.URBEntryAllocationSize = batch->ice->urb.vsize - 1;
