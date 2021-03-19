@@ -184,9 +184,6 @@ crocus_predraw_resolve_framebuffer(struct crocus_context *ice,
    struct pipe_framebuffer_state *cso_fb = &ice->state.framebuffer;
    struct crocus_screen *screen = (void *) ice->ctx.screen;
    struct gen_device_info *devinfo = &screen->devinfo;
-   struct crocus_uncompiled_shader *ish =
-      ice->shaders.uncompiled[MESA_SHADER_FRAGMENT];
-   const nir_shader *nir = ish->nir;
 
    if (ice->state.dirty & CROCUS_DIRTY_DEPTH_BUFFER) {
       struct pipe_surface *zs_surf = cso_fb->zsbuf;
@@ -1427,6 +1424,8 @@ crocus_resource_render_aux_usage(struct crocus_context *ice,
       /* Otherwise, we try to fall back to CCS_D */
       if (isl_format_supports_ccs_d(devinfo, render_format))
          return ISL_AUX_USAGE_CCS_D;
+
+      return ISL_AUX_USAGE_NONE;
 
    default:
       return ISL_AUX_USAGE_NONE;

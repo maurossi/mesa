@@ -1451,21 +1451,6 @@ crocus_reg_read(struct crocus_bufmgr *bufmgr, uint32_t offset, uint64_t *result)
    return ret;
 }
 
-static uint64_t
-crocus_gtt_size(int fd)
-{
-   /* We use the default (already allocated) context to determine
-    * the default configuration of the virtual address space.
-    */
-   struct drm_i915_gem_context_param p = {
-      .param = I915_CONTEXT_PARAM_GTT_SIZE,
-   };
-   if (!intel_ioctl(fd, DRM_IOCTL_I915_GEM_CONTEXT_GETPARAM, &p))
-      return p.value;
-
-   return 0;
-}
-
 static int
 gem_param(int fd, int name)
 {
@@ -1487,8 +1472,6 @@ gem_param(int fd, int name)
 struct crocus_bufmgr *
 crocus_bufmgr_init(struct gen_device_info *devinfo, int fd, bool bo_reuse)
 {
-   uint64_t gtt_size = crocus_gtt_size(fd);
-
    struct crocus_bufmgr *bufmgr = calloc(1, sizeof(*bufmgr));
    if (bufmgr == NULL)
       return NULL;

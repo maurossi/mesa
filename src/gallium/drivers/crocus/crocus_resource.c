@@ -478,7 +478,7 @@ crocus_resource_configure_aux(struct crocus_screen *screen,
    /* ISL_AUX_USAGE_HIZ_CCS doesn't support sampling at all */
    res->aux.sampler_usages &= ~(1 << ISL_AUX_USAGE_HIZ_CCS);
 
-   enum isl_aux_state initial_state;
+   enum isl_aux_state initial_state = ISL_AUX_STATE_AUX_INVALID;
    *aux_size_B = 0;
    *alloc_flags = 0;
    assert(!res->aux.bo);
@@ -526,6 +526,8 @@ crocus_resource_configure_aux(struct crocus_screen *screen,
          initial_state = ISL_AUX_STATE_PASS_THROUGH;
       *alloc_flags |= BO_ALLOC_ZEROED;
       break;
+   default:
+      unreachable("non-crocus aux");
    }
 
    /* Create the aux_state for the auxiliary buffer. */
@@ -838,9 +840,9 @@ crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
    if (templ->usage == PIPE_USAGE_STAGING)
       flags |= BO_ALLOC_COHERENT;
 
-   uint32_t aux_preferred_alloc_flags;
    uint64_t aux_size = 0;
 #if 0
+   uint32_t aux_preferred_alloc_flags;
    if (!crocus_resource_configure_aux(screen, res, false, &aux_size,
                                     &aux_preferred_alloc_flags)) {
       goto fail;

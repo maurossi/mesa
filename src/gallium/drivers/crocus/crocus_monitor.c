@@ -115,6 +115,7 @@ crocus_oa_bo_alloc(void *bufmgr, const char *name, uint64_t size)
    return crocus_bo_alloc(bufmgr, name, size);
 }
 
+#if 0
 static void
 crocus_monitor_emit_mi_flush(struct crocus_context *ice)
 {
@@ -129,6 +130,7 @@ crocus_monitor_emit_mi_flush(struct crocus_context *ice)
    crocus_emit_pipe_control_flush(&ice->batches[CROCUS_BATCH_RENDER],
                                 "OA metrics", flags);
 }
+#endif
 
 static void
 crocus_monitor_emit_mi_report_perf_count(void *c,
@@ -148,6 +150,7 @@ crocus_monitor_batchbuffer_flush(void *c, const char *file, int line)
    _crocus_batch_flush(&ice->batches[CROCUS_BATCH_RENDER], __FILE__, __LINE__);
 }
 
+#if 0
 static void
 crocus_monitor_capture_frequency_stat_register(void *ctx,
                                              void *bo,
@@ -166,7 +169,7 @@ crocus_monitor_store_register_mem64(void *ctx, void *bo,
    struct crocus_batch *batch = &ice->batches[CROCUS_BATCH_RENDER];
    ice->vtbl.store_register_mem64(batch, reg, bo, offset, false);
 }
-
+#endif
 
 static bool
 crocus_monitor_init_metrics(struct crocus_screen *screen)

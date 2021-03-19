@@ -401,6 +401,7 @@ clear_color(struct crocus_context *ice,
                                box->z, box->depth, aux_usage);
 }
 
+#if 0
 static bool
 can_fast_clear_depth(struct crocus_context *ice,
                      struct crocus_resource *res,
@@ -537,6 +538,7 @@ fast_clear_depth(struct crocus_context *ice,
                                ISL_AUX_STATE_CLEAR);
    ice->state.dirty |= CROCUS_DIRTY_DEPTH_BUFFER;
 }
+#endif
 
 static void
 clear_depth_stencil(struct crocus_context *ice,
@@ -549,7 +551,7 @@ clear_depth_stencil(struct crocus_context *ice,
                     float depth,
                     uint8_t stencil)
 {
-   struct crocus_resource *res = (void *) p_res;
+   //struct crocus_resource *res = (void *) p_res;
 
    struct crocus_batch *batch = &ice->batches[CROCUS_BATCH_RENDER];
    enum blorp_batch_flags blorp_flags = 0;
@@ -714,8 +716,6 @@ crocus_clear_texture(struct pipe_context *ctx,
       return;
    }
    if (util_format_is_depth_or_stencil(p_res->format)) {
-      const struct util_format_description *fmt_desc =
-         util_format_description(p_res->format);
       const struct util_format_unpack_description *fmt_unpack =
          util_format_unpack_description(p_res->format);
 
