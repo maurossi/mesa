@@ -5827,6 +5827,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       // TODO: emit things?
    }
 
+   /* TODO: Disable emitting this until something uses a stipple. */
    if (dirty & CROCUS_DIRTY_POLYGON_STIPPLE) {
       crocus_emit_cmd(batch, GENX(3DSTATE_POLY_STIPPLE_PATTERN), poly) {
          for (int i = 0; i < 32; i++) {
