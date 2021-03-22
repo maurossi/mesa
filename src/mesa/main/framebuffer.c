@@ -826,9 +826,12 @@ _mesa_get_color_read_format(struct gl_context *ctx,
        * we will assume that on that situation the same error should be
        * triggered too.
        */
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "%s(GL_IMPLEMENTATION_COLOR_READ_FORMAT: no GL_READ_BUFFER)",
-                  caller);
+
+      /*
+	   * IMPLEMENTATION_COLOR_READ_FORMAT is for optimization purpose. if return
+	   * GL_NONE, just indicated there was no optimized additional format-type
+	   * can be used. So we decide to remove INVALID_OPERATION error generation.
+	   */
       return GL_NONE;
    }
    else {
@@ -901,9 +904,6 @@ _mesa_get_color_read_type(struct gl_context *ctx,
       /*
        * See comment on _mesa_get_color_read_format
        */
-      _mesa_error(ctx, GL_INVALID_OPERATION,
-                  "%s(GL_IMPLEMENTATION_COLOR_READ_TYPE: no GL_READ_BUFFER)",
-                  caller);
       return GL_NONE;
    }
    else {
