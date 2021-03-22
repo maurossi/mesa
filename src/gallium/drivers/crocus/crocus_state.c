@@ -6184,8 +6184,6 @@ crocus_upload_render_state(struct crocus_context *ice,
 
          if (draw->index_size) {
             prim.BaseVertexLocation += draw->index_bias;
-         } else {
-            prim.StartVertexLocation += draw->index_bias;
          }
       }
    }
