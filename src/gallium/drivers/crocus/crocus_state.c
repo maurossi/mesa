@@ -6932,12 +6932,13 @@ genX(emit_urb_setup)(struct crocus_context *ice,
    const struct gen_device_info *devinfo = &batch->screen->devinfo;
    unsigned entries[4];
    unsigned start[4];
+   bool constrained;
 
    ice->shaders.last_vs_entry_size = size[MESA_SHADER_VERTEX];
 
    intel_get_urb_config(devinfo, batch->screen->l3_config_3d,
                         tess_present, gs_present,
-                        size, entries, start, NULL, NULL);
+                        size, entries, start, NULL, &constrained);
 
    if (!(GEN_VERSIONx10 == 75) && !devinfo->is_baytrail)
       gen7_emit_vs_workaround_flush(batch);
