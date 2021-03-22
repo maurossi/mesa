@@ -5449,6 +5449,16 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       }
    }
 
+#if GEN_GEN >= 7
+   if (dirty & CROCUS_DIRTY_TCS) {
+      crocus_emit_cmd(batch, GENX(3DSTATE_HS), hs);
+   }
+
+   if (dirty & CROCUS_DIRTY_TES) {
+      crocus_emit_cmd(batch, GENX(3DSTATE_TE), te);
+      crocus_emit_cmd(batch, GENX(3DSTATE_DS), ds);
+   }
+#endif
    if (dirty & CROCUS_DIRTY_RASTER) {
       struct crocus_rasterizer_state *cso = ice->state.cso_rast;
 
