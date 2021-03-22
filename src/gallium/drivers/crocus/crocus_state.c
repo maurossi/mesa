@@ -5402,7 +5402,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #endif
 #if GEN_GEN <= 6
          if (!active && ice->shaders.ff_gs_prog) {
-            const struct brw_gs_prog_data *gs_prog_data = (struct brw_gs_prog_data *)ice->shaders.ff_gs_prog->prog_data;
+            const struct brw_ff_gs_prog_data *gs_prog_data = (struct brw_ff_gs_prog_data *)ice->shaders.ff_gs_prog->prog_data;
             /* In gen6, transform feedback for the VS stage is done with an
              * ad-hoc GS program. This function provides the needed 3DSTATE_GS
              * for this.
@@ -5410,11 +5410,11 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
             gs.KernelStartPointer = KSP(ice, ice->shaders.ff_gs_prog);
             gs.SingleProgramFlow = true;
             gs.DispatchGRFStartRegisterForURBData = GEN_GEN == 6 ? 2 : 1;
-            gs.VertexURBEntryReadLength = gs_prog_data->base.urb_read_length;
+            gs.VertexURBEntryReadLength = gs_prog_data->urb_read_length;
 
 #if GEN_GEN <= 5
             gs.GRFRegisterCount =
-               DIV_ROUND_UP(gs_prog_data->base.total_grf, 16) - 1;
+               DIV_ROUND_UP(gs_prog_data->total_grf, 16) - 1;
             /* BRW_NEW_URB_FENCE */
             gs.NumberofURBEntries = batch->ice->urb.nr_gs_entries;
             gs.URBEntryAllocationSize = batch->ice->urb.vsize - 1;
@@ -5425,8 +5425,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
             gs.VectorMaskEnable = true;
             gs.SVBIPayloadEnable = true;
             gs.SVBIPostIncrementEnable = true;
-            //            gs.SVBIPostIncrementValue =TODO
-            //               gs_prog_data->base.svbi_postincrement_value;
+            gs.SVBIPostIncrementValue = gs_prog_data->svbi_postincrement_value;
             gs.SOStatisticsEnable = true;
             gs.MaximumNumberofThreads = batch->screen->devinfo.max_gs_threads - 1;
 #endif
@@ -5817,7 +5816,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
 #if GEN_GEN <= 5
    if (dirty & CROCUS_DIRTY_GEN5_PIPELINED_POINTERS)
-      upload_pipelined_state_pointers(batch, false, ice->shaders.gs_offset,
+      upload_pipelined_state_pointers(batch, ice->shaders.ff_gs_prog ? true : false, ice->shaders.gs_offset,
                                       ice->shaders.vs_offset, ice->shaders.sf_offset,
                                       ice->shaders.clip_offset, ice->shaders.wm_offset, ice->shaders.cc_offset);
    crocus_upload_urb_fence(batch);
@@ -7202,6 +7201,7 @@ genX(init_state)(struct crocus_context *ice)
 #endif
    ice->vtbl.fill_clamp_mask = crocus_fill_clamp_mask;
    ice->vtbl.batch_reset_dirty = crocus_batch_reset_dirty;
+   ice->vtbl.translate_prim_type = translate_prim_type;
    ice->state.dirty = ~0ull;
 
    ice->state.statistics_counters_enabled = true;

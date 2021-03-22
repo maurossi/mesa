@@ -335,6 +335,9 @@ cache_name(enum crocus_program_cache_id cache_id)
    if (cache_id == CROCUS_CACHE_CLIP)
       return "CLIP";
 
+   if (cache_id == CROCUS_CACHE_FF_GS)
+      return "FF_GS";
+
    return _mesa_shader_stage_to_string(cache_id);
 }
 

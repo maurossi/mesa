@@ -2044,6 +2044,83 @@ crocus_update_compiled_sf(struct crocus_context *ice)
       ice->shaders.sf_prog = shader;
 }
 
+static struct crocus_compiled_shader *
+crocus_compile_ff_gs(struct crocus_context *ice, struct brw_ff_gs_prog_key *key)
+{
+   struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
+   struct brw_compiler *compiler = screen->compiler;
+   void *mem_ctx;
+   unsigned program_size;
+   mem_ctx = ralloc_context(NULL);
+
+   struct brw_ff_gs_prog_data *ff_gs_prog_data =
+      rzalloc(mem_ctx, struct brw_ff_gs_prog_data);
+
+   const unsigned *program = brw_compile_ff_gs_prog(compiler, mem_ctx, key, ff_gs_prog_data,
+                                                    ice->shaders.last_vue_map, &program_size);
+
+   if (program == NULL) {
+      dbg_printf("failed to compile sf shader\n");
+      ralloc_free(mem_ctx);
+      return false;
+   }
+
+   struct crocus_binding_table bt;
+   memset(&bt, 0, sizeof(bt));
+   struct crocus_compiled_shader *shader =
+      crocus_upload_shader(ice, CROCUS_CACHE_FF_GS, sizeof(*key), key, program,
+                           program_size,
+                           (struct brw_stage_prog_data *)ff_gs_prog_data, sizeof(*ff_gs_prog_data), NULL, NULL, 0, 0, &bt);
+   ralloc_free(mem_ctx);
+   return shader;
+}
+
+static void
+crocus_update_compiled_ff_gs(struct crocus_context *ice)
+{
+   struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
+   const struct gen_device_info *devinfo = &screen->devinfo;
+   struct brw_ff_gs_prog_key key;
+   struct crocus_compiled_shader *old = ice->shaders.ff_gs_prog;
+   memset(&key, 0, sizeof(key));
+
+   assert(devinfo->gen < 7);
+
+   key.attrs = ice->shaders.last_vue_map->slots_valid;
+
+   key.primitive = ice->vtbl.translate_prim_type(ice->state.prim_mode, 0);
+
+   struct pipe_rasterizer_state *rs_state = crocus_get_rast_state(ice);
+   key.pv_first = rs_state->flatshade_first;
+
+   if (key.primitive == _3DPRIM_QUADLIST && !rs_state->flatshade) {
+      /* Provide consistenbbbbbt primitive order with brw_set_prim's
+       * optimization of single quads to trifans.
+       */
+      key.pv_first = true;
+   }
+
+   if (devinfo->gen >= 6) {
+      //TODO
+   } else {
+      key.need_gs_prog = (key.primitive == _3DPRIM_QUADLIST ||
+                          key.primitive == _3DPRIM_QUADSTRIP ||
+                          key.primitive == _3DPRIM_LINELOOP);
+   }
+
+   struct crocus_compiled_shader *shader = NULL;
+   if (key.need_gs_prog) {
+      shader = crocus_find_cached_shader(ice, CROCUS_CACHE_FF_GS,
+                                         sizeof(key), &key);
+      if (!shader)
+         shader = crocus_compile_ff_gs(ice, &key);
+   }
+   if (old != shader) {
+      ice->state.dirty |= CROCUS_DIRTY_GS;
+      ice->shaders.ff_gs_prog = shader;
+   }
+}
+
 // XXX: crocus_compiled_shaders are space-leaking :(
 // XXX: do remember to unbind them if deleting them.
 
@@ -2135,10 +2212,14 @@ crocus_update_compiled_shaders(struct crocus_context *ice)
    if (dirty & CROCUS_DIRTY_UNCOMPILED_FS)
       crocus_update_compiled_fs(ice);
 
+   if (screen->devinfo.gen <= 6)
+      crocus_update_compiled_ff_gs(ice);
+
    if (screen->devinfo.gen < 6) {
       crocus_update_compiled_clip(ice);
       crocus_update_compiled_sf(ice);
    }
+
 
    /* Changing shader interfaces may require a URB configuration. */
    if (!(dirty & CROCUS_DIRTY_URB)) {

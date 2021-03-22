@@ -189,6 +189,7 @@ enum crocus_program_cache_id {
    CROCUS_CACHE_BLORP,
    CROCUS_CACHE_SF,
    CROCUS_CACHE_CLIP,
+   CROCUS_CACHE_FF_GS,
 };
 
 /** @{
@@ -529,6 +530,7 @@ struct crocus_vtable {
    void (*calculate_urb_fence)(struct crocus_batch *batch, unsigned csize,
                                unsigned vsize, unsigned sfsize);
    void (*batch_reset_dirty)(struct crocus_batch *batch);
+   unsigned (*translate_prim_type)(enum pipe_prim_type prim, uint8_t verts_per_patch);
 };
 
 /**
