@@ -2040,8 +2040,10 @@ crocus_update_compiled_sf(struct crocus_context *ice)
    if (!shader)
       shader = crocus_compile_sf(ice, &key);
 
-   if (old != shader)
+   if (old != shader) {
+      ice->state.dirty |= CROCUS_DIRTY_RASTER;
       ice->shaders.sf_prog = shader;
+   }
 }
 
 static struct crocus_compiled_shader *
