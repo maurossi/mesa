@@ -44,15 +44,15 @@
 #include "util/u_prim.h"
 
 static bool
-prim_is_points_or_lines(const struct pipe_draw_info *draw)
+prim_is_points_or_lines(enum pipe_prim_type mode)
 {
    /* We don't need to worry about adjacency - it can only be used with
     * geometry shaders, and we don't care about this info when GS is on.
     */
-   return draw->mode == PIPE_PRIM_POINTS ||
-          draw->mode == PIPE_PRIM_LINES ||
-          draw->mode == PIPE_PRIM_LINE_LOOP ||
-          draw->mode == PIPE_PRIM_LINE_STRIP;
+   return mode == PIPE_PRIM_POINTS ||
+          mode == PIPE_PRIM_LINES ||
+          mode == PIPE_PRIM_LINE_LOOP ||
+          mode == PIPE_PRIM_LINE_STRIP;
 }
 
 static bool
@@ -88,17 +88,34 @@ can_cut_index_handle_restart_index(struct crocus_context *ice,
  */
 static void
 crocus_update_draw_info(struct crocus_context *ice,
-                      const struct pipe_draw_info *info)
+                        const struct pipe_draw_info *info,
+                        const struct pipe_draw_start_count *draw)
 {
    struct crocus_screen *screen = (struct crocus_screen *)ice->ctx.screen;
    const struct brw_compiler *compiler = screen->compiler;
+   enum pipe_prim_type mode = info->mode;
 
-   if (ice->state.prim_mode != info->mode) {
-      ice->state.prim_mode = info->mode;
+   if (screen->devinfo.gen <= 6) {
+      /* Slight optimization to avoid the GS program when not needed:
+       */
+      struct pipe_rasterizer_state *rs_state = crocus_get_rast_state(ice);
+      if (mode == PIPE_PRIM_QUAD_STRIP && !rs_state->flatshade &&
+          rs_state->fill_front == PIPE_POLYGON_MODE_FILL &&
+          rs_state->fill_back == PIPE_POLYGON_MODE_FILL)
+         mode = PIPE_PRIM_TRIANGLE_STRIP;
+      if (mode == PIPE_PRIM_QUADS &&
+          draw->count == 4 &&
+          !rs_state->flatshade &&
+          rs_state->fill_front == PIPE_POLYGON_MODE_FILL &&
+          rs_state->fill_back == PIPE_POLYGON_MODE_FILL)
+         mode = PIPE_PRIM_TRIANGLE_FAN;
+   }
 
+   if (ice->state.prim_mode != mode) {
+      ice->state.prim_mode = mode;
 
       /* For XY Clip enables */
-      bool points_or_lines = prim_is_points_or_lines(info);
+      bool points_or_lines = prim_is_points_or_lines(mode);
       if (points_or_lines != ice->state.prim_is_points_or_lines) {
          ice->state.prim_is_points_or_lines = points_or_lines;
          ice->state.dirty |= CROCUS_DIRTY_CLIP;
@@ -277,23 +294,13 @@ crocus_draw_vbo(struct pipe_context *ctx,
        return;
    }
 
-   if (devinfo->gen <= 5 && (info->mode == PIPE_PRIM_QUADS ||
-                             info->mode == PIPE_PRIM_QUAD_STRIP ||
-                             info->mode == PIPE_PRIM_LINE_LOOP)) {
-     if (!u_trim_pipe_prim(info->mode, (unsigned *)&draws->count))
-       return;
-
-     util_primconvert_save_rasterizer_state(ice->primconvert, crocus_get_rast_state(ice));
-     util_primconvert_draw_vbo(ice->primconvert, info, draws);
-     return;
-   }
    /* We can't safely re-emit 3DSTATE_SO_BUFFERS because it may zero the
     * write offsets, changing the behavior.
     */
    if (unlikely(INTEL_DEBUG & DEBUG_REEMIT))
       ice->state.dirty |= CROCUS_ALL_DIRTY_FOR_RENDER & ~CROCUS_DIRTY_GEN7_SO_BUFFERS;
 
-   crocus_update_draw_info(ice, info);
+   crocus_update_draw_info(ice, info, draws);
 
    crocus_update_compiled_shaders(ice);
 

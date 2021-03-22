@@ -6167,7 +6167,7 @@ crocus_upload_render_state(struct crocus_context *ice,
       prim.PredicateEnable = use_predicate;
 #endif
 
-      prim.PrimitiveTopologyType = translate_prim_type(draw->mode, 0);
+      prim.PrimitiveTopologyType = translate_prim_type(ice->state.prim_mode, 0);
       if (indirect) {
          // XXX Probably have to do something for gen6 here?
 #if GEN_GEN == 7
