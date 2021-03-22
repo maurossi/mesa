@@ -140,8 +140,10 @@ crocus_update_draw_info(struct crocus_context *ice,
       }
    }
 
+   const unsigned cut_index = info->primitive_restart ? info->restart_index :
+                                                        ice->state.cut_index;
    if (ice->state.primitive_restart != info->primitive_restart ||
-       ice->state.cut_index != info->restart_index) {
+       ice->state.cut_index != cut_index) {
       if (screen->devinfo.is_haswell)
          ice->state.dirty |= CROCUS_DIRTY_GEN75_VF;
       ice->state.primitive_restart = info->primitive_restart;
