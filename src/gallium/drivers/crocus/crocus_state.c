@@ -2774,6 +2774,9 @@ crocus_set_scissor_states(struct pipe_context *ctx,
 
    ice->state.dirty |= CROCUS_DIRTY_SCISSOR_RECT;
    ice->state.dirty |= CROCUS_DIRTY_SF_CL_VIEWPORT;
+#if GEN_GEN < 6
+   ice->state.dirty |= CROCUS_DIRTY_RASTER; /* SF state */
+#endif
 }
 
 /**
