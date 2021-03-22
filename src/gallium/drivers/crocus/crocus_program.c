@@ -1950,8 +1950,10 @@ crocus_update_compiled_clip(struct crocus_context *ice)
    if (!shader)
       shader = crocus_compile_clip(ice, &key);
 
-   if (old != shader)
+   if (old != shader) {
+      ice->state.dirty |= CROCUS_DIRTY_CLIP;
       ice->shaders.clip_prog = shader;
+   }
 }
 
 static struct crocus_compiled_shader *
