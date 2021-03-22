@@ -4659,6 +4659,8 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 {
    uint64_t dirty = ice->state.dirty;
 
+   crocus_update_surface_base_address(batch);
+
    if (!(dirty & CROCUS_ALL_DIRTY_FOR_RENDER))
       return;
 #if GEN_GEN >= 7

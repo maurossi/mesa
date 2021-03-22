@@ -314,7 +314,6 @@ crocus_draw_vbo(struct pipe_context *ctx,
       crocus_predraw_resolve_framebuffer(ice, batch, draw_aux_buffer_disabled);
    }
 
-   ice->vtbl.update_surface_base_address(batch);
    crocus_handle_always_flush_cache(batch);
 
    if (indirect)
