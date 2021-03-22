@@ -660,10 +660,10 @@ crocus_copy_mem_mem(struct crocus_batch *batch,
 #define URB_CS 4
 
 static const struct {
-   GLuint min_nr_entries;
-   GLuint preferred_nr_entries;
-   GLuint min_entry_size;
-   GLuint max_entry_size;
+   uint32_t min_nr_entries;
+   uint32_t preferred_nr_entries;
+   uint32_t min_entry_size;
+   uint32_t  max_entry_size;
 } limits[URB_CS+1] = {
    { 16, 32, 1, 5 },			/* vs */
    { 4, 8,  1, 5 },			/* gs */
@@ -790,7 +790,8 @@ static void recalculate_urb_fence( struct crocus_batch *batch)
 static void
 crocus_upload_urb_fence(struct crocus_batch *batch)
 {
-   crocus_emit_cmd(batch, GENX(URB_FENCE), urb) {
+   uint32_t urb_fence[3];
+   _crocus_pack_command(batch, GENX(URB_FENCE), urb_fence, urb) {
       urb.VSUnitURBReallocationRequest = 1;
       urb.GSUnitURBReallocationRequest = 1;
       urb.CLIPUnitURBReallocationRequest = 1;
@@ -804,6 +805,17 @@ crocus_upload_urb_fence(struct crocus_batch *batch)
       urb.SFFence = batch->ice->urb.cs_start;
       urb.CSFence = batch->ice->urb.size;
    }
+
+   /* erratum: URB_FENCE must not cross a 64byte cacheline */
+   if ((crocus_batch_bytes_used(batch) & 15) > 12) {
+      int pad = 16 - (crocus_batch_bytes_used(batch) & 15);
+      do {
+         *(uint32_t *)batch->command.map_next = 0;
+         batch->command.map_next += sizeof(uint32_t);
+      } while (--pad);
+   }
+
+   crocus_batch_emit(batch, urb_fence, sizeof(uint32_t) * 3);
 }
 #endif
 
