@@ -548,6 +548,7 @@ finish_growing_bos(struct crocus_growing_bo *grow)
 
 void
 crocus_grow_buffer(struct crocus_batch *batch, bool grow_state,
+		   unsigned used,
 		   unsigned new_size)
 {
    struct crocus_screen *screen = batch->screen;
@@ -652,7 +653,7 @@ crocus_grow_buffer(struct crocus_batch *batch, bool grow_state,
    memcpy(new_bo, &tmp, sizeof(struct crocus_bo));
 
    grow->partial_bo = new_bo; /* the one reference of the OLD bo */
-   grow->partial_bytes = grow->used;
+   grow->partial_bytes = used;
 }
 
 

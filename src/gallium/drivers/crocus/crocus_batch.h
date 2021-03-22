@@ -194,6 +194,7 @@ enum pipe_reset_status crocus_batch_check_for_reset(struct crocus_batch *batch);
 
 void
 crocus_grow_buffer(struct crocus_batch *batch, bool grow_state,
+		   unsigned used,
 		   unsigned new_size);
 
 static inline unsigned
@@ -213,15 +214,16 @@ static inline void
 crocus_require_command_space(struct crocus_batch *batch, unsigned size)
 {
    const unsigned required_bytes = crocus_batch_bytes_used(batch) + size;
-
+   unsigned used = crocus_batch_bytes_used(batch);
    if (required_bytes >= BATCH_SZ && !batch->no_wrap) {
       crocus_batch_flush(batch);
-   } else if (crocus_batch_bytes_used(batch) + size >= batch->command.bo->size) {
+   } else if (used + size >= batch->command.bo->size) {
       const unsigned new_size =
 	 MIN2(batch->command.bo->size + batch->command.bo->size / 2,
 	      MAX_BATCH_SIZE);
-      crocus_grow_buffer(batch, false, new_size);
-      batch->command.map_next = (void *)batch->command.map + batch->command.used;
+
+      crocus_grow_buffer(batch, false, used, new_size);
+      batch->command.map_next = (void *)batch->command.map + used;
       assert(crocus_batch_bytes_used(batch) + size < batch->command.bo->size);
    }
 }
@@ -302,7 +304,7 @@ crocus_ptr_in_state_buffer(struct crocus_batch *batch, void *p)
 static inline void
 crocus_require_statebuffer_space(struct crocus_batch *batch, int size)
 {
-   if (batch->state.used + size >= BATCH_SZ)
+   if (batch->state.used + size >= STATE_SZ)
       crocus_batch_flush(batch);
 }
 #endif

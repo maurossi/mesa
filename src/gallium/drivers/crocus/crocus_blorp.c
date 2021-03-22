@@ -72,7 +72,7 @@ stream_state(struct crocus_batch *batch,
       const unsigned new_size =
          MIN2(batch->state.bo->size + batch->state.bo->size / 2,
               MAX_STATE_SIZE);
-      crocus_grow_buffer(batch, true, new_size);
+      crocus_grow_buffer(batch, true, batch->state.used, new_size);
       assert(offset + size < batch->state.bo->size);
    }
 
