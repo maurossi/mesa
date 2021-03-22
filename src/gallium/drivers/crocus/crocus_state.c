@@ -1411,7 +1411,7 @@ crocus_bind_zsa_state(struct pipe_context *ctx, void *state)
  * Gallium CSO for rasterizer state.
  */
 struct crocus_rasterizer_state {
-   struct pipe_rasterizer_state state;
+   struct pipe_rasterizer_state cso;
 #if GEN_GEN >= 6
    uint32_t sf[GENX(3DSTATE_SF_length)];
    uint32_t clip[GENX(3DSTATE_CLIP_length)];
@@ -1419,23 +1419,7 @@ struct crocus_rasterizer_state {
    uint32_t line_stipple[GENX(3DSTATE_LINE_STIPPLE_length)];
 
    uint8_t num_clip_plane_consts;
-   bool clip_halfz; /* for CC_VIEWPORT */
-   bool depth_clip_near; /* for CC_VIEWPORT */
-   bool depth_clip_far; /* for CC_VIEWPORT */
-   bool flatshade; /* for shader state */
-   bool flatshade_first; /* for stream output */
-   bool clamp_fragment_color; /* for shader state */
-   bool light_twoside; /* for shader state */
-   bool rasterizer_discard; /* for 3DSTATE_STREAMOUT and 3DSTATE_CLIP */
-   bool half_pixel_center; /* for 3DSTATE_MULTISAMPLE */
-   bool line_stipple_enable;
-   bool poly_stipple_enable;
-   bool multisample;
-   bool force_persample_interp;
-   bool conservative_rasterization;
    bool fill_mode_point_or_line;
-   enum pipe_sprite_coord_mode sprite_coord_mode; /* PIPE_SPRITE_* */
-   uint16_t sprite_coord_enable;
 };
 
 static float
@@ -1477,24 +1461,6 @@ crocus_create_rasterizer_state(struct pipe_context *ctx,
 {
    struct crocus_rasterizer_state *cso =
       malloc(sizeof(struct crocus_rasterizer_state));
-
-   cso->multisample = state->multisample;
-   cso->force_persample_interp = state->force_persample_interp;
-   cso->clip_halfz = state->clip_halfz;
-   cso->depth_clip_near = state->depth_clip_near;
-   cso->depth_clip_far = state->depth_clip_far;
-   cso->flatshade = state->flatshade;
-   cso->flatshade_first = state->flatshade_first;
-   cso->clamp_fragment_color = state->clamp_fragment_color;
-   cso->light_twoside = state->light_twoside;
-   cso->rasterizer_discard = state->rasterizer_discard;
-   cso->half_pixel_center = state->half_pixel_center;
-   cso->sprite_coord_mode = state->sprite_coord_mode;
-   cso->sprite_coord_enable = state->sprite_coord_enable;
-   cso->line_stipple_enable = state->line_stipple_enable;
-   cso->poly_stipple_enable = state->poly_stipple_enable;
-   cso->conservative_rasterization =
-      state->conservative_raster_mode == PIPE_CONSERVATIVE_RASTER_POST_SNAP;
 
    cso->fill_mode_point_or_line =
       state->fill_front == PIPE_POLYGON_MODE_LINE ||
@@ -1556,7 +1522,7 @@ crocus_create_rasterizer_state(struct pipe_context *ctx,
 #endif
    }
 #endif
-   cso->state = *state;
+   cso->cso = *state;
 
 #if GEN_GEN >= 6
    crocus_pack_command(GENX(3DSTATE_CLIP), cso->clip, cl) {
@@ -1620,33 +1586,30 @@ crocus_bind_rasterizer_state(struct pipe_context *ctx, void *state)
       if (cso_changed_memcmp(line_stipple))
          ice->state.dirty |= CROCUS_DIRTY_LINE_STIPPLE;
 #if GEN_GEN >= 6
-      if (cso_changed(half_pixel_center))
+      if (cso_changed(cso.half_pixel_center))
          ice->state.dirty |= CROCUS_DIRTY_GEN6_MULTISAMPLE;
 #endif
 
-      if (cso_changed(line_stipple_enable) || cso_changed(poly_stipple_enable))
+      if (cso_changed(cso.line_stipple_enable) || cso_changed(cso.poly_stipple_enable))
          ice->state.dirty |= CROCUS_DIRTY_WM;
 
 #if GEN_GEN >= 6
-      if (cso_changed(rasterizer_discard))
+      if (cso_changed(cso.rasterizer_discard))
          ice->state.dirty |= CROCUS_DIRTY_STREAMOUT | CROCUS_DIRTY_CLIP;
 
-      if (cso_changed(flatshade_first))
+      if (cso_changed(cso.flatshade_first))
          ice->state.dirty |= CROCUS_DIRTY_STREAMOUT;
 #endif
 
-      if (cso_changed(depth_clip_near) || cso_changed(depth_clip_far) ||
-          cso_changed(clip_halfz))
+      if (cso_changed(cso.depth_clip_near) || cso_changed(cso.depth_clip_far) ||
+          cso_changed(cso.clip_halfz))
          ice->state.dirty |= CROCUS_DIRTY_CC_VIEWPORT;
 
 #if GEN_GEN >= 7
-      if (cso_changed(sprite_coord_enable) ||
-          cso_changed(sprite_coord_mode) ||
-          cso_changed(light_twoside))
+      if (cso_changed(cso.sprite_coord_enable) ||
+          cso_changed(cso.sprite_coord_mode) ||
+          cso_changed(cso.light_twoside))
          ice->state.dirty |= CROCUS_DIRTY_GEN7_SBE;
-
-      if (cso_changed(conservative_rasterization))
-         ice->state.dirty |= CROCUS_DIRTY_FS;
 #endif
    }
 
@@ -2829,8 +2792,8 @@ crocus_set_viewport_states(struct pipe_context *ctx,
    ice->state.dirty |= CROCUS_DIRTY_SF_CL_VIEWPORT;
    ice->state.dirty |= CROCUS_DIRTY_RASTER;
 
-   if (ice->state.cso_rast && (!ice->state.cso_rast->depth_clip_near ||
-                               !ice->state.cso_rast->depth_clip_far))
+   if (ice->state.cso_rast && (!ice->state.cso_rast->cso.depth_clip_near ||
+                               !ice->state.cso_rast->cso.depth_clip_far))
       ice->state.dirty |= CROCUS_DIRTY_CC_VIEWPORT;
 }
 
@@ -3785,7 +3748,7 @@ calculate_attr_overrides(
       if (0) {
          if (fs_attr >= VARYING_SLOT_TEX0 &&
              fs_attr <= VARYING_SLOT_TEX7 &&
-             cso_rast->sprite_coord_enable & (1 << (fs_attr - VARYING_SLOT_TEX0)))
+             cso_rast->cso.sprite_coord_enable & (1 << (fs_attr - VARYING_SLOT_TEX0)))
             point_sprite = true;
 
          if (fs_attr == VARYING_SLOT_PNTC)
@@ -3798,7 +3761,7 @@ calculate_attr_overrides(
       struct GENX(SF_OUTPUT_ATTRIBUTE_DETAIL) attribute = { 0 };
       if (!point_sprite) {
          get_attr_override(&attribute, vue_map, *urb_entry_read_offset, fs_attr,
-                           cso_rast->light_twoside, &max_source_attr);
+                           cso_rast->cso.light_twoside, &max_source_attr);
       }
 
       /* The hardware can only do the overrides on 16 overrides at a
@@ -3842,7 +3805,7 @@ crocus_calculate_point_sprite_overrides(const struct brw_wm_prog_data *prog_data
       overrides |= 1 << prog_data->urb_setup[VARYING_SLOT_PNTC];
 
    for (int i = 0; i < 8; i++) {
-      if ((cso->sprite_coord_enable & (1 << i)) &&
+      if ((cso->cso.sprite_coord_enable & (1 << i)) &&
           prog_data->urb_setup[VARYING_SLOT_TEX0 + i] != -1)
          overrides |= 1 << prog_data->urb_setup[VARYING_SLOT_TEX0 + i];
    }
@@ -3863,7 +3826,7 @@ crocus_emit_sbe(struct crocus_batch *batch, const struct crocus_context *ice)
    unsigned urb_read_offset, urb_read_length;
    crocus_compute_sbe_urb_read_interval(fs_info->inputs_read,
                                       ice->shaders.last_vue_map,
-                                      cso_rast->light_twoside,
+                                      cso_rast->cso.light_twoside,
                                       &urb_read_offset, &urb_read_length);
 
    unsigned sprite_coord_overrides =
@@ -3872,7 +3835,7 @@ crocus_emit_sbe(struct crocus_batch *batch, const struct crocus_context *ice)
    crocus_emit_cmd(batch, GENX(3DSTATE_SBE), sbe) {
       sbe.AttributeSwizzleEnable = true;
       sbe.NumberofSFOutputAttributes = wm_prog_data->num_varying_inputs;
-      sbe.PointSpriteTextureCoordinateOrigin = cso_rast->sprite_coord_mode;
+      sbe.PointSpriteTextureCoordinateOrigin = cso_rast->cso.sprite_coord_mode;
       sbe.VertexURBEntryReadOffset = urb_read_offset;
       sbe.VertexURBEntryReadLength = urb_read_length;
       sbe.ConstantInterpolationEnable = wm_prog_data->flat_inputs;
@@ -3946,13 +3909,13 @@ crocus_populate_vs_key(const struct crocus_context *ice,
       key->nr_userclip_plane_consts = cso_rast->num_clip_plane_consts;
 
 #if GEN_GEN <= 5
-   key->copy_edgeflag = (cso_rast->state.fill_front != PIPE_POLYGON_MODE_FILL ||
-                         cso_rast->state.fill_back != PIPE_POLYGON_MODE_FILL);
+   key->copy_edgeflag = (cso_rast->cso.fill_front != PIPE_POLYGON_MODE_FILL ||
+                         cso_rast->cso.fill_back != PIPE_POLYGON_MODE_FILL);
 
-   key->point_coord_replace = cso_rast->sprite_coord_enable & 0xff;
+   key->point_coord_replace = cso_rast->cso.sprite_coord_enable & 0xff;
 #endif
 
-   key->clamp_vertex_color = cso_rast->state.clamp_vertex_color;
+   key->clamp_vertex_color = cso_rast->cso.clamp_vertex_color;
 
 #if !(GEN_VERSIONx10 == 75)
    uint64_t inputs_read = info->inputs_read;
@@ -4049,21 +4012,21 @@ crocus_populate_fs_key(const struct crocus_context *ice,
 #endif
 
    uint32_t line_aa = BRW_WM_AA_NEVER;
-   if (rast->state.line_smooth) {
+   if (rast->cso.line_smooth) {
       int reduced_prim = u_reduced_prim(ice->state.prim_mode);
       if (reduced_prim == PIPE_PRIM_LINES)
          line_aa = BRW_WM_AA_ALWAYS;
       else if (reduced_prim == PIPE_PRIM_TRIANGLES) {
-         if (rast->state.fill_front == PIPE_POLYGON_MODE_LINE) {
+         if (rast->cso.fill_front == PIPE_POLYGON_MODE_LINE) {
             line_aa = BRW_WM_AA_SOMETIMES;
 
-            if (rast->state.fill_back == PIPE_POLYGON_MODE_LINE ||
-                rast->state.cull_face == PIPE_FACE_BACK)
+            if (rast->cso.fill_back == PIPE_POLYGON_MODE_LINE ||
+                rast->cso.cull_face == PIPE_FACE_BACK)
                line_aa = BRW_WM_AA_ALWAYS;
-         } else if (rast->state.fill_back == PIPE_POLYGON_MODE_LINE) {
+         } else if (rast->cso.fill_back == PIPE_POLYGON_MODE_LINE) {
             line_aa = BRW_WM_AA_SOMETIMES;
 
-            if (rast->state.cull_face == PIPE_FACE_FRONT)
+            if (rast->cso.cull_face == PIPE_FACE_FRONT)
                line_aa = BRW_WM_AA_ALWAYS;
          }
       }
@@ -4072,17 +4035,17 @@ crocus_populate_fs_key(const struct crocus_context *ice,
 
    key->nr_color_regions = fb->nr_cbufs;
 
-   key->clamp_fragment_color = rast->clamp_fragment_color;
+   key->clamp_fragment_color = rast->cso.clamp_fragment_color;
 
    key->alpha_to_coverage = blend->alpha_to_coverage;
 
    key->alpha_test_replicate_alpha = fb->nr_cbufs > 1 && zsa->cso.alpha_enabled;
 
-   key->flat_shade = rast->flatshade &&
+   key->flat_shade = rast->cso.flatshade &&
       (info->inputs_read & (VARYING_BIT_COL0 | VARYING_BIT_COL1));
 
-   key->persample_interp = rast->force_persample_interp;
-   key->multisample_fbo = rast->multisample && fb->samples > 1;
+   key->persample_interp = rast->cso.force_persample_interp;
+   key->multisample_fbo = rast->cso.multisample && fb->samples > 1;
 
    key->coherent_fb_fetch = false; // TODO: needed?
 
@@ -4701,12 +4664,12 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
                       GENX(CC_VIEWPORT_length), 32, &cc_vp_address);
       for (int i = 0; i < ice->state.num_viewports; i++) {
          float zmin, zmax;
-         crocus_viewport_zmin_zmax(&ice->state.viewports[i], cso_rast->clip_halfz,
+         crocus_viewport_zmin_zmax(&ice->state.viewports[i], cso_rast->cso.clip_halfz,
                                  ice->state.window_space_position,
                                  &zmin, &zmax);
-         if (cso_rast->depth_clip_near)
+         if (cso_rast->cso.depth_clip_near)
             zmin = 0.0;
-         if (cso_rast->depth_clip_far)
+         if (cso_rast->cso.depth_clip_far)
             zmax = 1.0;
 
          crocus_pack_state(GENX(CC_VIEWPORT), cc_vp_map, ccv) {
@@ -5037,7 +5000,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #if GEN_GEN >= 6
       crocus_emit_cmd(batch, GENX(3DSTATE_MULTISAMPLE), ms) {
          ms.PixelLocation =
-            ice->state.cso_rast->half_pixel_center ? CENTER : UL_CORNER;
+            ice->state.cso_rast->cso.half_pixel_center ? CENTER : UL_CORNER;
          if (ice->state.framebuffer.samples > 0)
             ms.NumberofMultisamples = ffs(ice->state.framebuffer.samples) - 1;
 #if GEN_GEN == 6
@@ -5158,9 +5121,9 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
             sol.SOFunctionEnable = true;
             sol.SOStatisticsEnable = true;
 
-            sol.RenderingDisable = cso_rast->rasterizer_discard &&
+            sol.RenderingDisable = cso_rast->cso.rasterizer_discard &&
                                    !ice->state.prims_generated_query_active;
-            sol.ReorderMode = cso_rast->flatshade_first ? LEADING : TRAILING;
+            sol.ReorderMode = cso_rast->cso.flatshade_first ? LEADING : TRAILING;
          }
 
          assert(ice->state.streamout);
@@ -5182,7 +5145,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    if (dirty & CROCUS_DIRTY_CLIP) {
 #if GEN_GEN < 6
       const struct brw_clip_prog_data *clip_prog_data = (struct brw_clip_prog_data *)ice->shaders.clip_prog->prog_data;
-      struct pipe_rasterizer_state *cso_state = &ice->state.cso_rast->state;
+      struct pipe_rasterizer_state *cso_state = &ice->state.cso_rast->cso;
 
       uint32_t *clip_ptr = stream_state(batch, GENX(CLIP_STATE_length) * 4, 32, &ice->shaders.clip_offset);
       dirty |= CROCUS_DIRTY_GEN5_PIPELINED_POINTERS;
@@ -5250,7 +5213,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       uint32_t dynamic_clip[GENX(3DSTATE_CLIP_length)];
       crocus_pack_command(GENX(3DSTATE_CLIP), &dynamic_clip, cl) {
          cl.StatisticsEnable = ice->state.statistics_counters_enabled;
-         if (cso_rast->rasterizer_discard)
+         if (cso_rast->cso.rasterizer_discard)
             cl.ClipMode = CLIPMODE_REJECT_ALL;
          else if (ice->state.window_space_position)
             cl.ClipMode = CLIPMODE_ACCEPT_ALL;
@@ -5463,17 +5426,17 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       struct crocus_rasterizer_state *cso = ice->state.cso_rast;
 
 #if GEN_GEN <= 5
-      if (ice->state.global_depth_offset_clamp != cso->state.offset_clamp) {
+      if (ice->state.global_depth_offset_clamp != cso->cso.offset_clamp) {
          crocus_emit_cmd(batch, GENX(3DSTATE_GLOBAL_DEPTH_OFFSET_CLAMP), clamp) {
-            clamp.GlobalDepthOffsetClamp = cso->state.offset_clamp;
+            clamp.GlobalDepthOffsetClamp = cso->cso.offset_clamp;
          }
-         ice->state.global_depth_offset_clamp = cso->state.offset_clamp;
+         ice->state.global_depth_offset_clamp = cso->cso.offset_clamp;
       }
 #endif
 
 #if GEN_GEN < 6
       const struct brw_sf_prog_data *sf_prog_data = (struct brw_sf_prog_data *)ice->shaders.sf_prog->prog_data;
-      struct pipe_rasterizer_state *cso_state = &ice->state.cso_rast->state;
+      struct pipe_rasterizer_state *cso_state = &ice->state.cso_rast->cso;
       uint32_t *sf_ptr = stream_state(batch,
                                       GENX(SF_STATE_length) * 4, 32, &ice->shaders.sf_offset);
       dirty |= CROCUS_DIRTY_GEN5_PIPELINED_POINTERS;
@@ -5610,7 +5573,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          wm.LineEndCapAntialiasingRegionWidth = _10pixels;
          wm.DepthCoefficientURBReadOffset = 1;
 
-         if (cso->state.offset_tri) {
+         if (cso->cso.offset_tri) {
             wm.GlobalDepthOffsetEnable = true;
 
          /* Something weird going on with legacy_global_depth_bias,
@@ -5618,8 +5581,8 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
           * but gives some odd results elsewere (eg. the
           * quad-offset-units test).
           */
-            wm.GlobalDepthOffsetConstant = cso->state.offset_units * 2;
-            wm.GlobalDepthOffsetScale = cso->state.offset_scale;
+            wm.GlobalDepthOffsetConstant = cso->cso.offset_units * 2;
+            wm.GlobalDepthOffsetScale = cso->cso.offset_scale;
          }
          wm.SamplerStatePointer = ro_bo(batch->state.bo, ice->state.shaders[MESA_SHADER_FRAGMENT].sampler_offset);
 #endif
@@ -5659,8 +5622,8 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       else
          wm.PositionXYOffsetSelect = POSOFFSET_NONE;
 #endif
-         wm.LineStippleEnable = cso->line_stipple_enable;
-         wm.PolygonStippleEnable = cso->poly_stipple_enable;
+         wm.LineStippleEnable = cso->cso.line_stipple_enable;
+         wm.PolygonStippleEnable = cso->cso.poly_stipple_enable;
 
 #if GEN_GEN < 7
          if (wm_prog_data->base.use_alt_mode)
@@ -7101,7 +7064,7 @@ crocus_batch_reset_dirty(struct crocus_batch *batch)
 #if GEN_VERSIONx10 == 75
 struct pipe_rasterizer_state *crocus_get_rast_state(struct crocus_context *ice)
 {
-  return &ice->state.cso_rast->state;
+  return &ice->state.cso_rast->cso;
 }
 #endif
 
