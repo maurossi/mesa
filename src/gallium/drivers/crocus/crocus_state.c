@@ -1312,6 +1312,7 @@ crocus_bind_blend_state(struct pipe_context *ctx, void *state)
    ice->state.blend_enables = cso ? cso->blend_enables : 0;
 
    ice->state.dirty |= CROCUS_DIRTY_BINDINGS_FS;
+   ice->state.dirty |= CROCUS_DIRTY_WM;
    ice->state.dirty |= CROCUS_DIRTY_BLEND_STATE;
    ice->state.dirty |= CROCUS_DIRTY_COLOR_CALC_STATE;
    ice->state.dirty |= CROCUS_DIRTY_RENDER_RESOLVES_AND_FLUSHES;
@@ -1737,7 +1738,12 @@ crocus_bind_sampler_states(struct pipe_context *ctx,
    }
 
    if (dirty) {
-      ice->state.dirty |= CROCUS_DIRTY_WM;
+#if GEN_GEN <= 5
+      if (p_stage == PIPE_SHADER_FRAGMENT)
+         ice->state.dirty |= CROCUS_DIRTY_WM;
+      else if (p_stage == PIPE_SHADER_VERTEX)
+         ice->state.dirty |= CROCUS_DIRTY_VS;
+#endif
       ice->state.dirty |= CROCUS_DIRTY_SAMPLER_STATES_VS << stage;
       ice->state.dirty |= ice->state.dirty_for_nos[CROCUS_NOS_TEXTURES];
    }
