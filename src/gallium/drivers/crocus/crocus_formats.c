@@ -473,6 +473,13 @@ crocus_is_format_supported(struct pipe_screen *pscreen,
    if (format == ISL_FORMAT_UNSUPPORTED)
       return false;
 
+   if (devinfo->gen < 6) {
+      if (pformat == PIPE_FORMAT_A8_SNORM ||
+          pformat == PIPE_FORMAT_A16_SNORM ||
+          pformat == PIPE_FORMAT_L8A8_SNORM ||
+          pformat == PIPE_FORMAT_L16A16_SNORM)
+         return false;
+   }
    /* no stencil texturing prior to haswell */
    if (!devinfo->is_haswell) {
       if (pformat == PIPE_FORMAT_S8_UINT)
