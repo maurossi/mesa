@@ -1863,7 +1863,7 @@ crocus_update_compiled_clip(struct crocus_context *ice)
    else
       key.clip_mode = BRW_CLIP_MODE_NORMAL;
 
-   if (key.primitive == GL_TRIANGLES) {
+   if (key.primitive == PIPE_PRIM_TRIANGLES) {
       if (rs_state->cull_face == PIPE_FACE_FRONT_AND_BACK)
          key.clip_mode = BRW_CLIP_MODE_REJECT_ALL;
       else {
