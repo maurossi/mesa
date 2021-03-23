@@ -59,13 +59,6 @@ static bool
 can_cut_index_handle_restart_index(struct crocus_context *ice,
                                    const struct pipe_draw_info *draw)
 {
-   struct crocus_screen *screen = (struct crocus_screen*)ice->ctx.screen;
-   const struct gen_device_info *devinfo = &screen->devinfo;
-
-   /* Haswell can do it all. */
-   if (devinfo->is_haswell)
-      return true;
-
    switch (draw->index_size) {
    case 1:
       return draw->restart_index == 0xff;
@@ -75,6 +68,38 @@ can_cut_index_handle_restart_index(struct crocus_context *ice,
       return draw->restart_index == 0xffffffff;
    default:
       unreachable("illegal index size\n");
+   }
+
+   return false;
+}
+
+static bool
+can_cut_index_handle_prim(struct crocus_context *ice,
+                          const struct pipe_draw_info *draw)
+{
+   struct crocus_screen *screen = (struct crocus_screen*)ice->ctx.screen;
+   const struct gen_device_info *devinfo = &screen->devinfo;
+
+   /* Haswell can do it all. */
+   if (devinfo->is_haswell)
+      return true;
+
+   if (!can_cut_index_handle_restart_index(ice, draw))
+      return false;
+
+   switch (draw->mode) {
+   case PIPE_PRIM_POINTS:
+   case PIPE_PRIM_LINES:
+   case PIPE_PRIM_LINE_STRIP:
+   case PIPE_PRIM_TRIANGLES:
+   case PIPE_PRIM_TRIANGLE_STRIP:
+   case PIPE_PRIM_LINES_ADJACENCY:
+   case PIPE_PRIM_LINE_STRIP_ADJACENCY:
+   case PIPE_PRIM_TRIANGLES_ADJACENCY:
+   case PIPE_PRIM_TRIANGLE_STRIP_ADJACENCY:
+      return true;
+   default:
+      break;
    }
    return false;
 }
@@ -291,7 +316,7 @@ crocus_draw_vbo(struct pipe_context *ctx,
    if (!crocus_check_conditional_render(ice))
       return;
 
-   if (info->primitive_restart && !can_cut_index_handle_restart_index(ice, info)) {
+   if (info->primitive_restart && !can_cut_index_handle_prim(ice, info)) {
        util_draw_vbo_without_prim_restart(ctx, info, indirect, draws);
        return;
    }
