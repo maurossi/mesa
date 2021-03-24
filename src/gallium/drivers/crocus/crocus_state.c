@@ -5775,16 +5775,37 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       if (cso->zsbuf) {
          crocus_get_depth_stencil_resources(&batch->screen->devinfo, cso->zsbuf->texture, &zres, &sres);
 
-         info.depth_address = crocus_command_reloc(batch,
-                                                   (batch_ptr - batch->command.map) + isl_dev->ds.depth_offset,
-                                                   zres->bo, 0, RELOC_32BIT);
-         info.depth_surf = &zres->surf;
-         info.mocs = mocs(zres->bo, isl_dev);
-
          view.base_level = cso->zsbuf->u.tex.level;
          view.base_array_layer = cso->zsbuf->u.tex.first_layer;
-         view.usage |= ISL_SURF_USAGE_DEPTH_BIT;
-         view.format = zres->surf.format;
+         view.array_len = cso->zsbuf->u.tex.last_layer - cso->zsbuf->u.tex.first_layer + 1;
+
+         if (zres) {
+            view.usage |= ISL_SURF_USAGE_DEPTH_BIT;
+
+            info.depth_surf = &zres->surf;
+            info.depth_address = crocus_command_reloc(batch,
+                                                      (batch_ptr - batch->command.map) + isl_dev->ds.depth_offset,
+                                                      zres->bo, 0, RELOC_32BIT);
+
+            info.mocs = mocs(zres->bo, isl_dev);
+            view.format = zres->surf.format;
+         }
+
+#if GEN_GEN >= 6
+         if (sres) {
+            view.usage |= ISL_SURF_USAGE_STENCIL_BIT;
+            info.stencil_aux_usage = sres->aux.usage;
+            info.stencil_surf = &sres->surf;
+
+            info.stencil_address = crocus_command_reloc(batch,
+                                                        (batch_ptr - batch->command.map) + isl_dev->ds.stencil_offset,
+                                                        sres->bo, 0, RELOC_32BIT);
+            if (!zres) {
+               view.format = sres->surf.format;
+               info.mocs = mocs(sres->bo, isl_dev);
+            }
+         }
+#endif
       }
       isl_emit_depth_stencil_hiz_s(isl_dev, batch_ptr, &info);
    }
