@@ -4938,8 +4938,20 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
          cc.ColorBufferBlendEnable = rt->blend_enable;
 
-         cc.LogicOpEnable = cso_blend->blend_state.logicop_enable;
-         cc.LogicOpFunction = cso_blend->blend_state.logicop_func;
+         if (cso_blend->blend_state.logicop_enable) {
+            enum pipe_format pformat = PIPE_FORMAT_NONE;
+            for (unsigned i = 0; i < ice->state.framebuffer.nr_cbufs; i++) {
+               if (ice->state.framebuffer.cbufs[i]) {
+                  pformat = ice->state.framebuffer.cbufs[i]->format;
+                  break;
+               }
+            }
+            if (pformat == PIPE_FORMAT_NONE ||
+                util_format_is_unorm(pformat)) {
+               cc.LogicOpEnable = cso_blend->blend_state.logicop_enable;
+               cc.LogicOpFunction = cso_blend->blend_state.logicop_func;
+            }
+         }
          cc.ColorDitherEnable = cso_blend->blend_state.dither;
          cc.ColorBlendFunction = rt->rgb_func;
          cc.AlphaBlendFunction = rt->alpha_func;
