@@ -401,7 +401,6 @@ clear_color(struct crocus_context *ice,
                                box->z, box->depth, aux_usage);
 }
 
-#if 0
 static bool
 can_fast_clear_depth(struct crocus_context *ice,
                      struct crocus_resource *res,
@@ -538,7 +537,6 @@ fast_clear_depth(struct crocus_context *ice,
                                ISL_AUX_STATE_CLEAR);
    ice->state.dirty |= CROCUS_DIRTY_DEPTH_BUFFER;
 }
-#endif
 
 static void
 clear_depth_stencil(struct crocus_context *ice,
@@ -566,7 +564,6 @@ clear_depth_stencil(struct crocus_context *ice,
 
    crocus_batch_maybe_flush(batch, 1500);
 
-#if 0
    struct crocus_resource *z_res;
    struct crocus_resource *stencil_res;
    struct blorp_surf z_surf;
@@ -576,7 +573,7 @@ clear_depth_stencil(struct crocus_context *ice,
    if (z_res && clear_depth &&
        can_fast_clear_depth(ice, z_res, level, box, depth)) {
       fast_clear_depth(ice, z_res, level, box, depth);
-      crocus_flush_and_dirty_for_history(ice, batch, res, 0,
+      crocus_flush_and_dirty_for_history(ice, batch, z_res, 0,
                                        "cache history: post fast Z clear");
       clear_depth = false;
       z_res = false;
@@ -617,7 +614,7 @@ clear_depth_stencil(struct crocus_context *ice,
                              stencil_mask, stencil);
 
    blorp_batch_finish(&blorp_batch);
-   crocus_flush_and_dirty_for_history(ice, batch, res, 0,
+   crocus_flush_and_dirty_for_history(ice, batch, z_res, 0,
                                     "cache history: post slow ZS clear");
 
    if (clear_depth && z_res) {
@@ -629,7 +626,6 @@ clear_depth_stencil(struct crocus_context *ice,
       crocus_resource_finish_write(ice, stencil_res, level, box->z, box->depth,
                                  stencil_res->aux.usage);
    }
-#endif
 }
 
 /**
