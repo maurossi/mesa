@@ -2828,59 +2828,7 @@ crocus_set_framebuffer_state(struct pipe_context *ctx,
    util_copy_framebuffer_state(cso, state);
    cso->samples = samples;
    cso->layers = layers;
-#if 0
-   struct crocus_depth_buffer_state *cso_z = &ice->state.genx->depth_buffer;
 
-   struct isl_view view = {
-      .base_level = 0,
-      .levels = 1,
-      .base_array_layer = 0,
-      .array_len = 1,
-      .swizzle = ISL_SWIZZLE_IDENTITY,
-   };
-
-   struct isl_depth_stencil_hiz_emit_info info = { .view = &view };
-
-   if (cso->zsbuf) {
-     crocus_get_depth_stencil_resources(devinfo, cs->zsbuf->texture, &zres,
-					&stencil_res);
-
-      view.base_level = cso->zsbuf->u.tex.level;
-      view.base_array_layer = cso->zsbuf->u.tex.first_layer;
-      view.array_len =
-         cso->zsbuf->u.tex.last_layer - cso->zsbuf->u.tex.first_layer + 1;
-
-      if (zres) {
-         view.usage |= ISL_SURF_USAGE_DEPTH_BIT;
-
-         info.depth_surf = &zres->surf;
-         
-         info.depth_address = zres->bo->gtt_offset + zres->offset;
-         info.mocs = mocs(zres->bo, isl_dev);
-
-         view.format = zres->surf.format;
-
-         if (crocus_resource_level_has_hiz(zres, view.base_level)) {
-            info.hiz_usage = zres->aux.usage;
-            info.hiz_surf = &zres->aux.surf;
-            info.hiz_address = zres->aux.bo->gtt_offset + zres->aux.offset;
-         }
-      }
-
-      if (stencil_res) {
-         view.usage |= ISL_SURF_USAGE_STENCIL_BIT;
-         info.stencil_aux_usage = stencil_res->aux.usage;
-         info.stencil_surf = &stencil_res->surf;
-         info.stencil_address = stencil_res->bo->gtt_offset + stencil_res->offset;
-         if (!zres) {
-            view.format = stencil_res->surf.format;
-            info.mocs = mocs(stencil_res->bo, isl_dev);
-         }
-      }
-   }
-
-   isl_emit_depth_stencil_hiz_s(isl_dev, cso_z->packets, &info);
-#endif
    /* Render target change */
    ice->state.dirty |= CROCUS_DIRTY_BINDINGS_FS;
 
