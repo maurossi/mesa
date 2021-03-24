@@ -647,14 +647,18 @@ crocus_clear(struct pipe_context *ctx,
 {
    struct crocus_context *ice = (void *) ctx;
    struct pipe_framebuffer_state *cso_fb = &ice->state.framebuffer;
-
+   struct crocus_screen *screen = (void *) ctx->screen;
+   const struct gen_device_info *devinfo = &screen->devinfo;
    assert(buffers != 0);
 
-   crocus_blitter_begin(ice, CROCUS_SAVE_FRAGMENT_STATE);
-   util_blitter_clear(ice->blitter, cso_fb->width, cso_fb->height,
-                      util_framebuffer_get_num_layers(cso_fb),
-                      buffers, p_color, depth, stencil, false);
-#if 0
+   if (devinfo->gen < 6) {
+     crocus_blitter_begin(ice, CROCUS_SAVE_FRAGMENT_STATE);
+     util_blitter_clear(ice->blitter, cso_fb->width, cso_fb->height,
+			util_framebuffer_get_num_layers(cso_fb),
+			buffers, p_color, depth, stencil, false);
+     return;
+   }
+
    if (buffers & PIPE_CLEAR_DEPTHSTENCIL) {
       struct pipe_surface *psurf = cso_fb->zsbuf;
       struct pipe_box box = {
@@ -691,7 +695,6 @@ crocus_clear(struct pipe_context *ctx,
          }
       }
    }
-#endif
 }
 
 /**
