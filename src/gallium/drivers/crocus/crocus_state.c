@@ -6029,6 +6029,14 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
             info.mocs = mocs(zres->bo, isl_dev);
             view.format = zres->surf.format;
+
+            if (crocus_resource_level_has_hiz(zres, view.base_level)) {
+               info.hiz_usage = zres->aux.usage;
+               info.hiz_surf = &zres->aux.surf;
+               info.hiz_address = crocus_command_reloc(batch,
+                                                       (batch_ptr - batch->command.map) + isl_dev->ds.hiz_offset,
+                                                       zres->aux.bo, zres->aux.offset, RELOC_32BIT);
+            }
          }
 
 #if GEN_GEN >= 6
