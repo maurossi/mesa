@@ -4180,6 +4180,7 @@ static void
 emit_sized_null_surface(struct crocus_batch *batch,
                         unsigned width, unsigned height,
                         unsigned layers, unsigned levels,
+                        unsigned minimum_array_element,
                         uint32_t *out_offset)
 {
    struct isl_device *isl_dev = &batch->screen->isl_dev;
@@ -4188,13 +4189,13 @@ emit_sized_null_surface(struct crocus_batch *batch,
                                  out_offset);
    //TODO gen 6 multisample crash
    isl_null_fill_state(isl_dev, surf,
-                       isl_extent3d(width, height, layers), levels);
+                       isl_extent3d(width, height, layers), levels, minimum_array_element);
 }
 static void
 emit_null_surface(struct crocus_batch *batch,
                   uint32_t *out_offset)
 {
-   emit_sized_null_surface(batch, 1, 1, 1, 0, out_offset);
+   emit_sized_null_surface(batch, 1, 1, 1, 0, 0, out_offset);
 }
 
 static void
@@ -4202,7 +4203,7 @@ emit_null_fb_surface(struct crocus_batch *batch,
                      struct crocus_context *ice,
                      uint32_t *out_offset)
 {
-   uint32_t width, height, layers, level;
+   uint32_t width, height, layers, level, layer;
    /* If set_framebuffer_state() was never called, fall back to 1x1x1 */
    if (ice->state.framebuffer.width == 0 && ice->state.framebuffer.height == 0) {
       emit_null_surface(batch, out_offset);
@@ -4214,14 +4215,16 @@ emit_null_fb_surface(struct crocus_batch *batch,
    height = MAX2(cso->height, 1);
    layers = cso->layers ? cso->layers : 1;
    level = 0;
+   layer = 0;
 
    if (cso->nr_cbufs == 0 && cso->zsbuf) {
       width = cso->zsbuf->width;
       height = cso->zsbuf->height;
       level = cso->zsbuf->u.tex.level;
+      layer = cso->zsbuf->u.tex.first_layer;
    }
    emit_sized_null_surface(batch, width, height,
-                           layers, level,
+                           layers, level, layer,
                            out_offset);
 }
 
