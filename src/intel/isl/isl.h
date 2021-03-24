@@ -2083,7 +2083,7 @@ isl_buffer_fill_state_s(const struct isl_device *dev, void *state,
 
 void
 isl_null_fill_state(const struct isl_device *dev, void *state,
-                    struct isl_extent3d size, uint32_t levels);
+                    struct isl_extent3d size, uint32_t levels, uint32_t minimum_array_element);
 
 #define isl_emit_depth_stencil_hiz(dev, batch, ...) \
    isl_emit_depth_stencil_hiz_s((dev), (batch), \

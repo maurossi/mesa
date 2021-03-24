@@ -45,4 +45,4 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
                                    const struct isl_depth_stencil_hiz_emit_info *restrict info);
 
 void
-isl_genX(null_fill_state)(void *state, struct isl_extent3d size, uint32_t levels);
+isl_genX(null_fill_state)(void *state, struct isl_extent3d size, uint32_t levels, uint32_t minimum_array_element);

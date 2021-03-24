@@ -929,7 +929,7 @@ isl_genX(buffer_fill_state_s)(const struct isl_device *dev, void *state,
 }
 
 void
-isl_genX(null_fill_state)(void *state, struct isl_extent3d size, unsigned levels)
+isl_genX(null_fill_state)(void *state, struct isl_extent3d size, unsigned levels, unsigned min_array_element)
 {
    struct GENX(RENDER_SURFACE_STATE) s = {
       .SurfaceType = SURFTYPE_NULL,
@@ -970,6 +970,7 @@ isl_genX(null_fill_state)(void *state, struct isl_extent3d size, unsigned levels
       .Height = size.height - 1,
       .Depth = size.depth - 1,
       .RenderTargetViewExtent = size.depth - 1,
+      .MinimumArrayElement = min_array_element,
 #if GEN_GEN <= 5
       .ColorBufferComponentWriteDisables = 0xf,
 #endif
