@@ -4631,6 +4631,20 @@ emit_vertex_buffer_state(struct crocus_batch *batch,
    *map += vb_dwords;
 }
 
+static bool
+can_emit_logic_op(struct crocus_context *ice)
+{
+   /* all pre gen8 have logicop restricted to unorm */
+   enum pipe_format pformat = PIPE_FORMAT_NONE;
+   for (unsigned i = 0; i < ice->state.framebuffer.nr_cbufs; i++) {
+      if (ice->state.framebuffer.cbufs[i]) {
+         pformat = ice->state.framebuffer.cbufs[i]->format;
+         break;
+      }
+   }
+   return (pformat == PIPE_FORMAT_NONE || util_format_is_unorm(pformat));
+}
+
 static void
 crocus_upload_dirty_render_state(struct crocus_context *ice,
                                struct crocus_batch *batch,
@@ -4828,8 +4842,10 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
             indep_alpha_blend = true;
 
          crocus_pack_state(GENX(BLEND_STATE_ENTRY), blend_map, be) {
-            be.LogicOpEnable = cso_blend->cso.logicop_enable;
-            be.LogicOpFunction = cso_blend->cso.logicop_func;
+            if (can_emit_logic_op(ice)) {
+               be.LogicOpEnable = cso_blend->cso.logicop_enable;
+               be.LogicOpFunction = cso_blend->cso.logicop_func;
+            }
 
             be.ColorClampRange = COLORCLAMP_RTFORMAT;
             be.PreBlendColorClampEnable = true;
@@ -4911,15 +4927,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          cc.ColorBufferBlendEnable = rt->blend_enable;
 
          if (cso_blend->cso.logicop_enable) {
-            enum pipe_format pformat = PIPE_FORMAT_NONE;
-            for (unsigned i = 0; i < ice->state.framebuffer.nr_cbufs; i++) {
-               if (ice->state.framebuffer.cbufs[i]) {
-                  pformat = ice->state.framebuffer.cbufs[i]->format;
-                  break;
-               }
-            }
-            if (pformat == PIPE_FORMAT_NONE ||
-                util_format_is_unorm(pformat)) {
+            if (can_emit_logic_op(ice)) {
                cc.LogicOpEnable = cso_blend->cso.logicop_enable;
                cc.LogicOpFunction = cso_blend->cso.logicop_func;
             }
