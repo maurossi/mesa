@@ -65,7 +65,7 @@ stream_state(struct crocus_batch *batch,
 {
    uint32_t offset = ALIGN(batch->state.used, alignment);
 
-   if (offset + size >= BATCH_SZ && !batch->no_wrap) {
+   if (offset + size >= STATE_SZ && !batch->no_wrap) {
       crocus_batch_flush(batch);
       offset = ALIGN(batch->state.used, alignment);
    } else if (offset + size >= batch->state.bo->size) {
@@ -144,7 +144,7 @@ blorp_get_surface_address(struct blorp_batch *blorp_batch,
 }
 
 #if GEN_GEN >= 7
-UNUSED static struct blorp_address
+static struct blorp_address
 blorp_get_surface_base_address(struct blorp_batch *blorp_batch)
 {
    struct crocus_batch *batch = blorp_batch->driver_batch;
