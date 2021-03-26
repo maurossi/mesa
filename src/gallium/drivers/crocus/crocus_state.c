@@ -1377,17 +1377,6 @@ crocus_init_compute_context(struct crocus_batch *batch)
 }
 #endif
 
-struct crocus_depth_buffer_state {
-   /* Depth/HiZ/Stencil related hardware packets. */
-   uint32_t packets[GENX(3DSTATE_DEPTH_BUFFER_length)
-#if GEN_GEN >= 5
-                    + GENX(3DSTATE_STENCIL_BUFFER_length) +
-                    GENX(3DSTATE_HIER_DEPTH_BUFFER_length) +
-                    GENX(3DSTATE_CLEAR_PARAMS_length)
-#endif
-                    ];
-};
-
 /**
  * Generation-specific context state (ice->state.genx->...).
  *
@@ -1395,8 +1384,6 @@ struct crocus_depth_buffer_state {
  * packets which vary by generation.
  */
 struct crocus_genx_state {
-   struct crocus_depth_buffer_state depth_buffer;
-
 #if GEN_GEN == 7
    uint32_t so_buffers[4 * GENX(3DSTATE_SO_BUFFER_length)];
 #endif
