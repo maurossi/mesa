@@ -145,9 +145,13 @@ blorp_get_surface_address(struct blorp_batch *blorp_batch,
 
 #if GEN_GEN >= 7
 UNUSED static struct blorp_address
-blorp_get_surface_base_address(UNUSED struct blorp_batch *blorp_batch)
+blorp_get_surface_base_address(struct blorp_batch *blorp_batch)
 {
-   return (struct blorp_address) { .offset = 0 };
+   struct crocus_batch *batch = blorp_batch->driver_batch;
+   return (struct blorp_address) {
+      .buffer = batch->state.bo,
+      .offset = 0
+   };
 }
 #endif
 
