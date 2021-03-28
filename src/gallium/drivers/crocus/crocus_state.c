@@ -782,7 +782,7 @@ done:
 static void recalculate_urb_fence( struct crocus_batch *batch)
 {
    struct crocus_context *ice = batch->ice;
-   crocus_calculate_urb_fence(batch, 0,
+   crocus_calculate_urb_fence(batch, ice->curbe.total_size,
                               brw_vue_prog_data(ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data)->urb_entry_size,
                               ((struct brw_sf_prog_data *)ice->shaders.sf_prog->prog_data)->urb_entry_size);
 }
@@ -816,6 +816,198 @@ crocus_upload_urb_fence(struct crocus_batch *batch)
    }
 
    crocus_batch_emit(batch, urb_fence, sizeof(uint32_t) * 3);
+}
+
+static bool
+calculate_curbe_offsets(struct crocus_batch *batch)
+{
+   struct crocus_context *ice = batch->ice;
+
+   unsigned nr_fp_regs, nr_vp_regs, nr_clip_regs = 0;
+   unsigned total_regs;
+
+   nr_fp_regs = 0;
+   for (int i = 0; i < 4; i++) {
+      const struct brw_ubo_range *range = &ice->shaders.prog[MESA_SHADER_FRAGMENT]->prog_data->ubo_ranges[i];
+      if (range->length == 0)
+         continue;
+
+      /* ubo range tracks at 256-bit, we need 512-bit */
+      nr_fp_regs += (range->length + 1) / 2;
+   }
+
+   nr_vp_regs = 0;
+   for (int i = 0; i < 4; i++) {
+      const struct brw_ubo_range *range = &ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data->ubo_ranges[i];
+      if (range->length == 0)
+         continue;
+
+      /* ubo range tracks at 256-bit, we need 512-bit */
+      nr_vp_regs += (range->length + 1) / 2;
+   }
+   if (nr_vp_regs == 0) {
+      /* The pre-gen6 VS requires that some push constants get loaded no
+       * matter what, or the GPU would hang.
+       */
+      nr_vp_regs = 1;
+   }
+   total_regs = nr_fp_regs + nr_vp_regs + nr_clip_regs;
+
+   /* The CURBE allocation size is limited to 32 512-bit units (128 EU
+    * registers, or 1024 floats).  See CS_URB_STATE in the gen4 or gen5
+    * (volume 1, part 1) PRMs.
+    *
+    * Note that in brw_fs.cpp we're only loading up to 16 EU registers of
+    * values as push constants before spilling to pull constants, and in
+    * brw_vec4.cpp we're loading up to 32 registers of push constants.  An EU
+    * register is 1/2 of one of these URB entry units, so that leaves us 16 EU
+    * regs for clip.
+    */
+   assert(total_regs <= 32);
+
+   /* Lazy resize:
+    */
+   if (nr_fp_regs > ice->curbe.wm_size ||
+       nr_vp_regs > ice->curbe.vs_size ||
+       nr_clip_regs != ice->curbe.clip_size ||
+       (total_regs < ice->curbe.total_size / 4 &&
+        ice->curbe.total_size > 16)) {
+
+      GLuint reg = 0;
+
+      /* Calculate a new layout:
+       */
+      reg = 0;
+      ice->curbe.wm_start = reg;
+      ice->curbe.wm_size = nr_fp_regs; reg += nr_fp_regs;
+      ice->curbe.clip_start = reg;
+      ice->curbe.clip_size = nr_clip_regs; reg += nr_clip_regs;
+      ice->curbe.vs_start = reg;
+      ice->curbe.vs_size = nr_vp_regs; reg += nr_vp_regs;
+      ice->curbe.total_size = reg;
+
+      if (0)
+         fprintf(stderr, "curbe wm %d+%d clip %d+%d vs %d+%d\n",
+                 ice->curbe.wm_start,
+                 ice->curbe.wm_size,
+                 ice->curbe.clip_start,
+                 ice->curbe.clip_size,
+                 ice->curbe.vs_start,
+                 ice->curbe.vs_size );
+      return true;
+   }
+   return false;
+}
+
+static void
+upload_shader_consts(struct crocus_context *ice,
+                     gl_shader_stage stage,
+                     uint32_t *map,
+                     unsigned start)
+{
+   struct crocus_compiled_shader *shader = ice->shaders.prog[stage];
+   struct brw_stage_prog_data *prog_data = (void *) shader->prog_data;
+   uint32_t *cmap;
+   bool found = false;
+   unsigned offset = start * 16;
+   int total = 0;
+   for (int i = 0; i < 4; i++) {
+      const struct brw_ubo_range *range = &prog_data->ubo_ranges[i];
+
+      if (range->length == 0)
+         continue;
+
+      unsigned block_index = 0;//range->block; TODO UBO support
+      unsigned len = range->length * 8 * sizeof(float);
+      unsigned start = range->start * 8 * sizeof(float);
+      struct pipe_transfer *transfer;
+
+      cmap = pipe_buffer_map_range(&ice->ctx, ice->state.shaders[stage].constbufs[block_index].buffer,
+                                   ice->state.shaders[stage].constbufs[block_index].buffer_offset + start, len,
+                                   PIPE_MAP_READ | PIPE_MAP_UNSYNCHRONIZED, &transfer);
+      if (cmap)
+         memcpy(&map[offset + (total * 8)], cmap, len);
+      pipe_buffer_unmap(&ice->ctx, transfer);
+      total += range->length;
+      found = true;
+   }
+
+   if (stage == MESA_SHADER_VERTEX && !found) {
+      /* The pre-gen6 VS requires that some push constants get loaded no
+       * matter what, or the GPU would hang.
+       */
+      unsigned len = 16;
+      memset(&map[offset], 0, len);
+   }
+}
+
+static void
+gen4_upload_curbe(struct crocus_batch *batch)
+{
+   struct crocus_context *ice = batch->ice;   
+   const unsigned sz = ice->curbe.total_size;
+   const unsigned buf_sz = sz * 16 * sizeof(float);
+
+   if (sz == 0)
+      goto emit;
+
+   uint32_t *map;
+   u_upload_alloc(ice->ctx.const_uploader, 0, buf_sz, 64,
+                  &ice->curbe.curbe_offset, (struct pipe_resource **)&ice->curbe.curbe_res, (void **) &map);
+
+   /* fragment shader constants */
+   if (ice->curbe.wm_size) {
+      upload_shader_consts(ice, MESA_SHADER_FRAGMENT, map, ice->curbe.wm_start);
+   }
+
+   /* clipper constants */
+   if (ice->curbe.clip_size) {
+
+   }
+
+   /* vertex shader constants */
+   if (ice->curbe.vs_size) {
+      upload_shader_consts(ice, MESA_SHADER_VERTEX, map, ice->curbe.vs_start);
+   }
+   if (0) {
+      for (int i = 0; i < sz*16; i+=4) {
+         float *f = (float *)map;
+         fprintf(stderr, "curbe %d.%d: %f %f %f %f\n", i/8, i&4,
+                 f[i+0], f[i+1], f[i+2], f[i+3]);
+      }
+   }
+
+emit:
+   crocus_emit_cmd(batch, GENX(CONSTANT_BUFFER), cb) {
+      if (ice->curbe.curbe_res) {
+         cb.BufferLength = ice->curbe.total_size - 1;
+         cb.Valid = 1;
+         cb.BufferStartingAddress = ro_bo(ice->curbe.curbe_res->bo, ice->curbe.curbe_offset);
+      }
+   }
+
+#if GEN_GEN == 4 && !GEN_IS_G4X
+      /* Work around a Broadwater/Crestline depth interpolator bug.  The
+       * following sequence will cause GPU hangs:
+       *
+       * 1. Change state so that all depth related fields in CC_STATE are
+       *    disabled, and in WM_STATE, only "PS Use Source Depth" is enabled.
+       * 2. Emit a CONSTANT_BUFFER packet.
+       * 3. Draw via 3DPRIMITIVE.
+       *
+       * The recommended workaround is to emit a non-pipelined state change after
+       * emitting CONSTANT_BUFFER, in order to drain the windowizer pipeline.
+       *
+       * We arbitrarily choose 3DSTATE_GLOBAL_DEPTH_CLAMP_OFFSET (as it's small),
+       * and always emit it when "PS Use Source Depth" is set.  We could be more
+       * precise, but the additional complexity is probably not worth it.
+       *
+       */
+      // TODO check frag coord is read.
+      if (1) {
+         crocus_emit_cmd(batch, GENX(3DSTATE_GLOBAL_DEPTH_OFFSET_CLAMP), clamp);
+      }
+#endif
 }
 #endif
 
@@ -4401,6 +4593,7 @@ struct push_bos {
    uint32_t max_length;
 };
 
+#if GEN_GEN == 7
 static void
 setup_constant_buffers(struct crocus_context *ice,
                        struct crocus_batch *batch,
@@ -4452,7 +4645,6 @@ setup_constant_buffers(struct crocus_context *ice,
    push_bos->buffer_count = n;
 }
 
-#if GEN_GEN == 7
 static void
 gen7_emit_vs_workaround_flush(struct crocus_batch *batch)
 {
@@ -4602,6 +4794,14 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    struct crocus_genx_state *genx = ice->state.genx;
 #endif
 
+#if GEN_GEN <= 5
+   if (dirty & (CROCUS_DIRTY_CONSTANTS_VS |
+		CROCUS_DIRTY_CONSTANTS_FS)) {
+      bool ret = calculate_curbe_offsets(batch);
+      if (ret)
+         dirty |= CROCUS_DIRTY_GEN4_CURBE | CROCUS_DIRTY_WM | CROCUS_DIRTY_VS | CROCUS_DIRTY_CLIP;
+   }
+#endif
    if (dirty & CROCUS_DIRTY_CC_VIEWPORT) {
       const struct crocus_rasterizer_state *cso_rast = ice->state.cso_rast;
       uint32_t cc_vp_address;
@@ -4938,10 +5138,13 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       if (shs->sysvals_need_upload)
          upload_sysvals(ice, stage);
 
+#if GEN_GEN <= 5
+      dirty |= CROCUS_DIRTY_GEN4_CURBE;
+#endif
+#if GEN_GEN >= 7
       struct push_bos push_bos = {};
       setup_constant_buffers(ice, batch, stage, &push_bos);
 
-#if GEN_GEN >= 7
       emit_push_constant_packets(ice, batch, stage, &push_bos);
 #endif
    }
@@ -5160,6 +5363,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
          clip.DispatchGRFStartRegisterForURBData = 1;
          clip.VertexURBEntryReadOffset = 0;
+         clip.ConstantURBEntryReadOffset = ice->curbe.clip_start * 2;
 
          clip.NumberofURBEntries = batch->ice->urb.nr_clip_entries;
          clip.URBEntryAllocationSize = batch->ice->urb.vsize - 1;
@@ -5260,7 +5464,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 #if GEN_GEN < 6
          vs.GRFRegisterCount = DIV_ROUND_UP(vue_prog_data->total_grf, 16) - 1;
          vs.ConstantURBEntryReadLength = vue_prog_data->base.curb_read_length;
-         vs.ConstantURBEntryReadOffset = 0; //TODO
+         vs.ConstantURBEntryReadOffset = ice->curbe.vs_start * 2;
 
          vs.NumberofURBEntries = batch->ice->urb.nr_vs_entries >> (GEN_GEN == 5 ? 2 : 0);
          vs.URBEntryAllocationSize = batch->ice->urb.vsize - 1;
@@ -5580,6 +5784,8 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 	   brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, wm, 2);
 #endif
 #if GEN_GEN <= 5
+         wm.ConstantURBEntryReadLength = wm_prog_data->base.curb_read_length;
+         wm.ConstantURBEntryReadOffset = ice->curbe.wm_start * 2;
          wm.SetupURBEntryReadLength = wm_prog_data->num_varying_inputs * 2;
          wm.SetupURBEntryReadOffset = 0;
          wm.EarlyDepthTestEnable = true;
@@ -5824,14 +6030,18 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
    }
 
 #if GEN_GEN <= 5
-   if (dirty & CROCUS_DIRTY_GEN5_PIPELINED_POINTERS)
+   if (dirty & CROCUS_DIRTY_GEN5_PIPELINED_POINTERS) {
       upload_pipelined_state_pointers(batch, ice->shaders.ff_gs_prog ? true : false, ice->shaders.gs_offset,
                                       ice->shaders.vs_offset, ice->shaders.sf_offset,
                                       ice->shaders.clip_offset, ice->shaders.wm_offset, ice->shaders.cc_offset);
+      dirty |= CROCUS_DIRTY_GEN4_CURBE;
+   }
    crocus_upload_urb_fence(batch);
 
-   crocus_emit_cmd(batch, GENX(CS_URB_STATE), cs);
-   crocus_emit_cmd(batch, GENX(CONSTANT_BUFFER), cb);
+   crocus_emit_cmd(batch, GENX(CS_URB_STATE), cs) {
+      cs.NumberofURBEntries = ice->urb.nr_cs_entries;
+      cs.URBEntryAllocationSize = ice->urb.csize - 1;
+   }
 #endif
    if (dirty & CROCUS_DIRTY_DRAWING_RECTANGLE) {
       struct pipe_framebuffer_state *fb = &ice->state.framebuffer;
@@ -5985,6 +6195,12 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          vf.StatisticsEnable = true;
       }
    }
+
+#if GEN_GEN <= 5
+   if (dirty & CROCUS_DIRTY_GEN4_CURBE) {
+      gen4_upload_curbe(batch);
+   }
+#endif
 }
 
 static void
@@ -7103,6 +7319,7 @@ crocus_batch_reset_dirty(struct crocus_batch *batch)
 #if GEN_GEN <= 5
    /* dirty the SF state on gen4/5 */
    batch->ice->state.dirty |= CROCUS_DIRTY_RASTER;
+   batch->ice->state.dirty |= CROCUS_DIRTY_GEN4_CURBE;
 #endif
 #if GEN_GEN < 7
    batch->ice->state.dirty |= CROCUS_DIRTY_WM;

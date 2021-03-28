@@ -82,7 +82,7 @@ enum {
 #define CROCUS_DIRTY_WM_DEPTH_STENCIL         (1ull <<  3)
 #define CROCUS_DIRTY_CC_VIEWPORT              (1ull <<  4)
 #define CROCUS_DIRTY_SF_CL_VIEWPORT           (1ull <<  5)
-//removed
+#define CROCUS_DIRTY_GEN4_CURBE               (1ull <<  6)
 #define CROCUS_DIRTY_BLEND_STATE              (1ull <<  7)
 #define CROCUS_DIRTY_RASTER                   (1ull <<  8)
 #define CROCUS_DIRTY_CLIP                     (1ull <<  9)
@@ -834,6 +834,20 @@ struct crocus_context {
        */
       bool tess_present;
    } urb;
+
+   /* GEN4/5 curbe */
+   struct {
+      unsigned wm_start;
+      unsigned wm_size;
+      unsigned clip_start;
+      unsigned clip_size;
+      unsigned vs_start;
+      unsigned vs_size;
+      unsigned total_size;
+
+      struct crocus_resource *curbe_res;
+      unsigned curbe_offset;
+   } curbe;
 };
 
 #define perf_debug(dbg, ...) do {                      \
