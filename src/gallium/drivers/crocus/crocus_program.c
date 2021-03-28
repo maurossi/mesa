@@ -741,7 +741,7 @@ crocus_setup_binding_table(const struct gen_device_info *devinfo,
     * Binding table compaction will remove it if unnecessary.
     *
     * We don't include them in crocus_compiled_shader::num_cbufs because
-    * they are uploaded separately from shs->constbuf[], but from a shader
+    * they are uploaded separately from shs->constbufs[], but from a shader
     * point of view, they're another UBO (at the end of the section).
     */
    bt->sizes[CROCUS_SURFACE_GROUP_UBO] = num_cbufs + 1;
@@ -1780,7 +1780,7 @@ crocus_update_pull_constant_descriptors(struct crocus_context *ice,
 
    while (bound_cbufs) {
       const int i = u_bit_scan(&bound_cbufs);
-      struct pipe_shader_buffer *cbuf = &shs->constbuf[i];
+      struct pipe_constant_buffer *cbuf = &shs->constbufs[i];
       struct crocus_state_ref *surf_state = &shs->constbuf_surf_state[i];
       if (!surf_state->res && cbuf->buffer) {
          any_new_descriptors = true;

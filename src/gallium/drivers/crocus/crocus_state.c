@@ -2852,7 +2852,7 @@ crocus_set_constant_buffer(struct pipe_context *ctx,
    struct crocus_context *ice = (struct crocus_context *) ctx;
    gl_shader_stage stage = stage_from_pipe(p_stage);
    struct crocus_shader_state *shs = &ice->state.shaders[stage];
-   struct pipe_shader_buffer *cbuf = &shs->constbuf[index];
+   struct pipe_constant_buffer *cbuf = &shs->constbufs[index];
 
    /* TODO: Only do this if the buffer changes? */
    pipe_resource_reference(&shs->constbuf_surf_state[index].res, NULL);
@@ -2876,12 +2876,7 @@ crocus_set_constant_buffer(struct pipe_context *ctx,
 
          assert(map);
          memcpy(map, input->user_buffer, input->buffer_size);
-      } else if (input->buffer) {
-         pipe_resource_reference(&cbuf->buffer, input->buffer);
-
-         cbuf->buffer_offset = input->buffer_offset;
       }
-
       cbuf->buffer_size =
          MIN2(input->buffer_size,
               crocus_resource_bo(cbuf->buffer)->size - cbuf->buffer_offset);
@@ -2891,7 +2886,6 @@ crocus_set_constant_buffer(struct pipe_context *ctx,
       res->bind_stages |= 1 << stage;
    } else {
       shs->bound_cbufs &= ~(1u << index);
-      pipe_resource_reference(&cbuf->buffer, NULL);
    }
 
    ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_VS << stage;
@@ -2911,7 +2905,7 @@ upload_sysvals(struct crocus_context *ice,
    assert(shader->num_cbufs > 0);
 
    unsigned sysval_cbuf_index = shader->num_cbufs - 1;
-   struct pipe_shader_buffer *cbuf = &shs->constbuf[sysval_cbuf_index];
+   struct pipe_constant_buffer *cbuf = &shs->constbufs[sysval_cbuf_index];
    unsigned upload_size = shader->num_system_values * sizeof(uint32_t);
    uint32_t *map = NULL;
 
@@ -4164,7 +4158,7 @@ emit_surface(struct crocus_context *ice,
 static uint32_t
 emit_ubo_buffer(struct crocus_context *ice,
                 struct crocus_batch *batch,
-                struct pipe_shader_buffer *buffer)
+                struct pipe_constant_buffer *buffer)
 {
    UNUSED struct isl_device *isl_dev = &batch->screen->isl_dev;
    uint32_t offset = 0;
@@ -4274,7 +4268,7 @@ crocus_populate_binding_table(struct crocus_context *ice,
 
    }
    foreach_surface_used(i, CROCUS_SURFACE_GROUP_UBO) {
-      surf_offsets[s++] = emit_ubo_buffer(ice, batch, &shs->constbuf[i]);
+      surf_offsets[s++] = emit_ubo_buffer(ice, batch, &shs->constbufs[i]);
    }
    foreach_surface_used(i, CROCUS_SURFACE_GROUP_SSBO) {
    }
@@ -4436,7 +4430,7 @@ setup_constant_buffers(struct crocus_context *ice,
          &shader->bt, CROCUS_SURFACE_GROUP_UBO, range->block);
       assert(block_index != CROCUS_SURFACE_NOT_USED);
 
-      struct pipe_shader_buffer *cbuf = &shs->constbuf[block_index];
+      struct pipe_constant_buffer *cbuf = &shs->constbufs[block_index];
       struct crocus_resource *res = (void *) cbuf->buffer;
 
       assert(cbuf->buffer_offset % 32 == 0);
@@ -6395,7 +6389,7 @@ crocus_destroy_state(struct crocus_context *ice)
       struct crocus_shader_state *shs = &ice->state.shaders[stage];
       pipe_resource_reference(&shs->sampler_table.res, NULL);
       for (int i = 0; i < PIPE_MAX_CONSTANT_BUFFERS; i++) {
-         pipe_resource_reference(&shs->constbuf[i].buffer, NULL);
+         pipe_resource_reference(&shs->constbufs[i].buffer, NULL);
          pipe_resource_reference(&shs->constbuf_surf_state[i].res, NULL);
       }
       for (int i = 0; i < PIPE_MAX_SHADER_IMAGES; i++) {
@@ -6486,7 +6480,7 @@ crocus_rebind_buffer(struct crocus_context *ice,
          uint32_t bound_cbufs = shs->bound_cbufs & ~1u;
          while (bound_cbufs) {
             const int i = u_bit_scan(&bound_cbufs);
-            struct pipe_shader_buffer *cbuf = &shs->constbuf[i];
+            struct pipe_constant_buffer *cbuf = &shs->constbufs[i];
             struct crocus_state_ref *surf_state = &shs->constbuf_surf_state[i];
 
             if (res->bo == crocus_resource_bo(cbuf->buffer)) {

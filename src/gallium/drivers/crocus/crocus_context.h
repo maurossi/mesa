@@ -379,7 +379,6 @@ struct crocus_compiled_shader {
 struct crocus_shader_state {
    /** Uniform Buffers */
    struct pipe_constant_buffer constbufs[PIPE_MAX_CONSTANT_BUFFERS];
-   struct pipe_shader_buffer constbuf[PIPE_MAX_CONSTANT_BUFFERS];
    struct crocus_state_ref constbuf_surf_state[PIPE_MAX_CONSTANT_BUFFERS];
 
    bool sysvals_need_upload;
