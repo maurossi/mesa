@@ -1116,7 +1116,7 @@ crocus_init_render_context(struct crocus_batch *batch)
 
    crocus_emit_cmd(batch, GENX(STATE_SIP), foo);
 
-#if GEN_GEN >= 5 || GEN_US_G4X
+#if GEN_GEN >= 5 || GEN_IS_G4X
    /* Use the legacy AA line coverage computation. */
    crocus_emit_cmd(batch, GENX(3DSTATE_AA_LINE_PARAMETERS), foo);
 #endif
