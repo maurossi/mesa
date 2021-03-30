@@ -138,6 +138,7 @@ enum {
 #define CROCUS_DIRTY_GEN4_CONSTANT_COLOR      (1ull << 58)
 #define CROCUS_DIRTY_DEPTH_BOUNDS             (1ull << 59)
 #define CROCUS_DIRTY_DRAWING_RECTANGLE        (1ull << 60)
+#define CROCUS_DIRTY_GEN4_URB_FENCE           (1ull << 61)
 
 #define CROCUS_ALL_DIRTY_FOR_COMPUTE (CROCUS_DIRTY_CS | \
                                     CROCUS_DIRTY_SAMPLER_STATES_CS | \
@@ -526,7 +527,7 @@ struct crocus_vtable {
                            struct crocus_resource *src,
                            unsigned src_level,
                            const struct pipe_box *src_box);
-   void (*calculate_urb_fence)(struct crocus_batch *batch, unsigned csize,
+   bool (*calculate_urb_fence)(struct crocus_batch *batch, unsigned csize,
                                unsigned vsize, unsigned sfsize);
    void (*batch_reset_dirty)(struct crocus_batch *batch);
    unsigned (*translate_prim_type)(enum pipe_prim_type prim, uint8_t verts_per_patch);

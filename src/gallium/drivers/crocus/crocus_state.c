@@ -685,7 +685,7 @@ static bool check_urb_layout(struct crocus_context *ice)
 }
 
 
-static void
+static bool
 crocus_calculate_urb_fence(struct crocus_batch *batch, unsigned csize,
                            unsigned vsize, unsigned sfsize)
 {
@@ -776,15 +776,9 @@ done:
                  ice->urb.sf_start,
                  ice->urb.cs_start,
                  ice->urb.size);
+      return true;
    }
-}
-
-static void recalculate_urb_fence( struct crocus_batch *batch)
-{
-   struct crocus_context *ice = batch->ice;
-   crocus_calculate_urb_fence(batch, ice->curbe.total_size,
-                              brw_vue_prog_data(ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data)->urb_entry_size,
-                              ((struct brw_sf_prog_data *)ice->shaders.sf_prog->prog_data)->urb_entry_size);
+   return false;
 }
 
 static void
@@ -4801,6 +4795,14 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       if (ret)
          dirty |= CROCUS_DIRTY_GEN4_CURBE | CROCUS_DIRTY_WM | CROCUS_DIRTY_VS | CROCUS_DIRTY_CLIP;
    }
+
+   if (dirty & (CROCUS_DIRTY_GEN4_CURBE | CROCUS_DIRTY_RASTER | CROCUS_DIRTY_VS)) {
+     bool ret = crocus_calculate_urb_fence(batch, ice->curbe.total_size,
+					   brw_vue_prog_data(ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data)->urb_entry_size,
+					   ((struct brw_sf_prog_data *)ice->shaders.sf_prog->prog_data)->urb_entry_size);
+     if (ret)
+        dirty |= CROCUS_DIRTY_GEN5_PIPELINED_POINTERS;
+   }
 #endif
    if (dirty & CROCUS_DIRTY_CC_VIEWPORT) {
       const struct crocus_rasterizer_state *cso_rast = ice->state.cso_rast;
@@ -5339,10 +5341,6 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          crocus_emit_cmd(batch, GENX(3DSTATE_STREAMOUT), sol);
       }
    }
-#endif
-
-#if GEN_GEN < 6
-   recalculate_urb_fence(batch);
 #endif
 
    if (dirty & CROCUS_DIRTY_CLIP) {
@@ -6034,13 +6032,13 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
       upload_pipelined_state_pointers(batch, ice->shaders.ff_gs_prog ? true : false, ice->shaders.gs_offset,
                                       ice->shaders.vs_offset, ice->shaders.sf_offset,
                                       ice->shaders.clip_offset, ice->shaders.wm_offset, ice->shaders.cc_offset);
-      dirty |= CROCUS_DIRTY_GEN4_CURBE;
-   }
-   crocus_upload_urb_fence(batch);
+      crocus_upload_urb_fence(batch);
 
-   crocus_emit_cmd(batch, GENX(CS_URB_STATE), cs) {
-      cs.NumberofURBEntries = ice->urb.nr_cs_entries;
-      cs.URBEntryAllocationSize = ice->urb.csize - 1;
+      crocus_emit_cmd(batch, GENX(CS_URB_STATE), cs) {
+	cs.NumberofURBEntries = ice->urb.nr_cs_entries;
+	cs.URBEntryAllocationSize = ice->urb.csize - 1;
+      }
+      dirty |= CROCUS_DIRTY_GEN4_CURBE;
    }
 #endif
    if (dirty & CROCUS_DIRTY_DRAWING_RECTANGLE) {
@@ -7181,10 +7179,6 @@ genX(emit_urb_setup)(struct crocus_context *ice,
                      const unsigned size[4],
                      bool tess_present, bool gs_present)
 {
-#if GEN_GEN <= 5
-   crocus_calculate_urb_fence(batch, 0,
-                              size[0], size[1]);
-#endif
    // XXX TODO
 }
 #endif
