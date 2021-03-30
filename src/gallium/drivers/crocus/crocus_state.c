@@ -652,6 +652,21 @@ crocus_copy_mem_mem(struct crocus_batch *batch,
 }
 #endif
 
+/**
+ * Gallium CSO for rasterizer state.
+ */
+struct crocus_rasterizer_state {
+   struct pipe_rasterizer_state cso;
+#if GEN_GEN >= 6
+   uint32_t sf[GENX(3DSTATE_SF_length)];
+   uint32_t clip[GENX(3DSTATE_CLIP_length)];
+#endif
+   uint32_t line_stipple[GENX(3DSTATE_LINE_STIPPLE_length)];
+
+   uint8_t num_clip_plane_consts;
+   bool fill_mode_point_or_line;
+};
+
 #if GEN_GEN <= 5
 #define URB_VS 0
 #define URB_GS 1
@@ -830,6 +845,11 @@ calculate_curbe_offsets(struct crocus_batch *batch)
       nr_fp_regs += (range->length + 1) / 2;
    }
 
+   if (ice->state.cso_rast->cso.clip_plane_enable) {
+      unsigned nr_planes = 6 + util_bitcount(ice->state.cso_rast->cso.clip_plane_enable);
+      nr_clip_regs = (nr_planes * 4 + 15) / 16;
+   }
+
    nr_vp_regs = 0;
    for (int i = 0; i < 4; i++) {
       const struct brw_ubo_range *range = &ice->shaders.prog[MESA_SHADER_VERTEX]->prog_data->ubo_ranges[i];
@@ -935,6 +955,15 @@ upload_shader_consts(struct crocus_context *ice,
    }
 }
 
+static const GLfloat fixed_plane[6][4] = {
+   { 0,    0,   -1, 1 },
+   { 0,    0,    1, 1 },
+   { 0,   -1,    0, 1 },
+   { 0,    1,    0, 1 },
+   {-1,    0,    0, 1 },
+   { 1,    0,    0, 1 }
+};
+
 static void
 gen4_upload_curbe(struct crocus_batch *batch)
 {
@@ -956,7 +985,28 @@ gen4_upload_curbe(struct crocus_batch *batch)
 
    /* clipper constants */
    if (ice->curbe.clip_size) {
+      unsigned offset = ice->curbe.clip_start * 16;
+      float *fmap = (float *)map;
+      unsigned i;
+      /* If any planes are going this way, send them all this way:
+       */
+      for (i = 0; i < 6; i++) {
+         fmap[offset + i * 4 + 0] = fixed_plane[i][0];
+         fmap[offset + i * 4 + 1] = fixed_plane[i][1];
+         fmap[offset + i * 4 + 2] = fixed_plane[i][2];
+         fmap[offset + i * 4 + 2] = fixed_plane[i][3];
+      }
 
+      unsigned mask = ice->state.cso_rast->cso.clip_plane_enable;
+      struct pipe_clip_state *cp = &ice->state.clip_planes;
+      while (mask) {
+         const int j = u_bit_scan(&mask);
+         fmap[offset + i * 4 + 0] = cp->ucp[j][0];
+         fmap[offset + i * 4 + 1] = cp->ucp[j][1];
+         fmap[offset + i * 4 + 2] = cp->ucp[j][2];
+         fmap[offset + i * 4 + 3] = cp->ucp[j][3];
+         i++;
+      }
    }
 
    /* vertex shader constants */
@@ -1563,21 +1613,6 @@ crocus_bind_zsa_state(struct pipe_context *ctx, void *state)
    ice->state.dirty |= ice->state.dirty_for_nos[CROCUS_NOS_DEPTH_STENCIL_ALPHA];
 }
 
-/**
- * Gallium CSO for rasterizer state.
- */
-struct crocus_rasterizer_state {
-   struct pipe_rasterizer_state cso;
-#if GEN_GEN >= 6
-   uint32_t sf[GENX(3DSTATE_SF_length)];
-   uint32_t clip[GENX(3DSTATE_CLIP_length)];
-#endif
-   uint32_t line_stipple[GENX(3DSTATE_LINE_STIPPLE_length)];
-
-   uint8_t num_clip_plane_consts;
-   bool fill_mode_point_or_line;
-};
-
 static float
 get_line_width(const struct pipe_rasterizer_state *state)
 {
@@ -1766,6 +1801,10 @@ crocus_bind_rasterizer_state(struct pipe_context *ctx, void *state)
           cso_changed(cso.sprite_coord_mode) ||
           cso_changed(cso.light_twoside))
          ice->state.dirty |= CROCUS_DIRTY_GEN7_SBE;
+#endif
+#if GEN_GEN <= 5
+      if (cso_changed(cso.clip_plane_enable))
+         ice->state.dirty |= CROCUS_DIRTY_GEN4_CURBE;
 #endif
    }
 
@@ -2848,6 +2887,9 @@ crocus_set_clip_state(struct pipe_context *ctx,
 
    memcpy(&ice->state.clip_planes, state, sizeof(*state));
 
+#if GEN_GEN <= 5
+   ice->state.dirty |= CROCUS_DIRTY_GEN4_CURBE;
+#endif
    ice->state.dirty |= CROCUS_DIRTY_CONSTANTS_VS | CROCUS_DIRTY_CONSTANTS_GS |
                        CROCUS_DIRTY_CONSTANTS_TES;
    shs->sysvals_need_upload = true;
