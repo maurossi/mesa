@@ -149,7 +149,7 @@ static void check_attrib_edgeflag(struct st_context *st)
                        st->ctx->Polygon.BackMode != GL_FILL;
 
    vertdata_edgeflags = edgeflags_enabled &&
-      _mesa_draw_edge_flag_array_enabled(st->ctx);
+     (_mesa_draw_edge_flag_array_enabled(st->ctx) || st->force_edgeflag);
 
    if (vertdata_edgeflags != st->vertdata_edgeflags) {
       st->vertdata_edgeflags = vertdata_edgeflags;

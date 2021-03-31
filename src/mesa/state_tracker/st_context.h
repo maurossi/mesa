@@ -251,6 +251,7 @@ struct st_context
    bool gfx_shaders_may_be_dirty;
    bool compute_shader_may_be_dirty;
 
+   bool force_edgeflag;
    GLboolean vertdata_edgeflags;
    GLboolean edgeflag_culls_prims;
 

@@ -603,6 +603,9 @@ st_create_context_priv(struct gl_context *ctx, struct pipe_context *pipe,
    st->can_bind_const_buffer_as_vertex =
       screen->get_param(screen, PIPE_CAP_CAN_BIND_CONST_BUFFER_AS_VERTEX);
 
+   st->force_edgeflag =
+      screen->get_param(screen, PIPE_CAP_FORCE_EDGEFLAG);
+
    /* st/mesa always uploads zero-stride vertex attribs, and other user
     * vertex buffers are only possible with a compatibility profile.
     * So tell the u_vbuf module that user VBOs are not possible with the Core
