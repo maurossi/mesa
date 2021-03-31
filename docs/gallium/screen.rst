@@ -613,7 +613,7 @@ The integer capabilities:
 * ``PIPE_CAP_GL_CLAMP``: Driver natively supports GL_CLAMP.  Required for non-NIR drivers with the GL frontend.  NIR drivers with the cap unavailable will have GL_CLAMP lowered to txd/txl with a saturate on the coordinates.
 * ``PIPE_CAP_TEXRECT``: Driver supports rectangle textures.  Required for OpenGL on `!prefers_nir` drivers.  If this cap is not present, st/mesa will lower the NIR to use normal 2D texture sampling by using either `txs` or `nir_intrinsic_load_texture_scaling` to normalize the texture coordinates.
 * ``PIPE_CAP_SAMPLER_REDUCTION_MINMAX``: Driver support min/max sampler reduction.
-
+* ``PIPE_CAP_FORCE_EDGEFLAG``: Driver wants edgeflag emitted even if user hadn't enabled it.
 .. _pipe_capf:
 
 PIPE_CAPF_*
