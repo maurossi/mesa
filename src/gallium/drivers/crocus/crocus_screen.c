@@ -176,6 +176,8 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_TGSI_BALLOT:
    case PIPE_CAP_COMPUTE_SHADER_DERIVATIVES:
       return false;
+   case PIPE_CAP_FORCE_EDGEFLAG:
+      return devinfo->gen <= 5;
    case PIPE_CAP_DRAW_INDIRECT:
    case PIPE_CAP_MULTI_DRAW_INDIRECT:
    case PIPE_CAP_MULTI_DRAW_INDIRECT_PARAMS:
