@@ -5645,12 +5645,51 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
 #if GEN_GEN >= 7
    if (dirty & CROCUS_DIRTY_TCS) {
-      crocus_emit_cmd(batch, GENX(3DSTATE_HS), hs);
+      struct crocus_compiled_shader *shader = ice->shaders.prog[MESA_SHADER_TESS_CTRL];
+
+      if (shader) {
+	 const struct brw_tcs_prog_data *tcs_prog_data = brw_tcs_prog_data(shader->prog_data);
+	 const struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(shader->prog_data);
+	 const struct brw_stage_prog_data *prog_data = &tcs_prog_data->base.base;
+
+	 crocus_emit_cmd(batch, GENX(3DSTATE_HS), hs) {
+	    INIT_THREAD_DISPATCH_FIELDS(hs, Vertex, MESA_SHADER_TESS_CTRL);
+	    hs.InstanceCount = tcs_prog_data->instances - 1;
+	    hs.IncludeVertexHandles = true;
+	    hs.MaximumNumberofThreads = batch->screen->devinfo.max_tcs_threads - 1;
+	 }
+      } else {
+	 crocus_emit_cmd(batch, GENX(3DSTATE_HS), hs);
+      }
+
    }
 
    if (dirty & CROCUS_DIRTY_TES) {
-      crocus_emit_cmd(batch, GENX(3DSTATE_TE), te);
-      crocus_emit_cmd(batch, GENX(3DSTATE_DS), ds);
+      struct crocus_compiled_shader *shader = ice->shaders.prog[MESA_SHADER_TESS_EVAL];
+      if (shader) {
+	 const struct brw_tes_prog_data *tes_prog_data = brw_tes_prog_data(shader->prog_data);
+	 const struct brw_vue_prog_data *vue_prog_data = brw_vue_prog_data(shader->prog_data);
+	 const struct brw_stage_prog_data *prog_data = &tes_prog_data->base.base;
+
+	 crocus_emit_cmd(batch, GENX(3DSTATE_TE), te) {
+	    te.Partitioning = tes_prog_data->partitioning;
+	    te.OutputTopology = tes_prog_data->output_topology;
+	    te.TEDomain = tes_prog_data->domain;
+	    te.TEEnable = true;
+	    te.MaximumTessellationFactorOdd = 63.0;
+	    te.MaximumTessellationFactorNotOdd = 64.0;
+	 };
+	 crocus_emit_cmd(batch, GENX(3DSTATE_DS), ds) {
+	    INIT_THREAD_DISPATCH_FIELDS(ds, Patch, MESA_SHADER_TESS_EVAL);
+
+	    ds.MaximumNumberofThreads = batch->screen->devinfo.max_tes_threads - 1;
+	    ds.ComputeWCoordinateEnable =
+	       tes_prog_data->domain == BRW_TESS_DOMAIN_TRI;
+	 };
+      } else {
+	 crocus_emit_cmd(batch, GENX(3DSTATE_TE), te);
+	 crocus_emit_cmd(batch, GENX(3DSTATE_DS), ds);
+      }
    }
 #endif
    if (dirty & CROCUS_DIRTY_RASTER) {
