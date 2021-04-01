@@ -5302,6 +5302,7 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
          ps.PushConstantEnable = prog_data->ubo_ranges[0].length > 0;
 
          ps.oMaskPresenttoRenderTarget = wm_prog_data->uses_omask;
+         ps.DualSourceBlendEnable = wm_prog_data->dual_src_blend; //TODO
          ps.AttributeEnable = (wm_prog_data->num_varying_inputs != 0);
          /* From the documentation for this packet:
           * "If the PS kernel does not need the Position XY Offsets to
@@ -5318,6 +5319,12 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
           */
          ps.PositionXYOffsetSelect =
             wm_prog_data->uses_pos_offset ? POSOFFSET_SAMPLE : POSOFFSET_NONE;
+
+         if (wm_prog_data->base.total_scratch) {
+            struct crocus_bo *bo = crocus_get_scratch_space(ice, wm_prog_data->base.total_scratch, MESA_SHADER_FRAGMENT);
+            ps.PerThreadScratchSpace = ffs(wm_prog_data->base.total_scratch) - 11;
+            ps.ScratchSpaceBasePointer = rw_bo(bo, 0);
+         }
       }
    }
 #endif
