@@ -6014,11 +6014,12 @@ crocus_upload_dirty_render_state(struct crocus_context *ice,
 
    if (dirty & CROCUS_DIRTY_SCISSOR_RECT) {
 #if GEN_GEN >= 6
+      /* Align to 64-byte boundary as per anv. */
       uint32_t scissor_offset =
          emit_state(batch,
                     ice->state.scissors,
                     sizeof(struct pipe_scissor_state) *
-                    ice->state.num_viewports, 32);
+                    ice->state.num_viewports, 64);
 
       crocus_emit_cmd(batch, GENX(3DSTATE_SCISSOR_STATE_POINTERS), ptr) {
          ptr.ScissorRectPointer = scissor_offset;
