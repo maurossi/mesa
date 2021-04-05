@@ -750,9 +750,6 @@ struct crocus_context {
       /** 3DSTATE_STREAMOUT and 3DSTATE_SO_DECL_LIST packets */
       uint32_t *streamout;
 
-      /** The SURFACE_STATE for a 1x1x1 null surface. */
-      struct crocus_state_ref unbound_tex;
-
       /** The SURFACE_STATE for a framebuffer-sized null surface. */
       struct crocus_state_ref null_fb;
 

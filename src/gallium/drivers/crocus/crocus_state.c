@@ -6707,7 +6707,6 @@ crocus_destroy_state(struct crocus_context *ice)
    pipe_resource_reference(&ice->state.grid_surf_state.res, NULL);
 
    pipe_resource_reference(&ice->state.null_fb.res, NULL);
-   pipe_resource_reference(&ice->state.unbound_tex.res, NULL);
 
    pipe_resource_reference(&ice->state.last_res.cc_vp, NULL);
    pipe_resource_reference(&ice->state.last_res.sf_cl_vp, NULL);
@@ -7526,15 +7525,6 @@ genX(init_state)(struct crocus_context *ice)
    ice->state.genx = calloc(1, sizeof(struct crocus_genx_state));
    ice->draw.derived_params.drawid = -1;
 
-#if 0
-   /* Make a 1x1x1 null surface for unbound textures */
-   void *null_surf_map =
-      upload_state(ice->state.surface_uploader, &ice->state.unbound_tex,
-                   4 * GENX(RENDER_SURFACE_STATE_length), 64);
-   isl_null_fill_state(&screen->isl_dev, null_surf_map, isl_extent3d(1, 1, 1));
-   ice->state.unbound_tex.offset +=
-      crocus_bo_offset_from_base_address(crocus_resource_bo(ice->state.unbound_tex.res));
-#endif
    /* Default all scissor rectangles to be empty regions. */
    for (int i = 0; i < CROCUS_MAX_VIEWPORTS; i++) {
       ice->state.scissors[i] = (struct pipe_scissor_state) {
