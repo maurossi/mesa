@@ -226,7 +226,7 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
       return 12; /* 2048x2048 */
    case PIPE_CAP_MAX_STREAM_OUTPUT_BUFFERS:
-      return /* (devinfo->gen >= 6) ? 4 : */ 0;
+      return (devinfo->gen >= 6) ? 4 : 0;
    case PIPE_CAP_MAX_TEXTURE_ARRAY_LAYERS:
       return devinfo->gen >= 7 ? 2048 : 512;
    case PIPE_CAP_MAX_STREAM_OUTPUT_SEPARATE_COMPONENTS:
@@ -399,7 +399,7 @@ crocus_get_shader_param(struct pipe_screen *pscreen,
    struct crocus_screen *screen = (struct crocus_screen *)pscreen;
    const struct gen_device_info *devinfo = &screen->devinfo;
 
-   if (/* devinfo->gen < 6 && */
+   if (devinfo->gen < 6 &&
        p_stage != PIPE_SHADER_VERTEX &&
        p_stage != PIPE_SHADER_FRAGMENT)
       return 0;
