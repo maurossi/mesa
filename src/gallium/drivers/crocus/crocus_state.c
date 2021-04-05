@@ -320,18 +320,6 @@ translate_wrap(unsigned pipe_wrap, bool either_nearest)
    return map[pipe_wrap];
 }
 
-#if GEN_GEN >= 7
-static void *
-upload_state(struct u_upload_mgr *uploader,
-             struct crocus_state_ref *ref,
-             unsigned size,
-             unsigned alignment)
-{
-  //   assert(0);
-  return NULL;
-}
-#endif
-
 /**
  * Equiv if brw_state_batch
  */
@@ -3454,7 +3442,7 @@ crocus_create_stream_output_target(struct pipe_context *ctx,
    util_range_add(&res->base, &res->valid_buffer_range, buffer_offset,
                   buffer_offset + buffer_size);
 
-   upload_state(ctx->stream_uploader, &cso->offset, sizeof(uint32_t), 4);
+   //TODO   upload_state(ctx->stream_uploader, &cso->offset, sizeof(uint32_t), 4);
 
    return &cso->base;
 }
