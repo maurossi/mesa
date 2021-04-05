@@ -499,17 +499,14 @@ _crocus_emit_lri(struct crocus_batch *batch, uint32_t reg, uint32_t val)
 }
 #define crocus_emit_lri(b, r, v) _crocus_emit_lri(b, GENX(r##_num), v)
 
+#if GEN_VERSIONx10 == 75
 static void
 _crocus_emit_lrr(struct crocus_batch *batch, uint32_t dst, uint32_t src)
 {
-#if GEN_VERSIONx10 == 75
    crocus_emit_cmd(batch, GENX(MI_LOAD_REGISTER_REG), lrr) {
       lrr.SourceRegisterAddress = src;
       lrr.DestinationRegisterAddress = dst;
    }
-#else
-   unreachable("unsupported");
-#endif
 }
 
 static void
@@ -526,6 +523,7 @@ crocus_load_register_reg64(struct crocus_batch *batch, uint32_t dst,
    _crocus_emit_lrr(batch, dst, src);
    _crocus_emit_lrr(batch, dst + 4, src + 4);
 }
+#endif
 
 static void
 crocus_load_register_imm32(struct crocus_batch *batch, uint32_t reg,
@@ -559,6 +557,7 @@ crocus_load_register_mem32(struct crocus_batch *batch, uint32_t reg,
 #endif
 }
 
+#if GEN_VERSIONx10 == 75
 /**
  * Load a 64-bit value from a buffer into a MMIO register via
  * two MI_LOAD_REGISTER_MEM commands.
@@ -640,6 +639,7 @@ crocus_copy_mem_mem(struct crocus_batch *batch,
    unreachable("unsupported");
 //#endif
 }
+#endif
 #endif
 
 /**
