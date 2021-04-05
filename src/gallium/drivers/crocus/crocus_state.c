@@ -547,27 +547,10 @@ static void
 crocus_load_register_mem32(struct crocus_batch *batch, uint32_t reg,
                          struct crocus_bo *bo, uint32_t offset)
 {
-#if GEN_GEN >= 7
    crocus_emit_cmd(batch, GENX(MI_LOAD_REGISTER_MEM), lrm) {
       lrm.RegisterAddress = reg;
       lrm.MemoryAddress = ro_bo(bo, offset);
    }
-#else
-   unreachable("unsupported");
-#endif
-}
-
-#if GEN_VERSIONx10 == 75
-/**
- * Load a 64-bit value from a buffer into a MMIO register via
- * two MI_LOAD_REGISTER_MEM commands.
- */
-static void
-crocus_load_register_mem64(struct crocus_batch *batch, uint32_t reg,
-                         struct crocus_bo *bo, uint32_t offset)
-{
-   crocus_load_register_mem32(batch, reg + 0, bo, offset + 0);
-   crocus_load_register_mem32(batch, reg + 4, bo, offset + 4);
 }
 
 static void
@@ -585,6 +568,20 @@ crocus_store_register_mem32(struct crocus_batch *batch, uint32_t reg,
          unreachable("unsupported predication");
 #endif
    }
+}
+
+
+#if GEN_VERSIONx10 == 75
+/**
+ * Load a 64-bit value from a buffer into a MMIO register via
+ * two MI_LOAD_REGISTER_MEM commands.
+ */
+static void
+crocus_load_register_mem64(struct crocus_batch *batch, uint32_t reg,
+                         struct crocus_bo *bo, uint32_t offset)
+{
+   crocus_load_register_mem32(batch, reg + 0, bo, offset + 0);
+   crocus_load_register_mem32(batch, reg + 4, bo, offset + 4);
 }
 
 static void
@@ -626,6 +623,7 @@ crocus_store_data_imm64(struct crocus_batch *batch,
 #endif
    }
 }
+#endif
 
 static void
 crocus_copy_mem_mem(struct crocus_batch *batch,
@@ -633,13 +631,18 @@ crocus_copy_mem_mem(struct crocus_batch *batch,
                   struct crocus_bo *src_bo, uint32_t src_offset,
                   unsigned bytes)
 {
-//#if GEN_VERSIONx10 == 75
-// support should be possible, see gen_mi_builder
-//#else
-   unreachable("unsupported");
-//#endif
+   assert(bytes % 4 == 0);
+   assert(dst_offset % 4 == 0);
+   assert(src_offset % 4 == 0);
+
+#define CROCUS_TEMP_REG 0x2440 /* GEN7_3DPRIM_BASE_VERTEX */
+   for (unsigned i = 0; i < bytes; i += 4) {
+      crocus_load_register_mem32(batch, CROCUS_TEMP_REG,
+                                 src_bo, src_offset + i);
+      crocus_store_register_mem32(batch, CROCUS_TEMP_REG,
+                                  dst_bo, dst_offset + i, false);
+   }
 }
-#endif
 #endif
 
 /**
@@ -7478,6 +7481,8 @@ genX(init_state)(struct crocus_context *ice)
    ice->vtbl.store_register_mem64 = crocus_store_register_mem64;
    ice->vtbl.store_data_imm32 = crocus_store_data_imm32;
    ice->vtbl.store_data_imm64 = crocus_store_data_imm64;
+#endif
+#if GEN_GEN >= 7
    ice->vtbl.copy_mem_mem = crocus_copy_mem_mem;
 #endif
    ice->vtbl.update_surface_base_address = crocus_update_surface_base_address;
