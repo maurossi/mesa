@@ -441,10 +441,12 @@ flush_before_state_base_change(struct crocus_batch *batch)
     * other processes are definitely complete before we try to do our own
     * rendering.  It's a bit of a big hammer but it appears to work.
     */
+   const unsigned dc_flush =
+      batch->screen->devinfo.gen >= 7 ? PIPE_CONTROL_DATA_CACHE_FLUSH : 0;
    crocus_emit_end_of_pipe_sync(batch,
                               "change STATE_BASE_ADDRESS (flushes)",
                               PIPE_CONTROL_RENDER_TARGET_FLUSH |
-                              PIPE_CONTROL_DEPTH_CACHE_FLUSH |
+                              dc_flush |
                               PIPE_CONTROL_DATA_CACHE_FLUSH);
 #endif
 }
