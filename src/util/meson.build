@@ -189,7 +189,10 @@ deps_for_libmesa_util = [
 
 if with_platform_android
   deps_for_libmesa_util += dep_android
-  files_debug_stack = files('u_debug_stack_android.cpp')
+  files_debug_stack = files()
+  if get_option('platform-sdk-version') <= 28
+    files_debug_stack += files('u_debug_stack_android.cpp')
+  endif
  else
   files_debug_stack = files(
     'u_debug_stack.c',

@@ -18,6 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+v3d_deps = []
+
+if with_platform_android
+  v3d_deps += [dep_android]
+endif
+
 libv3dwinsys = static_library(
   'v3dwinsys',
   files('v3d_drm_winsys.c'),
@@ -26,5 +32,5 @@ libv3dwinsys = static_library(
     inc_gallium, inc_gallium_aux, inc_gallium_drivers,
   ],
   gnu_symbol_visibility : 'hidden',
-  dependencies : idep_mesautil,
+  dependencies : [idep_mesautil, v3d_deps],
 )

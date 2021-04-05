@@ -18,6 +18,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+broadcom_deps = []
+
+if with_platform_android
+  broadcom_deps += [dep_android]
+endif
+
 inc_broadcom = include_directories('.', 'cle')
 
 subdir('cle')
@@ -46,7 +52,7 @@ foreach ver : v3d_versions
     include_directories : [inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_gallium_aux, inc_broadcom],
     c_args : [no_override_init_args, '-DV3D_VERSION=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies: [dep_valgrind, dep_thread],
+    dependencies: [dep_valgrind, dep_thread, broadcom_deps],
   )
 endforeach
 
@@ -61,7 +67,7 @@ libbroadcom_v3d = static_library(
   gnu_symbol_visibility : 'hidden',
   link_whole : v3d_libs + per_version_libs,
   build_by_default : false,
-  dependencies: [dep_valgrind, dep_thread],
+  dependencies: [dep_valgrind, dep_thread, broadcom_deps],
 )
 
 if with_broadcom_vk

@@ -82,6 +82,12 @@ files_lima = files(
   'lima_gpu.h',
 )
 
+lima_deps = []
+
+if with_platform_android
+  lima_deps += [dep_android]
+endif
+
 lima_nir_algebraic_c = custom_target(
   'lima_nir_algebraic.c',
   input : 'ir/lima_nir_algebraic.py',
@@ -101,7 +107,7 @@ liblima = static_library(
     inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_gallium_drivers,
     inc_panfrost
   ],
-  dependencies : [dep_libdrm, idep_nir_headers, idep_mesautil],
+  dependencies : [dep_libdrm, idep_nir_headers, idep_mesautil, lima_deps],
 )
 
 driver_lima = declare_dependency(

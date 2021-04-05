@@ -47,6 +47,12 @@ files_per_version = files(
   'v3dx_state.c',
 )
 
+v3d_deps = []
+
+if with_platform_android
+  v3d_deps += [dep_android]
+endif
+
 v3d_args = ['-DV3D_BUILD_NEON']
 
 dep_v3dv3 = dependency('v3dv3', required: false)
@@ -67,7 +73,7 @@ foreach ver : v3d_versions
     ],
     c_args : [v3d_args, '-DV3D_VERSION=' + ver],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [dep_v3dv3, dep_libdrm, dep_valgrind, idep_nir_headers],
+    dependencies : [dep_v3dv3, dep_libdrm, dep_valgrind, idep_nir_headers, v3d_deps],
 )
 
 endforeach
@@ -86,7 +92,7 @@ libv3d_neon = static_library(
   ],
   c_args : [v3d_args, v3d_neon_c_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [dep_v3dv3, dep_libdrm, dep_valgrind, idep_nir_headers],
+  dependencies : [dep_v3dv3, dep_libdrm, dep_valgrind, idep_nir_headers, v3d_deps],
 )
 
 libv3d = static_library(
@@ -102,7 +108,7 @@ libv3d = static_library(
   c_args : [v3d_args],
   cpp_args : [v3d_args],
   gnu_symbol_visibility : 'hidden',
-  dependencies : [dep_v3dv3, dep_libdrm, dep_valgrind, idep_nir_headers],
+  dependencies : [dep_v3dv3, dep_libdrm, dep_valgrind, idep_nir_headers, v3d_deps],
   link_with: [per_version_libs, libv3d_neon],
 )
 

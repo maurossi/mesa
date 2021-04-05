@@ -94,6 +94,7 @@ v3dv_deps = [
   idep_nir,
   idep_nir_headers,
   idep_vulkan_util,
+  dep_android,
 ]
 
 if with_platform_x11
