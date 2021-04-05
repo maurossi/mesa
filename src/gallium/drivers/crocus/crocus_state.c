@@ -4216,11 +4216,7 @@ crocus_populate_cs_key(const struct crocus_context *ice,
 static uint64_t
 KSP(const struct crocus_context *ice, const struct crocus_compiled_shader *shader)
 {
-#if GEN_GEN == 5
    return shader->offset;
-#else
-   return crocus_bo_offset_from_base_address(ice->shaders.cache_bo) + shader->offset;
-#endif
 }
 #endif
 
