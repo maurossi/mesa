@@ -29,6 +29,7 @@ include $(CLEAR_VARS)
 
 LIBCROCUS_SRC_FILES := \
 	crocus_blorp.c \
+	crocus_blt.c \
 	crocus_query.c \
 	crocus_state.c
 
