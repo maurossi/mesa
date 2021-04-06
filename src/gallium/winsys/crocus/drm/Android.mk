@@ -34,7 +34,7 @@ LOCAL_WHOLE_STATIC_LIBRARIES := \
 	libmesa_intel_dev
 
 LOCAL_SHARED_LIBRARIES := libdrm_intel
-LOCAL_MODULE := libmesa_winsys_iris
+LOCAL_MODULE := libmesa_winsys_crocus
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)

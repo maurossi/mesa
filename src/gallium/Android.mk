@@ -48,6 +48,7 @@ SUBDIRS += winsys/svga/drm drivers/svga
 SUBDIRS += winsys/etnaviv/drm drivers/etnaviv drivers/renderonly
 SUBDIRS += frontends/dri
 SUBDIRS += winsys/iris/drm drivers/iris
+SUBDIRS += winsys/crocus/drm drivers/crocus
 SUBDIRS += winsys/lima/drm drivers/lima
 SUBDIRS += winsys/panfrost/drm drivers/panfrost
 
