@@ -41,7 +41,7 @@
  * For debugging purposes, this returns a time in seconds.
  */
 double
-get_time(void)
+crocus_get_time(void)
 {
    struct timespec tp;
 

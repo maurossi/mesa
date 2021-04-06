@@ -121,7 +121,7 @@ select_best_modifier(struct gen_device_info *devinfo, enum pipe_format pfmt,
 }
 
 enum isl_surf_dim
-target_to_isl_surf_dim(enum pipe_texture_target target)
+crocus_target_to_isl_surf_dim(enum pipe_texture_target target)
 {
    switch (target) {
    case PIPE_BUFFER:
@@ -814,7 +814,7 @@ crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
 
    struct crocus_format_info fmt = crocus_format_for_usage(devinfo, pfmt, usage);
    assert(fmt.fmt != ISL_FORMAT_UNSUPPORTED);
-   enum isl_surf_dim dim = target_to_isl_surf_dim(templ->target);
+   enum isl_surf_dim dim = crocus_target_to_isl_surf_dim(templ->target);
    if (devinfo->gen < 6 && has_depth)
       dim = ISL_SURF_DIM_2D;
 
@@ -987,7 +987,7 @@ crocus_resource_from_handle(struct pipe_screen *pscreen,
       if (whandle->modifier == DRM_FORMAT_MOD_INVALID || whandle->plane == 0) {
          UNUSED const bool isl_surf_created_successfully =
             isl_surf_init(&screen->isl_dev, &res->surf,
-                          .dim = target_to_isl_surf_dim(templ->target),
+                          .dim = crocus_target_to_isl_surf_dim(templ->target),
                           .format = fmt.fmt,
                           .width = templ->width0,
                           .height = templ->height0,

@@ -432,7 +432,7 @@ crocus_resource_access_raw(struct crocus_context *ice,
 enum isl_dim_layout crocus_get_isl_dim_layout(const struct gen_device_info *devinfo,
                                             enum isl_tiling tiling,
                                             enum pipe_texture_target target);
-enum isl_surf_dim target_to_isl_surf_dim(enum pipe_texture_target target);
+enum isl_surf_dim crocus_target_to_isl_surf_dim(enum pipe_texture_target target);
 void
 crocus_resource_get_tile_dims(enum isl_tiling tiling, uint32_t cpp,
 			      uint32_t *tile_w, uint32_t *tile_h);

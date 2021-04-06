@@ -855,7 +855,7 @@ struct crocus_context {
       pipe_debug_message(dbg, PERF_INFO, __VA_ARGS__); \
 } while(0)
 
-double get_time(void);
+double crocus_get_time(void);
 
 struct pipe_context *
 crocus_create_context(struct pipe_screen *screen, void *priv, unsigned flags);
