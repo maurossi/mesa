@@ -907,12 +907,12 @@ bo_wait_with_stall_warning(struct pipe_debug_callback *dbg,
                            const char *action)
 {
    bool busy = dbg && !bo->idle;
-   double elapsed = unlikely(busy) ? -get_time() : 0.0;
+   double elapsed = unlikely(busy) ? -iris_get_time() : 0.0;
 
    iris_bo_wait_rendering(bo);
 
    if (unlikely(busy)) {
-      elapsed += get_time();
+      elapsed += iris_get_time();
       if (elapsed > 1e-5) /* 0.01ms */ {
          perf_debug(dbg, "%s a busy \"%s\" BO stalled and took %.03f ms.\n",
                     action, bo->name, elapsed * 1000);

@@ -452,7 +452,7 @@ iris_resource_access_raw(struct iris_context *ice,
 enum isl_dim_layout iris_get_isl_dim_layout(const struct gen_device_info *devinfo,
                                             enum isl_tiling tiling,
                                             enum pipe_texture_target target);
-enum isl_surf_dim target_to_isl_surf_dim(enum pipe_texture_target target);
+enum isl_surf_dim iris_target_to_isl_surf_dim(enum pipe_texture_target target);
 uint32_t iris_resource_get_tile_offsets(const struct iris_resource *res,
                                         uint32_t level, uint32_t z,
                                         uint32_t *tile_x, uint32_t *tile_y);

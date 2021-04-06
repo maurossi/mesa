@@ -2326,7 +2326,7 @@ get_rt_read_isl_surf(const struct gen_device_info *devinfo,
    const enum isl_dim_layout dim_layout =
       iris_get_isl_dim_layout(devinfo, res->surf.tiling, target);
 
-   surf->dim = target_to_isl_surf_dim(target);
+   surf->dim = iris_target_to_isl_surf_dim(target);
 
    if (surf->dim_layout == dim_layout)
       return;
