@@ -29,7 +29,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES := $(C_SOURCES)
 
-LOCAL_WHOLE_STATIC_LIBRARIES := \
+LOCAL_STATIC_LIBRARIES := \
 	libmesa_isl \
 	libmesa_intel_dev
 
@@ -38,3 +38,8 @@ LOCAL_MODULE := libmesa_winsys_iris
 
 include $(GALLIUM_COMMON_MK)
 include $(BUILD_STATIC_LIBRARY)
+
+ifneq ($(HAVE_GALLIUM_IRIS),)
+$(eval GALLIUM_LIBS += $(LOCAL_MODULE) $(LOCAL_STATIC_LIBRARIES))
+$(eval GALLIUM_SHARED_LIBS += $(LOCAL_SHARED_LIBRARIES))
+endif
