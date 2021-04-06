@@ -67,6 +67,7 @@ gallium_drivers := \
 	virgl.HAVE_GALLIUM_VIRGL \
 	etnaviv.HAVE_GALLIUM_ETNAVIV \
 	iris.HAVE_GALLIUM_IRIS \
+	crocus.HAVE_GALLIUM_CROCUS \
 	lima.HAVE_GALLIUM_LIMA \
 	panfrost.HAVE_GALLIUM_PANFROST
 
