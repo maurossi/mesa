@@ -570,7 +570,7 @@ want_ccs_e_for_format(const struct intel_device_info *devinfo,
 }
 
 static enum isl_surf_dim
-target_to_isl_surf_dim(enum pipe_texture_target target)
+iris_target_to_isl_surf_dim(enum pipe_texture_target target)
 {
    switch (target) {
    case PIPE_BUFFER:
@@ -652,7 +652,7 @@ iris_resource_configure_main(const struct iris_screen *screen,
       iris_format_for_usage(&screen->devinfo, templ->format, usage).fmt;
 
    const struct isl_surf_init_info init_info = {
-      .dim = target_to_isl_surf_dim(templ->target),
+      .dim = iris_target_to_isl_surf_dim(templ->target),
       .format = format,
       .width = templ->width0,
       .height = templ->height0,
