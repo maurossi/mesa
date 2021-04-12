@@ -1,0 +1,5 @@
+#!/bin/bash
+
+. $(AOSP_TOP)/$(MESON_CONFIGS)/common.sh
+
+$(AOSP_TOP)/$(CLANG) --target=$(ARCH_TRIPLE)$(PLATFORM_SDK_VERSION) "$@" $COMMON_CARGS

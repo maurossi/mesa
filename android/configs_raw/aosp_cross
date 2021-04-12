@@ -1,0 +1,17 @@
+[binaries]
+ar = '$(AOSP_TOP)/$(LLVM_AR)'
+c = ['ccache', '$(AOSP_TOP)/$(MESON_CONFIGS)/clang']
+cpp = ['ccache', '$(AOSP_TOP)/$(MESON_CONFIGS)/clang++', '-fno-exceptions', '-fno-unwind-tables', '-fno-asynchronous-unwind-tables', '-static-libstdc++']
+c_ld = 'lld'
+cpp_ld = 'lld'
+strip = '$(AOSP_TOP)/$(LLVM_STRIP)'
+# Android doesn't come with a pkg-config, but we need one for meson to be happy not
+# finding all the optional deps it looks for.  Use system pkg-config pointing at a
+# directory we get to populate with any .pc files we want to add for Android
+pkgconfig = ['env', 'PKG_CONFIG_LIBDIR=$(AOSP_TOP)/$(MESON_CONFIGS)', '/usr/bin/pkg-config']
+
+[host_machine]
+system = 'linux'
+cpu_family = '$(CPU_FAMILY)'
+cpu = '$(TARGET_ARCH_VARIANT)'
+endian = 'little'
