@@ -870,8 +870,6 @@ iris_screen_create(int fd, const struct pipe_screen_config *config)
    pscreen->flush_frontbuffer = iris_flush_frontbuffer;
    pscreen->get_timestamp = iris_get_timestamp;
    pscreen->query_memory_info = iris_query_memory_info;
-   pscreen->get_driver_query_group_info = iris_get_monitor_group_info;
-   pscreen->get_driver_query_info = iris_get_monitor_info;
 
    genX_call(&screen->devinfo, init_screen_state, screen);
 
