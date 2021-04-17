@@ -497,11 +497,11 @@ droid_create_image_from_cros_info(_EGLDisplay *disp,
    struct cros_gralloc0_buffer_info info;
    unsigned error;
 
-   if (strcmp(dri2_dpy->gralloc0->common.name, cros_gralloc_module_name) == 0 &&
-       dri2_dpy->gralloc0->perform &&
+   if (strcmp(dri2_dpy->gralloc->common.name, cros_gralloc_module_name) == 0 &&
+       dri2_dpy->gralloc->perform &&
        dri2_dpy->image->base.version >= 15 &&
        dri2_dpy->image->createImageFromDmaBufs2 != NULL &&
-       dri2_dpy->gralloc0->perform(dri2_dpy->gralloc0,
+       dri2_dpy->gralloc->perform(dri2_dpy->gralloc,
                                   CROS_GRALLOC_DRM_GET_BUFFER_INFO,
                                   buf->handle, &info) == 0) {
       return dri2_dpy->image->createImageFromDmaBufs2(dri2_dpy->dri_screen,
