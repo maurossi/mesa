@@ -215,7 +215,8 @@ droid_resolve_format(struct dri2_egl_display *dri2_dpy,
    } else
 #endif
    {
-      const gralloc_module_t *gralloc0 = dri2_dpy->gralloc0;
+      const gralloc_module_t *gralloc0 =
+         (const struct gralloc_module_t *) dri2_dpy->gralloc;
 
       if (!gralloc0->perform) {
          _eglLog(_EGL_WARNING, "gralloc->perform not supported");
@@ -313,7 +314,8 @@ droid_create_image_from_prime_fds_yuv(_EGLDisplay *disp,
    } else
 #endif
    {
-      const gralloc_module_t *gralloc0 = dri2_dpy->gralloc0;
+      const gralloc_module_t *gralloc0 =
+         (const gralloc_module_t *) dri2_dpy->gralloc;
 
       if (!gralloc0->lock_ycbcr) {
          _eglLog(_EGL_WARNING, "gralloc does not support lock_ycbcr");
@@ -1636,19 +1638,33 @@ droid_open_device(_EGLDisplay *disp, bool swrast)
    if (swrast)
       return EGL_FALSE;
 
-   const gralloc_module_t *gralloc0 = dri2_dpy->gralloc0;
+#ifdef HAVE_GRALLOC1
+   const gralloc_module_t *gralloc0 =
+      (const struct gralloc_module_t *) dri2_dpy->gralloc;
    if (gralloc0->perform)
       err = gralloc0->perform(gralloc0,
-                              GRALLOC_MODULE_PERFORM_GET_DRM_FD,
-                              &fd);
+                                       GRALLOC_MODULE_PERFORM_GET_DRM_FD,
+                                       &fd);
+#else
+   if (dri2_dpy->gralloc->perform)
+      err = dri2_dpy->gralloc->perform(dri2_dpy->gralloc,
+                                       GRALLOC_MODULE_PERFORM_GET_DRM_FD,
+                                       &fd);
+#endif
    if (err || fd < 0) {
       _eglLog(_EGL_WARNING, "fail to get drm fd");
       return EGL_FALSE;
    }
 
+#ifdef HAVE_GRALLOC1
    if (!strcmp(gralloc0->common.name, "DRM Memory Allocator") ||
        property_get("ro.hardware.hwcomposer", buf, NULL) > 0) {
+      dri2_dpy->fd = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+#else
+   if (!strcmp(dri2_dpy->gralloc->common.name, "DRM Memory Allocator") ||
+       property_get("ro.hardware.hwcomposer", buf, NULL) > 0) {
       dri2_dpy->fd = os_dupfd_cloexec(fd);
+#endif
    } else {
       char *device_name = drmGetRenderDeviceNameFromFd(fd);
       dri2_dpy->fd = loader_open_device(device_name);
@@ -1752,7 +1768,8 @@ dri2_initialize_android(_EGLDisplay *disp)
       return _eglError(EGL_BAD_ALLOC, "eglInitialize");
 
    dri2_dpy->fd = -1;
-   ret = hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &dri2_dpy->gralloc);
+   ret = hw_get_module(GRALLOC_HARDWARE_MODULE_ID,
+                       (const hw_module_t **)&dri2_dpy->gralloc);
    if (ret) {
       err = "DRI2: failed to get gralloc module";
       goto cleanup;
