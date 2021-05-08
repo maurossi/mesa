@@ -82,21 +82,12 @@ LOCAL_STATIC_LIBRARIES := \
 	libpanfrost_lib
 
 LOCAL_GENERATED_SOURCES := \
-	$(intermediates)/bifrost_nir_algebraic.c \
 	$(intermediates)/bi_builder.h \
 	$(intermediates)/bi_opcodes.c \
 	$(intermediates)/bi_opcodes.h \
 	$(intermediates)/bi_packer.c \
 	$(intermediates)/bi_printer.c \
 	$(MESA_GEN_GLSL_H)
-
-bifrost_nir_algebraic_gen := $(LOCAL_PATH)/bifrost/bifrost_nir_algebraic.py
-bifrost_nir_algebraic_deps := \
-	$(MESA_TOP)/src/compiler/nir/
-
-$(intermediates)/bifrost_nir_algebraic.c: $(bifrost_nir_algebraic_deps)
-	@mkdir -p $(dir $@)
-	$(hide) $(MESA_PYTHON3) $(bifrost_nir_algebraic_gen) -p $< > $@
 
 bi_builder_h_gen := $(LOCAL_PATH)/bifrost/bi_builder.h.py
 bi_builder_h_deps := $(LOCAL_PATH)/bifrost/ISA.xml $(LOCAL_PATH)/bifrost/bifrost_isa.py
