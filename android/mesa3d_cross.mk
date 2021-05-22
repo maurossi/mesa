@@ -191,6 +191,7 @@ $(MESON_GEN_FILES_TARGET): MESON_GEN_DIR:=$(MESON_GEN_DIR)
 $(MESON_GEN_FILES_TARGET): $(sort $(shell find -L $(MESA3D_TOP) -not -path '*/\.*'))
 	mkdir -p $(dir $@)
 	echo -e -n "[properties]\n"                      \
+		"needs_exe_wrapper = true\n"          \
 		"c_args = [" > $(dir $@)/aosp_cross
 	$(foreach flag, $(call filter-c-flags,$(m-c-flags) $(m-c-abs-includes)), echo -e -n "'$(flag)', " >> $(dir $@)/aosp_cross;)
 
