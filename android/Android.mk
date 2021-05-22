@@ -31,6 +31,8 @@ endif
 ifneq ($(filter radeonsi r300 r600,$(BOARD_MESA3D_GALLIUM_DRIVERS)),)
 LOCAL_SHARED_LIBRARIES += libdrm_radeon
 MESON_GEN_PKGCONFIGS += libdrm_radeon:2.4.105
+LOCAL_WHOLE_STATIC_LIBRARIES += libelf
+MESON_GEN_PKGCONFIGS += libelf
 endif
 
 ifneq ($(filter nouveau,$(BOARD_MESA3D_GALLIUM_DRIVERS)),)
