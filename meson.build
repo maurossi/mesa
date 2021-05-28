@@ -1648,7 +1648,7 @@ if with_llvm
     _rtti = ['ON', 'YES'].contains(dep_llvm.get_variable(cmake : 'LLVM_ENABLE_RTTI', configtool: 'has-rtti'))
   endif
   if not _rtti
-    if with_gallium_nouveau
+    if with_gallium_nouveau and get_option('buildtype') == 'debug'
       error('The Nouveau driver requires rtti. You either need to turn off nouveau or use an LLVM built with LLVM_ENABLE_RTTI.')
     elif with_gallium_opencl
       error('The Clover OpenCL state tracker requires rtti, you need to turn off clover or use an LLVM built with LLVM_ENABLE_RTTI.')
