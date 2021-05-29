@@ -1876,10 +1876,10 @@ dri2_initialize_android(_EGLDisplay *disp)
        * So at least we can force BO_USE_LINEAR as the fallback.
        */
       uint32_t front_rendering_usage = 0;
-      if (!strcmp(dri2_dpy->gralloc->common.name, cros_gralloc_module_name) &&
-          dri2_dpy->gralloc->perform &&
-          dri2_dpy->gralloc->perform(
-                dri2_dpy->gralloc, CROS_GRALLOC_DRM_GET_USAGE,
+      if (!strcmp(dri2_dpy->gralloc0->common.name, cros_gralloc_module_name) &&
+          dri2_dpy->gralloc0->perform &&
+          dri2_dpy->gralloc0->perform(
+                dri2_dpy->gralloc0, CROS_GRALLOC_DRM_GET_USAGE,
                 CROS_GRALLOC_DRM_GET_USAGE_FRONT_RENDERING_BIT,
                 &front_rendering_usage) == 0) {
          dri2_dpy->front_rendering_usage = front_rendering_usage;
