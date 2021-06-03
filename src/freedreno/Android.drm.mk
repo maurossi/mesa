@@ -32,6 +32,7 @@ LOCAL_SRC_FILES := \
 	$(drm_SOURCES)
 
 LOCAL_C_INCLUDES := \
+	$(MESA_TOP)/src/freedreno/common \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary
 
