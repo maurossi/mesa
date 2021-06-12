@@ -41,6 +41,7 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/compiler/nir \
 	$(MESA_TOP)/src/gallium/include \
 	$(MESA_TOP)/src/gallium/auxiliary \
+	$(MESA_TOP)/src/util \
 	$(MESA_TOP)/prebuilt-intermediates/nir \
 	$(MESA_TOP)/src/freedreno/common \
 	$(MESA_TOP)/src/freedreno/ir3 \
