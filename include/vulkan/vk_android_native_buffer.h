@@ -18,6 +18,7 @@
 
 /* MESA: A hack to avoid #ifdefs in driver code. */
 #ifdef ANDROID
+#include <system/window.h>
 #include <cutils/native_handle.h>
 #include <vulkan/vulkan.h>
 

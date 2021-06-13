@@ -65,16 +65,11 @@ struct zwp_linux_dmabuf_v1;
 #ifdef HAVE_ANDROID_PLATFORM
 #define LOG_TAG "EGL-DRI2"
 
+#include <system/window.h>
 #include <hardware/gralloc.h>
 
 #ifdef HAVE_GRALLOC1
 #include <hardware/gralloc1.h>
-#endif
-
-#if ANDROID_API_LEVEL >= 26
-#include <vndk/window.h>
-#else
-#include <system/window.h>
 #endif
 
 #endif /* HAVE_ANDROID_PLATFORM */
