@@ -20,11 +20,7 @@
 # FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 # DEALINGS IN THE SOFTWARE.
 
-GENERATED_SOURCES := \
-	crocus_driinfo.h
-
 CROCUS_C_SOURCES = \
-	$(GENERATED_SOURCES) \
 	driinfo_crocus.h \
 	crocus_batch.c \
 	crocus_batch.h \
