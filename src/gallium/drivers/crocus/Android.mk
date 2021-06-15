@@ -187,23 +187,6 @@ include $(CLEAR_VARS)
 LOCAL_MODULE := libmesa_pipe_crocus
 LOCAL_MODULE_CLASS := STATIC_LIBRARIES
 
-intermediates := $(call local-generated-sources-dir)
-
-LOCAL_GENERATED_SOURCES := $(addprefix $(intermediates)/crocus/,$(GENERATED_SOURCES))
-
-GEN_DRIINFO_INPUTS := \
-        $(MESA_TOP)/src/gallium/auxiliary/pipe-loader/driinfo_gallium.h \
-        $(LOCAL_PATH)/driinfo_crocus.h
-
-MERGE_DRIINFO := $(MESA_TOP)/src/util/merge_driinfo.py
-
-$(intermediates)/crocus/crocus_driinfo.h: $(MERGE_DRIINFO) $(GEN_DRIINFO_INPUTS)
-	@mkdir -p $(dir $@)
-	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
-	$(hide) $(MESA_PYTHON2) $(MERGE_DRIINFO) $(GEN_DRIINFO_INPUTS) > $@ || ($(RM) $@; false)
-
-LOCAL_EXPORT_C_INCLUDE_DIRS := $(intermediates)
-
 LOCAL_SRC_FILES := \
 	$(CROCUS_C_SOURCES)
 
