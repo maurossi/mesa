@@ -1,0 +1,3 @@
+C_SOURCES := \
+	crocus_drm_public.h \
+	crocus_drm_winsys.c
