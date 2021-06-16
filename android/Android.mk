@@ -41,7 +41,7 @@ include $(CLEAR_VARS)
 
 LOCAL_SHARED_LIBRARIES := libc libdl libdrm libm liblog libcutils libz libc++ libnativewindow libsync libhardware
 LOCAL_STATIC_LIBRARIES := libexpat libarect libelf
-LOCAL_HEADER_LIBRARIES := libnativebase_headers hwvulkan_headers
+LOCAL_HEADER_LIBRARIES := libnativebase_headers
 MESON_GEN_PKGCONFIGS := cutils expat hardware libdrm:$(LIBDRM_VERSION) nativewindow sync zlib:1.2.11 libelf
 LOCAL_CFLAGS += $(BOARD_MESA3D_CFLAGS)
 
@@ -49,6 +49,11 @@ ifneq ($(filter swrast,$(BOARD_MESA3D_GALLIUM_DRIVERS) $(BOARD_MESA3D_VULKAN_DRI
 ifeq ($(BOARD_MESA3D_FORCE_SOFTPIPE),)
 MESON_GEN_LLVM_STUB := true
 endif
+endif
+
+ifneq ($(filter intel virtio-experimental,$(BOARD_MESA3D_VULKAN_DRIVERS)),)
+# NOTE: hwvulkan_headers isn't included into AOSPv9 and earlier, therefore must be provided externaly
+LOCAL_HEADER_LIBRARIES += hwvulkan_headers
 endif
 
 ifneq ($(filter zink,$(BOARD_MESA3D_GALLIUM_DRIVERS)),)
