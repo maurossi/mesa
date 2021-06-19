@@ -15,6 +15,7 @@ bifrost_FILES := \
         bifrost/bi_opt_constant_fold.c \
         bifrost/bi_opt_copy_prop.c \
         bifrost/bi_opt_dce.c \
+        bifrost/bi_opt_mod_props.c \
         bifrost/bi_opt_push_ubo.c \
         bifrost/bi_quirks.h \
         bifrost/bi_test_pack.c \
