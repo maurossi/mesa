@@ -28,9 +28,186 @@ LOCAL_PATH := $(call my-dir)
 # get C_SOURCES and GENERATED_SOURCES
 include $(LOCAL_PATH)/Makefile.sources
 
+RADEONSI_COMMON_INCLUDES := \
+	$(MESA_TOP)/src/amd/common \
+	$(MESA_TOP)/src/amd/llvm \
+	$(MESA_TOP)/src/compiler/nir \
+	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_amd_common,,)/common \
+	$(call generated-sources-dir-for,STATIC_LIBRARIES,libmesa_nir,,)/nir
+
+RADEONSI_STATIC_LIBS := \
+	libmesa_amd_common \
+	libmesa_galliumvl
+
+#
+# libmesa_radeonsi_gfx6
+#
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libmesa_radeonsi_gfx6
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+LOCAL_SRC_FILES := si_state_draw.cpp
+LOCAL_CFLAGS := -DGFX_VER=6
+
+LOCAL_C_INCLUDES += $(RADEONSI_COMMON_INCLUDES)
+
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
+
+LOCAL_STATIC_LIBRARIES += $(RADEONSI_STATIC_LIBS)
+
+LOCAL_SHARED_LIBRARIES += libdrm_radeon
+
+# We need to get NIR's generated headers.
+LOCAL_GENERATED_SOURCES += $(MESA_GEN_NIR_H)
+
+$(call mesa-build-with-llvm)
+
+include $(GALLIUM_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+#
+# libmesa_radeonsi_gfx7
+#
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libmesa_radeonsi_gfx7
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+LOCAL_SRC_FILES := si_state_draw.cpp
+LOCAL_CFLAGS := -DGFX_VER=7
+
+LOCAL_C_INCLUDES += $(RADEONSI_COMMON_INCLUDES)
+
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
+
+LOCAL_STATIC_LIBRARIES += $(RADEONSI_STATIC_LIBS)
+
+LOCAL_SHARED_LIBRARIES += libdrm_radeon
+
+# We need to get NIR's generated headers.
+LOCAL_GENERATED_SOURCES += $(MESA_GEN_NIR_H)
+
+$(call mesa-build-with-llvm)
+
+include $(GALLIUM_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+#
+# libmesa_radeonsi_gfx8
+#
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libmesa_radeonsi_gfx8
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+LOCAL_SRC_FILES := si_state_draw.cpp
+LOCAL_CFLAGS := -DGFX_VER=8
+
+LOCAL_C_INCLUDES += $(RADEONSI_COMMON_INCLUDES)
+
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
+
+LOCAL_STATIC_LIBRARIES += $(RADEONSI_STATIC_LIBS)
+
+LOCAL_SHARED_LIBRARIES += libdrm_radeon
+
+# We need to get NIR's generated headers.
+LOCAL_GENERATED_SOURCES += $(MESA_GEN_NIR_H)
+
+$(call mesa-build-with-llvm)
+
+include $(GALLIUM_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+#
+# libmesa_radeonsi_gfx9
+#
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libmesa_radeonsi_gfx9
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+LOCAL_SRC_FILES := si_state_draw.cpp
+LOCAL_CFLAGS := -DGFX_VER=9
+
+LOCAL_C_INCLUDES += $(RADEONSI_COMMON_INCLUDES)
+
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
+
+LOCAL_STATIC_LIBRARIES += $(RADEONSI_STATIC_LIBS)
+
+LOCAL_SHARED_LIBRARIES += libdrm_radeon
+
+# We need to get NIR's generated headers.
+LOCAL_GENERATED_SOURCES += $(MESA_GEN_NIR_H)
+
+$(call mesa-build-with-llvm)
+
+include $(GALLIUM_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+#
+# libmesa_radeonsi_gfx10
+#
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libmesa_radeonsi_gfx10
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+LOCAL_SRC_FILES := si_state_draw.cpp
+LOCAL_CFLAGS := -DGFX_VER=10
+
+LOCAL_C_INCLUDES += $(RADEONSI_COMMON_INCLUDES)
+
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
+
+LOCAL_STATIC_LIBRARIES += $(RADEONSI_STATIC_LIBS)
+
+LOCAL_SHARED_LIBRARIES += libdrm_radeon
+
+# We need to get NIR's generated headers.
+LOCAL_GENERATED_SOURCES += $(MESA_GEN_NIR_H)
+
+$(call mesa-build-with-llvm)
+
+include $(GALLIUM_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+#
+# libmesa_radeonsi_gfx103
+#
+
+include $(CLEAR_VARS)
+LOCAL_MODULE := libmesa_radeonsi_gfx103
+LOCAL_MODULE_CLASS := STATIC_LIBRARIES
+
+LOCAL_SRC_FILES := si_state_draw.cpp
+LOCAL_CFLAGS := -DGFX_VER=103
+
+LOCAL_C_INCLUDES += $(RADEONSI_COMMON_INCLUDES)
+
+LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
+
+LOCAL_STATIC_LIBRARIES += $(RADEONSI_STATIC_LIBS)
+
+LOCAL_SHARED_LIBRARIES += libdrm_radeon
+
+# We need to get NIR's generated headers.
+LOCAL_GENERATED_SOURCES += $(MESA_GEN_NIR_H)
+
+$(call mesa-build-with-llvm)
+
+include $(GALLIUM_COMMON_MK)
+include $(BUILD_STATIC_LIBRARY)
+
+#
+# libmesa_pipe_radeonsi
+#
+
 include $(CLEAR_VARS)
 
-LOCAL_SRC_FILES := $(C_SOURCES)
+LOCAL_SRC_FILES := $(filter-out si_state_draw.cpp,$(C_SOURCES))
 
 LOCAL_CFLAGS += -DFORCE_BUILD_AMDGPU   # instructs LLVM to declare LLVMInitializeAMDGPU* functions
 
@@ -45,7 +222,13 @@ LOCAL_C_INCLUDES := \
 
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_amd_common \
-	libmesa_galliumvl
+	libmesa_galliumvl \
+	libmesa_radeonsi_gfx6 \
+	libmesa_radeonsi_gfx7 \
+	libmesa_radeonsi_gfx8 \
+	libmesa_radeonsi_gfx9 \
+	libmesa_radeonsi_gfx10 \
+	libmesa_radeonsi_gfx103 \
 
 LOCAL_SHARED_LIBRARIES := libdrm_radeon
 LOCAL_MODULE := libmesa_pipe_radeonsi
