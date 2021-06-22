@@ -846,8 +846,7 @@ crocus_screen_create(int fd, const struct pipe_screen_config *config)
    pscreen->flush_frontbuffer = crocus_flush_frontbuffer;
    pscreen->get_timestamp = crocus_get_timestamp;
    pscreen->query_memory_info = crocus_query_memory_info;
-   pscreen->get_driver_query_group_info = crocus_get_monitor_group_info;
-   pscreen->get_driver_query_info = crocus_get_monitor_info;
+
 
    genX_call(&screen->devinfo, crocus_init_screen_state, screen);
    genX_call(&screen->devinfo, crocus_init_screen_query, screen);
