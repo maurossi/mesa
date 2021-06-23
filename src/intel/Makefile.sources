@@ -178,7 +178,8 @@ GENXML_GENERATED_PACK_FILES = \
 	genxml/gen9_pack.h \
 	genxml/gen11_pack.h \
 	genxml/gen12_pack.h \
-	genxml/gen125_pack.h
+	genxml/gen125_pack.h \
+	genxml/gen_rt_pack.h
 
 GENXML_GENERATED_FILES = \
 	$(GENXML_GENERATED_PACK_FILES) \
