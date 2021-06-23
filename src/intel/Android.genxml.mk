@@ -111,6 +111,11 @@ $(intermediates)/genxml/gen125_pack.h: PRIVATE_XML := $(LOCAL_PATH)/genxml/gen12
 $(intermediates)/genxml/gen125_pack.h: $(LOCAL_PATH)/genxml/gen125.xml $(LOCAL_PATH)/genxml/gen_pack_header.py
 	$(call header-gen)
 
+$(intermediates)/genxml/gen_rt_pack.h: PRIVATE_SCRIPT := $(MESA_PYTHON3) $(LOCAL_PATH)/genxml/gen_pack_header.py
+$(intermediates)/genxml/gen_rt_pack.h: PRIVATE_XML := $(LOCAL_PATH)/genxml/gen_rt.xml
+$(intermediates)/genxml/gen_rt_pack.h: $(LOCAL_PATH)/genxml/gen_rt.xml $(LOCAL_PATH)/genxml/gen_pack_header.py
+	$(call header-gen)
+
 $(intermediates)/genxml/genX_xml.h: $(addprefix $(MESA_TOP)/src/intel/,$(GENXML_XML_FILES)) $(MESA_TOP)/src/intel/genxml/gen_zipped_file.py
 	@mkdir -p $(dir $@)
 	@echo "Gen Header: $(PRIVATE_MODULE) <= $(notdir $(@))"
