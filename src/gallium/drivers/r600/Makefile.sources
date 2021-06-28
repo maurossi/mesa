@@ -166,5 +166,4 @@ CXX_SOURCES = \
         sfn/sfn_vertexstageexport.h
 
 R600_GENERATED_FILES = \
-	egd_tables.h \
-	sfn_nir_algebraic.c
+	egd_tables.h
