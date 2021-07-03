@@ -495,9 +495,9 @@ cros_get_buffer_info(_EGLDisplay *disp,
    struct dri2_egl_display *dri2_dpy = dri2_egl_display(disp);
    struct cros_gralloc0_buffer_info info;
 
-   if (strcmp(dri2_dpy->gralloc->common.name, cros_gralloc_module_name) == 0 &&
-       dri2_dpy->gralloc->perform &&
-       dri2_dpy->gralloc->perform(dri2_dpy->gralloc,
+   if (strcmp(dri2_dpy->gralloc0->common.name, cros_gralloc_module_name) == 0 &&
+       dri2_dpy->gralloc0->perform &&
+       dri2_dpy->gralloc0->perform(dri2_dpy->gralloc0,
                                   CROS_GRALLOC_DRM_GET_BUFFER_INFO,
                                   buf->handle, &info) == 0) {
       out_buf_info->drm_fourcc = info.drm_fourcc;
