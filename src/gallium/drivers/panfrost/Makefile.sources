@@ -1,6 +1,5 @@
 C_SOURCES := \
 	pan_assemble.c \
-	pan_blend_cso.c \
 	pan_blend_cso.h \
 	pan_blit.c \
 	pan_cmdstream.c \
