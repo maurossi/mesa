@@ -66,6 +66,7 @@ ir3_SOURCES := \
 	ir3/ir3_legalize.c \
 	ir3/ir3_liveness.c \
 	ir3/ir3_lower_parallelcopy.c \
+	ir3/ir3_lower_subgroups.c \
 	ir3/ir3_merge_regs.c \
 	ir3/ir3_nir.c \
 	ir3/ir3_nir.h \
