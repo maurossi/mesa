@@ -39,7 +39,6 @@
 
 #include "panfrost/util/pan_ir.h"
 #include "pan_pool.h"
-#include "pan_util.h"
 
 #include <midgard_pack.h>
 
@@ -132,6 +131,13 @@ struct pan_indirect_dispatch {
         struct panfrost_ubo_push push;
         struct panfrost_bo *bin;
         struct panfrost_bo *descs;
+};
+
+typedef uint32_t mali_pixel_format;
+
+struct panfrost_format {
+        mali_pixel_format hw;
+        unsigned bind;
 };
 
 /** Implementation-defined tiler features */
