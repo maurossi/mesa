@@ -50,11 +50,8 @@ lib_FILES := \
         lib/pan_indirect_dispatch.h \
         lib/pan_indirect_draw.c \
         lib/pan_indirect_draw.h \
-        lib/pan_invocation.c \
-        lib/pan_pool.c \
         lib/pan_pool.h \
         lib/pan_props.c \
-        lib/pan_sampler.c \
         lib/pan_samples.c \
         lib/pan_shader.c \
         lib/pan_shader.h \
@@ -63,6 +60,7 @@ lib_FILES := \
         lib/pan_tiler.c \
         lib/pan_texture.c \
         lib/pan_scratch.c \
+        lib/pan_util.c \
         lib/pan_util.h
 
 midgard_FILES := \
