@@ -3,6 +3,7 @@ common_SOURCES := \
 	common/freedreno_dev_info.c \
 	common/freedreno_dev_info.h \
 	common/freedreno_guardband.h \
+	common/freedreno_devices.c \
 	common/freedreno_uuid.c \
 	common/freedreno_uuid.h
 
