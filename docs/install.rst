@@ -190,7 +190,15 @@ here are a few things to check:
 4. Building with AOSP (Android)
 -------------------------------
 
-<TODO>
+Currently one can build Mesa for Android as part of the AOSP project,
+yet your experience might vary.
+
+In order to achieve that one should update their local manifest to point
+to the upstream repo, set the appropriate BOARD_GPU_DRIVERS and build
+the libGLES_mesa library.
+
+FINISHME: Improve on the instructions add references to Rob H
+repos/Jenkins, Android-x86 and/or other resources.
 
 5. Library Information
 ----------------------
