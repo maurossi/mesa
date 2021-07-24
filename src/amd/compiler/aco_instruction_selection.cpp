@@ -11187,7 +11187,9 @@ void ngg_emit_sendmsg_gs_alloc_req(isel_context *ctx, Temp vtx_cnt = Temp(), Tem
    bld.sopp(aco_opcode::s_sendmsg, bld.m0(tmp), -1, sendmsg_gs_alloc_req);
 
    if (prm_cnt_0.id()) {
-      /* Navi 1x workaround: export a zero-area triangle when GS has no output. */
+      /* Navi 1x workaround: export a triangle with NaN coordinates when GS has no output.
+       * It can't have all-zero positions because that would render an undesired pixel with conservative rasterization.
+       */
       Temp first_lane = bld.sop1(Builder::s_ff1_i32, bld.def(s1), Operand(exec, bld.lm));
       Temp cond = bld.sop2(Builder::s_lshl, bld.def(bld.lm), bld.def(s1, scc),
                            Operand(1u, ctx->program->wave_size == 64), first_lane);
@@ -11198,11 +11200,15 @@ void ngg_emit_sendmsg_gs_alloc_req(isel_context *ctx, Temp vtx_cnt = Temp(), Tem
       bld.reset(ctx->block);
       ctx->block->kind |= block_kind_export_end;
 
+      /* Use zero: means that it's a triangle whose every vertex index is 0. */
       Temp zero = bld.copy(bld.def(v1), Operand(0u));
+      /* Use NaN for the coordinates, so that the rasterizer allways culls it.  */
+      Temp nan_coord = bld.copy(bld.def(v1), Operand(-1u));
+
       bld.exp(aco_opcode::exp, zero, Operand(v1), Operand(v1), Operand(v1),
         1 /* enabled mask */, V_008DFC_SQ_EXP_PRIM /* dest */,
         false /* compressed */, true /* done */, false /* valid mask */);
-      bld.exp(aco_opcode::exp, zero, zero, zero, zero,
+      bld.exp(aco_opcode::exp, nan_coord, nan_coord, nan_coord, nan_coord,
         0xf /* enabled mask */, V_008DFC_SQ_EXP_POS /* dest */,
         false /* compressed */, true /* done */, true /* valid mask */);
 
@@ -11828,6 +11834,13 @@ void select_program(Program *program,
          /* NGG GS waves need to wait for each other after the GS half is done. */
          Builder bld(ctx.program, ctx.block);
          create_workgroup_barrier(bld);
+      }
+
+      if (program->chip_class == GFX10 &&
+          program->stage.hw == HWStage::NGG &&
+          program->stage.num_sw_stages() == 1) {
+         /* Workaround for Navi 1x HW bug to ensure all NGG waves launch before s_sendmsg(GS_ALLOC_REQ). */
+         Builder(ctx.program, ctx.block).sopp(aco_opcode::s_barrier, -1u, 0u);
       }
 
       if (check_merged_wave_info) {
