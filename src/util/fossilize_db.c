@@ -292,6 +292,7 @@ foz_prepare(struct foz_db *foz_db, char *cache_path)
       return false;
 
    simple_mtx_init(&foz_db->mtx, mtx_plain);
+   simple_mtx_init(&foz_db->flock_mtx, mtx_plain);
    foz_db->mem_ctx = ralloc_context(NULL);
    foz_db->index_db = _mesa_hash_table_u64_create(NULL);
 
@@ -354,6 +355,7 @@ foz_destroy(struct foz_db *foz_db)
    if (foz_db->mem_ctx) {
       _mesa_hash_table_u64_destroy(foz_db->index_db);
       ralloc_free(foz_db->mem_ctx);
+      simple_mtx_destroy(&foz_db->flock_mtx);
       simple_mtx_destroy(&foz_db->mtx);
    }
 }
@@ -440,7 +442,12 @@ foz_write_entry(struct foz_db *foz_db, const uint8_t *cache_key_160bit,
    if (!foz_db->alive)
       return false;
 
-   /* Wait for 1 second. This is done outside of the mutex as I believe there is more potential
+   /* The flock is per-fd, not per thread, we do it outside of the main mutex to avoid having to
+    * wait in the mutex potentially blocking reads. We use the secondary flock_mtx to stop race
+    * conditions between the write threads sharing the same file descriptor. */
+   simple_mtx_lock(&foz_db->flock_mtx);
+
+   /* Wait for 1 second. This is done outside of the main mutex as I believe there is more potential
     * for file contention than mtx contention of significant length. */
    int err = lock_file_with_timeout(foz_db->file[0], 1000000000);
    if (err == -1)
@@ -459,6 +466,7 @@ foz_write_entry(struct foz_db *foz_db, const uint8_t *cache_key_160bit,
    if (entry) {
       simple_mtx_unlock(&foz_db->mtx);
       flock(fileno(foz_db->file[0]), LOCK_UN);
+      simple_mtx_unlock(&foz_db->flock_mtx);
       return NULL;
    }
 
@@ -522,6 +530,7 @@ foz_write_entry(struct foz_db *foz_db, const uint8_t *cache_key_160bit,
    simple_mtx_unlock(&foz_db->mtx);
    flock(fileno(foz_db->db_idx), LOCK_UN);
    flock(fileno(foz_db->file[0]), LOCK_UN);
+   simple_mtx_unlock(&foz_db->flock_mtx);
 
    return true;
 
@@ -530,6 +539,7 @@ fail:
 fail_file:
    flock(fileno(foz_db->db_idx), LOCK_UN);
    flock(fileno(foz_db->file[0]), LOCK_UN);
+   simple_mtx_unlock(&foz_db->flock_mtx);
    return false;
 }
 #else
