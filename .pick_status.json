@@ -1,5 +1,455 @@
 [
     {
+        "sha": "353e6323936b812884fa677c25bdba91554881b7",
+        "description": "clover: add kernel attributes support for SPIR-V",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "773f0461031085d80f0c220ddec99cc03000fd3c",
+        "description": "clover: return CL_INVALID_PLATFORM properly.",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "3106a340a01cf4a760d828e38d560ed6044e100a",
+        "description": "clover: fix api zero sized enqueue",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "7ae3881a4bf989436b602b30b9a91602435e47a6",
+        "description": "radv: flush caches before performing separate depth/stencil aspect init",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "56fe30cbfcc0184b342595069a19754ff93595fa",
+        "description": "anv: Make anv_image_aspect_to_plane take an anv_image*",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "e37c2d923a4f240ed8403e08143172a5c0ab3ef3",
+        "description": "anv: Rework our aspect/plane helpers",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "0a93c0364c3bfcfee9ddea2d0ffdd989a32b274e",
+        "description": "anv/image: Rework YCbCr image aspects",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "32157f90594fa15180507fc30de05d3e29046bef",
+        "description": "anv: Stop assuming planes are in aspect-bit-order",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "7e8fe42816e855ef55f2b432d4d371737c04d355",
+        "description": "anv: Use anv_get_format_plane for color image view setup",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "61807505e85c39b3fbf090137cd60f2cef7bba62",
+        "description": "anv: Use anv_get_format_plane in anv_get_image_format_features",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "4df2078e7299edc9c6a8cd281d5310d93b70fd70",
+        "description": "anv: Add a get_format_plane helper and use it in image setup",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "dc6794ec2409fafbfcff94efd6c6f688eddcd45c",
+        "description": "anv: Rework depth/stencil early return in anv_get_format_plane",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "4518ae82845c88b37f30e7a118a3ef9ef26061c1",
+        "description": "anv: Rename anv_get_format_plane to anv_get_format_aspect",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "5dd55b088156533c1a8f5901334f5691550f7a29",
+        "description": "anv/blorp: Use the isl_surf for computing level_width/height in anv_image_ccs_op",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "9a267be0394741764edc9d9a0d6c85db290ebb06",
+        "description": "anv/blorp: Drop some can_ycbcr checks",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "bf87b9ad81dbff34ab53d733bcfac9228ea4121c",
+        "description": "nouveau: Use nir_lower_tex for projectors",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "ec66c58138996bffbc510951edf17d7f4ab640a1",
+        "description": "nir: add imm_vec3 to round these out",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "02b601594587e8d7462a353039108241aa4ab81a",
+        "description": "radv: Allocate space for inline push constants.",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "bd1186572f6924a15ea10cd72a95c6d451016bae"
+    },
+    {
+        "sha": "b2b1e8e40a69bea59df3414d9f100b6bf809cd8e",
+        "description": "radv: Use correct signedness in misalign test.",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "4c99d6ff54b2614b46d7e2252aa6c71c46045c16"
+    },
+    {
+        "sha": "06fc6e46f039712aa03e1b0c6d14a5159b9c50b0",
+        "description": "panfrost: Fix pan_blitter_emit_bifrost_blend()",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "8ba2f9f698584d20830ef31bbc2fb8a6635c8314"
+    },
+    {
+        "sha": "91a5afcd5f03efbbea5f84e6f890677f5aab6ff1",
+        "description": "v3d: print error on perfmon destroy error",
+        "nominated": false,
+        "nomination_type": 1,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "685281278ebd39114c3007e76443eaaa66cf8335"
+    },
+    {
+        "sha": "d0e83b61743a0f6349ca523b0dab3f8825fdb111",
+        "description": "broadcom/compiler: change current block on setting spill base",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "90ee96992c59570102a22a664c1a0900a4e3b66b",
+        "description": "gallium/noop: implement a lot of missing context functions",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "380898f8c6f494ba8dd28da08f60e1569620264c",
+        "description": "gallium/noop: implement a lot of missing screen functions",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "c6b8591b608686fac1b7855e4827302e906210ca",
+        "description": "gallium/noop: update pipe_screen::num_contexts",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "ddd695407e963949c4ff21e88ba4e4e869e5c99c",
+        "description": "gallium/noop: enable threaded_context to test TC overhead without a driver",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "dd528305d579e4d473370fd8e15944ea59289151",
+        "description": "gallium/noop: use threaded_transfer",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "f4632f1096994d9e7af32651115be9b145d0b6cb",
+        "description": "gallium/noop: use threaded_resource",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "5133524a62a49f659f082c4bff208fa43d12d328",
+        "description": "gallium/noop: use threaded_query",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "870a3771af83ca8afe52cfb69fbefecd7c3a08ea",
+        "description": "gallium/noop: implement shader buffers and shader images",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "f2c04c93786526c9a550e2e6adf8dfee0d41daf9",
+        "description": "gallium/noop: implement fences",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "59fe704c45df49a6c1937e1b25c921b9342e624a",
+        "description": "gallium: simplify VRAM uploads by adding PIPE_RESOURCE_FLAG_DONT_MAP_DIRECTLY",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "da538eb368d713aa9935198d7a1b6ab3bb802ed2",
+        "description": "radeonsi: improve viewperf snx performance by forcing staging for VRAM buffers",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "21c8a95e3467a9369f3747cfcf134baf49994869",
+        "description": "radv: remove unnecessary FIXME about custom sample locations",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "d764de6460e074ad5d086ad94081a6b18f69b135",
+        "description": "nir/tests: add tests for umod/imod/irem optimizations",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "e008eb12247ee2ad7410b0073b5f144a47767ec4",
+        "description": "nir: fix signed overflow for iadd constant folding",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "b627b9fcecbbf437c11a6639fb8e5221b462a148",
+        "description": "nir/idiv_const: optimize imod/irem",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "96168301f92aa4e503a22ae83c29c8e08ea285c5",
+        "description": "nir/idiv_const: improve idiv(n, INT_MIN)",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "4e2b94331bad05595e2af34afb933810922c66ec",
+        "description": "nir/algebraic: improve irem by power-of-two optimization",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "2bb49e45873d29331e12221ee51ce2644ff83863",
+        "description": "nir/search: don't consider INT_MIN a negative power-of-two",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "b009467b810ce42a97f80c15cbb5647781a5f807",
+        "description": "nir/algebraic: add optimizations for imul(a, INT_MIN)",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "65cd5a0f22ed1ca2cae4d2f274101ba6b0753771",
+        "description": "nir/algebraic: don't optimize umod/imod/irem if lower_bitops=true",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "ec4b425f596d5bbe4c2401b9cfc08d7c9eaa36b0",
+        "description": "nir/algebraic: fix imod by negative power-of-two",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "0ef5f3552f68076747211ec81f687b37a5540d8e"
+    },
+    {
+        "sha": "1db36422b974094fc7ced81b734143b4f4aec302",
+        "description": "radv: fix initializing the DS clear metadata value for separate aspects",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "9fe8ae3fcde8d7608d5b03ace51a4a3cebf18fee",
+        "description": "radeonsi: don't create an infinite number of variants",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "b7501184b90a20015885b3f2276a7a5ceaef31a7"
+    },
+    {
+        "sha": "20055a307df5aa579e4213c76f394ec77293ff31",
+        "description": "radeonsi: add -t option to the test script",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "4a69667cdd9e4ed3caa687039114b8a46380ff67",
+        "description": "radeonsi: fix test script's output",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "ade66c1aeb5e1076d0c3937f369b19bf5762e8c1",
+        "description": "radv: allow DCC MSAA fast clears if a FCE is needed",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "f136838d1ec784382ece8099d195422e28ec5e5c",
+        "description": "radv: perform a FCE for MSAA images that might have been fast-cleared",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
+        "sha": "3cfa3187cb01adeb9f57fd99c48fc5c74c488c46",
+        "description": "radv: rework DCC, FMASK and FCE decompress path",
+        "nominated": false,
+        "nomination_type": null,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null
+    },
+    {
         "sha": "2f06642b06c94f07f4bfe3df32b25659428c9144",
         "description": "gallivm: remove code to force nearest s/t interpolation",
         "nominated": false,
