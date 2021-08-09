@@ -2425,7 +2425,7 @@
         "description": "Revert \"zink: simplify some dumb code in invalidate_buffer\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "6bda555cc0e0b8c511b77989069402d6019452d2"
     },
@@ -3253,7 +3253,7 @@
         "description": "Revert \"Revert \"virgl: Cache depth and stencil buffers\"\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "a8e75bb73c6f8ce94c4f598a2f4763b12188991c"
     },
@@ -4927,7 +4927,7 @@
         "description": "Revert \"CI: Disable LAVA devices\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "1f4ff4ed2e6fbefb5026d8300a80049ccf4912a5"
     },
@@ -6610,7 +6610,7 @@
         "description": "Revert \"ci:  disable Broadcom CI\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "87cdcf56455b78b0ca799adccb20c7d23d1b3a51"
     },
@@ -8329,7 +8329,7 @@
         "description": "Revert \"ci/panfrost: Temporarily disable sun50i/RK3288\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "9868b15164488f3a87d3204ff8788e9ce2f9c132"
     },
@@ -11209,7 +11209,7 @@
         "description": "Revert \"panfrost: Fix crc_valid condition\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "a78487f795e81c8fc27c2d1054f58dd35eda8c3a"
     },
@@ -12964,7 +12964,7 @@
         "description": "Revert \"CI: Disable LAVA devices for maintenance\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "b07dc014c44849af59f98afa3a1703c9d9d3cf27"
     },
@@ -14917,7 +14917,7 @@
         "description": "Revert \"freedreno: Cooperate with tc to stop checking the BC for resource_busy().\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "5cb043cf82af4af88dbfe83ce1eff4cc41e2a766"
     },
@@ -15925,7 +15925,7 @@
         "description": "Revert \"ci: disable panfrost t760 jobs\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "854d93f73d6064a13ddc13dddf74c8c760cda1d4"
     },
@@ -19669,7 +19669,7 @@
         "description": "Revert \"v3dv: allow creating uncompressed views from compressed images and vice versa\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "b32a48c7e26bffdc696d3cceef0305e2c4731c96"
     },
@@ -21307,7 +21307,7 @@
         "description": "Revert \"ci: Disable the iris APL jobs\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "209c82977572dc73cc5c022be3949e1600fba05e"
     },
@@ -23728,7 +23728,7 @@
         "description": "Revert \"st/mesa: execute glFlush asynchronously if no image has been imported/exported\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "057a702a3f6a78a8bcd347a74e5a79d70dfc4153"
     },
@@ -25546,7 +25546,7 @@
         "description": "Revert \"Revert \"zink: call tc_driver_internal_flush_notify() on flush\"\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "9ff54d408ba872da44158869f363f73cddbb0f63"
     },
@@ -25915,7 +25915,7 @@
         "description": "Revert \"virgl: Cache depth and stencil buffers\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "d245d7b6b8bb75622dd43fb845f60d55ad3ebc89"
     },
@@ -26950,7 +26950,7 @@
         "description": "Revert \"CI: Disable rk3399-gru-kevin jobs for now\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "79a7f33710b84218a040a2bd540d7c39d1c0d2d4"
     },
@@ -27418,7 +27418,7 @@
         "description": "Revert \"ci/freedreno: Skip Portal 2 trace on a630, due to flakiness\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "e381bc0e6711de83d393ef3cc0b6b795772c1813"
     },
@@ -27895,7 +27895,7 @@
         "description": "Revert \"zink: call tc_driver_internal_flush_notify() on flush\"",
         "nominated": false,
         "nomination_type": 2,
-        "resolution": 4,
+        "resolution": 0,
         "main_sha": null,
         "because_sha": "4d62fca0877104080d4dee8656d09c67e93c8d0e"
     },
