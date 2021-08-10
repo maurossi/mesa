@@ -52,5 +52,14 @@ cc_library_shared {
 	"backends/dri/gbm_dri.c",
     ],
 
+    multilib: {
+        lib32: {
+            cflags: ["-DDEFAULT_BACKENDS_PATH=\"/vendor/lib/gbm\""],
+        },
+        lib64: {
+            cflags: ["-DDEFAULT_BACKENDS_PATH=\"/vendor/lib64/gbm\""],
+        },
+    },
+
     export_include_dirs: ["./main"],
 }
