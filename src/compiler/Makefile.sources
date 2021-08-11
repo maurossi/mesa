@@ -115,7 +115,6 @@ LIBGLSL_FILES = \
 	glsl/lower_precision.cpp \
 	glsl/lower_subroutine.cpp \
 	glsl/lower_tess_level.cpp \
-	glsl/lower_texture_projection.cpp \
 	glsl/lower_variable_index_to_cond_assign.cpp \
 	glsl/lower_vec_index_to_cond_assign.cpp \
 	glsl/lower_vec_index_to_swizzle.cpp \
