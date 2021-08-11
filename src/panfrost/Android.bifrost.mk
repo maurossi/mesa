@@ -73,7 +73,8 @@ LOCAL_C_INCLUDES := \
 	$(MESA_TOP)/src/mapi/ \
 	$(MESA_TOP)/src/mesa/ \
 	$(MESA_TOP)/src/panfrost/bifrost/ \
-	$(MESA_TOP)/src/panfrost/include/
+	$(MESA_TOP)/src/panfrost/include/ \
+	$(MESA_TOP)/src/util
 
 LOCAL_STATIC_LIBRARIES := \
 	libmesa_glsl \
