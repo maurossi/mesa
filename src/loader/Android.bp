@@ -32,12 +32,15 @@ cc_library_static {
 
     cflags: [
         "-DHAVE_LIBDRM",
+        "-DMAJOR_IN_SYSMACROS",
         "-DPREFER_IRIS",
         "-Wno-missing-field-initializers",
         "-Wno-sign-compare",
     ],
 
     shared_libs: ["libdrm"],
+
+    static_libs: ["libmesa_util"],
 
     srcs: [
         "loader_dri_helper.c",
