@@ -38,6 +38,7 @@ cc_library_static {
 
     srcs: [
         "debug.c",
+        "os_file.c",
     ],
 
     export_include_dirs: ["."],
