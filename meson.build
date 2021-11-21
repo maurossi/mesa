@@ -509,7 +509,7 @@ foreach platform : _platforms
 endforeach
 
 use_elf_tls = false
-if not with_platform_windows or not with_shared_glapi
+if (not with_platform_windows or not with_shared_glapi) and not with_platform_android
   pre_args += '-DUSE_ELF_TLS'
   use_elf_tls = true
 
