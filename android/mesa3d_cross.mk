@@ -88,7 +88,7 @@ MESON_GEN_NINJA := \
 	-Ddri-search-path=/vendor/$(MESA3D_LIB_DIR)/dri                              \
 	-Dplatforms=android                                                          \
 	-Dplatform-sdk-version=$(PLATFORM_SDK_VERSION)                               \
-	-Ddri-drivers=                                                               \
+	-Ddri-drivers=$(subst $(space),$(comma),$(BOARD_MESA3D_CLASSIC_DRIVERS))     \
 	-Dgallium-drivers=$(subst $(space),$(comma),$(BOARD_MESA3D_GALLIUM_DRIVERS)) \
 	-Dvulkan-drivers=$(subst $(space),$(comma),$(subst radeon,amd,$(BOARD_MESA3D_VULKAN_DRIVERS)))   \
 	-Dgbm=enabled                                                                \
@@ -335,6 +335,7 @@ $($(M_TARGET_PREFIX)TARGET_OUT_VENDOR_SHARED_LIBRARIES)/dri/.symlinks.timestamp:
 	# Create Symlinks
 	mkdir -p $(dir $@)
 	$(foreach d,$(BOARD_MESA3D_GALLIUM_DRIVERS), ln -s -f libgallium_dri.so $(dir $@)/$(d)_dri.so;)
+	$(foreach d,$(BOARD_MESA3D_CLASSIC_DRIVERS), cp $(MESA3D_GALLIUM_DRI_DIR)/$(d)_dri.so $(dir $@)/$(d)_dri.so;)
 	touch $@
 
 $($(M_TARGET_PREFIX)MESA3D_GALLIUM_DRI_BIN): $(TARGET_OUT_VENDOR)/$(MESA3D_LIB_DIR)/dri/.symlinks.timestamp
