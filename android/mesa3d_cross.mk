@@ -330,14 +330,14 @@ endef
 
 $(foreach driver,$(BOARD_MESA3D_VULKAN_DRIVERS), $(eval $(call vulkan_target,$(driver))))
 
-$($(M_TARGET_PREFIX)TARGET_OUT_VENDOR_SHARED_LIBRARIES)/dri/.symlinks.timestamp: MESA3D_GALLIUM_DRI_DIR:=$(MESA3D_GALLIUM_DRI_DIR)
-$($(M_TARGET_PREFIX)TARGET_OUT_VENDOR_SHARED_LIBRARIES)/dri/.symlinks.timestamp: $(MESON_OUT_DIR)/install/.install.timestamp
-	# Create Symlinks
+$($(M_TARGET_PREFIX)TARGET_OUT_VENDOR_SHARED_LIBRARIES)/dri/.targets.timestamp: MESA3D_GALLIUM_DRI_DIR:=$(MESA3D_GALLIUM_DRI_DIR)
+$($(M_TARGET_PREFIX)TARGET_OUT_VENDOR_SHARED_LIBRARIES)/dri/.targets.timestamp: $(MESON_OUT_DIR)/install/.install.timestamp
+	# Create Targets
 	mkdir -p $(dir $@)
 	$(foreach d,$(BOARD_MESA3D_GALLIUM_DRIVERS), ln -s -f libgallium_dri.so $(dir $@)/$(d)_dri.so;)
 	$(foreach d,$(BOARD_MESA3D_CLASSIC_DRIVERS), cp $(MESA3D_GALLIUM_DRI_DIR)/$(d)_dri.so $(dir $@)/$(d)_dri.so;)
 	touch $@
 
-$($(M_TARGET_PREFIX)MESA3D_GALLIUM_DRI_BIN): $(TARGET_OUT_VENDOR)/$(MESA3D_LIB_DIR)/dri/.symlinks.timestamp
+$($(M_TARGET_PREFIX)MESA3D_GALLIUM_DRI_BIN): $(TARGET_OUT_VENDOR)/$(MESA3D_LIB_DIR)/dri/.targets.timestamp
 	echo "Build $@"
 	touch $@
