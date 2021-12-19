@@ -51,7 +51,9 @@ SUBDIRS += winsys/iris/drm drivers/iris
 ifneq ($(filter lima,$(BOARD_GPU_DRIVERS)),)
 SUBDIRS += winsys/lima/drm drivers/lima
 endif
+ifneq ($(filter panfrost,$(BOARD_GPU_DRIVERS)),)
 SUBDIRS += winsys/panfrost/drm drivers/panfrost
+endif
 
 # sort to eliminate any duplicates
 INC_DIRS := $(call all-named-subdir-makefiles,$(sort $(SUBDIRS)))

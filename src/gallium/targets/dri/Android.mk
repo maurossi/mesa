@@ -63,13 +63,17 @@ LOCAL_STATIC_LIBRARIES += \
 	libfreedreno_ir3 \
 	libfreedreno_perfcntrs \
 	libmesa_gallium \
+
+ifneq ($(filter panfrost,$(BOARD_GPU_DRIVERS)),)
+LOCAL_STATIC_LIBRARIES += \
 	libpanfrost_lib \
 	libpanfrost_bifrost \
 	libpanfrost_bifrost_disasm \
 	libpanfrost_midgard \
 	libpanfrost_midgard_disasm \
 	libpanfrost_shared \
-	libpanfrost_util \
+	libpanfrost_util
+endif
 
 ifeq ($(USE_LIBBACKTRACE),true)
 	LOCAL_SHARED_LIBRARIES += libbacktrace
