@@ -107,9 +107,8 @@ isl_device_setup_mocs(struct isl_device *dev)
           */
          dev->mocs.external = 5 << 1;
       } else {
-         /* TODO: Set PTE to MOCS 61 when the kernel is ready */
-         /* TC=1/LLC Only, LeCC=1/Uncacheable, LRUM=0, L3CC=1/Uncacheable */
-         dev->mocs.external = 3 << 1;
+         /* TC=1/LLC Only, LeCC=1/UC, LRUM=0, L3CC=3/WB */
+         dev->mocs.external = 61 << 1;
          /* TC=LLC/eLLC, LeCC=WB, LRUM=3, L3CC=WB */
          dev->mocs.internal = 2 << 1;
 
@@ -1480,10 +1479,20 @@ isl_calc_row_pitch_alignment(const struct isl_device *dev,
     *    "When using linear memory, this must be at least 64 byte aligned."
     *
     * However, when displaying on NVIDIA and recent AMD GPUs via PRIME,
-    * we need a larger pitch of 256 bytes.  We do that just in case.
+    * we need a larger pitch of 256 bytes.
+    *
+    * If the ISL caller didn't specify a row_pitch_B, then we should assume
+    * the NVIDIA/AMD requirements. Otherwise, if we have a specified
+    * row_pitch_B, this is probably because the caller is trying to import a
+    * buffer. In that case we limit the minimum row pitch to the Intel HW
+    * requirement.
     */
-   if (surf_info->usage & ISL_SURF_USAGE_DISPLAY_BIT)
-      alignment = isl_align(alignment, 256);
+   if (surf_info->usage & ISL_SURF_USAGE_DISPLAY_BIT) {
+      if (surf_info->row_pitch_B == 0)
+         alignment = isl_align(alignment, 256);
+      else
+         alignment = isl_align(alignment, 64);
+   }
 
    return alignment;
 }
@@ -2891,6 +2900,9 @@ isl_surf_get_uncompressed_surf(const struct isl_device *dev,
 
       *ucompr_surf = *surf;
       ucompr_surf->levels = 1;
+
+      /* The surface mostly stays as-is; there is no offset */
+      *offset_B = 0;
 
       /* The view remains the same */
       *ucompr_view = *view;

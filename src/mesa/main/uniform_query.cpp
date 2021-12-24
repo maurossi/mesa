@@ -1280,7 +1280,7 @@ _mesa_uniform(GLint location, GLsizei count, const GLvoid *values,
          return;
 
       uni = shProg->UniformRemapTable[location];
-      if (!uni)
+      if (!uni || uni == INACTIVE_UNIFORM_EXPLICIT_LOCATION)
          return;
 
       /* The array index specified by the uniform location is just the
@@ -1340,7 +1340,10 @@ _mesa_uniform(GLint location, GLsizei count, const GLvoid *values,
          ctx_flushed = true;
       }
    }
-   if (!ctx_flushed)
+   /* Return early if possible. Bindless samplers need to be processed
+    * because of the !sampler->bound codepath below.
+    */
+   if (!ctx_flushed && !(uni->type->is_sampler() && uni->is_bindless))
       return; /* no change in uniform values */
 
    /* If the uniform is a sampler, do the extra magic necessary to propagate
@@ -1843,6 +1846,8 @@ _mesa_uniform_handle(GLint location, GLsizei count, const GLvoid *values,
          return;
 
       uni = shProg->UniformRemapTable[location];
+      if (!uni || uni == INACTIVE_UNIFORM_EXPLICIT_LOCATION)
+         return;
 
       /* The array index specified by the uniform location is just the
        * uniform location minus the base location of of the uniform.

@@ -62,6 +62,7 @@ typedef void *drmDevicePtr;
 #include "git_sha1.h"
 #include "sid.h"
 #include "vk_format.h"
+#include "vulkan/vk_icd.h"
 
 /* The number of IBs per submit isn't infinite, it depends on the ring type
  * (ie. some initial setup needed for a submit) and the number of IBs (4 DW).
@@ -863,6 +864,7 @@ static const driOptionDescription radv_dri_options[] = {
       DRI_CONF_RADV_INVARIANT_GEOM(false)
       DRI_CONF_RADV_DISABLE_TC_COMPAT_HTILE_GENERAL(false)
       DRI_CONF_RADV_DISABLE_DCC(false)
+      DRI_CONF_RADV_REPORT_APU_AS_DGPU(false)
    DRI_CONF_SECTION_END
 };
 // clang-format on
@@ -902,6 +904,9 @@ radv_init_dri_options(struct radv_instance *instance)
 
    if (driQueryOptionb(&instance->dri_options, "radv_disable_dcc"))
       instance->debug_flags |= RADV_DEBUG_NO_DCC;
+
+   instance->report_apu_as_dgpu =
+      driQueryOptionb(&instance->dri_options, "radv_report_apu_as_dgpu");
 }
 
 VkResult
@@ -1826,13 +1831,20 @@ radv_GetPhysicalDeviceProperties(VkPhysicalDevice physicalDevice,
       .nonCoherentAtomSize = 64,
    };
 
+   VkPhysicalDeviceType device_type;
+
+   if (pdevice->rad_info.has_dedicated_vram || pdevice->instance->report_apu_as_dgpu) {
+      device_type = VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU;
+   } else {
+      device_type = VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+   }
+
    *pProperties = (VkPhysicalDeviceProperties){
       .apiVersion = RADV_API_VERSION,
       .driverVersion = vk_get_driver_version(),
       .vendorID = ATI_VENDOR_ID,
       .deviceID = pdevice->rad_info.pci_id,
-      .deviceType = pdevice->rad_info.has_dedicated_vram ? VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU
-                                                         : VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU,
+      .deviceType = device_type,
       .limits = limits,
       .sparseProperties =
          {
@@ -2902,7 +2914,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    bool robust_buffer_access2 = false;
    bool overallocation_disallowed = false;
    bool custom_border_colors = false;
-   bool vrs_enabled = false;
    bool attachment_vrs_enabled = false;
 
    /* Check enabled features */
@@ -2944,8 +2955,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR: {
          const VkPhysicalDeviceFragmentShadingRateFeaturesKHR *vrs = (const void *)ext;
          attachment_vrs_enabled = vrs->attachmentFragmentShadingRate;
-         vrs_enabled = vrs->pipelineFragmentShadingRate || vrs->primitiveFragmentShadingRate ||
-                       attachment_vrs_enabled;
          break;
       }
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ROBUSTNESS_2_FEATURES_EXT: {
@@ -3000,12 +3009,6 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
    device->robust_buffer_access = robust_buffer_access || robust_buffer_access2;
    device->robust_buffer_access2 = robust_buffer_access2;
 
-   device->adjust_frag_coord_z =
-      (vrs_enabled || device->vk.enabled_extensions.KHR_fragment_shading_rate ||
-       device->force_vrs != RADV_FORCE_VRS_NONE) &&
-      (device->physical_device->rad_info.family == CHIP_SIENNA_CICHLID ||
-       device->physical_device->rad_info.family == CHIP_NAVY_FLOUNDER ||
-       device->physical_device->rad_info.family == CHIP_VANGOGH);
    device->attachment_vrs_enabled = attachment_vrs_enabled;
 
    mtx_init(&device->shader_slab_mutex, mtx_plain);
@@ -3174,6 +3177,13 @@ radv_CreateDevice(VkPhysicalDevice physicalDevice, const VkDeviceCreateInfo *pCr
          fprintf(stderr, "radv: Invalid VRS rates specified "
                          "(valid values are 2x2, 2x1 and 1x2)\n");
    }
+
+   device->adjust_frag_coord_z =
+      (device->vk.enabled_extensions.KHR_fragment_shading_rate ||
+       device->force_vrs != RADV_FORCE_VRS_NONE) &&
+      (device->physical_device->rad_info.family == CHIP_SIENNA_CICHLID ||
+       device->physical_device->rad_info.family == CHIP_NAVY_FLOUNDER ||
+       device->physical_device->rad_info.family == CHIP_VANGOGH);
 
    device->keep_shader_info = keep_shader_info;
    result = radv_device_init_meta(device);
@@ -5178,6 +5188,12 @@ radv_GetInstanceProcAddr(VkInstance _instance, const char *pName)
 
    return vk_instance_get_proc_addr(&instance->vk, &radv_instance_entrypoints, pName);
 }
+
+/* Windows will use a dll definition file to avoid build errors. */
+#ifdef _WIN32
+#undef PUBLIC
+#define PUBLIC
+#endif
 
 /* The loader wants us to expose a second GetInstanceProcAddr function
  * to work around certain LD_PRELOAD issues seen in apps.

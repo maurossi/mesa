@@ -67,7 +67,9 @@ static const struct debug_named_value panfrost_debug_options[] = {
         {"noafbc",    PAN_DBG_NO_AFBC,  "Disable AFBC support"},
         {"nocrc",     PAN_DBG_NO_CRC,   "Disable transaction elimination"},
         {"msaa16",    PAN_DBG_MSAA16,   "Enable MSAA 8x and 16x support"},
-        {"noindirect", PAN_DBG_NOINDIRECT, "Emulate indirect draws on the CPU"},
+        {"indirect",  PAN_DBG_INDIRECT, "Use experimental compute kernel for indirect draws"},
+        {"linear",    PAN_DBG_LINEAR,   "Force linear textures"},
+        {"nocache",   PAN_DBG_NO_CACHE, "Disable BO cache"},
         DEBUG_NAMED_VALUE_END
 };
 
@@ -216,19 +218,19 @@ panfrost_get_param(struct pipe_screen *screen, enum pipe_cap param)
                 return 1;
 
         case PIPE_CAP_MAX_TEXTURE_2D_SIZE:
-                return 4096;
+                return 1 << (MAX_MIP_LEVELS - 1);
+
         case PIPE_CAP_MAX_TEXTURE_3D_LEVELS:
-                return 13;
         case PIPE_CAP_MAX_TEXTURE_CUBE_LEVELS:
-                return 13;
+                return MAX_MIP_LEVELS;
 
         case PIPE_CAP_TGSI_FS_COORD_ORIGIN_LOWER_LEFT:
-                /* Hardware is natively upper left */
+        case PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_INTEGER:
+                /* Hardware is upper left. Pixel center at (0.5, 0.5) */
                 return 0;
 
         case PIPE_CAP_TGSI_FS_COORD_ORIGIN_UPPER_LEFT:
         case PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_HALF_INTEGER:
-        case PIPE_CAP_TGSI_FS_COORD_PIXEL_CENTER_INTEGER:
         case PIPE_CAP_TGSI_TEXCOORD:
                 return 1;
 
@@ -558,11 +560,8 @@ panfrost_walk_dmabuf_modifiers(struct pipe_screen *screen,
 {
         /* Query AFBC status */
         struct panfrost_device *dev = pan_device(screen);
-        bool afbc = panfrost_format_supports_afbc(dev, format);
+        bool afbc = dev->has_afbc && panfrost_format_supports_afbc(dev, format);
         bool ytr = panfrost_afbc_can_ytr(format);
-
-        /* Don't advertise AFBC before T760 */
-        afbc &= !(dev->quirks & MIDGARD_NO_AFBC);
 
         unsigned count = 0;
 
@@ -699,7 +698,8 @@ panfrost_destroy_screen(struct pipe_screen *pscreen)
         panfrost_pool_cleanup(&screen->blitter.desc_pool);
         pan_blend_shaders_cleanup(dev);
 
-        screen->vtbl.screen_destroy(pscreen);
+        if (screen->vtbl.screen_destroy)
+                screen->vtbl.screen_destroy(pscreen);
 
         if (dev->ro)
                 dev->ro->destroy(dev->ro);
@@ -826,19 +826,14 @@ panfrost_create_screen(int fd, struct renderonly *ro)
         panfrost_open_device(screen, fd, dev);
 
         if (dev->debug & PAN_DBG_NO_AFBC)
-                dev->quirks |= MIDGARD_NO_AFBC;
+                dev->has_afbc = false;
 
-        /* XXX: AFBC is currently broken on Bifrost in a few different ways
+        /* XXX: AFBC is currently broken on Bifrost
          *
          *  - Preload is broken if the effective tile size is not 16x16
-         *  - Some systems lack AFBC but we need kernel changes to know that
          */
         if (dev->arch == 7)
-                dev->quirks |= MIDGARD_NO_AFBC;
-
-        /* XXX: Indirect draws on Midgard need debugging, emulate for now */
-        if (dev->arch < 6)
-                dev->debug |= PAN_DBG_NOINDIRECT;
+                dev->has_afbc = false;
 
         dev->ro = ro;
 

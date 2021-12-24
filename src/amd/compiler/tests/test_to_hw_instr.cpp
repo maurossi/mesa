@@ -367,6 +367,7 @@ BEGIN_TEST(to_hw_instr.subdword_constant)
    PhysReg v0_lo{256};
    PhysReg v0_hi{256};
    PhysReg v0_b1{256};
+   PhysReg v1_lo{257};
    PhysReg v1_hi{257};
    v0_hi.reg_b += 2;
    v0_b1.reg_b += 1;
@@ -454,6 +455,14 @@ BEGIN_TEST(to_hw_instr.subdword_constant)
       //! v1b: %_:v[0][0:8] = v_mul_u32_u24 2, 33 dst_preserve
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(11u));
       bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_lo, v1b), Operand::c8(0x42));
+
+      /* 32-bit and 8-bit copy */
+      //! p_unit_test 12
+      //! v1: %_:v[0] = v_mov_b32 0
+      //! v1b: %_:v[1][0:8] = v_mov_b32 0 dst_preserve
+      bld.pseudo(aco_opcode::p_unit_test, Operand::c32(12u));
+      bld.pseudo(aco_opcode::p_parallelcopy, Definition(v0_lo, v1), Definition(v1_lo, v1b),
+                 Operand::zero(), Operand::zero(1));
 
       //! s_endpgm
 
@@ -640,15 +649,15 @@ BEGIN_TEST(to_hw_instr.insert)
       //>> p_unit_test 2
       bld.pseudo(aco_opcode::p_unit_test, Operand::c32(2u));
       //~gfx7! v2b: %_:v[0][0:16] = v_bfe_u32 %_:v[1][0:16], 0, 8
-      //~gfx[^7]! v1: %_:v[0] = v_mov_b32 %_:v[1][0:16] dst_sel:ubyte0 dst_preserve
+      //~gfx[^7]! v2b: %0:v[0][0:16] = v_lshlrev_b32 0, %0:v[1][0:7] dst_preserve
       INS(0, 0)
-      //~gfx[^7]! v1: %_:v[0] = v_mov_b32 %_:v[1][0:16] dst_sel:ubyte2 dst_preserve
+      //~gfx[^7]! v2b: %0:v[0][16:32] = v_lshlrev_b32 0, %0:v[1][0:7] dst_preserve
       if (i != GFX7)
          INS(0, 2)
       //~gfx7! v2b: %_:v[0][0:16] = v_lshlrev_b32 8, %_:v[1][0:16]
-      //~gfx[^7]! v1: %_:v[0] = v_mov_b32 %_:v[1][0:16] dst_sel:ubyte1 dst_preserve
+      //~gfx[^7]! v2b: %0:v[0][0:16] = v_lshlrev_b32 8, %0:v[1][0:7] dst_preserve
       INS(1, 0)
-      //~gfx[^7]! v1: %_:v[0] = v_mov_b32 %_:v[1][0:16] dst_sel:ubyte3 dst_preserve
+      //~gfx[^7]! v2b: %0:v[0][16:32] = v_lshlrev_b32 8, %0:v[1][0:7] dst_preserve
       if (i != GFX7)
          INS(1, 2)
 

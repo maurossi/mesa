@@ -951,7 +951,7 @@ crocus_setup_binding_table(const struct intel_device_info *devinfo,
    }
    bt->size_bytes = next * 4;
 
-   if (unlikely(INTEL_DEBUG & DEBUG_BT)) {
+   if (INTEL_DEBUG(DEBUG_BT)) {
       crocus_print_binding_table(stderr, gl_shader_stage_name(info->stage), bt);
    }
 
@@ -1988,6 +1988,8 @@ update_last_vue_map(struct crocus_context *ice,
 
    if (changed_slots || (old_map && old_map->separate != vue_map->separate)) {
       ice->state.dirty |= CROCUS_DIRTY_GEN7_SBE;
+      if (devinfo->ver < 6)
+         ice->state.dirty |= CROCUS_DIRTY_GEN4_FF_GS_PROG;
       ice->state.stage_dirty |= CROCUS_STAGE_DIRTY_UNCOMPILED_FS;
    }
 
@@ -2080,7 +2082,7 @@ crocus_update_compiled_clip(struct crocus_context *ice)
       memcpy(key.interp_mode, wm_prog_data->interp_mode, sizeof(key.interp_mode));
    }
 
-   key.primitive = u_reduced_prim(ice->state.prim_mode);
+   key.primitive = ice->state.reduced_prim_mode;
    key.attrs = ice->shaders.last_vue_map->slots_valid;
 
    struct pipe_rasterizer_state *rs_state = crocus_get_rast_state(ice);
@@ -2228,7 +2230,7 @@ crocus_update_compiled_sf(struct crocus_context *ice)
 
    key.attrs = ice->shaders.last_vue_map->slots_valid;
 
-   switch (u_reduced_prim(ice->state.prim_mode)) {
+   switch (ice->state.reduced_prim_mode) {
    case GL_TRIANGLES:
    default:
       if (key.attrs & BITFIELD64_BIT(VARYING_SLOT_EDGE))

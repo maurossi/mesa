@@ -72,7 +72,7 @@ convert_pc_to_bits(struct GENX(PIPE_CONTROL) *pc) {
 }
 
 #define anv_debug_dump_pc(pc) \
-   if (unlikely(INTEL_DEBUG & DEBUG_PIPE_CONTROL)) { \
+   if (INTEL_DEBUG(DEBUG_PIPE_CONTROL)) { \
       fputs("pc: emit PC=( ", stderr); \
       anv_dump_pipe_bits(convert_pc_to_bits(&(pc))); \
       fprintf(stderr, ") reason: %s\n", __FUNCTION__); \
@@ -2052,7 +2052,7 @@ genX(cmd_buffer_config_l3)(struct anv_cmd_buffer *cmd_buffer,
     */
    assert(cfg == cmd_buffer->device->l3_config);
 #else
-   if (INTEL_DEBUG & DEBUG_L3) {
+   if (INTEL_DEBUG(DEBUG_L3)) {
       mesa_logd("L3 config transition: ");
       intel_dump_l3_config(cfg, stderr);
    }
@@ -6824,7 +6824,8 @@ void genX(CmdEndConditionalRenderingEXT)(
     VK_PIPELINE_STAGE_TRANSFER_BIT | \
     VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT | \
     VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT | \
-    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT)
+    VK_PIPELINE_STAGE_ALL_COMMANDS_BIT | \
+    VK_PIPELINE_STAGE_TRANSFORM_FEEDBACK_BIT_EXT)
 
 void genX(CmdSetEvent)(
     VkCommandBuffer                             commandBuffer,

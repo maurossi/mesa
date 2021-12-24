@@ -40,6 +40,9 @@
 #include "decode.h"
 #include "panfrost-quirks.h"
 
+#define foreach_batch(ctx, idx) \
+        BITSET_FOREACH_SET(idx, ctx->batches.active, PAN_MAX_BATCHES)
+
 static unsigned
 panfrost_batch_idx(struct panfrost_batch *batch)
 {
@@ -65,7 +68,8 @@ panfrost_batch_init(struct panfrost_context *ctx,
         batch->maxx = batch->maxy = 0;
 
         util_copy_framebuffer_state(&batch->key, key);
-        util_dynarray_init(&batch->resources, NULL);
+        batch->resources =_mesa_set_create(NULL, _mesa_hash_pointer,
+                                          _mesa_key_pointer_equal);
 
         /* Preallocate the main pool, since every batch has at least one job
          * structure so it will be used */
@@ -125,16 +129,20 @@ panfrost_batch_cleanup(struct panfrost_batch *batch)
                 panfrost_bo_unreference(bo);
         }
 
-        util_dynarray_foreach(&batch->resources, struct panfrost_resource *, rsrc) {
-                BITSET_CLEAR((*rsrc)->track.users, batch_idx);
+        set_foreach_remove(batch->resources, entry) {
+                struct panfrost_resource *rsrc = (void *) entry->key;
 
-                if ((*rsrc)->track.writer == batch)
-                        (*rsrc)->track.writer = NULL;
+                if (_mesa_hash_table_search(ctx->writers, rsrc)) {
+                        _mesa_hash_table_remove_key(ctx->writers, rsrc);
+                        rsrc->track.nr_writers--;
+                }
 
-                pipe_resource_reference((struct pipe_resource **) rsrc, NULL);
+                rsrc->track.nr_users--;
+
+                pipe_resource_reference((struct pipe_resource **) &rsrc, NULL);
         }
 
-        util_dynarray_fini(&batch->resources);
+        _mesa_set_destroy(batch->resources, NULL);
         panfrost_pool_cleanup(&batch->pool);
         panfrost_pool_cleanup(&batch->invisible_pool);
 
@@ -143,6 +151,7 @@ panfrost_batch_cleanup(struct panfrost_batch *batch)
         util_sparse_array_finish(&batch->bos);
 
         memset(batch, 0, sizeof(*batch));
+        BITSET_CLEAR(ctx->batches.active, batch_idx);
 }
 
 static void
@@ -176,6 +185,9 @@ panfrost_get_batch(struct panfrost_context *ctx,
                 panfrost_batch_submit(batch, 0, 0);
 
         panfrost_batch_init(ctx, key, batch);
+
+        unsigned batch_idx = panfrost_batch_idx(batch);
+        BITSET_SET(ctx->batches.active, batch_idx);
 
         return batch;
 }
@@ -262,33 +274,40 @@ panfrost_batch_update_access(struct panfrost_batch *batch,
 {
         struct panfrost_context *ctx = batch->ctx;
         uint32_t batch_idx = panfrost_batch_idx(batch);
-        struct panfrost_batch *writer = rsrc->track.writer;
+        struct hash_entry *entry = _mesa_hash_table_search(ctx->writers, rsrc);
+        struct panfrost_batch *writer = entry ? entry->data : NULL;
+        bool found = false;
 
-        if (unlikely(!BITSET_TEST(rsrc->track.users, batch_idx))) {
-                BITSET_SET(rsrc->track.users, batch_idx);
+        _mesa_set_search_or_add(batch->resources, rsrc, &found);
+
+        if (!found) {
+                /* Cache number of batches accessing a resource */
+                rsrc->track.nr_users++;
 
                 /* Reference the resource on the batch */
-                struct pipe_resource **dst = util_dynarray_grow(&batch->resources,
-                                struct pipe_resource *, 1);
-
-                *dst = NULL;
-                pipe_resource_reference(dst, &rsrc->base);
+                pipe_reference(NULL, &rsrc->base.reference);
         }
 
         /* Flush users if required */
         if (writes || ((writer != NULL) && (writer != batch))) {
                 unsigned i;
-                BITSET_FOREACH_SET(i, rsrc->track.users, PAN_MAX_BATCHES) {
+                foreach_batch(ctx, i) {
+                        struct panfrost_batch *batch = &ctx->batches.slots[i];
+
                         /* Skip the entry if this our batch. */
                         if (i == batch_idx)
                                 continue;
 
-                        panfrost_batch_submit(&ctx->batches.slots[i], 0, 0);
+                        /* Submit if it's a user */
+                        if (_mesa_set_search(batch->resources, rsrc))
+                                panfrost_batch_submit(batch, 0, 0);
                 }
         }
 
-        if (writes)
-                rsrc->track.writer = batch;
+        if (writes) {
+                _mesa_hash_table_insert(ctx->writers, rsrc, batch);
+                rsrc->track.nr_writers++;
+        }
 }
 
 static void
@@ -919,9 +938,10 @@ void
 panfrost_flush_writer(struct panfrost_context *ctx,
                       struct panfrost_resource *rsrc)
 {
-        if (rsrc->track.writer) {
-                panfrost_batch_submit(rsrc->track.writer, ctx->syncobj, ctx->syncobj);
-                rsrc->track.writer = NULL;
+        struct hash_entry *entry = _mesa_hash_table_search(ctx->writers, rsrc);
+
+        if (entry) {
+                panfrost_batch_submit(entry->data, ctx->syncobj, ctx->syncobj);
         }
 }
 
@@ -930,13 +950,14 @@ panfrost_flush_batches_accessing_rsrc(struct panfrost_context *ctx,
                                       struct panfrost_resource *rsrc)
 {
         unsigned i;
-        BITSET_FOREACH_SET(i, rsrc->track.users, PAN_MAX_BATCHES) {
-                panfrost_batch_submit(&ctx->batches.slots[i],
-                                      ctx->syncobj, ctx->syncobj);
-        }
+        foreach_batch(ctx, i) {
+                struct panfrost_batch *batch = &ctx->batches.slots[i];
 
-        assert(!BITSET_COUNT(rsrc->track.users));
-        rsrc->track.writer = NULL;
+                if (!_mesa_set_search(batch->resources, rsrc))
+                        continue;
+
+                panfrost_batch_submit(batch, ctx->syncobj, ctx->syncobj);
+        }
 }
 
 void
@@ -955,93 +976,6 @@ panfrost_batch_adjust_stack_size(struct panfrost_batch *batch)
         }
 }
 
-/* Helper to smear a 32-bit color across 128-bit components */
-
-static void
-pan_pack_color_32(uint32_t *packed, uint32_t v)
-{
-        for (unsigned i = 0; i < 4; ++i)
-                packed[i] = v;
-}
-
-static void
-pan_pack_color_64(uint32_t *packed, uint32_t lo, uint32_t hi)
-{
-        for (unsigned i = 0; i < 4; i += 2) {
-                packed[i + 0] = lo;
-                packed[i + 1] = hi;
-        }
-}
-
-static void
-pan_pack_color(uint32_t *packed, const union pipe_color_union *color, enum pipe_format format)
-{
-        /* Alpha magicked to 1.0 if there is no alpha */
-
-        bool has_alpha = util_format_has_alpha(format);
-        float clear_alpha = has_alpha ? color->f[3] : 1.0f;
-
-        /* Packed color depends on the framebuffer format */
-
-        const struct util_format_description *desc =
-                util_format_description(format);
-
-        if (util_format_is_rgba8_variant(desc) && desc->colorspace != UTIL_FORMAT_COLORSPACE_SRGB) {
-                pan_pack_color_32(packed,
-                                  ((uint32_t) float_to_ubyte(clear_alpha) << 24) |
-                                  ((uint32_t) float_to_ubyte(color->f[2]) << 16) |
-                                  ((uint32_t) float_to_ubyte(color->f[1]) <<  8) |
-                                  ((uint32_t) float_to_ubyte(color->f[0]) <<  0));
-        } else if (format == PIPE_FORMAT_B5G6R5_UNORM) {
-                /* First, we convert the components to R5, G6, B5 separately */
-                unsigned r5 = _mesa_roundevenf(SATURATE(color->f[0]) * 31.0);
-                unsigned g6 = _mesa_roundevenf(SATURATE(color->f[1]) * 63.0);
-                unsigned b5 = _mesa_roundevenf(SATURATE(color->f[2]) * 31.0);
-
-                /* Then we pack into a sparse u32. TODO: Why these shifts? */
-                pan_pack_color_32(packed, (b5 << 25) | (g6 << 14) | (r5 << 5));
-        } else if (format == PIPE_FORMAT_B4G4R4A4_UNORM) {
-                /* Convert to 4-bits */
-                unsigned r4 = _mesa_roundevenf(SATURATE(color->f[0]) * 15.0);
-                unsigned g4 = _mesa_roundevenf(SATURATE(color->f[1]) * 15.0);
-                unsigned b4 = _mesa_roundevenf(SATURATE(color->f[2]) * 15.0);
-                unsigned a4 = _mesa_roundevenf(SATURATE(clear_alpha) * 15.0);
-
-                /* Pack on *byte* intervals */
-                pan_pack_color_32(packed, (a4 << 28) | (b4 << 20) | (g4 << 12) | (r4 << 4));
-        } else if (format == PIPE_FORMAT_B5G5R5A1_UNORM) {
-                /* Scale as expected but shift oddly */
-                unsigned r5 = _mesa_roundevenf(SATURATE(color->f[0]) * 31.0);
-                unsigned g5 = _mesa_roundevenf(SATURATE(color->f[1]) * 31.0);
-                unsigned b5 = _mesa_roundevenf(SATURATE(color->f[2]) * 31.0);
-                unsigned a1 = _mesa_roundevenf(SATURATE(clear_alpha) * 1.0);
-
-                pan_pack_color_32(packed, (a1 << 31) | (b5 << 25) | (g5 << 15) | (r5 << 5));
-        } else {
-                /* Otherwise, it's generic subject to replication */
-
-                union util_color out = { 0 };
-                unsigned size = util_format_get_blocksize(format);
-
-                util_pack_color(color->f, format, &out);
-
-                if (size == 1) {
-                        unsigned b = out.ui[0];
-                        unsigned s = b | (b << 8);
-                        pan_pack_color_32(packed, s | (s << 16));
-                } else if (size == 2)
-                        pan_pack_color_32(packed, out.ui[0] | (out.ui[0] << 16));
-                else if (size == 3 || size == 4)
-                        pan_pack_color_32(packed, out.ui[0]);
-                else if (size == 6 || size == 8)
-                        pan_pack_color_64(packed, out.ui[0], out.ui[1]);
-                else if (size == 12 || size == 16)
-                        memcpy(packed, out.ui, 16);
-                else
-                        unreachable("Unknown generic format size packing clear colour");
-        }
-}
-
 void
 panfrost_batch_clear(struct panfrost_batch *batch,
                      unsigned buffers,
@@ -1056,7 +990,7 @@ panfrost_batch_clear(struct panfrost_batch *batch,
                                 continue;
 
                         enum pipe_format format = ctx->pipe_framebuffer.cbufs[i]->format;
-                        pan_pack_color(batch->clear_color[i], color, format);
+                        pan_pack_color(batch->clear_color[i], color, format, false);
                 }
         }
 

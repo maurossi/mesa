@@ -63,7 +63,7 @@ TEMPLATE = template.Template(future_imports=['division'],
 
 const uint16_t isl_format_name_offsets[] = { <% offset = 0 %>
 % for format in formats:
-    ${offset}, <% offset += 11 + len(format.name) + 1 %>
+    [ISL_FORMAT_${format.name}] = ${offset}, <% offset += 11 + len(format.name) + 1 %>
 % endfor
 };
 
@@ -175,7 +175,6 @@ class Format(object):
         # pylint: disable=invalid-name
         self.name = line[0].strip()
 
-        # Future division makes this work in python 2.
         self.bpb = int(line[1])
         self.bw = line[2].strip()
         self.bh = line[3].strip()

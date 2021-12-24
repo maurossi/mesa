@@ -485,6 +485,24 @@ radv_shader_compile_to_nir(struct radv_device *device, struct vk_shader_module *
             case 1:
                memcpy(&spec_entries[i].value.u8, data, sizeof(uint8_t));
                break;
+            case 0:
+               /* The Vulkan spec says:
+                *
+                *    "For a constantID specialization constant declared in a shader, size must match
+                *    the byte size of the constantID. If the specialization constant is of type
+                *    boolean, size must be the byte size of VkBool32."
+                *
+                * Therefore, since only scalars can be decorated as specialization constants, we can
+                * assume that if it doesn't have a size of 1, 2, 4, or 8, any use in a shader would
+                * be invalid usage.  The spec further says:
+                *
+                *    "If a constantID value is not a specialization constant ID used in the shader,
+                *    that map entry does not affect the behavior of the pipeline."
+                *
+                * so we should ignore any invalid specialization constants rather than crash or
+                * error out when we see one.
+                */
+               break;
             default:
                assert(!"Invalid spec constant size");
                break;
@@ -913,6 +931,10 @@ radv_consider_culling(struct radv_device *device, struct nir_shader *nir,
 {
    /* Culling doesn't make sense for meta shaders. */
    if (!!nir->info.name)
+      return false;
+
+   /* We don't support culling with multiple viewports yet. */
+   if (nir->info.outputs_written & (VARYING_BIT_VIEWPORT | VARYING_BIT_VIEWPORT_MASK))
       return false;
 
    /* TODO: enable by default on GFX10.3 when we're confident about performance. */
@@ -1797,7 +1819,7 @@ radv_get_max_workgroup_size(enum chip_class chip_class, gl_shader_stage stage,
 }
 
 unsigned
-radv_get_max_waves(struct radv_device *device, struct radv_shader_variant *variant,
+radv_get_max_waves(const struct radv_device *device, struct radv_shader_variant *variant,
                    gl_shader_stage stage)
 {
    struct radeon_info *info = &device->physical_device->rad_info;

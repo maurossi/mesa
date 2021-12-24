@@ -205,7 +205,7 @@ st_draw_gallium_multimode(struct gl_context *ctx,
    unsigned i, first;
    struct cso_context *cso = st->cso_context;
 
-   /* Find consecutive draws where mode and base_vertex don't vary. */
+   /* Find consecutive draws where mode doesn't vary. */
    for (i = 0, first = 0; i <= num_draws; i++) {
       if (i == num_draws || mode[i] != mode[first]) {
          info->mode = mode[first];
@@ -263,6 +263,10 @@ st_indirect_draw_vbo(struct gl_context *ctx,
    info.vertices_per_patch = ctx->TessCtrlProgram.patch_vertices;
    indirect.buffer = st_buffer_object(indirect_data)->buffer;
    indirect.offset = indirect_offset;
+
+   /* Viewperf2020/Maya draws with a buffer that has no storage. */
+   if (!indirect.buffer)
+      return;
 
    if (!st->has_multi_draw_indirect) {
       int i;

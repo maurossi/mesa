@@ -754,6 +754,14 @@ zink_get_shader_param(struct pipe_screen *pscreen,
       default:
          return 0; /* unsupported stage */
       }
+      switch (shader) {
+      case PIPE_SHADER_VERTEX:
+      case PIPE_SHADER_TESS_EVAL:
+      case PIPE_SHADER_GEOMETRY:
+         /* last vertex stage must support streamout, and this is capped in glsl compiler */
+         return MIN2(max, MAX_VARYING);
+      default: break;
+      }
       return MIN2(max, 64); // prevent overflowing struct shader_info::inputs_read
    }
 
@@ -1645,12 +1653,12 @@ zink_query_memory_info(struct pipe_screen *pscreen, struct pipe_memory_info *inf
       for (unsigned i = 0; i < mem.memoryProperties.memoryHeapCount; i++) {
          if (mem.memoryProperties.memoryHeaps[i].flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
             /* VRAM */
-            info->total_device_memory = mem.memoryProperties.memoryHeaps[i].size / 1024;
-            info->avail_device_memory = (budget.heapBudget[i] - budget.heapUsage[i]) / 1024;
-         } else if (mem.memoryProperties.memoryHeaps[i].flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+            info->total_device_memory += mem.memoryProperties.memoryHeaps[i].size / 1024;
+            info->avail_device_memory += (budget.heapBudget[i] - budget.heapUsage[i]) / 1024;
+         } else {
             /* GART */
-            info->total_staging_memory = mem.memoryProperties.memoryHeaps[i].size / 1024;
-            info->avail_staging_memory = (budget.heapBudget[i] - budget.heapUsage[i]) / 1024;
+            info->total_staging_memory += mem.memoryProperties.memoryHeaps[i].size / 1024;
+            info->avail_staging_memory += (budget.heapBudget[i] - budget.heapUsage[i]) / 1024;
          }
       }
       /* evictions not yet supported in vulkan */
@@ -1658,14 +1666,14 @@ zink_query_memory_info(struct pipe_screen *pscreen, struct pipe_memory_info *inf
       for (unsigned i = 0; i < screen->info.mem_props.memoryHeapCount; i++) {
          if (screen->info.mem_props.memoryHeaps[i].flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) {
             /* VRAM */
-            info->total_device_memory = screen->info.mem_props.memoryHeaps[i].size / 1024;
+            info->total_device_memory += screen->info.mem_props.memoryHeaps[i].size / 1024;
             /* free real estate! */
-            info->avail_device_memory = info->total_device_memory;
-         } else if (screen->info.mem_props.memoryHeaps[i].flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) {
+            info->avail_device_memory += info->total_device_memory;
+         } else {
             /* GART */
-            info->total_staging_memory = screen->info.mem_props.memoryHeaps[i].size / 1024;
+            info->total_staging_memory += screen->info.mem_props.memoryHeaps[i].size / 1024;
             /* free real estate! */
-            info->avail_staging_memory = info->total_staging_memory;
+            info->avail_staging_memory += info->total_staging_memory;
          }
       }
    }

@@ -986,6 +986,14 @@ radv_can_fast_clear_depth(struct radv_cmd_buffer *cmd_buffer, const struct radv_
          !radv_is_fast_clear_stencil_allowed(clear_value))))
       return false;
 
+   if (iview->image->info.levels > 1) {
+      uint32_t last_level = iview->base_mip + iview->level_count - 1;
+      if (last_level >= iview->image->planes[0].surface.num_meta_levels) {
+         /* Do not fast clears if one level can't be fast cleared. */
+         return false;
+      }
+   }
+
    return true;
 }
 
@@ -1389,10 +1397,10 @@ radv_clear_htile(struct radv_cmd_buffer *cmd_buffer, const struct radv_image *im
 
          if (htile_mask == UINT_MAX) {
             /* Clear the whole HTILE buffer. */
-            flush_bits = radv_fill_buffer(cmd_buffer, image, image->bo, offset, size, value);
+            flush_bits |= radv_fill_buffer(cmd_buffer, image, image->bo, offset, size, value);
          } else {
             /* Only clear depth or stencil bytes in the HTILE buffer. */
-            flush_bits =
+            flush_bits |=
                clear_htile_mask(cmd_buffer, image, image->bo, offset, size, value, htile_mask);
          }
       }

@@ -371,7 +371,7 @@ static const struct intel_device_info intel_device_info_hsw_gt2 = {
 static const struct intel_device_info intel_device_info_hsw_gt3 = {
    HSW_FEATURES, .gt = 3,
    .num_slices = 2,
-   .num_subslices = { 2, },
+   .num_subslices = { 2, 2, },
    .num_eu_per_subslice = 10,
    .num_thread_per_eu = 7,
    .l3_banks = 8,
@@ -992,6 +992,7 @@ static const struct intel_device_info intel_device_info_adl_gt1 = {
 static const struct intel_device_info intel_device_info_adl_gt2 = {
    GFX12_GT_FEATURES(2),
    .is_alderlake = true,
+   .display_ver = 13,
 };
 
 #define GFX12_DG1_FEATURES                      \
@@ -1079,6 +1080,10 @@ update_from_topology(struct intel_device_info *devinfo,
                      const struct drm_i915_query_topology_info *topology)
 {
    reset_masks(devinfo);
+
+   assert(topology->max_slices > 0);
+   assert(topology->max_subslices > 0);
+   assert(topology->max_eus_per_subslice > 0);
 
    devinfo->subslice_slice_stride = topology->subslice_stride;
 
@@ -1175,8 +1180,9 @@ update_from_masks(struct intel_device_info *devinfo, uint32_t slice_mask,
    uint32_t num_eu_per_subslice = DIV_ROUND_UP(n_eus, n_subslices);
    uint32_t eu_mask = (1U << num_eu_per_subslice) - 1;
 
+   topology->max_eus_per_subslice = num_eu_per_subslice;
    topology->eu_offset = topology->subslice_offset +
-      DIV_ROUND_UP(topology->max_subslices, 8);
+      topology->max_slices * DIV_ROUND_UP(topology->max_subslices, 8);
    topology->eu_stride = DIV_ROUND_UP(num_eu_per_subslice, 8);
 
    /* Set slice mask in topology */
@@ -1286,6 +1292,9 @@ intel_get_device_info_from_pci_id(int pci_id,
 
    if (devinfo->verx10 == 0)
       devinfo->verx10 = devinfo->ver * 10;
+
+   if (devinfo->display_ver == 0)
+      devinfo->display_ver = devinfo->ver;
 
    devinfo->chipset_id = pci_id;
    return true;

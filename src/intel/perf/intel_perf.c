@@ -78,7 +78,7 @@ get_sysfs_dev_dir(struct intel_perf_config *perf, int fd)
 
    perf->sysfs_dev_dir[0] = '\0';
 
-   if (INTEL_DEBUG & DEBUG_NO_OACONFIG)
+   if (INTEL_DEBUG(DEBUG_NO_OACONFIG))
       return true;
 
    if (fstat(fd, &sb)) {
@@ -382,15 +382,15 @@ compute_topology_builtins(struct intel_perf_config *perf,
    perf->sys_vars.eu_threads_count = devinfo->num_thread_per_eu;
 
    /* The subslice mask builtin contains bits for all slices. Prior to Gfx11
-    * it had groups of 3bits for each slice, on Gfx11 it's 8bits for each
-    * slice.
+    * it had groups of 3bits for each slice, on Gfx11 and above it's 8bits for
+    * each slice.
     *
     * Ideally equations would be updated to have a slice/subslice query
     * function/operator.
     */
    perf->sys_vars.subslice_mask = 0;
 
-   int bits_per_subslice = devinfo->ver == 11 ? 8 : 3;
+   int bits_per_subslice = devinfo->ver >= 11 ? 8 : 3;
 
    for (int s = 0; s < util_last_bit(devinfo->slice_masks); s++) {
       for (int ss = 0; ss < (devinfo->subslice_slice_stride * 8); ss++) {
@@ -407,7 +407,7 @@ init_oa_sys_vars(struct intel_perf_config *perf,
 {
    uint64_t min_freq_mhz = 0, max_freq_mhz = 0;
 
-   if (!(INTEL_DEBUG & DEBUG_NO_OACONFIG)) {
+   if (!INTEL_DEBUG(DEBUG_NO_OACONFIG)) {
       if (!read_sysfs_drm_device_file_uint64(perf, "gt_min_freq_mhz", &min_freq_mhz))
          return false;
 
@@ -768,7 +768,7 @@ load_oa_metrics(struct intel_perf_config *perf, int fd,
     */
    oa_register(perf);
 
-   if (!(INTEL_DEBUG & DEBUG_NO_OACONFIG)) {
+   if (!INTEL_DEBUG(DEBUG_NO_OACONFIG)) {
       if (kernel_has_dynamic_config_support(perf, fd))
          init_oa_configs(perf, fd, devinfo);
       else

@@ -2012,14 +2012,17 @@ static int gfx9_compute_surface(struct ac_addrlib *addrlib, const struct radeon_
       ac_modifier_fill_dcc_params(surf->modifier, surf, &AddrSurfInfoIn);
    } else if (!AddrSurfInfoIn.flags.depth && !AddrSurfInfoIn.flags.stencil) {
       /* Optimal values for the L2 cache. */
-      if (info->chip_class == GFX9) {
-         surf->u.gfx9.color.dcc.independent_64B_blocks = 1;
-         surf->u.gfx9.color.dcc.independent_128B_blocks = 0;
-         surf->u.gfx9.color.dcc.max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_64B;
-      } else if (info->chip_class >= GFX10) {
-         surf->u.gfx9.color.dcc.independent_64B_blocks = 0;
-         surf->u.gfx9.color.dcc.independent_128B_blocks = 1;
-         surf->u.gfx9.color.dcc.max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_128B;
+      /* Don't change the DCC settings for imported buffers - they might differ. */
+      if (!(surf->flags & RADEON_SURF_IMPORTED)) {
+         if (info->chip_class == GFX9) {
+            surf->u.gfx9.color.dcc.independent_64B_blocks = 1;
+            surf->u.gfx9.color.dcc.independent_128B_blocks = 0;
+            surf->u.gfx9.color.dcc.max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_64B;
+         } else if (info->chip_class >= GFX10) {
+            surf->u.gfx9.color.dcc.independent_64B_blocks = 0;
+            surf->u.gfx9.color.dcc.independent_128B_blocks = 1;
+            surf->u.gfx9.color.dcc.max_compressed_block_size = V_028C78_MAX_BLOCK_SIZE_128B;
+         }
       }
 
       if (AddrSurfInfoIn.flags.display) {
@@ -2036,7 +2039,9 @@ static int gfx9_compute_surface(struct ac_addrlib *addrlib, const struct radeon_
          }
 
          /* Adjust DCC settings to meet DCN requirements. */
-         if (info->use_display_dcc_unaligned || info->use_display_dcc_with_retile_blit) {
+         /* Don't change the DCC settings for imported buffers - they might differ. */
+         if (!(surf->flags & RADEON_SURF_IMPORTED) &&
+             (info->use_display_dcc_unaligned || info->use_display_dcc_with_retile_blit)) {
             /* Only Navi12/14 support independent 64B blocks in L2,
              * but without DCC image stores.
              */
@@ -2174,7 +2179,9 @@ static int gfx9_compute_surface(struct ac_addrlib *addrlib, const struct radeon_
        !(surf->flags & (RADEON_SURF_DISABLE_DCC | RADEON_SURF_FORCE_SWIZZLE_MODE |
                         RADEON_SURF_FORCE_MICRO_TILE_MODE)) &&
        (surf->modifier == DRM_FORMAT_MOD_INVALID ||
-        ac_modifier_has_dcc(surf->modifier))) {
+        ac_modifier_has_dcc(surf->modifier)) &&
+       is_dcc_supported_by_DCN(info, config, surf, surf->u.gfx9.color.dcc.rb_aligned,
+                               surf->u.gfx9.color.dcc.pipe_aligned)) {
       /* Validate that DCC is enabled if DCN can do it. */
       if ((info->use_display_dcc_unaligned || info->use_display_dcc_with_retile_blit) &&
           AddrSurfInfoIn.flags.display && surf->bpe == 4) {

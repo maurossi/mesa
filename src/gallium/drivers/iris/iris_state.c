@@ -2415,10 +2415,15 @@ iris_create_sampler_view(struct pipe_context *ctx,
    if (tmpl->target != PIPE_BUFFER) {
       isv->view.base_level = tmpl->u.tex.first_level;
       isv->view.levels = tmpl->u.tex.last_level - tmpl->u.tex.first_level + 1;
-      // XXX: do I need to port f9fd0cf4790cb2a530e75d1a2206dbb9d8af7cb2?
-      isv->view.base_array_layer = tmpl->u.tex.first_layer;
-      isv->view.array_len =
-         tmpl->u.tex.last_layer - tmpl->u.tex.first_layer + 1;
+
+      if (tmpl->target == PIPE_TEXTURE_3D) {
+         isv->view.base_array_layer = 0;
+         isv->view.array_len = 1;
+      } else {
+         isv->view.base_array_layer = tmpl->u.tex.first_layer;
+         isv->view.array_len =
+            tmpl->u.tex.last_layer - tmpl->u.tex.first_layer + 1;
+      }
 
       if (iris_resource_unfinished_aux_import(isv->res))
          iris_resource_finish_aux_import(&screen->base, isv->res);
@@ -4379,17 +4384,8 @@ iris_store_tes_state(const struct intel_device_info *devinfo,
    struct brw_vue_prog_data *vue_prog_data = (void *) prog_data;
    struct brw_tes_prog_data *tes_prog_data = (void *) prog_data;
 
-   uint32_t *te_state = (void *) shader->derived_data;
-   uint32_t *ds_state = te_state + GENX(3DSTATE_TE_length);
-
-   iris_pack_command(GENX(3DSTATE_TE), te_state, te) {
-      te.Partitioning = tes_prog_data->partitioning;
-      te.OutputTopology = tes_prog_data->output_topology;
-      te.TEDomain = tes_prog_data->domain;
-      te.TEEnable = true;
-      te.MaximumTessellationFactorOdd = 63.0;
-      te.MaximumTessellationFactorNotOdd = 64.0;
-   }
+   uint32_t *ds_state = (void *) shader->derived_data;
+   uint32_t *te_state = ds_state + GENX(3DSTATE_DS_length);
 
    iris_pack_command(GENX(3DSTATE_DS), ds_state, ds) {
       INIT_THREAD_DISPATCH_FIELDS(ds, Patch, MESA_SHADER_TESS_EVAL);
@@ -4403,6 +4399,14 @@ iris_store_tes_state(const struct intel_device_info *devinfo,
          vue_prog_data->cull_distance_mask;
    }
 
+   iris_pack_command(GENX(3DSTATE_TE), te_state, te) {
+      te.Partitioning = tes_prog_data->partitioning;
+      te.OutputTopology = tes_prog_data->output_topology;
+      te.TEDomain = tes_prog_data->domain;
+      te.TEEnable = true;
+      te.MaximumTessellationFactorOdd = 63.0;
+      te.MaximumTessellationFactorNotOdd = 64.0;
+   }
 }
 
 /**
@@ -6878,7 +6882,8 @@ iris_upload_gpgpu_walker(struct iris_context *ice,
    const struct brw_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, grid->block);
 
-   if (stage_dirty & IRIS_STAGE_DIRTY_CS) {
+   if ((stage_dirty & IRIS_STAGE_DIRTY_CS) ||
+       cs_prog_data->local_size[0] == 0 /* Variable local group size */) {
       /* The MEDIA_VFE_STATE documentation for Gfx8+ says:
        *
        *   "A stalling PIPE_CONTROL is required before MEDIA_VFE_STATE unless
@@ -7690,7 +7695,7 @@ iris_emit_raw_pipe_control(struct iris_batch *batch,
 
    /* Emit --------------------------------------------------------------- */
 
-   if (INTEL_DEBUG & DEBUG_PIPE_CONTROL) {
+   if (INTEL_DEBUG(DEBUG_PIPE_CONTROL)) {
       fprintf(stderr,
               "  PC [%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%s%"PRIx64"]: %s\n",
               (flags & PIPE_CONTROL_FLUSH_ENABLE) ? "PipeCon " : "",

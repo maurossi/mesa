@@ -110,7 +110,7 @@ compiler_perf_log(void *data, const char *fmt, ...)
    va_list args;
    va_start(args, fmt);
 
-   if (INTEL_DEBUG & DEBUG_PERF)
+   if (INTEL_DEBUG(DEBUG_PERF))
       mesa_logd_v(fmt, args);
 
    va_end(args);
@@ -233,7 +233,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_performance_query =
          device->use_softpin && device->perf &&
          (device->perf->i915_perf_version >= 3 ||
-          INTEL_DEBUG & DEBUG_NO_OACONFIG) &&
+          INTEL_DEBUG(DEBUG_NO_OACONFIG)) &&
          device->use_call_secondary,
       .KHR_pipeline_executable_properties    = true,
       .KHR_push_descriptor                   = true,
@@ -328,13 +328,17 @@ get_device_extensions(const struct anv_physical_device *device,
    };
 }
 
-static void
-anv_track_meminfo(struct anv_physical_device *device,
-                  const struct drm_i915_query_memory_regions *mem_regions)
+static bool
+anv_get_query_meminfo(struct anv_physical_device *device, int fd)
 {
+   struct drm_i915_query_memory_regions *mem_regions =
+      intel_i915_query_alloc(fd, DRM_I915_QUERY_MEMORY_REGIONS);
+   if (mem_regions == NULL)
+      return false;
+
    for(int i = 0; i < mem_regions->num_regions; i++) {
       switch(mem_regions->regions[i].region.memory_class) {
-         case I915_MEMORY_CLASS_SYSTEM:
+      case I915_MEMORY_CLASS_SYSTEM:
          device->sys.region = mem_regions->regions[i].region;
          device->sys.size = mem_regions->regions[i].probed_size;
          break;
@@ -346,32 +350,6 @@ anv_track_meminfo(struct anv_physical_device *device,
          break;
       }
    }
-}
-
-static bool
-anv_get_query_meminfo(struct anv_physical_device *device, int fd)
-{
-   struct drm_i915_query_item item = {
-      .query_id = DRM_I915_QUERY_MEMORY_REGIONS
-   };
-
-   struct drm_i915_query query = {
-      .num_items = 1,
-      .items_ptr = (uintptr_t) &item,
-   };
-
-   if (drmIoctl(fd, DRM_IOCTL_I915_QUERY, &query))
-      return false;
-
-   struct drm_i915_query_memory_regions *mem_regions = calloc(1, item.length);
-   item.data_ptr = (uintptr_t) mem_regions;
-
-   if (drmIoctl(fd, DRM_IOCTL_I915_QUERY, &query) || item.length <= 0) {
-      free(mem_regions);
-      return false;
-   }
-
-   anv_track_meminfo(device, mem_regions);
 
    free(mem_regions);
    return true;
@@ -1351,14 +1329,14 @@ anv_get_physical_device_features_1_2(struct anv_physical_device *pdevice,
    f->shaderInputAttachmentArrayDynamicIndexing          = false;
    f->shaderUniformTexelBufferArrayDynamicIndexing       = descIndexing;
    f->shaderStorageTexelBufferArrayDynamicIndexing       = descIndexing;
-   f->shaderUniformBufferArrayNonUniformIndexing         = false;
+   f->shaderUniformBufferArrayNonUniformIndexing         = descIndexing;
    f->shaderSampledImageArrayNonUniformIndexing          = descIndexing;
    f->shaderStorageBufferArrayNonUniformIndexing         = descIndexing;
    f->shaderStorageImageArrayNonUniformIndexing          = descIndexing;
    f->shaderInputAttachmentArrayNonUniformIndexing       = false;
    f->shaderUniformTexelBufferArrayNonUniformIndexing    = descIndexing;
    f->shaderStorageTexelBufferArrayNonUniformIndexing    = descIndexing;
-   f->descriptorBindingUniformBufferUpdateAfterBind      = false;
+   f->descriptorBindingUniformBufferUpdateAfterBind      = descIndexing;
    f->descriptorBindingSampledImageUpdateAfterBind       = descIndexing;
    f->descriptorBindingStorageImageUpdateAfterBind       = descIndexing;
    f->descriptorBindingStorageBufferUpdateAfterBind      = descIndexing;
@@ -1554,7 +1532,9 @@ void anv_GetPhysicalDeviceFeatures2(
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FRAGMENT_SHADING_RATE_FEATURES_KHR: {
          VkPhysicalDeviceFragmentShadingRateFeaturesKHR *features =
             (VkPhysicalDeviceFragmentShadingRateFeaturesKHR *)ext;
+         features->attachmentFragmentShadingRate = false;
          features->pipelineFragmentShadingRate = true;
+         features->primitiveFragmentShadingRate = false;
          break;
       }
 
@@ -2348,12 +2328,12 @@ void anv_GetPhysicalDeviceProperties2(
          props->maxFragmentShadingRateAttachmentTexelSize = (VkExtent2D) { 0, 0 };
          props->maxFragmentShadingRateAttachmentTexelSizeAspectRatio = 0;
 
-         props->primitiveFragmentShadingRateWithMultipleViewports = pdevice->info.ver >= 12;
+         props->primitiveFragmentShadingRateWithMultipleViewports = false;
          props->layeredShadingRateAttachments = false;
-         props->fragmentShadingRateNonTrivialCombinerOps = true;
+         props->fragmentShadingRateNonTrivialCombinerOps = false;
          props->maxFragmentSize = (VkExtent2D) { 4, 4 };
          props->maxFragmentSizeAspectRatio = 4;
-         props->maxFragmentShadingRateCoverageSamples = 4 * 4;
+         props->maxFragmentShadingRateCoverageSamples = 4 * 4 * 16;
          props->maxFragmentShadingRateRasterizationSamples = VK_SAMPLE_COUNT_16_BIT;
          props->fragmentShadingRateWithShaderDepthStencilWrites = false;
          props->fragmentShadingRateWithSampleMask = true;
@@ -3169,10 +3149,10 @@ VkResult anv_CreateDevice(
       goto fail_alloc;
    }
 
-   if (INTEL_DEBUG & DEBUG_BATCH) {
+   if (INTEL_DEBUG(DEBUG_BATCH)) {
       const unsigned decode_flags =
          INTEL_BATCH_DECODE_FULL |
-         ((INTEL_DEBUG & DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
+         (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
          INTEL_BATCH_DECODE_OFFSETS |
          INTEL_BATCH_DECODE_FLOATS;
 
@@ -3226,6 +3206,15 @@ VkResult anv_CreateDevice(
       result = vk_error(VK_ERROR_INITIALIZATION_FAILED);
       goto fail_fd;
    }
+
+   /* Here we tell the kernel not to attempt to recover our context but
+    * immediately (on the next batchbuffer submission) report that the
+    * context is lost, and we will do the recovery ourselves.  In the case
+    * of Vulkan, recovery means throwing VK_ERROR_DEVICE_LOST and letting
+    * the client clean up the pieces.
+    */
+   anv_gem_set_context_param(device->fd, device->context_id,
+                             I915_CONTEXT_PARAM_RECOVERABLE, false);
 
    device->has_thread_submit = physical_device->has_thread_submit;
 
@@ -3581,7 +3570,7 @@ void anv_DestroyDevice(
 
    anv_gem_destroy_context(device, device->context_id);
 
-   if (INTEL_DEBUG & DEBUG_BATCH)
+   if (INTEL_DEBUG(DEBUG_BATCH))
       intel_batch_decode_ctx_finish(&device->decoder_ctx);
 
    close(device->fd);
@@ -4285,8 +4274,9 @@ VkResult anv_MapMemory(
 
    mem->map = map;
    mem->map_size = map_size;
+   mem->map_delta = (offset - map_offset);
 
-   *ppData = mem->map + (offset - map_offset);
+   *ppData = mem->map + mem->map_delta;
 
    return VK_SUCCESS;
 }
@@ -4305,6 +4295,7 @@ void anv_UnmapMemory(
 
    mem->map = NULL;
    mem->map_size = 0;
+   mem->map_delta = 0;
 }
 
 static void
@@ -4314,14 +4305,15 @@ clflush_mapped_ranges(struct anv_device         *device,
 {
    for (uint32_t i = 0; i < count; i++) {
       ANV_FROM_HANDLE(anv_device_memory, mem, ranges[i].memory);
-      if (ranges[i].offset >= mem->map_size)
+      uint64_t map_offset = ranges[i].offset + mem->map_delta;
+      if (map_offset >= mem->map_size)
          continue;
 
       if (mem->type->propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
          continue;
 
-      intel_clflush_range(mem->map + ranges[i].offset,
-                        MIN2(ranges[i].size, mem->map_size - ranges[i].offset));
+      intel_clflush_range(mem->map + map_offset,
+                          MIN2(ranges[i].size, mem->map_size - map_offset));
    }
 }
 
@@ -4958,7 +4950,11 @@ VkResult anv_GetPhysicalDeviceFragmentShadingRatesKHR(
 
    for (uint32_t x = 4; x >= 1; x /= 2) {
        for (uint32_t y = 4; y >= 1; y /= 2) {
-         append_rate(sample_counts, x, y);
+          /* For size {1, 1}, the sample count must be ~0 */
+          if (x == 1 && y == 1)
+             append_rate(~0, x, y);
+          else
+             append_rate(sample_counts, x, y);
       }
    }
 

@@ -695,7 +695,7 @@ panfrost_emit_frag_shader_meta(struct panfrost_batch *batch)
                                                      PAN_DESC_ARRAY(rt_count, BLEND));
         }
 
-        mali_ptr blend_shaders[PIPE_MAX_COLOR_BUFS];
+        mali_ptr blend_shaders[PIPE_MAX_COLOR_BUFS] = { 0 };
         unsigned shader_offset = 0;
         struct panfrost_bo *shader_bo = NULL;
 
@@ -2161,8 +2161,8 @@ panfrost_emit_varying_descs(
 
         /* Offsets within the general varying buffer, indexed by location */
         signed offsets[PIPE_MAX_ATTRIBS];
-        assert(producer_count < ARRAY_SIZE(offsets));
-        assert(consumer_count < ARRAY_SIZE(offsets));
+        assert(producer_count <= ARRAY_SIZE(offsets));
+        assert(consumer_count <= ARRAY_SIZE(offsets));
 
         /* Allocate enough descriptors for both shader stages */
         struct panfrost_ptr T =
@@ -3078,8 +3078,8 @@ panfrost_draw_vbo(struct pipe_context *pipe,
         if (!panfrost_render_condition_check(ctx))
                 return;
 
-        /* Emulate indirect draws when debugging */
-        if (dev->debug & PAN_DBG_NOINDIRECT && indirect && indirect->buffer) {
+        /* Emulate indirect draws unless we're using the experimental path */
+        if (!(dev->debug & PAN_DBG_INDIRECT) && indirect && indirect->buffer) {
                 assert(num_draws == 1);
                 util_draw_indirect(pipe, info, indirect);
                 return;

@@ -551,7 +551,7 @@ add_aux_surface_if_supported(struct anv_device *device,
          return VK_SUCCESS;
       }
 
-      if (INTEL_DEBUG & DEBUG_NO_HIZ)
+      if (INTEL_DEBUG(DEBUG_NO_HIZ))
          return VK_SUCCESS;
 
       ok = isl_surf_get_hiz_surf(&device->isl_dev,
@@ -590,7 +590,7 @@ add_aux_surface_if_supported(struct anv_device *device,
          return add_aux_state_tracking_buffer(device, image, plane);
    } else if (aspect == VK_IMAGE_ASPECT_STENCIL_BIT) {
 
-      if (INTEL_DEBUG & DEBUG_NO_RBC)
+      if (INTEL_DEBUG(DEBUG_NO_RBC))
          return VK_SUCCESS;
 
       if (!isl_surf_supports_ccs(&device->isl_dev,
@@ -646,7 +646,7 @@ add_aux_surface_if_supported(struct anv_device *device,
          return VK_SUCCESS;
       }
 
-      if (INTEL_DEBUG & DEBUG_NO_RBC)
+      if (INTEL_DEBUG(DEBUG_NO_RBC))
          return VK_SUCCESS;
 
       ok = isl_surf_get_ccs_surf(&device->isl_dev,
@@ -1490,11 +1490,17 @@ anv_CreateImage(VkDevice device,
       return anv_image_from_gralloc(device, pCreateInfo, gralloc_info,
                                     pAllocator, pImage);
 
+#ifndef VK_USE_PLATFORM_ANDROID_KHR
+   /* Ignore swapchain creation info on Android. Since we don't have an
+    * implementation in Mesa, we're guaranteed to access an Android object
+    * incorrectly.
+    */
    const VkImageSwapchainCreateInfoKHR *swapchain_info =
       vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
    if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE)
       return anv_image_from_swapchain(device, pCreateInfo, swapchain_info,
                                       pAllocator, pImage);
+#endif
 
    return anv_image_create(device,
       &(struct anv_image_create_info) {
@@ -1764,6 +1770,10 @@ VkResult anv_BindImageMemory2(
             break;
          }
          case VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR: {
+            /* Ignore this struct on Android, we cannot access swapchain
+             * structures threre.
+             */
+#ifndef VK_USE_PLATFORM_ANDROID_KHR
             const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
                (const VkBindImageMemorySwapchainInfoKHR *) s;
             struct anv_image *swapchain_image =
@@ -1785,8 +1795,22 @@ VkResult anv_BindImageMemory2(
                anv_bo_ref(private_bo);
 
             did_bind = true;
+#endif
             break;
          }
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wswitch"
+         case VK_STRUCTURE_TYPE_NATIVE_BUFFER_ANDROID: {
+            const VkNativeBufferANDROID *gralloc_info =
+               (const VkNativeBufferANDROID *)s;
+            VkResult result = anv_image_bind_from_gralloc(device, image,
+                                                          gralloc_info);
+            if (result != VK_SUCCESS)
+               return result;
+            did_bind = true;
+            break;
+         }
+#pragma GCC diagnostic pop
          default:
             anv_debug_ignored_stype(s->sType);
             break;
@@ -2375,7 +2399,7 @@ anv_layout_to_fast_clear_type(const struct intel_device_info * const devinfo,
                               const VkImageAspectFlagBits aspect,
                               const VkImageLayout layout)
 {
-   if (INTEL_DEBUG & DEBUG_NO_FAST_CLEAR)
+   if (INTEL_DEBUG(DEBUG_NO_FAST_CLEAR))
       return ANV_FAST_CLEAR_NONE;
 
    uint32_t plane = anv_image_aspect_to_plane(image->aspects, aspect);

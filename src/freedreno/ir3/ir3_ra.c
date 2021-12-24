@@ -548,6 +548,18 @@ ra_file_mark_killed(struct ra_file *file, struct ra_interval *interval)
    interval->is_killed = true;
 }
 
+static void
+ra_file_unmark_killed(struct ra_file *file, struct ra_interval *interval)
+{
+   assert(!interval->interval.parent);
+
+   for (physreg_t i = interval->physreg_start; i < interval->physreg_end; i++) {
+      BITSET_CLEAR(file->available, i);
+   }
+
+   interval->is_killed = false;
+}
+
 static physreg_t
 ra_interval_get_physreg(const struct ra_interval *interval)
 {
@@ -932,12 +944,16 @@ compress_regs_left(struct ra_ctx *ctx, struct ra_file *file, unsigned size,
 }
 
 static void
-update_affinity(struct ir3_register *reg, physreg_t physreg)
+update_affinity(struct ra_file *file, struct ir3_register *reg,
+                physreg_t physreg)
 {
    if (!reg->merge_set || reg->merge_set->preferred_reg != (physreg_t)~0)
       return;
 
    if (physreg < reg->merge_set_offset)
+      return;
+
+   if ((physreg - reg->merge_set_offset + reg->merge_set->size) > file->size)
       return;
 
    reg->merge_set->preferred_reg = physreg - reg->merge_set_offset;
@@ -950,6 +966,12 @@ static physreg_t
 find_best_gap(struct ra_file *file, unsigned file_size, unsigned size,
               unsigned align, bool is_source)
 {
+   /* This can happen if we create a very large merge set. Just bail out in that
+    * case.
+    */
+   if (size > file_size)
+      return (physreg_t) ~0;
+
    BITSET_WORD *available =
       is_source ? file->available_to_evict : file->available;
 
@@ -1126,8 +1148,9 @@ static void
 allocate_dst_fixed(struct ra_ctx *ctx, struct ir3_register *dst,
                    physreg_t physreg)
 {
+   struct ra_file *file = ra_get_file(ctx, dst);
    struct ra_interval *interval = &ctx->intervals[dst->name];
-   update_affinity(dst, physreg);
+   update_affinity(file, dst, physreg);
 
    ra_interval_init(interval, dst);
    interval->physreg_start = physreg;
@@ -1311,15 +1334,11 @@ handle_collect(struct ra_ctx *ctx, struct ir3_instruction *instr)
     */
    physreg_t dst_fixed = (physreg_t)~0u;
 
-   for (unsigned i = 0; i < instr->srcs_count; i++) {
-      if (!ra_reg_is_src(instr->srcs[i]))
-         continue;
-
-      if (instr->srcs[i]->flags & IR3_REG_FIRST_KILL) {
-         mark_src_killed(ctx, instr->srcs[i]);
+   ra_foreach_src (src, instr) {
+      if (src->flags & IR3_REG_FIRST_KILL) {
+         mark_src_killed(ctx, src);
       }
 
-      struct ir3_register *src = instr->srcs[i];
       struct ra_interval *interval = &ctx->intervals[src->def->name];
 
       if (src->def->merge_set != dst_set || interval->is_killed)
@@ -1347,11 +1366,7 @@ handle_collect(struct ra_ctx *ctx, struct ir3_instruction *instr)
       allocate_dst(ctx, instr->dsts[0]);
 
    /* Remove the temporary is_killed we added */
-   for (unsigned i = 0; i < instr->srcs_count; i++) {
-      if (!ra_reg_is_src(instr->srcs[i]))
-         continue;
-
-      struct ir3_register *src = instr->srcs[i];
+   ra_foreach_src (src, instr) {
       struct ra_interval *interval = &ctx->intervals[src->def->name];
       while (interval->interval.parent != NULL) {
          interval = ir3_reg_interval_to_ra_interval(interval->interval.parent);
@@ -1359,8 +1374,9 @@ handle_collect(struct ra_ctx *ctx, struct ir3_instruction *instr)
 
       /* Filter out cases where it actually should be killed */
       if (interval != &ctx->intervals[src->def->name] ||
-          !(src->flags & IR3_REG_KILL))
-         interval->is_killed = false;
+          !(src->flags & IR3_REG_KILL)) {
+         ra_file_unmark_killed(ra_get_file(ctx, src), interval);
+      }
    }
 
    ra_foreach_src_rev (src, instr) {

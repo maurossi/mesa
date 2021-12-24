@@ -854,7 +854,8 @@ radv_query_shader(struct radv_cmd_buffer *cmd_buffer, VkPipeline *pipeline,
    old_predicating = cmd_buffer->state.predicating;
    cmd_buffer->state.predicating = false;
 
-   struct radv_buffer dst_buffer = {.bo = dst_bo, .offset = dst_offset, .size = dst_stride * count};
+   uint64_t dst_buffer_size = count == 1 ? src_stride : dst_stride * count;
+   struct radv_buffer dst_buffer = {.bo = dst_bo, .offset = dst_offset, .size = dst_buffer_size};
 
    struct radv_buffer src_buffer = {
       .bo = src_bo,
@@ -1212,6 +1213,9 @@ radv_CmdCopyQueryPoolResults(VkCommandBuffer commandBuffer, VkQueryPool queryPoo
    uint64_t va = radv_buffer_get_va(pool->bo);
    uint64_t dest_va = radv_buffer_get_va(dst_buffer->bo);
    dest_va += dst_buffer->offset + dstOffset;
+
+   if (!queryCount)
+      return;
 
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, pool->bo);
    radv_cs_add_buffer(cmd_buffer->device->ws, cmd_buffer->cs, dst_buffer->bo);

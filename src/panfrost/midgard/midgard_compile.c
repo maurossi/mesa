@@ -309,10 +309,7 @@ optimise_nir(nir_shader *nir, unsigned quirks, bool is_blend)
         nir_lower_tex_options lower_tex_options = {
                 .lower_txs_lod = true,
                 .lower_txp = ~0,
-                .lower_tex_without_implicit_lod =
-                        (quirks & MIDGARD_EXPLICIT_LOD),
                 .lower_tg4_broadcom_swizzle = true,
-
                 /* TODO: we have native gradient.. */
                 .lower_txd = true,
         };
@@ -3176,12 +3173,14 @@ midgard_compile_shader_nir(nir_shader *nir,
 
         /* Analyze now that the code is known but before scheduling creates
          * pipeline registers which are harder to track */
-        mir_analyze_helper_terminate(ctx);
         mir_analyze_helper_requirements(ctx);
 
         /* Schedule! */
         midgard_schedule_program(ctx);
         mir_ra(ctx);
+
+        /* Analyze after scheduling since this is order-dependent */
+        mir_analyze_helper_terminate(ctx);
 
         /* Emit flat binary from the instruction arrays. Iterate each block in
          * sequence. Save instruction boundaries such that lookahead tags can

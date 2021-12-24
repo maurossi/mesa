@@ -658,7 +658,7 @@ void si_init_shader_args(struct si_shader_context *ctx, bool ngg_cull_shader)
                          SI_PARAM_LINEAR_CENTER);
       si_add_arg_checked(&ctx->args, AC_ARG_VGPR, 2, AC_ARG_INT, &ctx->args.linear_centroid,
                          SI_PARAM_LINEAR_CENTROID);
-      si_add_arg_checked(&ctx->args, AC_ARG_VGPR, 3, AC_ARG_FLOAT, NULL, SI_PARAM_LINE_STIPPLE_TEX);
+      si_add_arg_checked(&ctx->args, AC_ARG_VGPR, 1, AC_ARG_FLOAT, NULL, SI_PARAM_LINE_STIPPLE_TEX);
       si_add_arg_checked(&ctx->args, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &ctx->args.frag_pos[0],
                          SI_PARAM_POS_X_FLOAT);
       si_add_arg_checked(&ctx->args, AC_ARG_VGPR, 1, AC_ARG_FLOAT, &ctx->args.frag_pos[1],
@@ -832,7 +832,9 @@ static unsigned si_get_shader_binary_size(struct si_screen *screen, struct si_sh
 {
    struct ac_rtld_binary rtld;
    si_shader_binary_open(screen, shader, &rtld);
-   return rtld.exec_size;
+   uint64_t size = rtld.exec_size;
+   ac_rtld_close(&rtld);
+   return size;
 }
 
 static bool si_get_external_symbol(void *data, const char *name, uint64_t *value)

@@ -162,7 +162,7 @@ pipe_bind_to_isl_usage(unsigned bindings)
    if (bindings & (PIPE_BIND_SHADER_IMAGE | PIPE_BIND_SHADER_BUFFER))
       usage |= ISL_SURF_USAGE_STORAGE_BIT;
 
-   if (bindings & PIPE_BIND_DISPLAY_TARGET)
+   if (bindings & PIPE_BIND_SCANOUT)
       usage |= ISL_SURF_USAGE_DISPLAY_BIT;
    return usage;
 }
@@ -227,6 +227,14 @@ crocus_resource_configure_main(const struct crocus_screen *screen,
 
    const enum isl_format format =
       crocus_format_for_usage(&screen->devinfo, templ->format, usage).fmt;
+
+   if (row_pitch_B == 0 && templ->usage == PIPE_USAGE_STAGING &&
+       templ->target == PIPE_TEXTURE_2D &&
+       devinfo->ver < 6) {
+      /* align row pitch to 4 so we can keep using BLT engine */
+      row_pitch_B = util_format_get_stride(templ->format, templ->width0);
+      row_pitch_B = ALIGN(row_pitch_B, 4);
+   }
 
    const struct isl_surf_init_info init_info = {
       .dim = crocus_target_to_isl_surf_dim(templ->target),
@@ -426,11 +434,11 @@ crocus_resource_configure_aux(struct crocus_screen *screen,
       isl_surf_get_mcs_surf(&screen->isl_dev, &res->surf, &res->aux.surf);
 
    const bool has_hiz = devinfo->ver >= 6 && !res->mod_info &&
-      !(INTEL_DEBUG & DEBUG_NO_HIZ) &&
+      !INTEL_DEBUG(DEBUG_NO_HIZ) &&
       isl_surf_get_hiz_surf(&screen->isl_dev, &res->surf, &res->aux.surf);
 
    const bool has_ccs =
-      ((devinfo->ver >= 7 && !res->mod_info && !(INTEL_DEBUG & DEBUG_NO_RBC)) ||
+      ((devinfo->ver >= 7 && !res->mod_info && !INTEL_DEBUG(DEBUG_NO_RBC)) ||
        (res->mod_info && res->mod_info->aux_usage != ISL_AUX_USAGE_NONE)) &&
       isl_surf_get_ccs_surf(&screen->isl_dev, &res->surf, NULL,
                             &res->aux.surf, 0);
@@ -891,6 +899,10 @@ crocus_resource_from_memobj(struct pipe_screen *pscreen,
    if (!res)
       return NULL;
 
+   /* Disable Depth, and combined Depth+Stencil for now. */
+   if (util_format_has_depth(util_format_description(templ->format)))
+      return NULL;
+
    if (templ->flags & PIPE_RESOURCE_FLAG_TEXTURING_MORE_LIKELY) {
       UNUSED const bool isl_surf_created_successfully =
          crocus_resource_configure_main(screen, res, templ, DRM_FORMAT_MOD_INVALID, 0);
@@ -900,6 +912,8 @@ crocus_resource_from_memobj(struct pipe_screen *pscreen,
    res->bo = memobj->bo;
    res->offset = offset;
    res->external_format = memobj->format;
+
+   crocus_bo_reference(memobj->bo);
 
    return &res->base.b;
 }
@@ -1542,12 +1556,17 @@ crocus_map_direct(struct crocus_transfer *map)
       const unsigned cpp = fmtl->bpb / 8;
       unsigned x0_el, y0_el;
 
+      assert(box->x % fmtl->bw == 0);
+      assert(box->y % fmtl->bh == 0);
       get_image_offset_el(surf, xfer->level, box->z, &x0_el, &y0_el);
+
+      x0_el += box->x / fmtl->bw;
+      y0_el += box->y / fmtl->bh;
 
       xfer->stride = isl_surf_get_row_pitch_B(surf);
       xfer->layer_stride = isl_surf_get_array_pitch(surf);
 
-      map->ptr = ptr + (y0_el + box->y) * xfer->stride + (x0_el + box->x) * cpp;
+      map->ptr = ptr + y0_el * xfer->stride + x0_el * cpp;
    }
 }
 
@@ -1577,6 +1596,7 @@ crocus_transfer_map(struct pipe_context *ctx,
    struct crocus_context *ice = (struct crocus_context *)ctx;
    struct crocus_resource *res = (struct crocus_resource *)resource;
    struct isl_surf *surf = &res->surf;
+   struct crocus_screen *screen = (struct crocus_screen *)ctx->screen;
 
    if (usage & PIPE_MAP_DISCARD_WHOLE_RESOURCE) {
       /* Replace the backing storage with a fresh buffer for non-async maps */
@@ -1690,7 +1710,7 @@ crocus_transfer_map(struct pipe_context *ctx,
       if (surf->tiling == ISL_TILING_W) {
          /* TODO: Teach crocus_map_tiled_memcpy about W-tiling... */
          crocus_map_s8(map);
-      } else if (surf->tiling != ISL_TILING_LINEAR) {
+      } else if (surf->tiling != ISL_TILING_LINEAR && screen->devinfo.ver > 4) {
          crocus_map_tiled_memcpy(map);
       } else {
          crocus_map_direct(map);
@@ -1942,8 +1962,6 @@ crocus_memobj_create_from_handle(struct pipe_screen *pscreen,
    memobj->bo = bo;
    memobj->format = whandle->format;
    memobj->stride = whandle->stride;
-
-   crocus_bo_reference(memobj->bo);
 
    return &memobj->b;
 }

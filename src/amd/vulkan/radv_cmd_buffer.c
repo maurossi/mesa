@@ -981,6 +981,8 @@ radv_emit_inline_push_consts(struct radv_cmd_buffer *cmd_buffer, struct radv_pip
 
    assert(loc->num_sgprs == count);
 
+   radeon_check_space(cmd_buffer->device->ws, cmd_buffer->cs, 2 + count);
+
    radeon_set_sh_reg_seq(cmd_buffer->cs, base_reg + loc->sgpr_idx * 4, count);
    radeon_emit_array(cmd_buffer->cs, values, count);
 }
@@ -2933,10 +2935,10 @@ radv_flush_vertex_descriptors(struct radv_cmd_buffer *cmd_buffer, bool pipeline_
             /* GFX10 uses OOB_SELECT_RAW if stride==0, so convert num_records from elements into
              * into bytes in that case. GFX8 always uses bytes.
              */
-            if (num_records && (chip == GFX8 || (chip >= GFX10 && !stride))) {
+            if (num_records && (chip == GFX8 || (chip != GFX9 && !stride))) {
                num_records = (num_records - 1) * stride + attrib_end;
             } else if (!num_records) {
-               /* On GFX9 (GFX6/7 untested), it seems bounds checking is disabled if both
+               /* On GFX9, it seems bounds checking is disabled if both
                 * num_records and stride are zero. This doesn't seem necessary on GFX8, GFX10 and
                 * GFX10.3 but it doesn't hurt.
                 */
@@ -5664,17 +5666,15 @@ enum {
 
 ALWAYS_INLINE static bool
 radv_skip_ngg_culling(bool has_tess, const unsigned vtx_cnt,
-                      bool indirect, unsigned num_viewports)
+                      bool indirect)
 {
    /* If we have to draw only a few vertices, we get better latency if
     * we disable NGG culling.
     *
     * When tessellation is used, what matters is the number of tessellated
     * vertices, so let's always assume it's not a small draw.
-    *
-    * TODO: Figure out how to do culling with multiple viewports efficiently.
     */
-   return !has_tess && !indirect && vtx_cnt < 512 && num_viewports == 1;
+   return !has_tess && !indirect && vtx_cnt < 512;
 }
 
 ALWAYS_INLINE static uint32_t
@@ -5757,9 +5757,7 @@ radv_emit_ngg_culling_state(struct radv_cmd_buffer *cmd_buffer, const struct rad
     * For small draw calls, we disable culling by setting the SGPR to 0.
     */
    const bool skip =
-      radv_skip_ngg_culling(
-         stage == MESA_SHADER_TESS_EVAL, draw_info->count, draw_info->indirect,
-         cmd_buffer->state.dynamic.viewport.count);
+      radv_skip_ngg_culling(stage == MESA_SHADER_TESS_EVAL, draw_info->count, draw_info->indirect);
 
    /* See if anything changed. */
    if (!dirty && skip == cmd_buffer->state.last_nggc_skip)
@@ -5842,8 +5840,11 @@ radv_emit_ngg_culling_state(struct radv_cmd_buffer *cmd_buffer, const struct rad
             rsrc2 = (rsrc2 & C_00B22C_LDS_SIZE) | S_00B22C_LDS_SIZE(v->info.num_lds_blocks_when_not_culling);
       }
 
-      /* When the pipeline is dirty, radv_emit_graphics_pipeline will write this register. */
-      if (!(cmd_buffer->state.dirty & RADV_CMD_DIRTY_PIPELINE)) {
+      /* When the pipeline is dirty and not yet emitted, don't write it here
+       * because radv_emit_graphics_pipeline will overwrite this register.
+       */
+      if (!(cmd_buffer->state.dirty & RADV_CMD_DIRTY_PIPELINE) ||
+          cmd_buffer->state.emitted_pipeline == pipeline) {
          radeon_set_sh_reg(cmd_buffer->cs, R_00B22C_SPI_SHADER_PGM_RSRC2_GS, rsrc2);
       }
 
@@ -6600,7 +6601,6 @@ static void
 radv_initialize_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image *image,
                       const VkImageSubresourceRange *range)
 {
-   VkImageAspectFlags aspects = VK_IMAGE_ASPECT_DEPTH_BIT;
    struct radv_cmd_state *state = &cmd_buffer->state;
    uint32_t htile_value = radv_get_htile_initial_value(cmd_buffer->device, image);
    VkClearDepthStencilValue value = {0};
@@ -6614,14 +6614,19 @@ radv_initialize_htile(struct radv_cmd_buffer *cmd_buffer, struct radv_image *ima
    state->flush_bits |=
       radv_src_access_flush(cmd_buffer, VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, image);
 
+   if (image->planes[0].surface.has_stencil &&
+       !(range->aspectMask == (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT))) {
+      /* Flush caches before performing a separate aspect initialization because it's a
+       * read-modify-write operation.
+       */
+      state->flush_bits |= radv_dst_access_flush(cmd_buffer, VK_ACCESS_SHADER_READ_BIT, image);
+   }
+
    state->flush_bits |= radv_clear_htile(cmd_buffer, image, range, htile_value);
 
-   if (vk_format_has_stencil(image->vk_format))
-      aspects |= VK_IMAGE_ASPECT_STENCIL_BIT;
+   radv_set_ds_clear_metadata(cmd_buffer, image, range, value, range->aspectMask);
 
-   radv_set_ds_clear_metadata(cmd_buffer, image, range, value, aspects);
-
-   if (radv_image_is_tc_compat_htile(image)) {
+   if (radv_image_is_tc_compat_htile(image) && (range->aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT)) {
       /* Initialize the TC-compat metada value to 0 because by
        * default DB_Z_INFO.RANGE_PRECISION is set to 1, and we only
        * need have to conditionally update its value when performing

@@ -194,7 +194,8 @@ struct ssa_info {
       add_label(label_literal);
       val = constant;
 
-      if (chip >= GFX8 && !op16.isLiteral())
+      /* check that no upper bits are lost in case of packed 16bit constants */
+      if (chip >= GFX8 && !op16.isLiteral() && op16.constantValue64() == constant)
          add_label(label_constant_16bit);
 
       if (!op32.isLiteral())
@@ -928,6 +929,9 @@ apply_extract(opt_ctx& ctx, aco_ptr<Instruction>& instr, unsigned idx, ssa_info&
          instr->vop3().opsel |= 1 << idx;
    }
 
+   instr->operands[idx].set16bit(false);
+   instr->operands[idx].set24bit(false);
+
    ctx.info[tmp.id()].label &= ~label_insert;
    /* label_vopc seems to be the only one worth keeping at the moment */
    for (Definition& def : instr->definitions)
@@ -1115,7 +1119,7 @@ label_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          }
          unsigned bits = get_operand_size(instr, i);
          if (info.is_constant(bits) && alu_can_accept_constant(instr->opcode, i) &&
-             (!instr->isSDWA() || ctx.program->chip_class >= GFX9)) {
+             (!instr->isSDWA() || ctx.program->chip_class >= GFX9) && !instr->isDPP()) {
             Operand op = get_constant_op(ctx, info, bits);
             perfwarn(ctx.program, instr->opcode == aco_opcode::v_cndmask_b32 && i == 2,
                      "v_cndmask_b32 with a constant selector", instr.get());
@@ -3576,6 +3580,14 @@ combine_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 bool
 to_uniform_bool_instr(opt_ctx& ctx, aco_ptr<Instruction>& instr)
 {
+   /* Check every operand to make sure they are suitable. */
+   for (Operand& op : instr->operands) {
+      if (!op.isTemp())
+         return false;
+      if (!ctx.info[op.tempId()].is_uniform_bool() && !ctx.info[op.tempId()].is_uniform_bitwise())
+         return false;
+   }
+
    switch (instr->opcode) {
    case aco_opcode::s_and_b32:
    case aco_opcode::s_and_b64: instr->opcode = aco_opcode::s_and_b32; break;
@@ -3751,6 +3763,11 @@ select_instruction(opt_ctx& ctx, aco_ptr<Instruction>& instr)
          /* FMA can only take literals on GFX10+ */
          if ((instr->opcode == aco_opcode::v_fma_f32 || instr->opcode == aco_opcode::v_fma_f16) &&
              ctx.program->chip_class < GFX10)
+            return;
+         /* There are no v_fmaak_legacy_f16/v_fmamk_legacy_f16 and on chips where VOP3 can take
+          * literals (GFX10+), these instructions don't exist.
+          */
+         if (instr->opcode == aco_opcode::v_fma_legacy_f16)
             return;
 
          bool sgpr_used = false;

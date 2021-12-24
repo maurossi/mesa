@@ -358,12 +358,6 @@ with_platform_wayland = _platforms.contains('wayland')
 with_platform_haiku = _platforms.contains('haiku')
 with_platform_windows = _platforms.contains('windows')
 
-if _platforms.length() != 0
-  egl_native_platform = _platforms[0]
-else
-  egl_native_platform = 'surfaceless'
-endif
-
 with_glx = get_option('glx')
 if with_glx == 'auto'
   if with_platform_android
@@ -456,6 +450,26 @@ elif _egl == 'enabled'
   with_egl = true
 else
   with_egl = false
+endif
+
+if with_egl
+  _platforms += 'surfaceless'
+  if with_gbm and not with_platform_android
+    _platforms += 'drm'
+  endif
+endif
+
+egl_native_platform = get_option('egl-native-platform')
+if egl_native_platform.contains('auto')
+  if _platforms.length() != 0
+    egl_native_platform = _platforms[0]
+  else
+    egl_native_platform = 'surfaceless'
+  endif
+endif
+
+if with_egl and not _platforms.contains(egl_native_platform)
+  error('-Degl-native-platform does not specify an enabled platform')
 endif
 
 # Android uses emutls for versions <= P/28. For USE_ELF_TLS we need ELF TLS.
@@ -1079,7 +1093,6 @@ else
     '-Werror=incompatible-pointer-types',
     '-Werror=int-conversion',
     '-Wimplicit-fallthrough',
-    '-Werror=thread-safety',
     '-Wno-missing-field-initializers',
     '-Wno-format-truncation',
     '-fno-math-errno',
@@ -1090,6 +1103,10 @@ else
   # MinGW chokes on format specifiers and I can't get it all working
   if not (cc.get_id() == 'gcc' and host_machine.system() == 'windows')
     _trial += ['-Werror=format', '-Wformat-security']
+  endif
+  # FreeBSD annotated <pthread.h> but Mesa isn't ready
+  if not (cc.get_id() == 'clang' and host_machine.system() == 'freebsd')
+    _trial += ['-Werror=thread-safety']
   endif
   foreach a : _trial
     if cc.has_argument(a)
@@ -2093,7 +2110,9 @@ pkg = import('pkgconfig')
 if host_machine.system() == 'windows'
   prog_dumpbin = find_program('dumpbin', required : false)
   with_symbols_check = prog_dumpbin.found() and with_tests
-  symbols_check_args = ['--dumpbin', prog_dumpbin.path()]
+  if with_symbols_check
+    symbols_check_args = ['--dumpbin', prog_dumpbin.path()]
+  endif
 else
   prog_nm = find_program('nm')
   with_symbols_check = with_tests
@@ -2168,10 +2187,6 @@ if with_egl
   lines += 'EGL drivers:     ' + ' '.join(egl_drivers)
 endif
 if with_egl or with_any_vk
-  _platforms += 'surfaceless'
-  if with_gbm and not with_platform_android
-    _platforms += 'drm'
-  endif
   lines += 'EGL/Vulkan/VL platforms:   ' + ' '.join(_platforms)
 endif
 lines += 'GBM:             ' + (with_gbm ? 'yes' : 'no')
@@ -2204,9 +2219,6 @@ if with_gallium
   gallium_st = ['mesa']
   if with_gallium_xa
     gallium_st += 'xa'
-  endif
-  if with_gallium_xvmc
-    gallium_st += 'xvmc'
   endif
   if with_gallium_xvmc
     gallium_st += 'xvmc'

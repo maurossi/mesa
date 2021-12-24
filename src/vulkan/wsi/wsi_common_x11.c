@@ -816,7 +816,7 @@ struct x11_swapchain {
    bool                                         has_present_queue;
    bool                                         has_acquire_queue;
    VkResult                                     status;
-   xcb_present_complete_mode_t                  last_present_mode;
+   bool                                         copy_is_suboptimal;
    struct wsi_queue                             present_queue;
    struct wsi_queue                             acquire_queue;
    pthread_t                                    queue_manager;
@@ -932,25 +932,30 @@ x11_handle_dri3_present_event(struct x11_swapchain *chain,
       }
 
       VkResult result = VK_SUCCESS;
-
-      /* The winsys is now trying to flip directly and cannot due to our
-       * configuration. Request the user reallocate.
-       */
+      switch (complete->mode) {
+      case XCB_PRESENT_COMPLETE_MODE_COPY:
+         if (chain->copy_is_suboptimal)
+            result = VK_SUBOPTIMAL_KHR;
+         break;
+      case XCB_PRESENT_COMPLETE_MODE_FLIP:
+         /* If we ever go from flipping to copying, the odds are very likely
+          * that we could reallocate in a more optimal way if we didn't have
+          * to care about scanout, so we always do this.
+          */
+         chain->copy_is_suboptimal = true;
+         break;
 #ifdef HAVE_DRI3_MODIFIERS
-      if (complete->mode == XCB_PRESENT_COMPLETE_MODE_SUBOPTIMAL_COPY &&
-          chain->last_present_mode != XCB_PRESENT_COMPLETE_MODE_SUBOPTIMAL_COPY)
+      case XCB_PRESENT_COMPLETE_MODE_SUBOPTIMAL_COPY:
+         /* The winsys is now trying to flip directly and cannot due to our
+          * configuration. Request the user reallocate.
+          */
          result = VK_SUBOPTIMAL_KHR;
+         break;
 #endif
+      default:
+         break;
+      }
 
-      /* When we go from flipping to copying, the odds are very likely that
-       * we could reallocate in a more optimal way if we didn't have to care
-       * about scanout, so we always do this.
-       */
-      if (complete->mode == XCB_PRESENT_COMPLETE_MODE_COPY &&
-          chain->last_present_mode == XCB_PRESENT_COMPLETE_MODE_FLIP)
-         result = VK_SUBOPTIMAL_KHR;
-
-      chain->last_present_mode = complete->mode;
       return result;
    }
 
@@ -1028,9 +1033,11 @@ x11_acquire_next_image_poll_x11(struct x11_swapchain *chain,
        * in which case we need to update the status and continue.
        */
       VkResult result = x11_handle_dri3_present_event(chain, (void *)event);
+      /* Ensure that VK_SUBOPTIMAL_KHR is reported to the application */
+      result = x11_swapchain_result(chain, result);
       free(event);
       if (result < 0)
-         return x11_swapchain_result(chain, result);
+         return result;
    }
 }
 
@@ -1097,10 +1104,11 @@ x11_present_to_x11_dri3(struct x11_swapchain *chain, uint32_t image_index,
    xcb_generic_event_t *event;
    while ((event = xcb_poll_for_special_event(chain->conn, chain->special_event))) {
       VkResult result = x11_handle_dri3_present_event(chain, (void *)event);
+      /* Ensure that VK_SUBOPTIMAL_KHR is reported to the application */
+      result = x11_swapchain_result(chain, result);
       free(event);
       if (result < 0)
-         return x11_swapchain_result(chain, result);
-      x11_swapchain_result(chain, result);
+         return result;
    }
 
    xshmfence_reset(image->shm_fence);
@@ -1277,6 +1285,8 @@ x11_manage_fifo_queues(void *state)
             }
 
             result = x11_handle_dri3_present_event(chain, (void *)event);
+            /* Ensure that VK_SUBOPTIMAL_KHR is reported to the application */
+            result = x11_swapchain_result(chain, result);
             free(event);
             if (result < 0)
                goto fail;
@@ -1631,17 +1641,15 @@ x11_surface_create_swapchain(VkIcdSurfaceBase *icd_surface,
    if (chain->extent.width != cur_width || chain->extent.height != cur_height)
        chain->status = VK_SUBOPTIMAL_KHR;
 
-   /* If we are reallocating from an old swapchain, then we inherit its
-    * last completion mode, to ensure we don't get into reallocation
-    * cycles. If we are starting anew, we set 'COPY', as that is the only
-    * mode which provokes reallocation when anything changes, to make
-    * sure we have the most optimal allocation.
+   /* We used to inherit copy_is_suboptimal from pCreateInfo->oldSwapchain.
+    * When it was true, and when the next present was completed with copying,
+    * we would return VK_SUBOPTIMAL_KHR and hint the app to reallocate again
+    * for no good reason.  If all following presents on the surface were
+    * completed with copying because of some surface state change, we would
+    * always return VK_SUBOPTIMAL_KHR no matter how many times the app had
+    * reallocated.
     */
-   VK_FROM_HANDLE(x11_swapchain, old_chain, pCreateInfo->oldSwapchain);
-   if (old_chain)
-      chain->last_present_mode = old_chain->last_present_mode;
-   else
-      chain->last_present_mode = XCB_PRESENT_COMPLETE_MODE_COPY;
+   chain->copy_is_suboptimal = false;
 
    if (!wsi_device->sw)
       if (!wsi_x11_check_dri3_compatible(wsi_device, conn))

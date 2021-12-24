@@ -1021,7 +1021,7 @@ static void visit_alu(struct lp_build_nir_context *bld_base, const nir_alu_instr
          result[i] = cast_type(bld_base, src[i], nir_op_infos[instr->op].input_types[i], src_bit_size[i]);
       }
    } else if (instr->op == nir_op_fsum4 || instr->op == nir_op_fsum3 || instr->op == nir_op_fsum2) {
-      for (unsigned c = 0; c < nir_src_num_components(instr->src[0].src); c++) {
+      for (unsigned c = 0; c < nir_op_infos[instr->op].input_sizes[0]; c++) {
          LLVMValueRef temp_chan = LLVMBuildExtractValue(gallivm->builder,
                                                           src[0], c, "");
          temp_chan = cast_type(bld_base, temp_chan, nir_op_infos[instr->op].input_types[0], src_bit_size[0]);
@@ -2110,6 +2110,26 @@ static void visit_tex(struct lp_build_nir_context *bld_base, nir_tex_instr *inst
    params.lod = explicit_lod;
    params.ms_index = ms_index;
    bld_base->tex(bld_base, &params);
+
+   if (nir_dest_bit_size(instr->dest) != 32) {
+      assert(nir_dest_bit_size(instr->dest) == 16);
+      LLVMTypeRef vec_type;
+      switch (nir_alu_type_get_base_type(instr->dest_type)) {
+      case nir_type_int:
+         vec_type = bld_base->int16_bld.vec_type;
+         break;
+      case nir_type_uint:
+         vec_type = bld_base->uint16_bld.vec_type;
+         break;
+      default:
+         unreachable("unexpected alu type");
+      }
+      for (int i = 0; i < nir_dest_num_components(instr->dest); ++i) {
+         texel[i] = LLVMBuildBitCast(builder, texel[i], bld_base->int_bld.vec_type, "");
+         texel[i] = LLVMBuildTrunc(builder, texel[i], vec_type, "");
+      }
+   }
+
    assign_dest(bld_base, &instr->dest, texel);
 }
 
@@ -2348,7 +2368,7 @@ void lp_build_opt_nir(struct nir_shader *nir)
       NIR_PASS(progress, nir, nir_opt_algebraic);
       NIR_PASS(progress, nir, nir_lower_pack);
 
-      nir_lower_tex_options options = { .lower_tex_without_implicit_lod = true };
+      nir_lower_tex_options options = { 0, };
       NIR_PASS_V(nir, nir_lower_tex, &options);
 
       const nir_lower_subgroups_options subgroups_options = {

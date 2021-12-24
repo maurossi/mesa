@@ -40,6 +40,7 @@
 #include <map>
 #include <numeric>
 #include <stack>
+#include <utility>
 #include <vector>
 
 namespace aco {
@@ -3509,6 +3510,14 @@ visit_alu_instr(isel_context* ctx, nir_alu_instr* instr)
    case nir_op_fddy_fine:
    case nir_op_fddx_coarse:
    case nir_op_fddy_coarse: {
+      if (!nir_src_is_divergent(instr->src[0].src)) {
+         /* Source is the same in all lanes, so the derivative is zero.
+          * This also avoids emitting invalid IR.
+          */
+         bld.copy(Definition(dst), Operand::zero());
+         break;
+      }
+
       Temp src = as_vgpr(ctx, get_alu_src(ctx, instr->src[0]));
       uint16_t dpp_ctrl1, dpp_ctrl2;
       if (instr->op == nir_op_fddx_fine) {
@@ -7833,12 +7842,11 @@ emit_reduction_instr(isel_context* ctx, aco_opcode aco_op, ReduceOp op, unsigned
 }
 
 void
-emit_interp_center(isel_context* ctx, Temp dst, Temp pos1, Temp pos2)
+emit_interp_center(isel_context* ctx, Temp dst, Temp bary, Temp pos1, Temp pos2)
 {
    Builder bld(ctx->program, ctx->block);
-   Temp persp_center = get_arg(ctx, ctx->args->ac.persp_center);
-   Temp p1 = emit_extract_vector(ctx, persp_center, 0, v1);
-   Temp p2 = emit_extract_vector(ctx, persp_center, 1, v1);
+   Temp p1 = emit_extract_vector(ctx, bary, 0, v1);
+   Temp p2 = emit_extract_vector(ctx, bary, 1, v1);
 
    Temp ddx_1, ddx_2, ddy_1, ddy_2;
    uint32_t dpp_ctrl0 = dpp_quad_perm(0, 0, 0, 0);
@@ -7885,6 +7893,23 @@ Temp merged_wave_info_to_mask(isel_context* ctx, unsigned i);
 void ngg_emit_sendmsg_gs_alloc_req(isel_context* ctx, Temp vtx_cnt, Temp prm_cnt);
 static void create_vs_exports(isel_context* ctx);
 
+Temp
+get_interp_param(isel_context* ctx, nir_intrinsic_op intrin,
+                 enum glsl_interp_mode interp)
+{
+   bool linear = interp == INTERP_MODE_NOPERSPECTIVE;
+   if (intrin == nir_intrinsic_load_barycentric_pixel ||
+       intrin == nir_intrinsic_load_barycentric_at_sample ||
+       intrin == nir_intrinsic_load_barycentric_at_offset) {
+      return get_arg(ctx, linear ? ctx->args->ac.linear_center : ctx->args->ac.persp_center);
+   } else if (intrin == nir_intrinsic_load_barycentric_centroid) {
+      return linear ? ctx->linear_centroid : ctx->persp_centroid;
+   } else {
+      assert(intrin == nir_intrinsic_load_barycentric_sample);
+      return get_arg(ctx, linear ? ctx->args->ac.linear_sample : ctx->args->ac.persp_sample);
+   }
+}
+
 void
 visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
 {
@@ -7894,27 +7919,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_load_barycentric_pixel:
    case nir_intrinsic_load_barycentric_centroid: {
       glsl_interp_mode mode = (glsl_interp_mode)nir_intrinsic_interp_mode(instr);
-      Temp bary = Temp(0, s2);
-      switch (mode) {
-      case INTERP_MODE_SMOOTH:
-      case INTERP_MODE_NONE:
-         if (instr->intrinsic == nir_intrinsic_load_barycentric_pixel)
-            bary = get_arg(ctx, ctx->args->ac.persp_center);
-         else if (instr->intrinsic == nir_intrinsic_load_barycentric_centroid)
-            bary = ctx->persp_centroid;
-         else if (instr->intrinsic == nir_intrinsic_load_barycentric_sample)
-            bary = get_arg(ctx, ctx->args->ac.persp_sample);
-         break;
-      case INTERP_MODE_NOPERSPECTIVE:
-         if (instr->intrinsic == nir_intrinsic_load_barycentric_pixel)
-            bary = get_arg(ctx, ctx->args->ac.linear_center);
-         else if (instr->intrinsic == nir_intrinsic_load_barycentric_centroid)
-            bary = ctx->linear_centroid;
-         else if (instr->intrinsic == nir_intrinsic_load_barycentric_sample)
-            bary = get_arg(ctx, ctx->args->ac.linear_sample);
-         break;
-      default: break;
-      }
+      Temp bary = get_interp_param(ctx, instr->intrinsic, mode);
       Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
       Temp p1 = emit_extract_vector(ctx, bary, 0, v1);
       Temp p2 = emit_extract_vector(ctx, bary, 1, v1);
@@ -8026,7 +8031,8 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       pos1 = bld.vop2_e64(aco_opcode::v_sub_f32, bld.def(v1), pos1, Operand::c32(0x3f000000u));
       pos2 = bld.vop2_e64(aco_opcode::v_sub_f32, bld.def(v1), pos2, Operand::c32(0x3f000000u));
 
-      emit_interp_center(ctx, get_ssa_temp(ctx, &instr->dest.ssa), pos1, pos2);
+      Temp bary = get_interp_param(ctx, instr->intrinsic, (glsl_interp_mode)nir_intrinsic_interp_mode(instr));
+      emit_interp_center(ctx, get_ssa_temp(ctx, &instr->dest.ssa), bary, pos1, pos2);
       break;
    }
    case nir_intrinsic_load_barycentric_at_offset: {
@@ -8034,7 +8040,8 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       RegClass rc = RegClass(offset.type(), 1);
       Temp pos1 = bld.tmp(rc), pos2 = bld.tmp(rc);
       bld.pseudo(aco_opcode::p_split_vector, Definition(pos1), Definition(pos2), offset);
-      emit_interp_center(ctx, get_ssa_temp(ctx, &instr->dest.ssa), pos1, pos2);
+      Temp bary = get_interp_param(ctx, instr->intrinsic, (glsl_interp_mode)nir_intrinsic_interp_mode(instr));
+      emit_interp_center(ctx, get_ssa_temp(ctx, &instr->dest.ssa), bary, pos1, pos2);
       break;
    }
    case nir_intrinsic_load_front_face: {
@@ -8683,7 +8690,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
       /* load_helper() after demote() get lowered to is_helper().
        * Otherwise, these two behave the same. */
       Temp dst = get_ssa_temp(ctx, &instr->dest.ssa);
-      bld.pseudo(aco_opcode::p_is_helper, Definition(dst));
+      bld.pseudo(aco_opcode::p_is_helper, Definition(dst), Operand(exec, bld.lm));
       ctx->block->kind |= block_kind_needs_lowering;
       ctx->program->needs_exact = true;
       break;
@@ -8978,7 +8985,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_load_cull_any_enabled_amd: {
       Builder::Result cull_any_enabled =
          bld.sop2(aco_opcode::s_and_b32, bld.def(s1), bld.def(s1, scc),
-                  get_arg(ctx, ctx->args->ngg_culling_settings), Operand::c32(0x00ffffffu));
+                  get_arg(ctx, ctx->args->ngg_culling_settings), Operand::c32(0xbu));
       cull_any_enabled.instr->definitions[1].setNoCSE(true);
       bld.copy(Definition(get_ssa_temp(ctx, &instr->dest.ssa)),
                bool_to_vector_condition(ctx, cull_any_enabled.def(1).getTemp()));
@@ -8987,7 +8994,7 @@ visit_intrinsic(isel_context* ctx, nir_intrinsic_instr* instr)
    case nir_intrinsic_load_cull_small_prim_precision_amd: {
       /* Exponent is 8-bit signed int, move that into a signed 32-bit int. */
       Temp exponent = bld.sop2(aco_opcode::s_ashr_i32, bld.def(s1), bld.def(s1, scc),
-                               get_arg(ctx, ctx->args->ngg_gs_state), Operand::c32(24u));
+                               get_arg(ctx, ctx->args->ngg_culling_settings), Operand::c32(24u));
       /* small_prim_precision = 1.0 * 2^X */
       bld.vop3(aco_opcode::v_ldexp_f32, Definition(get_ssa_temp(ctx, &instr->dest.ssa)),
                Operand::c32(0x3f800000u), Operand(exponent));
@@ -11553,8 +11560,11 @@ ngg_emit_sendmsg_gs_alloc_req(isel_context* ctx, Temp vtx_cnt, Temp prm_cnt)
    Builder bld(ctx->program, ctx->block);
    Temp prm_cnt_0;
 
-   if (ctx->program->chip_class == GFX10 && ctx->stage.has(SWStage::GS)) {
-      /* Navi 1x workaround: make sure to always export at least 1 vertex and triangle */
+   if (ctx->program->chip_class == GFX10 &&
+       (ctx->stage.has(SWStage::GS) || ctx->program->info->has_ngg_culling)) {
+      /* Navi 1x workaround: check whether the workgroup has no output.
+       * If so, change the number of exported vertices and primitives to 1.
+       */
       prm_cnt_0 = bld.sopc(aco_opcode::s_cmp_eq_u32, bld.def(s1, scc), prm_cnt, Operand::zero());
       prm_cnt = bld.sop2(aco_opcode::s_cselect_b32, bld.def(s1), Operand::c32(1u), prm_cnt,
                          bld.scc(prm_cnt_0));
@@ -11568,11 +11578,12 @@ ngg_emit_sendmsg_gs_alloc_req(isel_context* ctx, Temp vtx_cnt, Temp prm_cnt)
    tmp = bld.sop2(aco_opcode::s_or_b32, bld.m0(bld.def(s1)), bld.def(s1, scc), tmp, vtx_cnt);
 
    /* Request the SPI to allocate space for the primitives and vertices
-    * that will be exported by the threadgroup. */
+    * that will be exported by the threadgroup.
+    */
    bld.sopp(aco_opcode::s_sendmsg, bld.m0(tmp), -1, sendmsg_gs_alloc_req);
 
    if (prm_cnt_0.id()) {
-      /* Navi 1x workaround: export a triangle with NaN coordinates when GS has no output.
+      /* Navi 1x workaround: export a triangle with NaN coordinates when NGG has no output.
        * It can't have all-zero positions because that would render an undesired pixel with
        * conservative rasterization.
        */

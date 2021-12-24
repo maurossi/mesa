@@ -139,11 +139,18 @@ crocus_update_draw_info(struct crocus_context *ice,
    if (ice->state.prim_mode != mode) {
       ice->state.prim_mode = mode;
 
+      enum pipe_prim_type reduced = u_reduced_prim(mode);
+      if (ice->state.reduced_prim_mode != reduced) {
+         if (screen->devinfo.ver < 6)
+            ice->state.dirty |= CROCUS_DIRTY_GEN4_CLIP_PROG | CROCUS_DIRTY_GEN4_SF_PROG;
+         /* if the reduced prim changes the WM needs updating. */
+         ice->state.stage_dirty |= CROCUS_STAGE_DIRTY_UNCOMPILED_FS;
+         ice->state.reduced_prim_mode = reduced;
+      }
+
       if (screen->devinfo.ver == 8)
          ice->state.dirty |= CROCUS_DIRTY_GEN8_VF_TOPOLOGY;
 
-      if (screen->devinfo.ver < 6)
-         ice->state.dirty |= CROCUS_DIRTY_GEN4_CLIP_PROG | CROCUS_DIRTY_GEN4_SF_PROG;
       if (screen->devinfo.ver <= 6)
          ice->state.dirty |= CROCUS_DIRTY_GEN4_FF_GS_PROG;
 
@@ -399,8 +406,8 @@ crocus_draw_vbo(struct pipe_context *ctx,
    /* We can't safely re-emit 3DSTATE_SO_BUFFERS because it may zero the
     * write offsets, changing the behavior.
     */
-   if (unlikely(INTEL_DEBUG & DEBUG_REEMIT)) {
-      ice->state.dirty |= CROCUS_ALL_DIRTY_FOR_RENDER & ~CROCUS_DIRTY_GEN7_SO_BUFFERS;
+   if (INTEL_DEBUG(DEBUG_REEMIT)) {
+      ice->state.dirty |= CROCUS_ALL_DIRTY_FOR_RENDER & ~(CROCUS_DIRTY_GEN7_SO_BUFFERS | CROCUS_DIRTY_GEN6_SVBI);
       ice->state.stage_dirty |= CROCUS_ALL_STAGE_DIRTY_FOR_RENDER;
    }
 
@@ -478,7 +485,7 @@ crocus_launch_grid(struct pipe_context *ctx, const struct pipe_grid_info *grid)
    if (!crocus_check_conditional_render(ice))
       return;
 
-   if (unlikely(INTEL_DEBUG & DEBUG_REEMIT)) {
+   if (INTEL_DEBUG(DEBUG_REEMIT)) {
       ice->state.dirty |= CROCUS_ALL_DIRTY_FOR_COMPUTE;
       ice->state.stage_dirty |= CROCUS_ALL_STAGE_DIRTY_FOR_COMPUTE;
    }
