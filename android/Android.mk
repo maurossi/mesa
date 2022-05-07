@@ -96,7 +96,7 @@ MESON_GEN_PKGCONFIGS += DirectX-Headers
 endif
 
 ifneq ($(MESON_GEN_LLVM_STUB),)
-LLVM_VERSION_MAJOR = $(shell cat external/llvm-project/llvm/CMakeLists.txt | grep -o "LLVM_VERSION_MAJOR\s*\w*" | grep -o "[[:digit:]]*" | head -1)
+LLVM_VERSION_MAJOR = $(shell cat external/llvm-project/llvm/CMakeLists.txt | grep -o "LLVM_VERSION_MAJOR\s*\w*" | /bin/grep -o "[[:digit:]]*" | head -1)
 MESON_LLVM_VERSION := $(LLVM_VERSION_MAJOR).0.0
 LOCAL_SHARED_LIBRARIES += libLLVM$(LLVM_VERSION_MAJOR)
 endif
