@@ -242,6 +242,7 @@ with_broadcom_vk = _vulkan_drivers.contains('broadcom')
 with_imagination_vk = _vulkan_drivers.contains('imagination-experimental')
 with_imagination_srv = get_option('imagination-srv')
 with_microsoft_vk = _vulkan_drivers.contains('microsoft-experimental')
+with_nouveau_vk = _vulkan_drivers.contains('nouveau-experimental')
 with_any_vk = _vulkan_drivers.length() != 0
 
 with_any_broadcom = [
@@ -258,6 +259,7 @@ with_any_intel = [
   with_intel_tools,
   with_intel_vk,
 ].contains(true)
+with_any_nouveau = with_gallium_nouveau or with_nouveau_vk
 
 if with_swrast_vk and not with_gallium_softpipe
   error('swrast vulkan requires gallium swrast')
