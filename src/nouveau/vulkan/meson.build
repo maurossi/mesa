@@ -87,7 +87,8 @@ libvulkan_nouveau = shared_library(
     inc_include,
     inc_src,
   ],
-  dependencies : nvk_deps,
+  link_with : [libnouveau_codegen, libnouveau_codegen_nogal],
+  dependencies : [nvk_deps, idep_nouveau_codegen],
   gnu_symbol_visibility : 'hidden',
   install : true,
 )
