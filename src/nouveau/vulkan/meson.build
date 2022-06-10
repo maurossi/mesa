@@ -32,6 +32,8 @@ nvk_files = files(
   'nvk_private.h',
   'nvk_sampler.c',
   'nvk_sampler.h',
+  'nvk_shader.c',
+  'nvk_shader.h',
   'nvk_wsi.c',
   'nvk_wsi.h'
 )
