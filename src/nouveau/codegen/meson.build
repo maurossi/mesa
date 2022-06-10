@@ -28,7 +28,6 @@ files_libnouveau_codegen = files(
   'nv50_ir_from_common.cpp',
   'nv50_ir_from_common.h',
   'nv50_ir_from_nir.cpp',
-  'nv50_ir_from_tgsi.cpp',
   'nv50_ir_graph.cpp',
   'nv50_ir_graph.h',
   'nv50_ir.h',
@@ -66,6 +65,15 @@ files_libnouveau_codegen = files(
   'nv50_ir_target_nvc0.h',
 )
 
+files_libnouveau_codegen_tgsi = files(
+  'nv50_ir_from_tgsi.cpp',
+)
+
+files_libnouveau_codegen_nogal = files(
+  '../../gallium/auxiliary/tgsi/tgsi_from_mesa.c',
+  'nv50_ir_from_notgsi.cpp',
+)
+
 libnouveau_codegen = static_library(
   'nouveau_codegen',
   files_libnouveau_codegen,
@@ -76,7 +84,27 @@ libnouveau_codegen = static_library(
   dependencies : [dep_libdrm, idep_mesautil, idep_nir_headers],
 )
 
+libnouveau_codegen_tgsi = static_library(
+  'nouveau_codegen_tgsi',
+  files_libnouveau_codegen_tgsi,
+  include_directories : [
+    inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_mapi, inc_mesa,
+  ],
+  gnu_symbol_visibility : 'hidden',
+  dependencies : [dep_libdrm, idep_mesautil, idep_nir_headers],
+)
+
+libnouveau_codegen_nogal = static_library(
+  'nouveau_codegen_nogal',
+  files_libnouveau_codegen_nogal,
+  include_directories : [
+    inc_src, inc_include, inc_gallium, inc_gallium_aux, inc_mapi, inc_mesa,
+  ],
+  gnu_symbol_visibility : 'hidden',
+  dependencies : [dep_libdrm, idep_mesautil, idep_nir_headers],
+)
+
 idep_nouveau_codegen = declare_dependency(
   sources : [ 'nv50_ir_driver.h' ],
-  include_directories : include_directories('.'),
+  include_directories : [inc_gallium_aux, include_directories('.')],
 )
