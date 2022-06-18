@@ -53,7 +53,11 @@ endif
 
 ifneq ($(filter intel virtio-experimental,$(BOARD_MESA3D_VULKAN_DRIVERS)),)
 # NOTE: hwvulkan_headers isn't included into AOSPv9 and earlier, therefore must be provided externaly
+ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 29 && echo true),true)
 LOCAL_HEADER_LIBRARIES += hwvulkan_headers
+else
+LOCAL_HEADER_LIBRARIES += vulkan_headers
+endif
 endif
 
 ifneq ($(filter zink,$(BOARD_MESA3D_GALLIUM_DRIVERS)),)
