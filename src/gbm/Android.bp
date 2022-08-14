@@ -33,6 +33,7 @@ cc_library_shared {
 
     cflags: [
         "-DHAVE_PTHREAD=1",
+        "-DHAVE_STRUCT_TIMESPEC",
         "-DHAVE_TIMESPEC_GET",
         "-Wno-missing-field-initializers",
         "-Wno-unused-parameter",
