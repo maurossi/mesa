@@ -37,6 +37,8 @@ vk_buffer_view_create(struct vk_device *device,
 
    buffer_view = vk_object_zalloc(device, alloc, size,
                                   VK_OBJECT_TYPE_BUFFER_VIEW);
+   if (!buffer_view)
+      return NULL;
 
    assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_BUFFER_VIEW_CREATE_INFO);
    assert(pCreateInfo->flags == 0);
