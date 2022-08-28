@@ -70,6 +70,14 @@ nvk_queue_init_context_draw_state(struct nvk_queue *queue)
       .engine_id = 0,
    });
 
+   if (dev->ctx->sw.cls != 0) {
+      __push_mthd  (p, SUBC_NV906E, 0x0);
+      P_INLINE_DATA(p, dev->ctx->sw.cls);
+
+      __push_mthd  (p, SUBC_NV906E, 0x604);
+      P_INLINE_DATA(p, 1);
+   }
+
    for (uint32_t mme = 0, mme_pos = 0; mme < NVK_MME_COUNT; mme++) {
       size_t size;
       uint32_t *dw = nvk_build_mme(dev, mme, &size);

@@ -23,6 +23,7 @@ struct nouveau_ws_context {
    struct nouveau_ws_object eng3d;
    struct nouveau_ws_object m2mf;
    struct nouveau_ws_object compute;
+   struct nouveau_ws_object sw;
 };
 
 int nouveau_ws_context_create(struct nouveau_ws_device *, struct nouveau_ws_context **out);

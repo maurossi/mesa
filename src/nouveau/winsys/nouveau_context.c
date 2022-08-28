@@ -3,6 +3,7 @@
 #include <xf86drm.h>
 #include <errno.h>
 #include <nouveau_drm.h>
+#include <nouveau/nvif/class.h>
 #include <nouveau/nvif/ioctl.h>
 
 #include "nouveau_device.h"
@@ -76,7 +77,7 @@ nouveau_ws_context_find_class(uint32_t classes[NOUVEAU_WS_CONTEXT_MAX_CLASSES], 
 }
 
 static int
-nouveau_ws_subchan_alloc(int fd, int channel, uint32_t handle, uint16_t oclass, struct nouveau_ws_object *obj)
+nouveau_ws_subchan_alloc(int fd, int channel, uint32_t handle, uint32_t oclass, struct nouveau_ws_object *obj)
 {
    struct {
       struct nvif_ioctl_v0 ioctl;
@@ -164,11 +165,17 @@ nouveau_ws_context_create(struct nouveau_ws_device *dev, struct nouveau_ws_conte
    if (ret)
       goto fail_subchan;
 
+   obj_class = NVIF_CLASS_SW_GF100;//nouveau_ws_context_find_class(classes, 0x6e);
+   ret = nouveau_ws_subchan_alloc(dev->fd, req.channel, 0x906e, obj_class, &(*out)->sw);
+   if (!ret)
+      (*out)->sw.cls = 0x906e;
+
    (*out)->channel = req.channel;
    (*out)->dev = dev;
    return 0;
 
 fail_subchan:
+   nouveau_ws_subchan_dealloc(dev->fd, &(*out)->sw);
    nouveau_ws_subchan_dealloc(dev->fd, &(*out)->compute);
    nouveau_ws_subchan_dealloc(dev->fd, &(*out)->eng3d);
    nouveau_ws_subchan_dealloc(dev->fd, &(*out)->copy);
@@ -184,6 +191,7 @@ fail_chan:
 void
 nouveau_ws_context_destroy(struct nouveau_ws_context *context)
 {
+   nouveau_ws_subchan_dealloc(context->dev->fd, &context->sw);
    nouveau_ws_subchan_dealloc(context->dev->fd, &context->compute);
    nouveau_ws_subchan_dealloc(context->dev->fd, &context->eng3d);
    nouveau_ws_subchan_dealloc(context->dev->fd, &context->copy);
