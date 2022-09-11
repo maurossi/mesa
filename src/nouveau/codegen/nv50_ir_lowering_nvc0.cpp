@@ -1917,42 +1917,69 @@ static inline uint16_t getSuClampSubOp(const TexInstruction *su, int c)
 bool
 NVC0LoweringPass::handleSUQ(TexInstruction *suq)
 {
-   int mask = suq->tex.mask;
-   int dim = suq->tex.target.getDim();
-   int arg = dim + (suq->tex.target.isArray() || suq->tex.target.isCube());
    Value *ind = suq->getIndirectR();
-   int slot = suq->tex.r;
-   int c, d;
+   Value *handle;
+   const int slot = suq->tex.r;
+   const int mask = suq->tex.mask;
 
-   for (c = 0, d = 0; c < 3; ++c, mask >>= 1) {
-      if (c >= arg || !(mask & 1))
-         continue;
+   if (suq->tex.bindless)
+      handle = ind;
+   else
+      handle = loadTexHandle(ind, slot + 32);
 
-      int offset;
+   suq->tex.r = 0xff;
+   suq->tex.s = 0x1f;
 
-      if (c == 1 && suq->tex.target == TEX_TARGET_1D_ARRAY) {
-         offset = NVC0_SU_INFO_SIZE(2);
-      } else {
-         offset = NVC0_SU_INFO_SIZE(c);
-      }
-      bld.mkMov(suq->getDef(d++), loadSuInfo32(ind, slot, offset, suq->tex.bindless));
-      if (c == 2 && suq->tex.target.isCube())
-         bld.mkOp2(OP_DIV, TYPE_U32, suq->getDef(d - 1), suq->getDef(d - 1),
-                   bld.loadImm(NULL, 6));
+   suq->setIndirectR(NULL);
+   suq->setSrc(0, handle);
+   suq->tex.rIndirectSrc = 0;
+   suq->setSrc(1, bld.loadImm(NULL, 0));
+   suq->tex.query = TXQ_DIMS;
+   suq->op = OP_TXQ;
+
+   // We store CUBE / CUBE_ARRAY as a 2D ARRAY. Make sure that depth gets
+   // divided by 6.
+   if (mask & 0x4 && suq->tex.target.isCube()) {
+      int d = util_bitcount(mask & 0x3);
+      bld.setPosition(suq, true);
+      bld.mkOp2(OP_DIV, TYPE_U32, suq->getDef(d), suq->getDef(d),
+                bld.loadImm(NULL, 6));
    }
 
-   if (mask & 1) {
-      if (suq->tex.target.isMS()) {
-         Value *ms_x = loadSuInfo32(ind, slot, NVC0_SU_INFO_MS(0), suq->tex.bindless);
-         Value *ms_y = loadSuInfo32(ind, slot, NVC0_SU_INFO_MS(1), suq->tex.bindless);
-         Value *ms = bld.mkOp2v(OP_ADD, TYPE_U32, bld.getScratch(), ms_x, ms_y);
-         bld.mkOp2(OP_SHL, TYPE_U32, suq->getDef(d++), bld.loadImm(NULL, 1), ms);
-      } else {
-         bld.mkMov(suq->getDef(d++), bld.loadImm(NULL, 1));
+   // Samples come from a different query. If we want both samples and dims,
+   // create a second suq.
+   if (mask & 0x8) {
+      int d = util_bitcount(mask & 0x7);
+      Value *dst = suq->getDef(d);
+      TexInstruction *samples = suq;
+      assert(dst);
+
+      if (mask != 0x8) {
+         suq->setDef(d, NULL);
+         suq->tex.mask &= 0x7;
+         samples = cloneShallow(func, suq);
+         for (int i = 0; i < d; i++)
+            samples->setDef(d, NULL);
+         samples->setDef(0, dst);
+         suq->bb->insertAfter(suq, samples);
+      }
+      samples->tex.mask = 0x4;
+      samples->tex.query = TXQ_TYPE;
+   }
+
+   if (suq->tex.target.isMS()) {
+      bld.setPosition(suq, true);
+
+      if (mask & 0x1)
+         bld.mkOp2(OP_SHR, TYPE_U32, suq->getDef(0), suq->getDef(0),
+                   loadMsAdjInfo32(suq->tex.target, 0, slot, ind, suq->tex.bindless));
+      if (mask & 0x2) {
+         int d = util_bitcount(mask & 0x1);
+         bld.mkOp2(OP_SHR, TYPE_U32, suq->getDef(d), suq->getDef(d),
+                   loadMsAdjInfo32(suq->tex.target, 1, slot, ind, suq->tex.bindless));
       }
    }
 
-   bld.remove(suq);
    return true;
 }
 
