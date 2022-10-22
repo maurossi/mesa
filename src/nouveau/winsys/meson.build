@@ -15,7 +15,6 @@ libnouveau_ws = static_library(
     inc_src,
   ],
   dependencies : [
-    idep_nvidia_headers,
     dep_libdrm_nouveau,
     idep_nvidia_headers,
   ],
