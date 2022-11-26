@@ -670,7 +670,9 @@ nvk_vs_gen_header(struct nvk_shader *vs, struct nv50_ir_prog_info_out *info)
 }
 
 static int
-nvk_gs_gen_header(struct nvk_shader *gs, struct nv50_ir_prog_info_out *info)
+nvk_gs_gen_header(struct nvk_shader *gs,
+                  const struct nir_shader *nir,
+                  struct nv50_ir_prog_info_out *info)
 {
    gs->hdr[0] = 0x20061 | (4 << 10);
 
@@ -679,15 +681,12 @@ nvk_gs_gen_header(struct nvk_shader *gs, struct nv50_ir_prog_info_out *info)
    switch (info->prop.gp.outputPrim) {
    case PIPE_PRIM_POINTS:
       gs->hdr[3] = 0x01000000;
-      gs->hdr[0] |= 0xf0000000;
       break;
    case PIPE_PRIM_LINE_STRIP:
       gs->hdr[3] = 0x06000000;
-      gs->hdr[0] |= 0x10000000;
       break;
    case PIPE_PRIM_TRIANGLE_STRIP:
       gs->hdr[3] = 0x07000000;
-      gs->hdr[0] |= 0x10000000;
       break;
    default:
       assert(0);
@@ -695,6 +694,8 @@ nvk_gs_gen_header(struct nvk_shader *gs, struct nv50_ir_prog_info_out *info)
    }
 
    gs->hdr[4] = CLAMP(info->prop.gp.maxVertices, 1, 1024);
+
+   gs->hdr[0] |= nir->info.gs.active_stream_mask << 28;
 
    return nvk_vtgp_gen_header(gs, info);
 }
@@ -915,7 +916,7 @@ nvk_compile_nir(struct nvk_physical_device *device, nir_shader *nir,
       shader->fs.uses_sample_shading = nir->info.fs.uses_sample_shading;
       break;
    case PIPE_SHADER_GEOMETRY:
-      ret = nvk_gs_gen_header(shader, &info_out);
+      ret = nvk_gs_gen_header(shader, nir, &info_out);
       break;
    case PIPE_SHADER_COMPUTE:
       break;
