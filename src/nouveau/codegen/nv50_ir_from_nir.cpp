@@ -454,6 +454,7 @@ Converter::getOperation(nir_op op)
       return OP_MOD;
    case nir_op_fmul:
    case nir_op_fmulz:
+   case nir_op_amul:
    case nir_op_imul:
    case nir_op_imul_high:
    case nir_op_umul_high:
@@ -2519,6 +2520,7 @@ Converter::visit(nir_alu_instr *insn)
    case nir_op_umod:
    case nir_op_fmul:
    case nir_op_fmulz:
+   case nir_op_amul:
    case nir_op_imul:
    case nir_op_imul_high:
    case nir_op_umul_high:
