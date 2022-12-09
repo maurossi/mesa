@@ -1665,6 +1665,7 @@ Converter::convert(nir_intrinsic_op intr)
    case nir_intrinsic_load_vertex_id:
       return SV_VERTEX_ID;
    case nir_intrinsic_load_workgroup_id:
+   case nir_intrinsic_load_workgroup_id_zero_base:
       return SV_CTAID;
    case nir_intrinsic_load_work_dim:
       return SV_WORK_DIM;
@@ -1914,6 +1915,7 @@ Converter::visit(nir_intrinsic_instr *insn)
    case nir_intrinsic_load_tess_level_outer:
    case nir_intrinsic_load_vertex_id:
    case nir_intrinsic_load_workgroup_id:
+   case nir_intrinsic_load_workgroup_id_zero_base:
    case nir_intrinsic_load_work_dim: {
       const DataType dType = getDType(insn);
       SVSemantic sv = convert(op);
