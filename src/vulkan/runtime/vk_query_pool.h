@@ -38,7 +38,10 @@ struct vk_query_pool {
    /** VkQueryPoolCreateInfo::queryCount */
    uint32_t  query_count;
 
-   /** VkQueryPoolCreateInfo::pipelineStatistics */
+   /** VkQueryPoolCreateInfo::pipelineStatistics
+    *
+    * If query_type != VK_QUERY_TYPE_PIPELINE_STATISTICS, this will be zero.
+    */
    VkQueryPipelineStatisticFlags pipeline_statistics;
 };
 
