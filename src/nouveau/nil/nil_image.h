@@ -107,7 +107,7 @@ struct nil_view {
    enum pipe_format format;
 
    uint32_t base_level;
-   uint32_t levels;
+   uint32_t num_levels;
 
    /**
     * Base array layer
