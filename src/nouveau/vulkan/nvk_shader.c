@@ -72,6 +72,74 @@ nvk_physical_device_spirv_options(const struct nvk_physical_device *pdevice)
 }
 
 static bool
+break_helper_loops_cf_list(nir_builder *b, struct exec_list *cf_list)
+{
+   bool progress = false;
+
+   foreach_list_typed(nir_cf_node, cf_node, node, cf_list) {
+      switch (cf_node->type) {
+      case nir_cf_node_block:
+         break;
+      case nir_cf_node_if: {
+         nir_if *nif = nir_cf_node_as_if(cf_node);
+         progress |= break_helper_loops_cf_list(b, &nif->then_list);
+         progress |= break_helper_loops_cf_list(b, &nif->else_list);
+         break;
+      }
+      case nir_cf_node_loop: {
+         nir_loop *loop = nir_cf_node_as_loop(cf_node);
+
+         /* We're about to insert a break which will add predecessors to the
+          * block after the loop and confuse any phis it may contain.
+          */
+         nir_block *block_after_loop =
+            nir_cf_node_as_block(nir_cf_node_next(cf_node));
+         nir_lower_phis_to_regs_block(block_after_loop);
+
+         b->cursor = nir_before_block_after_phis(nir_loop_first_block(loop));
+         nir_push_if(b, nir_vote_all(b, 1, nir_is_helper_invocation(b, 1)));
+         nir_jump(b, nir_jump_break);
+         nir_pop_if(b, NULL);
+         progress = true;
+
+         break_helper_loops_cf_list(b, &loop->body);
+         break;
+      }
+      case nir_cf_node_function:
+         unreachable("Invalid cf type");
+      }
+   }
+
+   return progress;
+}
+
+static bool
+break_helper_loops(nir_shader *shader)
+{
+   bool progress = false;
+
+   nir_foreach_function(function, shader) {
+      if (!function->impl)
+         continue;
+
+      nir_builder b;
+      nir_builder_init(&b, function->impl);
+
+      if (break_helper_loops_cf_list(&b, &function->impl->body)) {
+         nir_metadata_preserve(function->impl, nir_metadata_none);
+         progress = true;
+
+         /* Clean up any registes we may have created */
+         nir_lower_regs_to_ssa_impl(function->impl);
+      } else {
+         nir_metadata_preserve(function->impl, nir_metadata_all);
+      }
+   }
+
+   return progress;
+}
+
+static bool
 lower_load_global_constant_offset_instr(nir_builder *b, nir_instr *instr,
                                         UNUSED void *_data)
 {
@@ -174,6 +242,7 @@ nvk_lower_nir(struct nvk_device *device, nir_shader *nir,
    NIR_PASS(_, nir, nir_lower_system_values);
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      NIR_PASS(_, nir, break_helper_loops);
       NIR_PASS(_, nir, nir_shader_instructions_pass, lower_fragcoord_instr,
                nir_metadata_block_index | nir_metadata_dominance, NULL);
       NIR_PASS(_, nir, nir_lower_input_attachments,
