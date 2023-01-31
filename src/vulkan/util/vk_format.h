@@ -236,6 +236,10 @@ struct vk_format_ycbcr_info {
 
 const struct vk_format_ycbcr_info *vk_format_get_ycbcr_info(VkFormat format);
 
+VkClearColorValue
+vk_swizzle_color_value(VkClearColorValue color,
+                       VkComponentMapping swizzle, bool is_int);
+
 #ifdef __cplusplus
 }
 #endif
