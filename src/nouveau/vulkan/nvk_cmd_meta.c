@@ -42,6 +42,7 @@ nvk_device_finish_meta(struct nvk_device *dev)
 }
 
 struct nvk_meta_save {
+   struct vk_vertex_input_state _dynamic_vi;
    struct vk_dynamic_graphics_state dynamic;
    struct nvk_graphics_pipeline *pipeline;
    struct nvk_addr_range vb0;
@@ -53,6 +54,9 @@ nvk_meta_begin(struct nvk_cmd_buffer *cmd,
                struct nvk_meta_save *save)
 {
    save->dynamic = cmd->vk.dynamic_graphics_state;
+   save->_dynamic_vi = cmd->state.gfx._dynamic_vi;
+   save->dynamic.vi = &save->_dynamic_vi;
+
    save->pipeline = cmd->state.gfx.pipeline;
    save->vb0 = cmd->state.gfx.vb0;
 
