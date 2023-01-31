@@ -123,16 +123,15 @@ nvk_GetImageSubresourceLayout(VkDevice device,
 {
    VK_FROM_HANDLE(nvk_image, image, _image);
 
-   const struct nil_image_slice slice =
-      nil_image_slice(&image->nil, pSubresource->mipLevel,
-                                   pSubresource->arrayLayer);
-
    *pLayout = (VkSubresourceLayout) {
-      .offset = slice.offset,
-      .size = slice.size,
-      .rowPitch = slice.row_stride_B,
+      .offset = nil_image_level_layer_offset_B(&image->nil,
+                                               pSubresource->mipLevel,
+                                               pSubresource->arrayLayer),
+      .size = nil_image_level_size_B(&image->nil, pSubresource->mipLevel),
+      .rowPitch = image->nil.levels[pSubresource->mipLevel].row_stride_B,
       .arrayPitch = image->nil.array_stride_B,
-      .depthPitch = slice.depth_stride_B,
+      .depthPitch = nil_image_level_depth_stride_B(&image->nil,
+                                                   pSubresource->mipLevel),
    };
 }
 
