@@ -3024,7 +3024,7 @@ Converter::visit(nir_tex_instr *insn)
          srcs.push_back(loadImm(NULL, 0));
       if (biasIdx != -1)
          srcs.push_back(getSrc(&insn->src[biasIdx].src, 0));
-      if (lodIdx != -1)
+      if (lodIdx != -1 && !target.isMS())
          srcs.push_back(getSrc(&insn->src[lodIdx].src, 0));
       else if (op == OP_TXF)
          lz = true;
