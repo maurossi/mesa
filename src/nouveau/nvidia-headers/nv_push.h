@@ -65,8 +65,6 @@ void vk_push_print(FILE *fp, const struct nv_push *push,
 #define SUBC_NV90B5 4
 #define SUBC_NVC1B5 4
 
-#define SUBC_NV906E 7
-
 static inline uint32_t
 NVC0_FIFO_PKHDR_SQ(int subc, int mthd, unsigned size)
 {
