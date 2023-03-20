@@ -228,6 +228,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_maintenance2                      = true,
       .KHR_maintenance3                      = true,
       .KHR_maintenance4                      = true,
+      .KHR_map_memory2                       = true,
       .KHR_multiview                         = true,
       .KHR_performance_query =
          !anv_use_relocations(device) && device->perf &&
@@ -3330,8 +3331,13 @@ void anv_FreeMemory(
    list_del(&mem->link);
    pthread_mutex_unlock(&device->mutex);
 
-   if (mem->map)
-      anv_UnmapMemory(_device, _mem);
+   if (mem->map) {
+      const VkMemoryUnmapInfoKHR unmap = {
+         .sType = VK_STRUCTURE_TYPE_MEMORY_UNMAP_INFO_KHR,
+         .memory = _mem,
+      };
+      anv_UnmapMemory2KHR(_device, &unmap);
+   }
 
    p_atomic_add(&device->physical->memory.heaps[mem->type->heapIndex].used,
                 -mem->bo->size);
@@ -3346,16 +3352,13 @@ void anv_FreeMemory(
    vk_object_free(&device->vk, pAllocator, mem);
 }
 
-VkResult anv_MapMemory(
+VkResult anv_MapMemory2KHR(
     VkDevice                                    _device,
-    VkDeviceMemory                              _memory,
-    VkDeviceSize                                offset,
-    VkDeviceSize                                size,
-    VkMemoryMapFlags                            flags,
+    const VkMemoryMapInfoKHR*                   pMemoryMapInfo,
     void**                                      ppData)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
-   ANV_FROM_HANDLE(anv_device_memory, mem, _memory);
+   ANV_FROM_HANDLE(anv_device_memory, mem, pMemoryMapInfo->memory);
 
    if (mem == NULL) {
       *ppData = NULL;
@@ -3363,7 +3366,7 @@ VkResult anv_MapMemory(
    }
 
    if (mem->host_ptr) {
-      *ppData = mem->host_ptr + offset;
+      *ppData = mem->host_ptr + pMemoryMapInfo->offset;
       return VK_SUCCESS;
    }
 
@@ -3377,8 +3380,9 @@ VkResult anv_MapMemory(
                        "Memory object not mappable.");
    }
 
-   if (size == VK_WHOLE_SIZE)
-      size = mem->size - offset;
+   const VkDeviceSize offset = pMemoryMapInfo->offset;
+   const VkDeviceSize size = pMemoryMapInfo->size == VK_WHOLE_SIZE ?
+                             mem->size - offset : pMemoryMapInfo->size;
 
    /* From the Vulkan spec version 1.0.32 docs for MapMemory:
     *
@@ -3438,21 +3442,23 @@ VkResult anv_MapMemory(
    return VK_SUCCESS;
 }
 
-void anv_UnmapMemory(
+VkResult anv_UnmapMemory2KHR(
     VkDevice                                    _device,
-    VkDeviceMemory                              _memory)
+    const VkMemoryUnmapInfoKHR*                 pMemoryUnmapInfo)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
-   ANV_FROM_HANDLE(anv_device_memory, mem, _memory);
+   ANV_FROM_HANDLE(anv_device_memory, mem, pMemoryUnmapInfo->memory);
 
    if (mem == NULL || mem->host_ptr)
-      return;
+      return VK_SUCCESS;
 
    anv_device_unmap_bo(device, mem->bo, mem->map, mem->map_size);
 
    mem->map = NULL;
    mem->map_size = 0;
    mem->map_delta = 0;
+
+   return VK_SUCCESS;
 }
 
 VkResult anv_FlushMappedMemoryRanges(
