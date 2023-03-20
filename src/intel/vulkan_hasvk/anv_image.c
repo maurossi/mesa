@@ -1481,9 +1481,9 @@ resolve_ahw_image(struct anv_device *device,
                   struct anv_device_memory *mem)
 {
 #if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
-   assert(mem->ahw);
+   assert(mem->vk.ahardware_buffer);
    AHardwareBuffer_Desc desc;
-   AHardwareBuffer_describe(mem->ahw, &desc);
+   AHardwareBuffer_describe(mem->vk.ahardware_buffer, &desc);
    VkResult result;
 
    /* Check tiling. */
@@ -1688,7 +1688,7 @@ VkResult anv_BindImageMemory2(
       bool did_bind = false;
 
       /* Resolve will alter the image's aspects, do this first. */
-      if (mem && mem->ahw)
+      if (mem && mem->vk.ahardware_buffer)
          resolve_ahw_image(device, image, mem);
 
       vk_foreach_struct_const(s, bind_info->pNext) {

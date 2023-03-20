@@ -46,8 +46,7 @@ unsigned anv_ahb_format_for_vk_format(VkFormat vk_format)
 
 VkResult
 anv_import_ahw_memory(VkDevice device_h,
-                      struct anv_device_memory *mem,
-                      const VkImportAndroidHardwareBufferInfoANDROID *info)
+                      struct anv_device_memory *mem)
 {
    return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
@@ -55,7 +54,7 @@ anv_import_ahw_memory(VkDevice device_h,
 VkResult
 anv_create_ahw_memory(VkDevice device_h,
                       struct anv_device_memory *mem,
-                      const VkMemoryAllocateInfo *pAllocateInfo)
+                      const VkMemoryDedicatedAllocateInfo *dedicated_info)
 {
    return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
