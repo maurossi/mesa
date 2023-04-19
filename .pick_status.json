@@ -1094,7 +1094,7 @@
         "description": "nir: Handle wildcards with casts in copy_prop_vars",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "ba2bd20f8732fb5a9163734447072cdaf6a633b3",
         "notes": null
