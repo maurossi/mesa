@@ -2387,7 +2387,7 @@ NVC0LoweringPass::handleSurfaceOpNVE4(TexInstruction *su)
 {
    processSurfaceCoordsNVE4(su);
 
-   if (su->op == OP_SULDP) {
+   if (su->op == OP_SULDP && su->tex.format) {
       convertSurfaceFormat(su, NULL);
       insertOOBSurfaceOpResult(su);
    }
@@ -2588,7 +2588,7 @@ NVC0LoweringPass::handleSurfaceOpNVC0(TexInstruction *su)
 
    processSurfaceCoordsNVC0(su);
 
-   if (su->op == OP_SULDP) {
+   if (su->op == OP_SULDP && su->tex.format) {
       convertSurfaceFormat(su, NULL);
       insertOOBSurfaceOpResult(su);
    }
@@ -2794,7 +2794,7 @@ NVC0LoweringPass::handleSurfaceOpGM107(TexInstruction *su)
    Instruction *loaded[4] = {};
    TexInstruction *su2 = processSurfaceCoordsGM107(su, loaded);
 
-   if (su->op == OP_SULDP) {
+   if (su->op == OP_SULDP && su->tex.format) {
       convertSurfaceFormat(su, loaded);
    }
 
