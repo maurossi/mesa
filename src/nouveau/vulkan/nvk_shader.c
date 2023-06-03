@@ -774,13 +774,13 @@ nvk_gs_gen_header(struct nvk_shader *gs,
    gs->hdr[2] = MIN2(info->prop.gp.instanceCount, 32) << 24;
 
    switch (info->prop.gp.outputPrim) {
-   case PIPE_PRIM_POINTS:
+   case MESA_PRIM_POINTS:
       gs->hdr[3] = 0x01000000;
       break;
-   case PIPE_PRIM_LINE_STRIP:
+   case MESA_PRIM_LINE_STRIP:
       gs->hdr[3] = 0x06000000;
       break;
-   case PIPE_PRIM_TRIANGLE_STRIP:
+   case MESA_PRIM_TRIANGLE_STRIP:
       gs->hdr[3] = 0x07000000;
       break;
    default:
