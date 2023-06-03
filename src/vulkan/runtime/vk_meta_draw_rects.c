@@ -135,8 +135,8 @@ vk_meta_draw_rects_gs_nir(struct vk_meta_device *device)
    nir_end_primitive(b);
 
    struct shader_info *info = &build.shader->info;
-   info->gs.input_primitive = SHADER_PRIM_TRIANGLES;
-   info->gs.output_primitive = SHADER_PRIM_TRIANGLE_STRIP;
+   info->gs.input_primitive = MESA_PRIM_TRIANGLES;
+   info->gs.output_primitive = MESA_PRIM_TRIANGLE_STRIP;
    info->gs.vertices_in = 3;
    info->gs.vertices_out = 3;
    info->gs.invocations = 1;
