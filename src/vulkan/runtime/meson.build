@@ -69,6 +69,7 @@ vulkan_runtime_files = files(
   'vk_meta.c',
   'vk_meta.h',
   'vk_meta_draw_rects.c',
+  'vk_meta_clear.c',
   'vk_nir_convert_ycbcr.c',
   'vk_nir_convert_ycbcr.h',
   'vk_nir.c',
