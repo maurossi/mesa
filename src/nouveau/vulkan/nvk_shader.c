@@ -58,7 +58,7 @@ nvk_physical_device_nir_options(const struct nvk_physical_device *pdevice,
 {
    enum pipe_shader_type p_stage = pipe_shader_type_from_mesa(stage);
    return nv50_ir_nir_shader_compiler_options(pdevice->dev->chipset,
-                                              p_stage, true);
+                                              p_stage);
 }
 
 struct spirv_to_nir_options
