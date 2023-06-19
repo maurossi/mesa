@@ -1330,9 +1330,11 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
          goto fail;
    }
 
-   r = alloc_private_binding(device, image, pCreateInfo);
-   if (r != VK_SUCCESS)
-      goto fail;
+   if (!create_info->no_private_binding_alloc) {
+      r = alloc_private_binding(device, image, pCreateInfo);
+      if (r != VK_SUCCESS)
+         goto fail;
+   }
 
    check_memory_bindings(device, image);
 
@@ -1388,7 +1390,8 @@ anv_swapchain_get_image(VkSwapchainKHR swapchain,
 static VkResult
 anv_image_init_from_create_info(struct anv_device *device,
                                 struct anv_image *image,
-                                const VkImageCreateInfo *pCreateInfo)
+                                const VkImageCreateInfo *pCreateInfo,
+                                bool no_private_binding_alloc)
 {
    const VkNativeBufferANDROID *gralloc_info =
       vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
@@ -1398,6 +1401,7 @@ anv_image_init_from_create_info(struct anv_device *device,
 
    struct anv_image_create_info create_info = {
       .vk_info = pCreateInfo,
+      .no_private_binding_alloc = no_private_binding_alloc,
    };
 
    /* For dmabuf imports, configure the primary surface without support for
@@ -1445,7 +1449,8 @@ VkResult anv_CreateImage(
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    VkResult result = anv_image_init_from_create_info(device, image,
-                                                     pCreateInfo);
+                                                     pCreateInfo,
+                                                     false);
    if (result != VK_SUCCESS) {
       vk_object_free(&device->vk, pAllocator, image);
       return result;
@@ -1637,7 +1642,7 @@ void anv_GetDeviceImageMemoryRequirements(
    struct anv_image image = { 0 };
 
    ASSERTED VkResult result =
-      anv_image_init_from_create_info(device, &image, pInfo->pCreateInfo);
+      anv_image_init_from_create_info(device, &image, pInfo->pCreateInfo, true);
    assert(result == VK_SUCCESS);
 
    VkImageAspectFlags aspects =
