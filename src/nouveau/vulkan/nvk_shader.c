@@ -289,7 +289,7 @@ lower_system_value_first_vertex(nir_builder *b, nir_instr *instr, UNUSED void *_
       return false;
 
    b->cursor = nir_before_instr(&intrin->instr);
-   nir_ssa_def *base_vertex = nir_build_load_base_vertex(b);
+   nir_ssa_def *base_vertex = nir_load_base_vertex(b);
    nir_ssa_def_rewrite_uses(&intrin->dest.ssa, base_vertex);
 
    return true;
