@@ -139,8 +139,7 @@ break_helper_loops(nir_shader *shader)
       if (!function->impl)
          continue;
 
-      nir_builder b;
-      nir_builder_init(&b, function->impl);
+      nir_builder b = nir_builder_create(function->impl);
 
       if (break_helper_loops_cf_list(&b, &function->impl->body)) {
          nir_metadata_preserve(function->impl, nir_metadata_none);
