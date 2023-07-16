@@ -146,7 +146,7 @@ break_helper_loops(nir_shader *shader)
          progress = true;
 
          /* Clean up any registes we may have created */
-         nir_lower_regs_to_ssa_impl(function->impl);
+         nir_lower_reg_intrinsics_to_ssa_impl(function->impl);
       } else {
          nir_metadata_preserve(function->impl, nir_metadata_all);
       }
