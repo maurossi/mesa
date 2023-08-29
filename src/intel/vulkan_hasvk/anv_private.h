@@ -62,6 +62,9 @@
 #include "util/set.h"
 #include "util/sparse_array.h"
 #include "util/u_atomic.h"
+#if DETECT_OS_ANDROID
+#include "util/u_gralloc/u_gralloc.h"
+#endif
 #include "util/u_vector.h"
 #include "util/u_math.h"
 #include "util/vma.h"
@@ -1095,6 +1098,9 @@ struct anv_device {
     struct intel_debug_block_frame              *debug_frame_desc;
 
     struct intel_ds_device                       ds;
+#if DETECT_OS_ANDROID
+    struct u_gralloc                            *u_gralloc;
+#endif
 };
 
 static inline bool

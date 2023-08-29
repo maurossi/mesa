@@ -48,6 +48,9 @@
 #include "util/os_file.h"
 #include "util/os_misc.h"
 #include "util/u_atomic.h"
+#if DETECT_OS_ANDROID
+#include "util/u_gralloc/u_gralloc.h"
+#endif
 #include "util/u_string.h"
 #include "util/driconf.h"
 #include "git_sha1.h"
@@ -1956,15 +1959,23 @@ void anv_GetPhysicalDeviceProperties2(
          break;
       }
 
+#if DETECT_OS_ANDROID
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PRESENTATION_PROPERTIES_ANDROID: {
          VkPhysicalDevicePresentationPropertiesANDROID *props =
             (VkPhysicalDevicePresentationPropertiesANDROID *)ext;
-         props->sharedImage = VK_FALSE;
+         uint64_t front_rendering_usage = 0;
+         struct u_gralloc *gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
+         if (gralloc != NULL) {
+            u_gralloc_get_front_rendering_usage(gralloc, &front_rendering_usage);
+            u_gralloc_destroy(&gralloc);
+         }
+         props->sharedImage = front_rendering_usage ? VK_TRUE : VK_FALSE;
          break;
       }
 #pragma GCC diagnostic pop
+#endif
 
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROVOKING_VERTEX_PROPERTIES_EXT: {
          VkPhysicalDeviceProvokingVertexPropertiesEXT *properties =
@@ -2757,6 +2768,10 @@ VkResult anv_CreateDevice(
       goto fail_default_pipeline_cache;
    }
 
+#if DETECT_OS_ANDROID
+   device->u_gralloc = u_gralloc_create(U_GRALLOC_TYPE_AUTO);
+#endif
+
    device->robust_buffer_access =
       device->vk.enabled_features.robustBufferAccess ||
       device->vk.enabled_features.nullDescriptor;
@@ -2830,6 +2845,10 @@ void anv_DestroyDevice(
 
    if (!device)
       return;
+
+#if DETECT_OS_ANDROID
+   u_gralloc_destroy(&device->u_gralloc);
+#endif
 
    anv_device_utrace_finish(device);
 
