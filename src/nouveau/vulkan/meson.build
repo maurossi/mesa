@@ -85,8 +85,8 @@ nvk_deps = [
   idep_vulkan_wsi_headers,
 ]
 
-libnvk = static_library(
-  'nvk',
+libvulkan_nouveau = shared_library(
+  'vulkan_nouveau',
   [
     nvk_entrypoints,
     cl_generated,
@@ -100,12 +100,6 @@ libnvk = static_library(
   ],
   link_with : [libnouveau_codegen],
   dependencies : [nvk_deps, idep_nouveau_codegen],
-  gnu_symbol_visibility : 'hidden',
-)
-
-libvulkan_nouveau = shared_library(
-  'vulkan_nouveau',
-  link_whole : [libnvk],
   link_args: [ld_args_build_id],
   gnu_symbol_visibility : 'hidden',
   install : true,
@@ -150,16 +144,4 @@ if meson.version().version_compare('>= 0.58')
   )
 
   devenv.append('VK_ICD_FILENAMES', meson.current_build_dir() / _dev_icdname)
-endif
-
-if with_tests and not with_platform_android
-  test(
-    'nvk_mme',
-    executable(
-      'test_nvk_mme',
-      files('test_nvk_mme.c'),
-      dependencies : [nvk_deps],
-      link_with : [libnvk],
-    )
-  )
 endif
