@@ -154,7 +154,7 @@
         "description": "vulkan: fix potential memory leak in create_rect_list_pipeline()",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "514c10344e6f2e99776c4bcc907d500f0837dc2b",
         "notes": null
