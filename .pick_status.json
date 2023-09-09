@@ -1054,7 +1054,7 @@
         "description": "intel/nir/rt: fix reportIntersection() hitT handling",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "303378e1dd4119e04e0f6cb623766115a00c2eea",
         "notes": null
