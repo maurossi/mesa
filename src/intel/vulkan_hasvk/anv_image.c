@@ -34,7 +34,10 @@
 #include "vk_util.h"
 #include "util/u_math.h"
 
+#include "vk_android.h"
 #include "vk_format.h"
+
+#include "anv_android.h"
 
 #define ANV_OFFSET_IMPLICIT UINT64_MAX
 
@@ -1035,19 +1038,6 @@ add_all_surfaces_implicit_layout(
    }
    assert(num_aspects == image->n_planes);
 
-   /* The Android hardware buffer YV12 format has the planes ordered as Y-Cr-Cb,
-    * while Vulkan expects VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM to be in Y-Cb-Cr.
-    * Adjust the order we add the ISL surfaces accordingly so the implicit
-    * offset gets calculated correctly.
-    */
-   if (image->from_ahb && image->vk.format == VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM) {
-      assert(num_aspects == 3);
-      assert(aspects[1] == VK_IMAGE_ASPECT_PLANE_1_BIT);
-      assert(aspects[2] == VK_IMAGE_ASPECT_PLANE_2_BIT);
-      aspects[1] = VK_IMAGE_ASPECT_PLANE_2_BIT;
-      aspects[2] = VK_IMAGE_ASPECT_PLANE_1_BIT;
-   }
-
    for (unsigned i = 0; i < num_aspects; i++) {
       VkImageAspectFlagBits aspect = aspects[i];
       const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
@@ -1306,19 +1296,19 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       };
    }
 
+   image->n_planes = anv_get_format_planes(image->vk.format);
+
    /* In case of AHardwareBuffer import, we don't know the layout yet */
-   if (image->vk.external_handle_types &
-       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) {
-      image->from_ahb = true;
+   if (vk_image_is_android_hardware_buffer(&image->vk)) {
 #if DETECT_OS_ANDROID
       image->vk.ahb_format = anv_ahb_format_for_vk_format(image->vk.format);
 #endif
       return VK_SUCCESS;
    }
 
-   image->n_planes = anv_get_format_planes(image->vk.format);
-   image->from_wsi =
-      vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA) != NULL;
+   isl_tiling_flags_t isl_tiling_flags =
+      choose_isl_tiling_flags(device->info, create_info, isl_mod_info,
+                              image->vk.wsi_legacy_scanout);
 
    /* The Vulkan 1.2.165 glossary says:
     *
@@ -1333,9 +1323,43 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
        image->vk.tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
       create_info->isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
 
-   const isl_tiling_flags_t isl_tiling_flags =
-      choose_isl_tiling_flags(device->info, create_info, isl_mod_info,
-                              image->vk.wsi_legacy_scanout);
+#define ANV_MAX_PLANE_COUNT 3
+
+#if DETECT_OS_ANDROID
+   VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+   VkSubresourceLayout a_plane_layouts[ANV_MAX_PLANE_COUNT];
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      assert(!image->disjoint);
+      r = vk_android_import_anb(&device->vk, pCreateInfo, NULL /*TODO*/,
+                                     &image->vk);
+      if (r != VK_SUCCESS)
+         goto fail;
+
+      r = vk_android_get_anb_layout(
+         pCreateInfo, &eci, a_plane_layouts, ANV_MAX_PLANE_COUNT);
+      if (r != VK_SUCCESS)
+         goto fail;
+
+      mod_explicit_info = &eci;
+      if (eci.drmFormatModifier == DRM_FORMAT_MOD_INVALID) {
+         /* Fallback gralloc case */
+         enum isl_tiling tiling;
+         struct anv_bo *bo = ((struct anv_device_memory *)image->vk.anb_memory)->bo;
+         r = anv_device_get_bo_tiling(device, bo, &tiling);
+         if (r != VK_SUCCESS)
+            goto fail;
+
+         isl_tiling_flags = 1u << tiling;
+      } else {
+         const struct isl_drm_modifier_info *isl_mod_info =
+            isl_drm_modifier_get_info(eci.drmFormatModifier);
+         isl_tiling_flags = 1u << isl_mod_info->tiling;
+      }
+   }
+#endif
+
+   image->from_wsi =
+      vk_find_struct_const(pCreateInfo->pNext, WSI_IMAGE_CREATE_INFO_MESA) != NULL;
 
    const VkImageFormatListCreateInfo *fmt_list =
       vk_find_struct_const(pCreateInfo->pNext,
@@ -1396,7 +1420,7 @@ anv_image_finish(struct anv_image *image)
    struct anv_device *device =
       container_of(image->vk.base.device, struct anv_device, vk);
 
-   if (image->from_gralloc) {
+   if (vk_image_is_android_native_buffer(&image->vk)) {
       assert(!image->disjoint);
       assert(image->n_planes == 1);
       assert(image->planes[0].primary_surface.memory_range.binding ==
@@ -1426,12 +1450,6 @@ anv_image_init_from_create_info(struct anv_device *device,
                                 const VkImageCreateInfo *pCreateInfo,
                                 bool no_private_binding_alloc)
 {
-   const VkNativeBufferANDROID *gralloc_info =
-      vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID);
-   if (gralloc_info)
-      return anv_image_init_from_gralloc(device, image, pCreateInfo,
-                                         gralloc_info);
-
    struct anv_image_create_info create_info = {
       .vk_info = pCreateInfo,
       .no_private_binding_alloc = no_private_binding_alloc,
@@ -1520,30 +1538,31 @@ resolve_ahw_image(struct anv_device *device,
 {
 #if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
    assert(mem->vk.ahardware_buffer);
-   AHardwareBuffer_Desc desc;
-   AHardwareBuffer_describe(mem->vk.ahardware_buffer, &desc);
-   VkResult result;
 
-   /* Check tiling. */
-   enum isl_tiling tiling;
-   result = anv_device_get_bo_tiling(device, mem->bo, &tiling);
+   VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+   VkSubresourceLayout a_plane_layouts[ANV_MAX_PLANE_COUNT];
+   isl_tiling_flags_t isl_tiling_flags;
+   VkResult result = vk_android_get_ahb_layout(
+      mem->vk.ahardware_buffer, &eci, a_plane_layouts, ANV_MAX_PLANE_COUNT);
    assert(result == VK_SUCCESS);
-   isl_tiling_flags_t isl_tiling_flags = (1u << tiling);
 
-   /* Check format. */
-   VkFormat vk_format = vk_format_from_android(desc.format, desc.usage);
-   assert(vk_format != VK_FORMAT_UNDEFINED);
+   if (eci.drmFormatModifier == DRM_FORMAT_MOD_INVALID) {
+      /* Fallback gralloc case */
+      enum isl_tiling tiling;
+      result = anv_device_get_bo_tiling(device, mem->bo, &tiling);
+      assert(result == VK_SUCCESS);
 
-   /* Now we are able to fill anv_image fields properly and create
-    * isl_surface for it.
-    */
-   vk_image_set_format(&image->vk, vk_format);
-   image->n_planes = anv_get_format_planes(image->vk.format);
+      isl_tiling_flags = 1u << tiling;
+   } else {
+      const struct isl_drm_modifier_info *isl_mod_info =
+         isl_drm_modifier_get_info(eci.drmFormatModifier);
+      isl_tiling_flags = 1u << isl_mod_info->tiling;
+   }
 
-   result = add_all_surfaces_implicit_layout(device, image, NULL, desc.stride,
+   result = add_all_surfaces_explicit_layout(device, image, NULL, &eci,
                                              isl_tiling_flags,
                                              ISL_SURF_USAGE_DISABLE_AUX_BIT);
-   assert(result == VK_SUCCESS);
+   (void)result;
 #endif
 }
 
@@ -1568,7 +1587,8 @@ anv_image_get_memory_requirements(struct anv_device *device,
       switch (ext->sType) {
       case VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS: {
          VkMemoryDedicatedRequirements *requirements = (void *)ext;
-         if (image->vk.wsi_legacy_scanout || image->from_ahb) {
+         if (image->vk.wsi_legacy_scanout ||
+            vk_image_is_android_hardware_buffer(&image->vk)) {
             /* If we need to set the tiling for external consumers, we need a
              * dedicated allocation.
              *
@@ -1774,12 +1794,6 @@ VkResult anv_BindImageMemory2(
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wswitch"
          case VK_STRUCTURE_TYPE_NATIVE_BUFFER_ANDROID: {
-            const VkNativeBufferANDROID *gralloc_info =
-               (const VkNativeBufferANDROID *)s;
-            VkResult result = anv_image_bind_from_gralloc(device, image,
-                                                          gralloc_info);
-            if (result != VK_SUCCESS)
-               return result;
             did_bind = true;
             break;
          }

@@ -22,12 +22,16 @@
  */
 
 #include "anv_private.h"
+
+#include "anv_android.h"
 #include "drm-uapi/drm_fourcc.h"
 #include "vk_android.h"
 #include "vk_enum_defines.h"
 #include "vk_enum_to_str.h"
 #include "vk_format.h"
 #include "vk_util.h"
+
+#include "vulkan/vulkan_android.h"
 
 /*
  * gcc-4 and earlier don't allow compound literals where a constant

@@ -24,34 +24,13 @@
 #ifndef ANV_ANDROID_H
 #define ANV_ANDROID_H
 
-#include "util/detect_os.h"
-
-#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
-#include <vndk/hardware_buffer.h>
-#endif
-#include <vulkan/vulkan.h>
-#include <vulkan/vulkan_android.h>
-#include <vulkan/vk_android_native_buffer.h>
-
-struct anv_device_memory;
-struct anv_device;
-struct anv_image;
-
-VkResult anv_image_init_from_gralloc(struct anv_device *device,
-                                     struct anv_image *image,
-                                     const VkImageCreateInfo *base_info,
-                                     const VkNativeBufferANDROID *gralloc_info);
-
-VkResult anv_image_bind_from_gralloc(struct anv_device *device,
-                                     struct anv_image *image,
-                                     const VkNativeBufferANDROID *gralloc_info);
-
+#if ANDROID_API_LEVEL >= 26
 unsigned anv_ahb_format_for_vk_format(VkFormat vk_format);
+#else
+static inline unsigned anv_ahb_format_for_vk_format(VkFormat vk_format)
+{
+   return 0;
+}
+#endif
 
-VkResult anv_import_ahw_memory(VkDevice device_h,
-                               struct anv_device_memory *mem);
-
-VkResult anv_create_ahw_memory(VkDevice device_h,
-                               struct anv_device_memory *mem,
-                               const VkMemoryDedicatedAllocateInfo *dedicated_info);
 #endif /* ANV_ANDROID_H */
