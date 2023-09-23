@@ -227,8 +227,6 @@ endif
 if with_platform_android
   anv_deps += idep_u_gralloc
   libanv_files += files('anv_android.c')
-else
-  libanv_files += files('anv_android_stubs.c')
 endif
 
 anv_deps += idep_intel_driver_ds_headers
