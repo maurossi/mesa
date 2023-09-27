@@ -414,7 +414,7 @@
         "description": "gallium/auxiliary: Fix coordinates clamp in util_compute_blit",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "7c8e1596d6ef12c27ffe713b173023b1e38e52cb",
         "notes": null
