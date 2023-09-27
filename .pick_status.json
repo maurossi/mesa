@@ -424,7 +424,7 @@
         "description": "gallium/auxiliary/vl: Fix coordinates clamp in compute shaders",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "a6a43963ed0648649d70bfe7998971c1927d9b51",
         "notes": null
