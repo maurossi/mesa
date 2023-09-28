@@ -404,7 +404,7 @@
         "description": "gallium/auxiliary/vl: Scale dst_rect x0/y0 when rendering chroma plane",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "001358a97cce456d948bb57842ca099a73c10b06",
         "notes": null
