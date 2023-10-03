@@ -64,7 +64,7 @@
         "description": "ac/nir: fix partial mesh shader output writes on GFX11",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "240e16fc8e27ba76afa1bf5adbd6d70c680027ac",
         "notes": null
