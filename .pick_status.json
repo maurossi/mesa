@@ -1284,7 +1284,7 @@
         "description": "radv: skip radv_remove_varyings for mesh shaders",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "9fa9782c1790e049be66d3bcd383fb3fdb79e1c5",
         "notes": null
