@@ -504,7 +504,7 @@
         "description": "agx: Fix fragment side effects scheduling",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "119e5b9719a1e1cb0cb7e8e74d7b607633bd3ee0",
         "notes": null
