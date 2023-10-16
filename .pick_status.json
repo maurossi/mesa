@@ -224,7 +224,7 @@
         "description": "v3d,v3dv: fix MMU error from hardware prefetch after ldunifa",
         "nominated": true,
         "nomination_type": 0,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": null,
         "notes": null
