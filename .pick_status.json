@@ -424,7 +424,7 @@
         "description": "radeonsi: initialize perfetto in the right place",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "a164e147e91e8c6090d4dceca59806e091244c50",
         "notes": null
