@@ -704,7 +704,7 @@
         "description": "zink: lower fisnormal as it requires the Kernel Cap",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "82eed326f47848fddef39b933a2ce9ab5492a4d8",
         "notes": null
