@@ -1224,7 +1224,7 @@
         "description": "nir/split_vars: Don't split arrays of cooperative matrix types",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "2d0f4f2c17b79830e9780a68bc473718d4abd4ad",
         "notes": null
