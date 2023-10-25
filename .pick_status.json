@@ -304,7 +304,7 @@
         "description": "rusticl/mesa: pass PIPE_BIND_LINEAR in resource_create_texture_from_user",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "71a9af49107289439f281ab59b5f67f59064f0aa",
         "notes": null
