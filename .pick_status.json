@@ -134,7 +134,7 @@
         "description": "tu: Fix reading of stale (V)PC_PRIMITIVE_CNTL_0",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "7be8d0f7f490ea58c89798efca7e45b84dc395da",
         "notes": null
