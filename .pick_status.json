@@ -1214,7 +1214,7 @@
         "description": "d3d12: d3d12_video_buffer_create_impl - Fix resource importing",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "62fded5e4f8fce10abcb310b03a135ed794dff28",
         "notes": null
