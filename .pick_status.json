@@ -664,7 +664,7 @@
         "description": "rusticl/queue: Only take a weak ref to the last Event",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "5b3ff7e3f3d0e35f7bc17d9f208a8aeee3062427",
         "notes": null
