@@ -984,7 +984,7 @@
         "description": "nir/lower_bit_size: Fix subgroup lowering for floats",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "f95665cfebbd943ca3795c026e3dabf4af3f262c",
         "notes": null
