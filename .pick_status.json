@@ -74,7 +74,7 @@
         "description": "radv: fix compute shader invocations query on compute queue on GFX6",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "a9945216ba223d57ade453d5f855edd93dd3b200",
         "notes": null
