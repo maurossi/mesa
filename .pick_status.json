@@ -1694,7 +1694,7 @@
         "description": "anv: remove CS_FLUSH from query regression",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "6dc95685f3b1a14b2a0d80bc05ea198de8027f44",
         "notes": null
