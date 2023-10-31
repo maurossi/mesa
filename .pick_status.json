@@ -1,5 +1,355 @@
 [
     {
+        "sha": "4cdd094ae1e97d857a6b9dbc291d7bbe6ea266ac",
+        "description": "virgl: Use host reported limits for max outputs",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c24a635d1cf1cd538c503a37c2a3535409a01e46",
+        "description": "broadcom/compiler: add v3d_pack_unnormalized_coordinates helper",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5e4ba9b166078fb4978c4eb69986bfff0f6ca66b",
+        "description": "ci/lava: add wine into the amd64 ephemeral container packages",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "81aaeb80f759efb84d21827a3309bc4c03aa8a8e",
+        "description": "Revert \"ci/wine: move wine configuration into rootfs where is wine available\"",
+        "nominated": false,
+        "nomination_type": 2,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "63b42e4007fec8746f7a3848b3816d36124dcbfd",
+        "notes": null
+    },
+    {
+        "sha": "1e13c7ca4653d7ffd1dcad54ad52af96e1021b59",
+        "description": "ci/wine: move wine configuration into rootfs where is wine available",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "35c7b5e159444b8226f59b5250001e85417102ee",
+        "description": "ci/alpine: do not store apk cache",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3669ca159fc3b3e5ef628e201f5d91dea9de6365",
+        "description": "ci/venus: reduce pre-merge to fit under 15 min",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f6dd808d68ec904a4323449fd1db71439b1b6079",
+        "description": "ci/panfrost: run T860 traces as intended (nightly job)",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "17d6baff823656d3523fed812d68c9b6de8813c0",
+        "description": "ci: drop debootstrap, unused",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e4d6da5ba30cd544014b017b1b16645e866088ad",
+        "description": "ci: bashify scripts, use arrays",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e678483ecd710787b22538efb6149f8705ec91ae",
+        "description": "ci: always cleanup pip and cargo leftovers",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c6928a4e6e111a105259d3e88b5f4b4c7279dd04",
+        "description": "ci: drop mingw and wine from the x86_64 build container",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ef217a92217392d7ed08eb5112d7e5e29d80d407",
+        "description": "ci: simplify debian-rusticl-testing definition",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "1f2b50fbc2443efac86fc6b2c352921b4b47df8a",
+        "description": "ci: drop clover from release builds and remove rusticl build",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2815e5c94daf5bba547e8d9366ec30b7b54eaa47",
+        "description": "ci: hide Mesa install phase",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "68e8e40163855adc63eab3fff2c41286a47b6a02",
+        "description": "ci/zink: reduce premerge testing on a618 to ~ 12 minutes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fa7ca1f70a9d7d1b6f779214630600852faa6d9d",
+        "description": "ci: bump tags",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fddad4d5f9f27c0ca97a4383d1f2e3a54578c23a",
+        "description": "intel/compiler: Assert that FS_OPCODE_[REP_]FB_WRITE is for pre-Gfx7",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "48f60f4c4b6b91aabfeec1d32298f0d546ecbad9",
+        "description": "intel/compiler: Convert the repclear shader to use send-from-GRF",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ef7d1b5f446a23419e6043f71a551217da9ea598",
+        "description": "intel/compiler: Drop unused saturate handling in repclear shader",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e6d9267d4f91d4cd67d82cf53cb05b8271ed147b",
+        "description": "intel/compiler: Delete repclear shader's special case for 1 color target",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e6460fe66b6faf6f3d4dacd6c6f43efbe4800f8c",
+        "description": "intel/compiler: Delete unused repclear shader uniform handling",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b35f1fc910b9c362623f4f47fe43bcd5cfcb3d21",
+        "description": "intel/compiler: Delete unused emit_dummy_fs()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5b24ab91e43a54b4f4081db52ebf6653b97e72bb",
+        "description": "venus: switch to unconditionally deferred query feedback",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "7fbf608f2dac486b23030d3b48dd10bb453d9eb8",
+        "description": "venus: append query feedback at submission time",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d2a626787e559dad9105243be9e5043c9230853c",
+        "description": "venus: track/recycle appended query feedback cmds",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "6dcf033dc30e52c1557999bf7588cf0e1c5dcc8c",
+        "description": "venus: support deferred query feedback recording",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "99807b3db65e107fc35f9419979600fcec7b8230",
+        "description": "venus: refactor out common cmd feedback functions",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2ea6f935ce554c5a1666648a284406db8edc3cc7",
+        "description": "venus: add helper function to get cmd handle",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "180cb30986e89f05034dd10c64934205ac134f40",
+        "description": "ci/docs: add coreutils",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "cdca0b2ce4d603d4f5914d7a1e37923a6a959541",
+        "description": "anv: fix corner case of mutable descriptor pool creation",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "63e91148b7fe777b6ad7bfdb6b02d167c151dd55",
+        "notes": null
+    },
+    {
+        "sha": "fac60c140ba57ceebbdcd5278812fe4fa9f737df",
+        "description": "ci: don't run sanity in Marge pipelines",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "49395b4aa4b2e0cf89c52a00ceabd20cf8e7f9d6",
+        "description": "docs/ci: allow sanity job to be missing",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3f64b12c1e6114e9d44000eeabf30b4e60a3608b",
+        "description": "ci: drop confusing fake `rules`, `if` and `when` on the list of rules strings",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "9669334b418578e035b8fe7fc173194aeb7407fe",
+        "description": "ci/zink+radv: add another flake on polaris",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
         "sha": "e64a97694ac9dc97f65e1a8e91a5c9789109fd2c",
         "description": "anv: use anv_state_pool_state_address for blorp vertex buffer address",
         "nominated": false,
