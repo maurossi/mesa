@@ -64,7 +64,7 @@
         "description": "radeonsi: Fix offset for linear surfaces on GFX < 9",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "86262b6eac0c232f4b3085cfc86cff9b7de7d11b",
         "notes": null
