@@ -834,7 +834,7 @@
         "description": "freedreno/drm: Fix race in zombie import",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "a192923f99e1f0c929b385fefd235453b44a3924",
         "notes": null
