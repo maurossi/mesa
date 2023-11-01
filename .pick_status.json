@@ -614,7 +614,7 @@
         "description": "nvk: Should use alignment instead of align",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "87686a22205cf338b59a33b8ec21f9b3d8ad3d29",
         "notes": null
