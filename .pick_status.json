@@ -1104,7 +1104,7 @@
         "description": "venus: fix query feedback batch leak and race upon submission",
         "nominated": true,
         "nomination_type": 0,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "5b24ab91e43a54b4f4081db52ebf6653b97e72bb",
         "notes": null
