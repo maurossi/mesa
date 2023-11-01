@@ -1,5 +1,95 @@
 [
     {
+        "sha": "faed5d647f2416bb0ce3a9d33a3955169c70dc52",
+        "description": "iris: handle tile case where cso width, height is zero",
+        "nominated": false,
+        "nomination_type": 1,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "d13c81a2c3bfe9a81c6310d393add7fd0e53b11c",
+        "notes": null
+    },
+    {
+        "sha": "a19e46f5d05293bd933914a4645602593da8fb80",
+        "description": "radv: Implement workaround for unaligned buffer/image copies.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ec0605ff723d5d9301fc4c9cf18bd6f2892fc5fc",
+        "description": "radv: Add temporary BO for transfer queues.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "8156c923ee9a0e9a8084ae09e6e91cb1ac41aeb0",
+        "description": "radv: Implement buffer/image copies on transfer queues.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ed21f1c96257f1fc7fded5db636707dd443779f9",
+        "description": "radv: Expose radv_get_dcc_max_uncompressed_block_size function.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "848f2f2b996b5b90e8c03ecfb086951d5351b5cd",
+        "description": "radv: Remove always false tmz variables from SDMA functions.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "17daa08dff0cf9479b27ed7402de61336607ec10",
+        "description": "radv: emit COMPUTE_PIPELINESTAT_ENABLE for CS invocations on ACE",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "a9945216ba223d57ade453d5f855edd93dd3b200",
+        "notes": null
+    },
+    {
+        "sha": "9a0a77cb53d0d31c7a090d06ac905d69e9c1131c",
+        "description": "radv: fix compute shader invocations query on compute queue on GFX6",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "a9945216ba223d57ade453d5f855edd93dd3b200",
+        "notes": null
+    },
+    {
+        "sha": "46dc02354ae0df85440a1d9cc5dc0d4ef1e534ca",
+        "description": "radv: adjust binning settings to improve performance on GFX9",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
         "sha": "e4a1bc70dd739ca8addddc940af08312b038e288",
         "description": "radv: bind the non-dynamic graphics state from the pipeline unconditionally",
         "nominated": true,
