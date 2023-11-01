@@ -1724,7 +1724,7 @@
         "description": "nir: add deref follower builder for casts.",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "4a4e1757381c65653fd6a81cf4e969ddff926ed5",
         "notes": null
