@@ -1,5 +1,255 @@
 [
     {
+        "sha": "e4a1bc70dd739ca8addddc940af08312b038e288",
+        "description": "radv: bind the non-dynamic graphics state from the pipeline unconditionally",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "4e912c972b98e22a731a8a1b019550c8292eefb2",
+        "description": "pvr: Update AM62 DSS compatible string to match upstream",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "024dab650ea73ba3897093e190b80c99945f6589",
+        "description": "radv/ci: enable RADV_DEBUG=nomeshshader for vkcts-navi31-valve",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "a97160cad8d142ebbfab139e7673ffb26c544aed",
+        "description": "radv: add RADV_DEBUG=nomeshshader",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "15f92c3b2c67a7fd29d769729543e7be8ba3fe65",
+        "description": "radv/ci: update list of expected failures/flakes for NAVI31",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "da7e6f303b1a8ed7e9c13bccb6e4c90ff356a914",
+        "description": "radv: Add some initial graphics DGC preprocessing support.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c4fb82744158adbe8799370a1f35823b4b47a8a5",
+        "description": "radv: Add compute DGC preprocessing support.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "108227a84e8d778f2ddf5c32386bece6b0b5203e",
+        "description": "radv: Add DGC preprocessing barrier support.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f7830240acc43280154dacd0ab075dcaa0051da8",
+        "description": "rusticl/mesa/screen: do not derefence the entire pipe_screen struct",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "71064879d114fafbe7b104ada2c34cbe5317bf14",
+        "description": "anv: Override vendorID for Diablo IV",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "03705f37bfabf18f13c67b739994a4aedac5d5cb",
+        "description": "r600: Replace TGSI I/O semantics with shader_enums",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "29c544abc013f3d460b6b900da38ed1b454501a3",
+        "description": "r600: Fix outputs typo in print_pipe_info",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5419f52967fea83a2e28a2b1817548ed07ec2d00",
+        "description": "r600/sfn: Split r600_shader_from_nir into common and Gallium parts",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c78aa6a417d40bb221c6f3a8cb07a531313cb79e",
+        "description": "r600/sfn: Make r600 header include paths relative",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "03d102f576857474daf9532267530b6193149212",
+        "description": "r600: Split r600_shader.h into common and Gallium parts",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "bcb34884c23c48b80dbaa3a26345b3073dbe3e64",
+        "description": "r600: Remove Gallium dependencies in r600_asm",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b7e5a8b5ca6078bb79fddaef89b66ce78a72e14f",
+        "description": "r600: Replace R600_ERR with R600_ASM_ERR in shader code",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "10ef3b7fe3f21e3a563da3930d7edf8a3e49da38",
+        "description": "r600: Remove Gallium dependencies in r600_isa",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "564b97219641941ab414b863e78a13e9cfc1bbe6",
+        "description": "r600: Move r600_create_vertex_fetch_shader to r600_shader.c",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5521840cbca21dfd26aa76f0f1c84077e72c4b91",
+        "description": "ci: Only strip debug symbols",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "7d0ae38ef75c10b548fb2def88c191a353e180b6",
+        "description": "nir: Workaround MSVC internal compiler error in ARM64 build",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "97553affc67420319c4a06360c97be277eb73b74",
+        "description": "microsoft: Disable post-merge CI for Windows",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "122ed7cd8064b88aae77e9a849c2953b635afeff",
+        "description": "pvr: rename some more instances of 'reserved' to 'carveout' for consistency",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f2dfb0f6ee1d9ad00097bf1a4361290cea3c8100",
+        "description": "broadcom: use `.never-post-merge-rules` for all rpi tests",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "163c6fe4c4a9b15f93c553a1eacd61ec17fafc4f",
+        "description": "ci: add `.never-post-merge-rules` to avoid re-running pre-merge jobs after merging",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
         "sha": "4cdd094ae1e97d857a6b9dbc291d7bbe6ea266ac",
         "description": "virgl: Use host reported limits for max outputs",
         "nominated": false,
