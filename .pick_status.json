@@ -864,7 +864,7 @@
         "description": "r600: Link with libgalliumvl, when enabling rusticl this is needed",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "33673bcc2ab84de0b1ff35519e7d7a58ef572fba",
         "notes": null
