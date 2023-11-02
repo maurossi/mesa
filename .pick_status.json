@@ -64,7 +64,7 @@
         "description": "ir3/ra: Don't swap killed sources for early-clobber destination",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "d4b5d2a0204f8c09a2e8c4dc022f0f05adafa50b",
         "notes": null
