@@ -164,7 +164,7 @@
         "description": "zink: Check for VK_EXT_extended_dynamic_state3 before setting A2C",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "736577871b939573af400e4e64ebfe18863d49af",
         "notes": null
