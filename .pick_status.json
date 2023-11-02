@@ -844,7 +844,7 @@
         "description": "nir: don't take the derivative of the array index in `nir_lower_tex`",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "b154a4154b4348a5ae053d0cde331aea902f7bcc",
         "notes": null
