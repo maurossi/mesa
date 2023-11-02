@@ -1254,7 +1254,7 @@
         "description": "tu/msm: Fix timeline semaphore support",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "daefc6e2a40b70f0665b21cf7688e711b4b1ae09",
         "notes": null
