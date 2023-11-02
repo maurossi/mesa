@@ -884,7 +884,7 @@
         "description": "nvc0: implement PIPE_CAP_TIMER_RESOLUTION",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "660f2eabe116972b82f2b6fcdf4869962f641d6d",
         "notes": null
