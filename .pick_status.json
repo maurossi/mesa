@@ -434,7 +434,7 @@
         "description": "nir_lower_mem_access_bit_sizes: Fix write-mask-constrained 3-byte stores as atomics",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "c70d94a889709d181e9569d4089f2d017b5684fc",
         "notes": null
