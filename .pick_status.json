@@ -564,7 +564,7 @@
         "description": "zink: Fix crash on zink_create_screen error path",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "0c2045553fe4b3f337935cf007ba3920497e51a0",
         "notes": null
