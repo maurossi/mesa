@@ -764,7 +764,7 @@
         "description": "venus: skip bind sparse info when checking for feedback query",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "7fbf608f2dac486b23030d3b48dd10bb453d9eb8",
         "notes": null
