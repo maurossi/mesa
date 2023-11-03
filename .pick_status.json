@@ -4,7 +4,7 @@
         "description": "nir/loop_analyze: Fix inverted condition handling in iterations calculation",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "99a7a6648de38f79aa06dabad010ec191aae18f4",
         "notes": null
