@@ -165,6 +165,7 @@ crocus_get_param(struct pipe_screen *pscreen, enum pipe_cap param)
    case PIPE_CAP_START_INSTANCE:
    case PIPE_CAP_FORCE_PERSAMPLE_INTERP:
    case PIPE_CAP_MIXED_FRAMEBUFFER_SIZES:
+   case PIPE_CAP_MIXED_COLOR_DEPTH_BITS:
    case PIPE_CAP_VS_LAYER_VIEWPORT:
    case PIPE_CAP_TES_LAYER_VIEWPORT:
    case PIPE_CAP_ACCELERATED:
