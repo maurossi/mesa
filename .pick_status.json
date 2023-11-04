@@ -724,7 +724,7 @@
         "description": "Revert \"radeon/radeon_vce: fix out of target bitrate in CBR mode (H.264)\"",
         "nominated": true,
         "nomination_type": 2,
-        "resolution": 0,
+        "resolution": 2,
         "main_sha": null,
         "because_sha": "f7e7cf637e1b457d56b3aaf4d05c928ef9acff17",
         "notes": null
