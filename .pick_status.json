@@ -394,7 +394,7 @@
         "description": "radeonsi/gfx11: don't set OREO_MODE to fix rare corruption",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "19a59f05a47901a237b506154f2cfedfab9066bc",
         "notes": null
