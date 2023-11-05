@@ -54,7 +54,7 @@
         "description": "rusticl/queue: do not send empty lists of event to worker queue",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "8616c0a52c776ecc7d0e946207ab35213b5ba985",
         "notes": null
