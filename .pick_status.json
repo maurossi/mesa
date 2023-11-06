@@ -1,5 +1,325 @@
 [
     {
+        "sha": "7d6f9ccfbeab050c26775d5e03578a01526cbfcb",
+        "description": "ci: disable Collabora's LAVA lab for maintance",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "106acbbed9c814bc504421527e6eae884f8e242e",
+        "description": "rusticl: Avoid repeatedly creating Vecs during Platform initialization",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b4d052e4cbdfc5eeb59276239e8b6d5223ffc6df",
+        "description": "rusticl: Only put an Arc around PipeScreen where needed",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "8103be7faa4435365f72fcde025d9c1f4b37d0f8",
+        "description": "rusticl: Directly pass a `&Device` to `Mem::map_image` and `Mem::map_buffer`",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "8cbb84dc428ff805abc514d810faebe64bb03cdb",
+        "description": "rusticl/queue: fix implicit flushing of queue dependencies",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "8616c0a52c776ecc7d0e946207ab35213b5ba985",
+        "notes": null
+    },
+    {
+        "sha": "52e41d4c97947a1b0c2c86c3b6491958716e998b",
+        "description": "rusticl/queue: do not send empty lists of event to worker queue",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "8616c0a52c776ecc7d0e946207ab35213b5ba985",
+        "notes": null
+    },
+    {
+        "sha": "bf364cbdb40f044d2a11b6fe5636e8a039fdad81",
+        "description": "radeonsi: Fix offset for linear surfaces on GFX < 9",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "86262b6eac0c232f4b3085cfc86cff9b7de7d11b",
+        "notes": null
+    },
+    {
+        "sha": "d2a025ab2b7130c7c485f5f27322ffbb6ea61676",
+        "description": "radeonsi: move setting registers at the end of si_emit_cb_render_state",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c21bcfd34fb3bde6ceecd57009341f35f37c4124",
+        "description": "radeonsi: cosmetic changes in si_state_binning.c, si_state_msaa.c",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "6455aaab07ea298a801f2a0d22eddcf466bb4c2a",
+        "description": "radeonsi: cosmetic changes in si_state_viewport.c",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "43cdb5140238a8db1460e3e327f17c452ef8852b",
+        "description": "radeonsi: move max_dist for MSAA into si_state_msaa.c",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "12c239f829db35923745957a0efdb837f700f65a",
+        "description": "radeonsi: various isolated cosmetic changes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ca1d37e1db8e477f179969c20cfca48b67efe50d",
+        "description": "radeonsi: adjust setting PA_SC_EDGERULE once more",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "4dfff0f1b74285460b9c4f592df80777695ca2d2",
+        "description": "radeonsi: use si_shader_uses_streamout properly",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2a83532ed6a5c4363cd246c76a22790a254a622c",
+        "description": "radeonsi: split setting num_threads in si_emit_dispatch_packets",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5a38757fcf7f103595de63df4e6ffce4a6c06ce0",
+        "description": "radeonsi: cosmetic changes in si_pm4.c",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "03353bd752299132a2123cee221a7ef2f18918f4",
+        "description": "radeonsi: decrease PIPE_CAP_MAX_GEOMETRY_TOTAL_OUTPUT_COMPONENTS to 1024",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "6708ccd3bf4ba1668c19bdd2acae033ffd649465",
+        "description": "radeonsi: remove and inline si_shader::ngg::prim_amp_factor",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e98a4f382085b08b8c509c7706621b70641ff2e4",
+        "description": "radeonsi: rename ctx -> sctx in si_emit_guardband",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "a61d74ed275b03c0f2fde1c237bfdf267afa1c95",
+        "description": "radeonsi: remove AMD_DEBUG=nogfx",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "00b716cb83e7f7c3dc9545f11bc4ddd4b68f3ad1",
+        "description": "radeonsi: remove redundant VS_PARTIAL_FLUSH for streamout",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "17de5dd1c46f71683a00c52a59af2c8128b518f2",
+        "description": "radeonsi: inline si_screen_clear_buffer",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "738babc67aac2e1240f92182f3432e60cdeb2e9c",
+        "description": "radeonsi: inline si_allocate_gds and si_add_gds_to_buffer_list",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f841a5b991abae28db3651f4d1d01c4adf712eac",
+        "description": "radeonsi: don't use nir_optimization_barrier_vgpr_amd with ACO",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "44eaf50a34b22dfdbdf67ae5f32e3ff0b9543504",
+        "description": "ac/surface/tests: cosmetic changes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "dfcc7f83a4d41fa7ea9da26523c34e69fc3f68a8",
+        "description": "ac/surface: cosmetic changes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "355242f0557c3f28ff1414b261eb086362e707db",
+        "description": "ac/gpu_info: adjust attribute ring size for gfx11",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "bd576308851116efeb0d834dae2723d7ca8cb727",
+        "description": "ac: add missing gfx11.5 bits",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "cd0a01522f22646f840cfc5e7557e9f8f84a1e5e",
+        "description": "ttn: Set sample shading for sample ID reads",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "95ad0c750c5891dab3a678f26a74c95edfed87c9",
+        "description": "Android.mk: disable android-libbacktrace to build with Android 14",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "520e79a3b5841db034d6d962870432d21fd0989c",
+        "description": "Android.mk: filter out cflags to build with Android 14 bundled clang",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "0e481bf4632b4c6b900d8e3f4b95dc83a5c93679",
+        "description": "ci: Opt out asahi from clang-format",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
         "sha": "1f1ec1c6bcc2a32a3c1df8c2cc7a2f4e7139b7ec",
         "description": "rusticl: Show an error message if the version of bindgen can't be detected",
         "nominated": false,
