@@ -284,7 +284,7 @@
         "description": "frontends/va: Remove wrong use of ProfileToPipe",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "0996ec3fc6ea3ec3c76392f9aa15a283060f95fa",
         "notes": null
