@@ -1494,7 +1494,7 @@
         "description": "radv: fix image view extent override for astc",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "f97b449e9e332026a4b352423f71c6031e5f9e8b",
         "notes": null
