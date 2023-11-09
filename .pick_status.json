@@ -5184,7 +5184,7 @@
         "description": "anv: Write timestamp using MI_FLUSH_DW on blitter",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "056b0cb87f2831715452f2754df8d1bc810c6155",
         "notes": null
