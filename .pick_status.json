@@ -1,5 +1,515 @@
 [
     {
+        "sha": "56451ce773c11094a8c08fdc6b500bb8bdcf37e1",
+        "description": "v3d: Don't implicitly clear the content of the imported buffer",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "656afd8ede86c1203836f6c2e402ad89f638965b",
+        "description": "bin/gitlab_gql: fix command in example",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2cf031155b1e8f4f3655856d3f01706ce7142cb1",
+        "description": "gitlab_gql: make `--rev` optional, defaulting to `HEAD`",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "cc37af8fbc363f72e007ec569f30d32a5e299e5b",
+        "description": "bin/gitlab_gql: resolve sha locally to be able to use things like `HEAD`",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "781e1a34cf6409d66ec9741bf740dad3b657a029",
+        "description": "radv/ci: fix `vkcts-navi21-valve` execution",
+        "nominated": false,
+        "nomination_type": 1,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "5e44cee47dfb006923eba601b516ccd874105cd3",
+        "notes": null
+    },
+    {
+        "sha": "05fb6b9c7d768b95c75a1f6cd2885cb6e12dcb95",
+        "description": "Android.mk: be able to build radeonsi without llvm",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "04ffef15da1903c7f2497e24d96f742e476b3e8d",
+        "description": "ir3/ra: Don't swap killed sources for early-clobber destination",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "d4b5d2a0204f8c09a2e8c4dc022f0f05adafa50b",
+        "notes": null
+    },
+    {
+        "sha": "aba837ef710d1267ce8a16b84d59a712a2da1863",
+        "description": "radv+zink/ci: add navi10 flakes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5819e0a52738e2f64c8482cfef25a06772f7a0c4",
+        "description": "radv+zink/ci: add polaris10 flakes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "37c7ffb958b00500210e133b7ee1286358aee750",
+        "description": "radv/ci: add polaris10 flakes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3af19432e97f3ed8c4a925795b918f5c84eefb39",
+        "description": "radv/ci: add vega10 flakes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d42d2ee3a56a4e0faef8d9828fd707250dc8a8cb",
+        "description": "radv/ci: add navi21 flakes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d4499c4cb26b87876f0ee16562a4c5b2bd4f8860",
+        "description": "isl: disable MCS compression on R9G9B9E5",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "631dc5b5e6ca6fdc566a8b55039a5df0e81edb0f",
+        "description": "drirc: enable `vk_wsi_force_swapchain_to_current_extent` for \"The Talos Principle VR\"",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "29400a56d51d9da19eb0eccdc4b5563ee8510ade",
+        "description": "tu: Fix getting VkDescriptorSetVariableDescriptorCountLayoutSupport",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "17e135d3d4a4bb1d835aba6ffdf1997e23360843",
+        "description": "vulkan: fix potential memory leak in create_rect_list_pipeline()",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "514c10344e6f2e99776c4bcc907d500f0837dc2b",
+        "notes": null
+    },
+    {
+        "sha": "7d85656fa70b731da4f01ec7598c43706a1325cd",
+        "description": "ci: tag sanity, rustfmt and clang-format job as a \"placeholder\" job",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b89467b1a527b6ac5c712710cd37b493042bd937",
+        "description": "gitlab: make commit more commit-like formatted",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "4b9e80a9255bcd91c7ba345ef8062d1f7b7d97e8",
+        "description": "gallium: Add udl (DisplayLink) to the list of kmsro drivers",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "720c8293417b69c9633a43b2c734be2a6325d698",
+        "description": "gallium: Add more TinyDRM drivers to the list of kmsro drivers",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b3803639382445f5a61f8ed8737c40a28f5908ed",
+        "description": "tu: Make sure copies to half-float formats are bit exact",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3d3176aa1776d7784e3ed63136472d05314b488e",
+        "description": "tu/a7xx: Fix occlusion queries on pre-A740 GPUs",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "cca5a4191d9c68f572287a44ccdf59becfa55742",
+        "description": "ci: disable lima farm as it appears to be down",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "8e7df505fc8537ea58e25b31d6d132db81b066f6",
+        "description": "tu: Fix order of rasterizer_discard check",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "40e74ed5d3c4da4f7ac1b5a682a9150411ff5e83",
+        "description": "tu: Assume no raster-order attachment access with NULL DS/blend state",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "236da520f4251a5122976194ac247a36ce1f19ca",
+        "description": "intel/common/xe: Re implement xe_gem_read_render_timestamp() with xe_gem_read_correlate_cpu_gpu_timestamp()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "feae70f608236096b91b145b4967ebc917833773",
+        "description": "intel/ds: use improved timestamp correlation if available",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b2bf141b6af24575e90fb9953114c4bd80f24a4d",
+        "description": "perfetto/pps-producer: add optimized cpu/gpu timestamp correlation support",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fdec724bd17c2f245e9385ddc193395839785a0b",
+        "description": "anv: Make use of intel_gem_read_correlate_cpu_gpu_timestamp()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "01aafa14d4f6c9dfd4e74d033dcd7c34a1a59b33",
+        "description": "anv: Reduce ifdefs in anv_GetCalibratedTimestampsEXT()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ae0df368a80d526b71ff135380995cb0399b7714",
+        "description": "intel/common: Add intel_gem_read_correlate_cpu_gpu_timestamp()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b6dbbd3ff79e861bf9605d92049c8906942916e2",
+        "description": "radeonsi/ci: document new failures and flakes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "02942d6e7ec5c8e3fa6f55918603ca63620ec5d0",
+        "description": "aco: Update printed block kinds",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "073b87653943b95fb286f41fbbff301230fb678c",
+        "description": "intel/fs/xe2+: Don't special case SEL_EXEC in inferred_exec_pipe().",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "23e14a6c2711abe7b93858a1feef8dd736cc7040",
+        "description": "intel/eu/xe2+: Add definition for size of GRF space on Xe2.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ff3814abdd791c2ff7ab0dd0cbb4dbaa513208eb",
+        "description": "intel/fs/xe2+: Handle extended math instructions as in-order in SWSB pass.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5fb6760f11089c9cbcd1ffa76d34e807bbb1d613",
+        "description": "intel/fs/xe2+: Teach SWSB pass about the behavior of double precision instructions.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "9e446c9282319de961c10d67f859fa9ac37e3ac4",
+        "description": "intel/fs/xe2+: Add comment reminding us to take advantage of the 32 SBID tokens.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "15d6c6ab1102e933d2bd6b419946b163e0596116",
+        "description": "intel/eu/xe2+: Add support for 10-bit SWSB representation on Xe2+ platforms.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "40416850f186615d4d2cce95323137262a6789ba",
+        "description": "intel/compiler: Re-enable opt_zero_samples() in many cases for Gfx12.5",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "daeab51a628a61dade7bac0c6d06361714f57e1b",
+        "description": "intel/compiler: Re-enable opt_zero_samples() for Gfx7+",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ef8553082eec11c0148c3decec139285e1527c5f",
+        "description": "intel/compiler: Rework opt_split_sends to not rely/modify LOAD_PAYLOAD",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e017bcae59ace7972e35571974d32b25c3381cd5",
+        "description": "intel/compiler: Clarify the asserts in nir_load_workgroup_id lowering",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "534323f2af632e09314522059df551925a148900",
+        "description": "ci/zink: disable nheko trace, as it sometimes crashes",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fa7ec4226bdf48bf63438e303af83ecd58ec95f2",
+        "description": "Revert \"ci/freedreno: disable antichambers trace\"",
+        "nominated": true,
+        "nomination_type": 2,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "f562e37c9325cc107d4f02026946acc14c75b323",
+        "notes": null
+    },
+    {
+        "sha": "b1fc5390c6d7422adcc74020d45e8e590c4241ae",
+        "description": "freedreno/a6xx: Fix antichamber trace replay assert",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b33aa7b01a2240f6eca0bc7082640ec9a5f1fa6a",
+        "description": "aco: don't CSE v_permlane across exec",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "a9bdf58c36e6d520b3bfccfcfa06543e932374a6",
+        "description": "freedreno/a6xx: Assume MOD_INVALID imports are linear",
+        "nominated": false,
+        "nomination_type": 1,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "33de58154f801eea84e5a9cdbda9cb6010e5ed47",
+        "notes": null
+    },
+    {
+        "sha": "f4601d82c134fbffea4f153277300d8e98f96f84",
+        "description": "intel/compiler: Remove unused parameter from brw_nir_analyze_ubo_ranges()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d2125dac859607ceef1586730d7b9797d76b7cd7",
+        "description": "intel/compiler: Take more precise params in brw_nir_optimize()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c4be90b4ba361360f811787a0c84e7ed9d27cfe1",
+        "description": "intel/compiler: Remove unused parameter from brw_nir_adjust_payload()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
         "sha": "a77ea9555aa00cc12f3d1c440252e940ff552500",
         "description": "blorp: WA 16014538804 for DG2, MTL A0",
         "nominated": false,
