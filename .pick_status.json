@@ -4314,7 +4314,7 @@
         "description": "mesa: restore call to _mesa_set_varying_vp_inputs from set_vertex_processing_mode",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "c97961a855ad1ae5c58d47634862b459e682e158",
         "notes": null
