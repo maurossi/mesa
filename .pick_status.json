@@ -1334,7 +1334,7 @@
         "description": "zink: fix dereference before NULL check",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "9de455bc4323d6bb484c1beed77454381e48b432",
         "notes": null
