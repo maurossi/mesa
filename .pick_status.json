@@ -444,7 +444,7 @@
         "description": "Revert \"ci/freedreno: disable antichambers trace\"",
         "nominated": true,
         "nomination_type": 2,
-        "resolution": 0,
+        "resolution": 2,
         "main_sha": null,
         "because_sha": "f562e37c9325cc107d4f02026946acc14c75b323",
         "notes": null
