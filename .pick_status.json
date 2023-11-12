@@ -24,7 +24,7 @@
         "description": "radv/sqtt: Fix tracing acceleration structure commands",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "bfb55d026675779fa36aa86be578625a3ce2b3e0",
         "notes": null
