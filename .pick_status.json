@@ -274,7 +274,7 @@
         "description": "freedreno: Always attach bo to submit",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "b43e5aec0d2ce542d4ba68da947e3ad752855979",
         "notes": null
