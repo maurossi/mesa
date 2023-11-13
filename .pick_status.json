@@ -184,7 +184,7 @@
         "description": "nir: fix gathering TESS_LEVEL_INNER/OUTER usage with lowered IO",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "10be706778bd670197a66765c550cbb3a0cfda6d",
         "notes": null
