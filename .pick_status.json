@@ -1,5 +1,465 @@
 [
     {
+        "sha": "08f851f4361cfbdb211dc70d03cf3ebff331c3ee",
+        "description": "anv: Bring back the non optimized version of build_load_render_surface_state_address()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c5ccd55a8e48fc484d7c365b4d0473ea528dd962",
+        "description": "v3d/ci: add new failures",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "8e03c189147cd226177bd5134dc1eb11cf6791c8",
+        "description": "frontends/va: add intra-refresh in VAAPI interface",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "7fae1c46adcb33829786686c5232664a95ec10cf",
+        "description": "radonesi/vcn: enable intra-refresh in vcn encoders",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5524faa22c8bac715c8e5c4d2e30de144bfd35de",
+        "description": "radeonsi/vcn: change intra-ref name",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "66c75b0ca2321d375ae56fb62f6a7e0a9d067d83",
+        "description": "radeonsi/vcn: preparation for enc intra-refresh",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f69863fd5a75fdd2c5906707c7ed9c289b4abcd8",
+        "description": "radv/radeonsi: Forward correct GPU instance to umr.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fd801407234e7311146490e495b4415f42fc6291",
+        "description": "radv: set prolog as_ls if has_ls_vgpr_init_bug=true",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b70c235e4afde19099d7aaf0d039e40d8f43e318",
+        "description": "aco: skip LS VGPR initialization bug workaround if the prolog exists",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "967c52097e841700daf845557875b8ccd3e08cfc",
+        "description": "aco: workaround LS VGPR initialization bug in RADV prologs",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ad4b82e1920401acd83cda3f6d081d38c221ae78",
+        "description": "radv: Pre-mask misaligned_mask for VS prolog.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "55d21f2f12dd65a5e298fdb674227043ddd3da2b",
+        "description": "radv, aco: Inline struct aco_vs_input_state.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3fc3a94bce6c542cc5c23eca832b6a5c45ac5c79",
+        "description": "radv, aco: Rework VS prolog key handling.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "5cc7f54f15c1691719f95408e46912140473c502",
+        "description": "radv: Remove last VS prolog reuse logic.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d8a5b76307fda99e49c0d929c211a1f82e7bbc9f",
+        "description": "aco: Replace aco_vs_input_state.divisors with bitfields.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "9b840df9f6549bb01aa3e71133d63423cc0614be",
+        "description": "radv: add drirc options to force re-compilation of shaders when needed",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fe159c85de81a12e895342d003821aa4f25db8d5",
+        "description": "zink: Check for VK_EXT_extended_dynamic_state3 before setting A2C",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "736577871b939573af400e4e64ebfe18863d49af",
+        "notes": null
+    },
+    {
+        "sha": "88cbe32048aff3d7a873474bebc2d1068c21ce46",
+        "description": "radv: add support for RGP queue events",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "33f430779677f0550932573e2f629a76993072af",
+        "description": "radv: add radv_write_timestamp() helper",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "aa75538674f61dbc58ad5562153b351809bbcb30",
+        "description": "ac/rgp: update dumping queue event records to the capture",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "661d28cfece72d4e08d1d5057be283f21cbab2f5",
+        "description": "radv: restore sampling CPU/GPU clocks before starting SQTT trace",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "55e48d7e0f2898f12006e06f35e18d1f325a9472",
+        "description": "radv: enable DGC preprocessing when all push constants are inlined",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d067413a725136a02caf03bdea0a7c68bbed9461",
+        "description": "radv: optimize emitting inlined push constants with DGC",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c8140e4c0eff5f5926fed5135a7c93a8628156ff",
+        "description": "radv: emit individual SET_SH_REG for inlined push constants with DGC",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "0112a245f56d324db10cadd2a92f56ced0bcfbbf",
+        "description": "radv: add a helper to determine if it's possible to preprocess DGC",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d04538653bdfd5317dc8cf45528e017a7362b205",
+        "description": "v3d: implement support for PIPE_CAP_NATIVE_FENCE_FD",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "a8d6f250d1a6c1a4f177eec7156de86cf8d09fb8",
+        "description": "docs: Fix typo in OpenGL 3.3 support on Asahi",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "4807c1e173e8aef4cba7ba60e6ed38248cb4d7a9",
+        "description": "freedreno: Always attach bo to submit",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "b43e5aec0d2ce542d4ba68da947e3ad752855979",
+        "notes": null
+    },
+    {
+        "sha": "3ca5f3bf00ed11017022685346ed002b2e3f179c",
+        "description": "freedreno/drm: Fix mmap leak",
+        "nominated": false,
+        "nomination_type": 1,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "53ccb421a272ec88598fb942bcb0bcd19cba11fa",
+        "notes": null
+    },
+    {
+        "sha": "3f3fa5ee0c30a35e0f9b7bbcae287151f05e57a2",
+        "description": "freedreno/a6xx: Rework wave input size",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "a07705def6d080de3faf3cac83dbf7a313d5e093",
+        "description": "freedreno/a6xx: Don't set patch_vertices if no tess",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "0976dfeca29527c2175c6925d46cba84391910c3",
+        "description": "nir/zink: drop NIH helper in favor of `mesa_vertices_per_prim`",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f4f4d80096c360f86a2594f84034c086fb498b99",
+        "description": "bin/gitlab_gql: only get the pipeline when a pipeline is needed",
+        "nominated": false,
+        "nomination_type": 1,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "b87e092489037daf45a54641e655b6838536ec9f",
+        "notes": null
+    },
+    {
+        "sha": "325d650c6e9bc61bfecfbc3f4ce3aeda60d85d0c",
+        "description": "radv: Use sizeof(flags) instead of hardcoded size in radv_hash_shaders.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ef414a82315768f047d204a46597f53f6145e2c8",
+        "description": "radv: Fix mis-sizing of pipeline_flags in radv_hash_rt_shaders.",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "768c5934d0d761d4f3f031f1a197b2b9a202c21f",
+        "description": "radeonsi: fix piglit image coherency test when use aco",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "7dcca9d0efb2553bfb730351c70a672ccda74026",
+        "description": "radeonsi: use PRIu64 instead of %lu for uint64_t formatting",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "aff7df717df3f2304e73f5c56b412fc864cb5d5b",
+        "description": "radeonsi/ci: update failures for gfx103",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "09c513a31ac6e42ff653e6d2748eddf69bb89146",
+        "description": "radeonsi: don't dma-upload shaders on APUs",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3f108e7615213051466af4ed688e94ce6ddde065",
+        "description": "radeonsi/gfx11: don't set OREO_MODE to fix rare corruption",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "19a59f05a47901a237b506154f2cfedfab9066bc",
+        "notes": null
+    },
+    {
+        "sha": "2ac6816b70d7bb4658ed3236ede78a4dfa104e58",
+        "description": "radeonsi/gfx11: use SET_CONTEXT_REG_PAIRS_PACKED for other states",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "9579503befaaca5b64578cb85fad1c700a10a869",
+        "description": "radeonsi: adjust the total viewport area",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3af5af429e0f40a78a9d0bac73e2175d41caa7a1",
+        "description": "nir: Optimize boolean ieq/ine with an immediate",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2d49f834b20d705d901414f6fc2b1fec019689c4",
+        "description": "vulkan: use instance allocator for `object_name` in some objects",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fcd025c1ce658f1efd18b2e0072ef5c82862db2b",
+        "description": "intel/compiler: Remove is_tex()",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "424df6a68d286171d14886d0383685ea65cca1bc",
+        "description": "tu: Fix KHR_present_id and KHR_present_wait being used without initialization",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
         "sha": "56451ce773c11094a8c08fdc6b500bb8bdcf37e1",
         "description": "v3d: Don't implicitly clear the content of the imported buffer",
         "nominated": false,
