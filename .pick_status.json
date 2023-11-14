@@ -1294,7 +1294,7 @@
         "description": "zink: Fix waiting for texture commit semaphores.",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "d1456a6b0ad0dee9936caa52c9fd915c4bfaa61b",
         "notes": null

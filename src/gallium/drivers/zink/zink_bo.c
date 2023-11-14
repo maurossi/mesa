@@ -1128,8 +1128,8 @@ zink_bo_commit(struct zink_screen *screen, struct zink_resource *res, unsigned l
                fprintf(stderr, "zink: leaking sparse backing memory\n");
             }
          }
+         ok = false;
       }
-      ok = false;
    }
 out:
 
