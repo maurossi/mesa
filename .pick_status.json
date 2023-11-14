@@ -184,7 +184,7 @@
         "description": "r600: Add missing dep on git_sha1.h",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "3ab51c7ebd1e7a65bd928b6142423123c7552927",
         "notes": null
