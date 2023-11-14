@@ -174,7 +174,7 @@
         "description": "radv: fix registering queues for RGP with compute only",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "930e77e9036a75196e080cb4b780c47104bf0ef2",
         "notes": null
