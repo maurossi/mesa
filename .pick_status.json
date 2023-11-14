@@ -154,7 +154,7 @@
         "description": "radeonsi: check sctx->tess_rings is valid before using it",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "c89ca3b47f11ce2c2e6953d37590021e89c1d119",
         "notes": null
