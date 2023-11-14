@@ -524,7 +524,7 @@
         "description": "docs: fix RADV_THREAD_TRACE_CACHE_COUNTERS default",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "dbab98d9d63d4de4307c28c0ea578b977ea3f0b7",
         "notes": null
