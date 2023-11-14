@@ -805,7 +805,8 @@ dri2_create_screen(_EGLDisplay *disp)
    else if (dri2_dpy->swrast)
       type = DRI_SCREEN_KMS_SWRAST;
 
-   if (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu) {
+   if (dri2_dpy->fd_render_gpu != dri2_dpy->fd_display_gpu &&
+       dri2_dpy->fd_display_gpu >= 0) {
       driver_name_display_gpu =
          loader_get_driver_for_fd(dri2_dpy->fd_display_gpu);
       if (driver_name_display_gpu) {
