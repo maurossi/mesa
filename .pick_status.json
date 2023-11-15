@@ -84,7 +84,7 @@
         "description": "egl: ensure a render node is passed to _eglFindDevice()",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "2be404f5571ada32d3b2e9cfe9b769846f27d68f",
         "notes": null
