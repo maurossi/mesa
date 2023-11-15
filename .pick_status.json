@@ -94,7 +94,7 @@
         "description": "egl: move dri2_setup_device() after dri2_setup_extensions()",
         "nominated": true,
         "nomination_type": 4,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": null,
         "notes": null
