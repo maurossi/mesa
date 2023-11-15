@@ -384,7 +384,7 @@
         "description": "Revert \"frontends/va: Alloc interlaced surface for interlaced pics\"",
         "nominated": true,
         "nomination_type": 2,
-        "resolution": 0,
+        "resolution": 2,
         "main_sha": null,
         "because_sha": "578e10e1571b40c86f3348f2f36e080f34d1a4ed",
         "notes": null
