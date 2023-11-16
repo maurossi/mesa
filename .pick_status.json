@@ -1594,7 +1594,7 @@
         "description": "v3dv: Rework to remove drm authentication for wsi",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "88c03ddd345fe6b0cd16c11cb5c5309f8d7d16ff",
         "notes": null
