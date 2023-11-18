@@ -14,7 +14,7 @@
         "description": "util: Include stdint.h in libdrm.h",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "e05abb1345530433681e2a4965588e4e2f51380b",
         "notes": null
