@@ -304,7 +304,7 @@
         "description": "anv: use the right vertexOffset on CmdDrawMultiIndexed",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "c70ef757e6345652d4946fcc91b4816e56d86b43",
         "notes": null
