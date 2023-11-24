@@ -114,7 +114,7 @@
         "description": "intel/perf: fix regex escaping",
         "nominated": true,
         "nomination_type": 1,
-        "resolution": 0,
+        "resolution": 1,
         "main_sha": null,
         "because_sha": "aa04b47c6e43e6cc35611a43c1712ef750f161d9",
         "notes": null
