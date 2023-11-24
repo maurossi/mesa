@@ -1,5 +1,435 @@
 [
     {
+        "sha": "b07a58157d0b110dbc09a42cffe7046c3200dd3b",
+        "description": "radeonsi: remove the LAYER output if the framebuffer state has only 1 layer",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3a0a3a5c350e4bb354dfb4823e32b70ab9d7655e",
+        "description": "radeonsi: implement gl_Layer in FS as a system value",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "130428e758557872a16121c1aba4401b23e3d15d",
+        "description": "radeonsi: don't allocate output space for LAYER/VIEWPORT before TES and GS",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "0cd3d58227bded43403c39962ea7cfec07dd0b0c",
+        "description": "radeonsi: clean up si_nir_kill_outputs",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "17c38eb9a597fa111908b302cc06a21ae98c185e",
+        "description": "st/mesa: set pipe_framebuffer_state::layers for PBO blits",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e0a24c7fe04a06bd620b468092d5e882c92b514d",
+        "description": "ac/nir: add kill_layer flag to VS/GS/NGG lowering",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "27a9ddad28ab44207bb84b9fc0e00d87e9fb8dec",
+        "description": "nir: return progress from nir_remove_sysval_output",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "32ee6376ad3203beaa84bcdf1585d53d1f18a1d7",
+        "description": "nir: add lowering from FS LAYER input to LAYER_ID sysval",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "a181c86e73ff9ac78090cd8c1a0a2d559a8e8f5d",
+        "description": "broadcom/ci: separate hiden jobs to -inc.yml files",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "bc7e363f8e1a26342e6fd7241c1f0ebb722338d6",
+        "description": "fix: ac/llvm: LLVM 18: remove useless passes, partially removed upstream",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "fff3fc45a0125b408ca8d4dbd48e5633d63ccc5a",
+        "description": "zink: initialize drm_fd to -1",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "268ab0cead7b5f455041b19d189a876146253f74",
+        "description": "ci: disable Anholt farm",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2404483706f4396920e94f7abc80368b7d25a965",
+        "description": "v3d/resource: Support offset query for multi-planar planes",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "cb8cdab928ff2302bef00b341914168c78a89a7c",
+        "description": "vc4/resource: Support offset query for multi-planar planes",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "b5bcb658b4dcac0a08031b30a66c6780ea66c6ff",
+        "description": "iris: Ensure virtual addresses are aligned to 2MB for 2MB+ blocks",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "0b6693a3a14029c31db2ee8576baa78fc914b9e5",
+        "description": "iris: Align fresh BO allocations to 2MB in size",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "6932827a47afaf9f92e27905a59681dcf5832854",
+        "description": "iris: Use 64K BOs for the shader uploader",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "21170a58d8ae919f820bf111aca32edaa58c5cff",
+        "description": "iris: Split system memory heap into cached-coherent and uncached heaps",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "81ebb6a10af856760d9117c1f78a0715382687ae",
+        "description": "iris: Rename heap_flags -> heap in i915_gem_create",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "7a67ea0a6ed81ca9ae4542b70377f2f53129586f",
+        "description": "iris: Make an iris_heap_is_device_local() helper",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "e27e5ee55cdb5034c94ee6de190fe6e71f36c02d",
+        "description": "iris: Make an iris_bucket_cache structure and array per heap",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "7046a9e280f7ded13865c70a2577a489787fa016",
+        "description": "intel: Rename PAT entries",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "76aad457a1a2a8bf3c195f149ae65d45a15e3349",
+        "description": "iris: Change default PAT entry to WC",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f1c9e9014629fb0ea73ae73b35b642a97b06ba04",
+        "description": "r300: add late vectorization after nir_move_vec_src_uses_to_dest",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ad7efdea6e30c46e1b8b80672cac4f6042956df6",
+        "description": "radv: do not set OREO_MODE to fix rare corruption on GFX11",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "d9f312b86aa979e237f2de3dc3f025e367cfe7b6",
+        "description": "radv: set radv_invariant_geom=true for War Thunder",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "46cc7ffb7982091cdbded41e27d8f9a0b9ee5359",
+        "description": "radv: add missing FDCC_CONTROL bits for GFX1103 R2",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "ab3460311509fbc3e1ff36647a21cffe7710962a",
+        "description": "radv: disable TC-compatible HTILE on Tonga and Iceland",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "1b7107efe41406b707f5907269936e6332ec3db2",
+        "description": "glsl: drop ir_binop_ubo_load",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "9528d050a4b3bb081e5b142299033116673931a5",
+        "description": "d3d12: fix usage of GetAdapterLuid() in mingw/GCC using ABI helper",
+        "nominated": false,
+        "nomination_type": 1,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": "e7204d02240977ce3c602bafdd0ee0a47eea67b4",
+        "notes": null
+    },
+    {
+        "sha": "43cb4cb6dde1e8fdbe609c42b47e0f27d8411982",
+        "description": "anv: use the right vertexOffset on CmdDrawMultiIndexed",
+        "nominated": true,
+        "nomination_type": 1,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": "c70ef757e6345652d4946fcc91b4816e56d86b43",
+        "notes": null
+    },
+    {
+        "sha": "bb0ad6f0f5beb3764d084617361ef3a04f337567",
+        "description": "egl/haiku: Remove some dead cleanup code",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "c9e33f354569ee042085534fa14e2e40edd8d370",
+        "description": "hgl: Redefine visual options in hgl_context.h",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "af90199fd87d1382d3e6f5fc1b4165b32d9ef784",
+        "description": "egl/haiku: Cleanup includes; minor build fix",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2f0ed0680cf26d3051b001565d02115ac1a5da28",
+        "description": "glsl/nir: return failure from link_varyings if there is a linker error",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "a141b5264109f133ba244514e382514cb313295e",
+        "description": "st/mesa: disable light_twoside if back faces are culled",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2d3f0a834aefd0ca1ae4d8272ebb3b88f6805432",
+        "description": "anv: Add comment to copy image code block",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "73d69ef1e6b013f923ec459c789976570baaf447",
+        "description": "util/rbsp: Fill bits twice if reading more than 16 bits",
+        "nominated": true,
+        "nomination_type": 0,
+        "resolution": 0,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "db208af9670623be4a0f6429da1b4877e025bc69",
+        "description": "lima: Support parameter queries for PIPE_RESOURCE_PARAM_NPLANES",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "3b10547e67d572a39db44e2b860b93eec6819292",
+        "description": "aco: enable helper lanes if shader->info.fs.require_full_quads",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "f1110576d90fff96d30f985231908d66e67a5822",
+        "description": "nir: add info.fs.require_full_quads",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "2db0507b5d56a632c78d965b0b8366e036570b0a",
+        "description": "nir/gather_info: add missing wide subgroup operations",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
+        "sha": "1179d83a89adc4a00900eee6d79c9a8b11639e1c",
+        "description": "nir: remove info.fs.needs_all_helper_invocations",
+        "nominated": false,
+        "nomination_type": 3,
+        "resolution": 4,
+        "main_sha": null,
+        "because_sha": null,
+        "notes": null
+    },
+    {
         "sha": "f39ed0063b4cd3e5a71efad2d43ce31f574c698d",
         "description": "radv/ci: add missing expected failures for mesh queries on VANGOGH",
         "nominated": false,
