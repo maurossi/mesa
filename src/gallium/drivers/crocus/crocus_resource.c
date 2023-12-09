@@ -625,10 +625,11 @@ crocus_resource_create_for_buffer(struct pipe_screen *pscreen,
 }
 
 static struct pipe_resource *
-crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
-                                      const struct pipe_resource *templ,
-                                      const uint64_t *modifiers,
-                                      int modifiers_count)
+crocus_resource_create_for_image(struct pipe_screen *pscreen,
+                                 const struct pipe_resource *templ,
+                                 const uint64_t *modifiers,
+                                 int modifiers_count,
+                                 unsigned row_pitch_B)
 {
    struct crocus_screen *screen = (struct crocus_screen *)pscreen;
    struct intel_device_info *devinfo = &screen->devinfo;
@@ -651,7 +652,7 @@ crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
       goto fail;
 
    const bool isl_surf_created_successfully =
-      crocus_resource_configure_main(screen, res, templ, modifier, 0);
+      crocus_resource_configure_main(screen, res, templ, modifier, row_pitch_B);
    if (!isl_surf_created_successfully)
       goto fail;
 
@@ -718,6 +719,16 @@ fail:
    crocus_resource_destroy(pscreen, &res->base.b);
    return NULL;
 
+}
+
+static struct pipe_resource *
+crocus_resource_create_with_modifiers(struct pipe_screen *pscreen,
+                                      const struct pipe_resource *templ,
+                                      const uint64_t *modifiers,
+                                      int modifier_count)
+{
+   return crocus_resource_create_for_image(pscreen, templ, modifiers,
+                                           modifier_count, 0);
 }
 
 static struct pipe_resource *
