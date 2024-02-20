@@ -127,22 +127,7 @@ foreach t : [['125', 'gfx125', 'dg2']]
       prepended_input_args += ['--in', input_arg]
     endforeach
     outfile = kernel_prefix + '.h'
-    grl_compiled_cl_kernels += custom_target(
-      outfile,
-      input : cl_file,
-      output : outfile,
-      command : [
-        prog_intel_clc, '-p', platform, '--prefix', kernel_prefix,
-        '-e', entrypoint, prepended_input_args, '-o', '@OUTPUT@', '--',
-        '-cl-std=cl2.0', '-D__OPENCL_VERSION__=200',
-        '-DMAX_HW_SIMD_WIDTH=16', '-DMAX_WORKGROUP_SIZE=16',
-        '-I' + join_paths(meson.current_source_dir(), 'gpu'),
-        '-I' + join_paths(meson.current_source_dir(), 'include'),
-      ],
-      env: ['MESA_SHADER_CACHE_DISABLE=true',
-            'MESA_SPIRV_LOG_LEVEL=error'],
-      depends : dep_prog_intel_clc
-    )
+    grl_compiled_cl_kernels += outfile
   endforeach
 
   grl_cl_kernel_c = custom_target(

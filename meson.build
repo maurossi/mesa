@@ -295,18 +295,15 @@ with_any_broadcom = [
   with_broadcom_vk,
 ].contains(true)
 
-if get_option('intel-clc') != 'system'
-  # Require intel-clc with Anv & Iris (for internal shaders)
-  with_intel_clc = get_option('intel-clc') == 'enabled' or \
-                   with_intel_vk or with_gallium_iris
+if ['x86_64'].contains(host_machine.cpu_family())
+  with_intel_clc = get_option('intel-clc') == 'enabled'
 else
   with_intel_clc = false
 endif
 
-with_intel_vk_rt = get_option('intel-rt') \
-  .disable_auto_if(not with_intel_vk) \
-  .disable_if(host_machine.cpu_family() != 'x86_64', error_message : 'Intel Ray Tracing is only supported on x86_64') \
-  .allowed()
+# Enable ray tracing without checking intel-clc since we have compiled opencl c shaders on linux and
+# copy them to android code.
+with_intel_vk_rt = with_intel_vk
 
 with_any_intel = [
   with_gallium_crocus,
