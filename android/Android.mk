@@ -177,12 +177,10 @@ $(eval $(call mesa3d-lib,libgallium_dri,,MESA3D_GALLIUM_BIN))
 # Module 'libglapi', produces '/vendor/lib{64}/libglapi.so'
 $(eval $(call mesa3d-lib,libglapi,,MESA3D_LIBGLAPI_BIN))
 
-# Module 'libEGL_mesa', produces '/vendor/lib{64}/egl/libEGL_mesa.so'
-$(eval $(call mesa3d-lib,libEGL_mesa,egl,MESA3D_LIBEGL_BIN))
-# Module 'libGLESv1_CM_mesa', produces '/vendor/lib{64}/egl/libGLESv1_CM_mesa.so'
-$(eval $(call mesa3d-lib,libGLESv1_CM_mesa,egl,MESA3D_LIBGLESV1_BIN))
-# Module 'libGLESv2_mesa', produces '/vendor/lib{64}/egl/libGLESv2_mesa.so'
-$(eval $(call mesa3d-lib,libGLESv2_mesa,egl,MESA3D_LIBGLESV2_BIN))
+# Module 'libGLES_mesa', produces '/vendor/lib{64}/egl/libGLES_mesa.so' as copy of 'libEGL_mesa'
+$(eval $(call mesa3d-lib,libGLES_mesa,egl,MESA3D_LIBEGL_BIN))
+# Modules 'libgallium_dri' and 'libglapi' are installed even if not listed in PRODUCT_PACKAGES
+LOCAL_REQUIRED_MODULES += libgallium_dri libglapi
 endif
 
 # Modules 'vulkan.{driver_name}', produces '/vendor/lib{64}/hw/vulkan.{driver_name}.so' HAL
