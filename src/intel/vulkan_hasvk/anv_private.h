@@ -101,6 +101,7 @@ typedef uint32_t xcb_window_t;
 struct anv_batch;
 struct anv_buffer;
 struct anv_buffer_view;
+struct anv_device;
 struct anv_image_view;
 struct anv_instance;
 
