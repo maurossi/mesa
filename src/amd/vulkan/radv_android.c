@@ -109,13 +109,6 @@ radv_image_from_gralloc(VkDevice device_h, const VkImageCreateInfo *base_info,
    struct radv_image *image = NULL;
    VkResult result;
 
-   if (gralloc_info->handle->numFds != 1) {
-      return vk_errorf(device, VK_ERROR_INVALID_EXTERNAL_HANDLE,
-                       "VkNativeBufferANDROID::handle::numFds is %d, "
-                       "expected 1",
-                       gralloc_info->handle->numFds);
-   }
-
    /* Do not close the gralloc handle's dma_buf. The lifetime of the dma_buf
     * must exceed that of the gralloc handle, and we do not own the gralloc
     * handle.
