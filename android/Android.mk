@@ -130,6 +130,14 @@ endif
 MESON_GEN_PKGCONFIGS += android.hardware.graphics.mapper:4.0
 endif
 
+ifeq ($(strip $(BOARD_MESA3D_GALLIUM_VA)),true)
+LIBVA_DIR := hardware/intel/common/libva
+LIBVA_VERSION_MAJOR := $(shell sed -n -e 's/va_api_major_version *= *//p' $(LIBVA_DIR)/meson.build)
+LIBVA_VERSION_MINOR := $(shell sed -n -e 's/va_api_minor_version *= *//p' $(LIBVA_DIR)/meson.build)
+MESON_GEN_PKGCONFIGS += libva:$(LIBVA_VERSION_MAJOR).$(LIBVA_VERSION_MINOR)
+LOCAL_SHARED_LIBRARIES += libva
+endif
+
 __MY_SHARED_LIBRARIES := $(LOCAL_SHARED_LIBRARIES)
 
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 30; echo $$?), 0)
@@ -207,6 +215,12 @@ ifneq ($(filter true, $(BOARD_MESA3D_BUILD_LIBGBM)),)
 # Modules 'libgbm', produces '/vendor/lib{64}/libgbm.so'
 $(eval $(call mesa3d-lib,$(MESA_LIBGBM_NAME),,MESA3D_LIBGBM_BIN,$(MESA3D_TOP)/src/gbm/main))
 $(eval $(call mesa3d-lib,dri_gbm,,MESA3D_DRI_GBM_BIN))
+endif
+
+ifeq ($(strip $(BOARD_MESA3D_GALLIUM_VA)),true)
+# Module 'libgallium_drv_video', produces '/vendor/lib{64}/dri/libgallium_drv_video.so'
+# This module also trigger video driver symlinks creation process
+$(eval $(call mesa3d-lib,libgallium_drv_video,dri,MESA3D_GALLIUM_VA_BIN))
 endif
 
 #-------------------------------------------------------------------------------
