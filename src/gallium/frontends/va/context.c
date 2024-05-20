@@ -148,9 +148,6 @@ VA_DRIVER_INIT_FUNC(VADriverContextP ctx)
       break;
    }
 #else
-   case VA_DISPLAY_ANDROID:
-      FREE(drv);
-      return VA_STATUS_ERROR_UNIMPLEMENTED;
    case VA_DISPLAY_GLX:
    case VA_DISPLAY_X11:
 #ifdef GALLIUM_ZINK
@@ -167,6 +164,7 @@ VA_DRIVER_INIT_FUNC(VADriverContextP ctx)
          drv->vscreen = vl_xlib_swrast_screen_create(ctx->native_dpy, ctx->x11_screen);
       break;
    case VA_DISPLAY_WAYLAND:
+   case VA_DISPLAY_ANDROID:
    case VA_DISPLAY_DRM:
    case VA_DISPLAY_DRM_RENDERNODES: {
       const struct drm_state *drm_info = (struct drm_state *) ctx->drm_state;
