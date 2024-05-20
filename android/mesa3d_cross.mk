@@ -63,8 +63,9 @@ MESON_OUT_DIR                            := $($(M_TARGET_PREFIX)TARGET_OUT_INTER
 MESON_GEN_DIR                            := $(MESON_OUT_DIR)_GEN
 MESON_GEN_FILES_TARGET                   := $(MESON_GEN_DIR)/.timestamp
 
-MESA3D_GALLIUM_DIR                       := $(MESON_OUT_DIR)/install/usr/local/lib
+MESA3D_GALLIUM_DRI_DIR                   := $(MESON_OUT_DIR)/install/usr/local/lib/dri
 $(M_TARGET_PREFIX)MESA3D_GALLIUM_BIN     := $(MESON_OUT_DIR)/install/usr/local/lib/libgallium_dri.so
+$(M_TARGET_PREFIX)MESA3D_GALLIUM_VA_BIN  := $(MESON_OUT_DIR)/install/usr/local/lib/libgallium_drv_video.so
 $(M_TARGET_PREFIX)MESA3D_LIBEGL_BIN      := $(MESON_OUT_DIR)/install/usr/local/lib/libEGL.so
 $(M_TARGET_PREFIX)MESA3D_LIBGLESV1_BIN   := $(MESON_OUT_DIR)/install/usr/local/lib/libGLESv1_CM.so
 $(M_TARGET_PREFIX)MESA3D_LIBGLESV2_BIN   := $(MESON_OUT_DIR)/install/usr/local/lib/libGLESv2.so
@@ -97,6 +98,8 @@ MESON_GEN_NINJA := \
 	-Dcpp_rtti=false                                                             \
 	-Dlmsensors=disabled                                                         \
 	-Dandroid-libbacktrace=disabled                                              \
+	-Dgallium-va=$(if $(filter true,$(BOARD_MESA3D_GALLIUM_VA)),enabled,disabled)\
+	-Dvideo-codecs=$(subst $(space),$(comma),$(BOARD_MESA3D_VIDEO_CODECS))       \
 	$(BOARD_MESA3D_MESON_ARGS)                                                   \
 
 MESON_BUILD := PATH=/usr/bin:/bin:/sbin:$$PATH ninja -C $(MESON_OUT_DIR)/build
@@ -288,11 +291,16 @@ endif
 	$(MESON_BUILD)
 	touch $@
 
+MESON_COPY_LIBGALLIUM_VA := \
+	cp `ls -1 $(MESA3D_GALLIUM_DRI_DIR)/*_drv_video.so | head -1` $($(M_TARGET_PREFIX)MESA3D_GALLIUM_VA_BIN)
+
+$(MESON_OUT_DIR)/install/.install.timestamp: MESON_COPY_LIBGALLIUM_VA:=$(MESON_COPY_LIBGALLIUM_VA)
 $(MESON_OUT_DIR)/install/.install.timestamp: MESON_BUILD:=$(MESON_BUILD)
 $(MESON_OUT_DIR)/install/.install.timestamp: $(MESON_OUT_DIR)/.build.timestamp
 	rm -rf $(dir $@)
 	mkdir -p $(dir $@)
 	DESTDIR=$(call relative-to-absolute,$(dir $@)) $(MESON_BUILD) install
+	$(if $(filter true,$(BOARD_MESA3D_GALLIUM_VA)),$(MESON_COPY_LIBGALLIUM_VA))
 	touch $@
 
 $(MESA3D_GBM_BINS) $(MESA3D_GLES_BINS): $(MESON_OUT_DIR)/install/.install.timestamp
@@ -307,3 +315,14 @@ $(MESON_OUT_DIR)/install/usr/local/lib/libvulkan_$(MESA_VK_LIB_SUFFIX_$1).so: $(
 endef
 
 $(foreach driver,$(BOARD_MESA3D_VULKAN_DRIVERS), $(eval $(call vulkan_target,$(driver))))
+
+$($(M_TARGET_PREFIX)TARGET_OUT_VENDOR_SHARED_LIBRARIES)/dri/.symlinks.va.timestamp: MESA3D_GALLIUM_DRI_DIR:=$(MESA3D_GALLIUM_DRI_DIR)
+$($(M_TARGET_PREFIX)TARGET_OUT_VENDOR_SHARED_LIBRARIES)/dri/.symlinks.va.timestamp: $(MESON_OUT_DIR)/install/.install.timestamp
+	# Create Symlinks
+	mkdir -p $(dir $@)
+	for f in $(MESA3D_GALLIUM_DRI_DIR)/*_drv_video.so ; do ln -s -f libgallium_drv_video.so $(dir $@)/$$(basename $$f) ; done
+	touch $@
+
+$($(M_TARGET_PREFIX)MESA3D_GALLIUM_VA_BIN): $(TARGET_OUT_VENDOR)/$(MESA3D_LIB_DIR)/dri/.symlinks.va.timestamp
+	echo "Build $@"
+	touch $@
