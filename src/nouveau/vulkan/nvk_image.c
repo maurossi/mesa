@@ -934,8 +934,7 @@ nvk_CreateImage(VkDevice _device,
    }
 #endif
 
-   image = vk_zalloc2(&dev->vk.alloc, pAllocator, sizeof(*image), 8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   image = vk_image_create(&dev->vk, pCreateInfo, pAllocator, sizeof(*image));
    if (!image)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -995,7 +994,7 @@ nvk_DestroyImage(VkDevice device,
       return;
 
    nvk_image_finish(dev, image, pAllocator);
-   vk_free2(&dev->vk.alloc, pAllocator, image);
+   vk_image_destroy(&dev->vk, pAllocator, &image->vk);
 }
 
 static void
