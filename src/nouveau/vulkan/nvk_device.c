@@ -11,6 +11,12 @@
 #include "nvk_shader.h"
 #include "nvkmd/nvkmd.h"
 
+#if DETECT_OS_ANDROID
+#include <vulkan/vk_android_native_buffer.h>
+#include "util/u_gralloc/u_gralloc.h"
+#endif
+
+#include "vk_android.h"
 #include "vk_pipeline_cache.h"
 #include "vulkan/wsi/wsi_common.h"
 

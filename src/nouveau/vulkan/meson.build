@@ -79,6 +79,8 @@ nvk_entrypoints = custom_target(
   depend_files : vk_entrypoints_gen_depend_files,
 )
 
+nvk_flags = []
+
 nvk_deps = [
   dep_libdrm,
   idep_nak,
@@ -93,6 +95,12 @@ nvk_deps = [
   idep_vulkan_wsi,
   idep_vulkan_wsi_headers,
 ]
+
+if with_platform_android
+  nvk_deps += [dep_android, idep_u_gralloc]
+  nvk_flags += '-DVK_USE_PLATFORM_ANDROID_KHR'
+  nvk_files += files('nvk_android.c')
+endif
 
 libvulkan_nouveau = shared_library(
   'vulkan_nouveau',
@@ -110,7 +118,8 @@ libvulkan_nouveau = shared_library(
   ],
   link_with : [libnouveau_codegen],
   dependencies : [nvk_deps, idep_nouveau_codegen],
-  link_args: [ld_args_build_id],
+  c_args : [no_override_init_args, nvk_flags],
+  link_args: [ld_args_build_id, ld_args_bsymbolic, ld_args_gc_sections],
   gnu_symbol_visibility : 'hidden',
   install : true,
 )

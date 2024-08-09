@@ -11,6 +11,7 @@
 #include "nvk_physical_device.h"
 #include "nvkmd/nvkmd.h"
 
+#include "vk_android.h"
 #include "vk_enum_to_str.h"
 #include "vk_format.h"
 #include "nil.h"
@@ -709,18 +710,32 @@ nvk_image_init(struct nvk_device *dev,
       usage |= NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT;
    }
 
+   const VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info = NULL;
+   const VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info = NULL;
+
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+   VkSubresourceLayout a_plane_layouts[NVK_MAX_PLANE_COUNT];
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      VkResult result = vk_android_get_anb_layout(
+         pCreateInfo, &eci, a_plane_layouts, NVK_MAX_PLANE_COUNT);
+      if (result != VK_SUCCESS)
+         return result;
+
+      mod_explicit_info = &eci;
+      image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
+   }
+
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       /* Modifiers are not supported with YCbCr */
       assert(image->plane_count == 1);
 
-      const struct VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info =
-         vk_find_struct_const(pCreateInfo->pNext,
+      mod_explicit_info = vk_find_struct_const(pCreateInfo->pNext,
                               IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
       if (mod_explicit_info) {
          image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
       } else {
-         const struct VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info =
-            vk_find_struct_const(pCreateInfo->pNext,
+         mod_list_info = vk_find_struct_const(pCreateInfo->pNext,
                                  IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT);
 
          enum pipe_format p_format =
@@ -900,6 +915,13 @@ nvk_CreateImage(VkDevice _device,
    struct nvk_image *image;
    VkResult result;
 
+#if DETECT_OS_ANDROID
+   if (vk_find_struct_const(pCreateInfo->pNext, NATIVE_BUFFER_ANDROID))
+      mesa_logi("nvk_CreateImage: VkNativeBufferANDROID detected");
+   else
+      mesa_logw("nvk_CreateImage: VkNativeBufferANDROID NOT detected");
+#endif
+
 #ifdef NVK_USE_WSI_PLATFORM
    /* Ignore swapchain creation info on Android. Since we don't have an
     * implementation in Mesa, we're guaranteed to access an Android object
@@ -959,9 +981,20 @@ nvk_CreateImage(VkDevice _device,
       shadow->addr = image->linear_tiled_shadow_mem->va->addr;
    }
 
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      result = vk_android_import_anb(&dev->vk, pCreateInfo, pAllocator,
+                                     &image->vk);
+      if (result != VK_SUCCESS)
+         goto fail;
+   }
+
    *pImage = nvk_image_to_handle(image);
 
    return VK_SUCCESS;
+fail:
+   vk_image_destroy(&dev->vk, &dev->vk.alloc, &image->vk);
+   return result;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -1290,6 +1323,11 @@ nvk_bind_image_memory(struct nvk_device *dev,
    VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
    VK_FROM_HANDLE(nvk_image, image, info->image);
    VkResult result;
+
+#if DETECT_OS_ANDROID
+   if (!mem)
+      return VK_SUCCESS;
+#endif
 
    /* Ignore this struct on Android, we cannot access swapchain structures there. */
 #ifdef NVK_USE_WSI_PLATFORM
