@@ -25,22 +25,6 @@
 #define NVK_ANDROID_H
 
 VKAPI_ATTR VkResult VKAPI_CALL
-nvk_GetSwapchainGrallocUsageANDROID(VkDevice device_h,
-                                   VkFormat format,
-                                   VkImageUsageFlags imageUsage,
-                                   int *grallocUsage);
-
-#if ANDROID_API_LEVEL >= 26
-VKAPI_ATTR VkResult VKAPI_CALL
-nvk_GetSwapchainGrallocUsage2ANDROID(VkDevice device_h,
-                                    VkFormat format,
-                                    VkImageUsageFlags imageUsage,
-                                    VkSwapchainImageUsageFlagsANDROID swapchainImageUsage,
-                                    uint64_t *grallocConsumerUsage,
-                                    uint64_t *grallocProducerUsage);
-#endif
-
-VKAPI_ATTR VkResult VKAPI_CALL
 nvk_AcquireImageANDROID(VkDevice _device,
                         VkImage image,
                         int nativeFenceFd,

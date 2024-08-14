@@ -91,33 +91,6 @@ nvk_hal_close(struct hw_device_t *dev)
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-nvk_GetSwapchainGrallocUsageANDROID(VkDevice device_h,
-                                   VkFormat format,
-                                   VkImageUsageFlags imageUsage,
-                                   int *grallocUsage)
-{
-   *grallocUsage = GRALLOC_USAGE_SW_WRITE_OFTEN | GRALLOC_USAGE_SW_READ_OFTEN;
-
-   return VK_SUCCESS;
-}
-
-#if ANDROID_API_LEVEL >= 26
-VKAPI_ATTR VkResult VKAPI_CALL
-nvk_GetSwapchainGrallocUsage2ANDROID(VkDevice device_h,
-                                    VkFormat format,
-                                    VkImageUsageFlags imageUsage,
-                                    VkSwapchainImageUsageFlagsANDROID swapchainImageUsage,
-                                    uint64_t *grallocConsumerUsage,
-                                    uint64_t *grallocProducerUsage)
-{
-   *grallocConsumerUsage = 0;
-   *grallocProducerUsage = GRALLOC1_PRODUCER_USAGE_CPU_WRITE_OFTEN | GRALLOC1_PRODUCER_USAGE_CPU_READ_OFTEN;
-
-   return VK_SUCCESS;
-}
-#endif
-
-VKAPI_ATTR VkResult VKAPI_CALL
 nvk_AcquireImageANDROID(VkDevice _device,
                         VkImage image,
                         int nativeFenceFd,
