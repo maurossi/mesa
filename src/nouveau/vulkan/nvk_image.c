@@ -11,6 +11,7 @@
 #include "nvk_physical_device.h"
 #include "nvkmd/nvkmd.h"
 
+#include "vk_android.h"
 #include "vk_enum_to_str.h"
 #include "vk_format.h"
 #include "nil.h"
@@ -728,12 +729,28 @@ nvk_image_init(struct nvk_device *dev,
       usage |= NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT;
    }
 
+   const VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info = NULL;
    uint32_t explicit_row_stride_B = 0;
+
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+      VkSubresourceLayout a_plane_layouts[NVK_MAX_PLANE_COUNT];
+      VkResult result = vk_android_get_anb_layout(
+         pCreateInfo, &eci, a_plane_layouts, NVK_MAX_PLANE_COUNT);
+      if (result != VK_SUCCESS)
+         return result;
+
+      mod_explicit_info = &eci;
+      image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
+      explicit_row_stride_B = mod_explicit_info->pPlaneLayouts->rowPitch;
+   }
+
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       /* Modifiers are not supported with YCbCr */
       assert(image->plane_count == 1);
 
-      const struct VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info =
+      mod_explicit_info =
          vk_find_struct_const(pCreateInfo->pNext,
                               IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
       if (mod_explicit_info) {
@@ -986,6 +1003,17 @@ nvk_CreateImage(VkDevice _device,
          return result;
       }
       shadow->addr = image->linear_tiled_shadow_mem->va->addr;
+   }
+
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      result = vk_android_import_anb(&dev->vk, pCreateInfo, pAllocator,
+                                     &image->vk);
+      if (result != VK_SUCCESS) {
+         nvk_image_finish(dev, image, pAllocator);
+         vk_free2(&dev->vk.alloc, pAllocator, image);
+         return result;
+      }
    }
 
    *pImage = nvk_image_to_handle(image);
@@ -1319,6 +1347,11 @@ nvk_bind_image_memory(struct nvk_device *dev,
    VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
    VK_FROM_HANDLE(nvk_image, image, info->image);
    VkResult result;
+
+#if DETECT_OS_ANDROID
+   if (!mem)
+      return VK_SUCCESS;
+#endif
 
    /* Ignore this struct on Android, we cannot access swapchain structures there. */
 #ifdef NVK_USE_WSI_PLATFORM
