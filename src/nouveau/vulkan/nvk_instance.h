@@ -23,6 +23,19 @@ struct nvk_instance {
    uint32_t force_vk_vendor;
 };
 
+VKAPI_ATTR VkResult VKAPI_CALL
+nvk_CreateInstance(const VkInstanceCreateInfo *pCreateInfo,
+                   const VkAllocationCallbacks *pAllocator,
+                   VkInstance *pInstance);
+
+VKAPI_ATTR VkResult VKAPI_CALL
+nvk_EnumerateInstanceExtensionProperties(const char *pLayerName,
+                                         uint32_t *pPropertyCount,
+                                         VkExtensionProperties *pProperties);
+
+VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
+nvk_GetInstanceProcAddr(VkInstance _instance, const char *pName);
+
 VK_DEFINE_HANDLE_CASTS(nvk_instance, vk.base, VkInstance, VK_OBJECT_TYPE_INSTANCE)
 
 #endif

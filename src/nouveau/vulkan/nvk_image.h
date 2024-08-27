@@ -12,6 +12,8 @@
 
 #include "nil.h"
 
+#define NVK_MAX_PLANE_COUNT 1
+
 /* Because small images can end up with an array_stride_B that is less than
  * the sparse block size (in bytes), we have to set SINGLE_MIPTAIL_BIT when
  * advertising sparse properties to the client.  This means that we get one
