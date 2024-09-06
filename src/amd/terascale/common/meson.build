@@ -34,7 +34,7 @@ idep_amd_terascale_registers = declare_dependency(
 
 amd_terascale_formats_c = custom_target(
   'terascale_formats.c',
-  input : ['terascale_formats.py', '../../../util/format/u_format.csv'],
+  input : ['terascale_formats.py', '../../../util/format/u_format.yaml'],
   output : 'terascale_formats.c',
   command : [prog_python, '@INPUT@'],
   depend_files : files('../../../util/format/u_format_parse.py'),
