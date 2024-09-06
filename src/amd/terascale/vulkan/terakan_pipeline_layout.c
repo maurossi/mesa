@@ -199,9 +199,9 @@ terakan_pipeline_layout_create(struct terakan_device * const device,
    }
    layout->sets = sets;
 
-   uint8_t next_first_mutable_shader_resources[MESA_SHADER_STAGES] = {};
-   uint8_t next_first_shader_uniform_buffers[MESA_SHADER_STAGES] = {};
-   uint8_t next_first_shader_samplers[MESA_SHADER_STAGES] = {};
+   uint8_t next_first_mutable_shader_resources[MESA_SHADER_STAGES] = {0};
+   uint8_t next_first_shader_uniform_buffers[MESA_SHADER_STAGES] = {0};
+   uint8_t next_first_shader_samplers[MESA_SHADER_STAGES] = {0};
 
    for (uint32_t set_index = 0; set_index < layout->vk.set_count; ++set_index) {
       struct vk_descriptor_set_layout const * const set_layout_base =

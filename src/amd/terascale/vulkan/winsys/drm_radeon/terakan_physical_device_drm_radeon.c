@@ -182,21 +182,21 @@ terakan_physical_device_drm_radeon_try_create(struct vk_instance * const instanc
 
    /* Get the GPU and DRM info from the DRM device. */
 
-   struct stat primary_node_stat = {};
+   struct stat primary_node_stat = {0};
    bool has_primary_node = (drm_device->available_nodes & (1 << DRM_NODE_PRIMARY)) != 0;
    if (has_primary_node && stat(drm_device->nodes[DRM_NODE_PRIMARY], &primary_node_stat) != 0) {
       vk_logw(VK_LOG_NO_OBJS(&instance->vk), "Failed to stat the DRM primary node '%s': %m",
               drm_device->nodes[DRM_NODE_PRIMARY]);
       has_primary_node = false;
    }
-   struct stat render_node_stat = {};
+   struct stat render_node_stat = {0};
    if (stat(render_node_path, &render_node_stat) != 0) {
       result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
                          "Failed to stat the DRM render node '%s': %m", render_node_path);
       goto fail_render_node_fd;
    }
 
-   struct drm_radeon_gem_info gem_info = {};
+   struct drm_radeon_gem_info gem_info = {0};
    int const gem_info_result =
       drmCommandWriteRead(render_node_fd, DRM_RADEON_GEM_INFO, &gem_info, sizeof(gem_info));
    if (gem_info_result != 0) {

@@ -338,7 +338,7 @@ terakan_GetPhysicalDeviceImageFormatProperties2(
     *    unintentional, but is preserved for backwards compatibility. This exception only applies to
     *    imageFormatProperties, not sType, pNext, or any structures chained from pNext.
     */
-   pImageFormatProperties->imageFormatProperties = (VkImageFormatProperties){};
+   pImageFormatProperties->imageFormatProperties = (VkImageFormatProperties){0};
 
    VkFormatProperties3 format_properties_3;
    format_properties_3.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3;
@@ -439,7 +439,7 @@ terakan_GetPhysicalDeviceImageFormatProperties2(
 
    image_format_properties.maxResourceSize = device->max_memory_allocation_size;
 
-   VkExternalMemoryProperties external_properties = {};
+   VkExternalMemoryProperties external_properties = {0};
    VkPhysicalDeviceExternalImageFormatInfo const * const external_info =
       vk_find_struct_const(pImageFormatInfo->pNext, PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO);
    if (external_info != NULL && external_info->handleType) {

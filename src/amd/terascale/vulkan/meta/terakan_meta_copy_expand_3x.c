@@ -687,7 +687,7 @@ terakan_meta_copy_expand_3x_image_to_buffer(
    struct terakan_color_descriptor dst_uav =
       terakan_meta_transfer_expand_3x_uav(bytes_per_surfel, tile_pipe_interleave_bytes_log2);
 
-   uint32_t constants[TERAKAN_META_COPY_EXPAND_3X_CONSTS_COUNT] = {};
+   uint32_t constants[TERAKAN_META_COPY_EXPAND_3X_CONSTS_COUNT] = {0};
    struct terakan_bo const * constants_bo = NULL;
    uint32_t constants_va_lines;
 

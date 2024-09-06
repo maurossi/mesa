@@ -242,7 +242,7 @@ terakan_CmdClearAttachments(VkCommandBuffer const commandBuffer, uint32_t const 
     * as a plane in HTile.
     */
 
-   VkClearDepthStencilValue depth_stencil_clear_value = {};
+   VkClearDepthStencilValue depth_stencil_clear_value = {0};
    VkImageAspectFlags depth_stencil_clear_aspects = 0;
    for (uint32_t attachment_index = 0; attachment_index < attachmentCount; ++attachment_index) {
       VkClearAttachment const * const attachment = &pAttachments[attachment_index];
@@ -388,7 +388,7 @@ terakan_CmdClearAttachments(VkCommandBuffer const commandBuffer, uint32_t const 
    command_writer->push_constants_state.up_to_date_push_constants_bound_to_stages &=
       ~VK_SHADER_STAGE_FRAGMENT_BIT;
 
-   uint32_t constants[TERAKAN_META_CLEAR_COLOR_CONSTS_COUNT] = {};
+   uint32_t constants[TERAKAN_META_CLEAR_COLOR_CONSTS_COUNT] = {0};
    struct terakan_bo const * constants_bo = NULL;
    uint32_t constants_va_lines;
 

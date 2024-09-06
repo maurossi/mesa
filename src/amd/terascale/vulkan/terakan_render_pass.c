@@ -48,7 +48,7 @@ terakan_CmdBeginRendering(VkCommandBuffer const commandBuffer,
    state->db_depth_stencil_buffer.bo = NULL;
    memset(&state->db_depth_stencil_buffer.descriptor, 0,
           sizeof(state->db_depth_stencil_buffer.descriptor));
-   VkClearDepthStencilValue depth_stencil_clear_value = {};
+   VkClearDepthStencilValue depth_stencil_clear_value = {0};
    VkImageAspectFlags depth_stencil_clear_aspects = 0;
    if (pRenderingInfo->pDepthAttachment != NULL) {
       struct terakan_image_view const * const depth_view =

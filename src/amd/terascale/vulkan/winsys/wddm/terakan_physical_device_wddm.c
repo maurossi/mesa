@@ -197,7 +197,7 @@ terakan_physical_device_wddm_try_create(struct terakan_instance_wddm * const ins
       goto fail_d3dkmt_adapter;
    }
 
-   uint32_t adapter_driver_private_data[0x10D8] = {};
+   uint32_t adapter_driver_private_data[0x10D8] = {0};
    D3DKMT_QUERYADAPTERINFO const adapter_driver_private_data_query = {
       .hAdapter = device->d3dkmt_adapter,
       .Type = KMTQAITYPE_UMDRIVERPRIVATE,

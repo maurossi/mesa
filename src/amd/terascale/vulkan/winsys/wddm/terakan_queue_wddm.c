@@ -216,7 +216,7 @@ terakan_queue_wddm_submit(struct terakan_queue_submission_context * const submis
     */
    assert(internal_allocation_count < TERAKAN_QUEUE_WDDM_SUBMISSION_RESERVED_BO_REFERENCES);
    uint32_t const header_allocation_index = internal_allocation_count;
-   submission_context->allocation_list[internal_allocation_count++] = (D3DDDI_ALLOCATIONLIST){};
+   submission_context->allocation_list[internal_allocation_count++] = (D3DDDI_ALLOCATIONLIST){0};
 
    /* Explicitly checking not to memcpy from a null pointer if BO references are not needed. */
    if (bo_reference_count != 0) {

@@ -40,9 +40,9 @@ terakan_push_constants_state_reset(struct terakan_push_constants_state * const s
    state->allocation.mapping_if_up_to_date = NULL;
 
    state->graphics_stages_using_push_constants = 0;
-   state->usage_pre_rasterization = (struct terakan_push_constants_usage){};
-   state->usage_fragment = (struct terakan_push_constants_usage){};
-   state->usage_compute = (struct terakan_push_constants_usage){};
+   state->usage_pre_rasterization = (struct terakan_push_constants_usage){0};
+   state->usage_fragment = (struct terakan_push_constants_usage){0};
+   state->usage_compute = (struct terakan_push_constants_usage){0};
 
    state->up_to_date_push_constants_bound_to_stages = 0;
 

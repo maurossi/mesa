@@ -389,7 +389,7 @@ terakan_vertex_input_create_fs_alu_and_fetches(
       vertex_address_index = address_count++;
       struct address * const vertex_address = &addresses[vertex_address_index];
 
-      vertex_address->divisor_info = (struct util_fast_udiv_info){};
+      vertex_address->divisor_info = (struct util_fast_udiv_info){0};
 
       /* Always using R0.X directly for generic-stride vertex fetch. */
       vertex_address->gpr_sets[address_gpr_set_index_generic_stride].current_gpr = 0;
@@ -482,7 +482,7 @@ terakan_vertex_input_create_fs_alu_and_fetches(
                instance_address->gpr_sets[address_gpr_set_index_2048_stride].result_gpr;
          }
 
-         instance_address->divisor_info = (struct util_fast_udiv_info){};
+         instance_address->divisor_info = (struct util_fast_udiv_info){0};
          if (divisor != 0) {
             if (IS_POT(divisor)) {
                instance_address->divisor_info.post_shift = ffs(divisor) - 1;
@@ -657,7 +657,7 @@ terakan_vertex_input_create_fs_alu_and_fetches(
    uint8_t scheduled_components = 0b0;
    uint8_t scheduled_component_chains[4];
    bool scheduled_component_chains_are_pre[4];
-   uint32_t address_previous_write_trans_word1_offsets[TERAKAN_RESOURCE_HW_COUNT_FETCH] = {};
+   uint32_t address_previous_write_trans_word1_offsets[TERAKAN_RESOURCE_HW_COUNT_FETCH] = {0};
 
    while (pre_mulhi_chains_ready || mulhis_ready || post_mulhi_chains_ready ||
           scheduled_components) {

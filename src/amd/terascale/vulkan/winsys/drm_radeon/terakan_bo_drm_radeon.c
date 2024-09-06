@@ -200,7 +200,7 @@ terakan_bo_drm_radeon_allocate_device_memory(
       return VK_ERROR_OUT_OF_HOST_MEMORY;
    }
 
-   struct drm_radeon_gem_create gem_create_arguments = {};
+   struct drm_radeon_gem_create gem_create_arguments = {0};
 
    gem_create_arguments.size = size;
    gem_create_arguments.alignment = alignment;

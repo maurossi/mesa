@@ -280,7 +280,7 @@ terakan_meta_transfer_expand_3x_uav(unsigned const bytes_per_surfel,
       format = TERASCALE_FORMAT_INDEX_INVALID;
    }
 
-   struct terakan_color_descriptor descriptor = {};
+   struct terakan_color_descriptor descriptor = {0};
    /* The pitch field is ignored by the hardware for buffers and can't store large buffer sizes, but
     * DRM Radeon 2.50.0 validates the pitch alignment regardless of whether the color surface is a
     * buffer UAV. Provide the smallest valid pitch.

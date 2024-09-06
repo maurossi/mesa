@@ -305,7 +305,7 @@ terakan_CmdCopyImage2(VkCommandBuffer const commandBuffer,
    command_writer->push_constants_state.up_to_date_push_constants_bound_to_stages &=
       ~VK_SHADER_STAGE_FRAGMENT_BIT;
 
-   uint32_t constants[TERAKAN_META_COPY_IMAGE_CONSTS_COUNT] = {};
+   uint32_t constants[TERAKAN_META_COPY_IMAGE_CONSTS_COUNT] = {0};
    struct terakan_bo const * constants_bo = NULL;
    uint32_t constants_va_lines;
 
@@ -397,7 +397,7 @@ terakan_CmdCopyImage2(VkCommandBuffer const commandBuffer,
          dst_descriptor_create_info.layer_count = src_descriptor_create_info.layer_count;
 
          uint32_t src_resource[8];
-         VkComponentMapping const identity_component_mapping = {};
+         VkComponentMapping const identity_component_mapping = {0};
          if (unlikely(!terakan_image_create_resource_descriptor(
                 &src_descriptor_create_info, &identity_component_mapping, src_resource))) {
             assert(!"Invalid source image view create info");

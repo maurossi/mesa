@@ -1155,7 +1155,7 @@ terakan_pipeline_graphics_create(struct terakan_device * const device,
       /* TODO(Triang3l): Construct the shader key from the NIR and, when available, the pipeline
        * state.
        */
-      union r600_shader_key shader_key = {};
+      union r600_shader_key shader_key = {0};
       if (stage_index == MESA_SHADER_FRAGMENT) {
          shader_key.ps.nr_cbufs = util_bitcount(shader->fs.fragment_data_uncompacted_locations);
       }
@@ -1185,7 +1185,7 @@ terakan_pipeline_graphics_create(struct terakan_device * const device,
 
    BITSET_ZERO(pipeline->static_state);
    struct vk_graphics_pipeline_all_state all_state;
-   struct vk_graphics_pipeline_state state = {};
+   struct vk_graphics_pipeline_state state = {0};
    result = vk_graphics_pipeline_state_fill(&device->vk, &state, create_info, NULL, 0, &all_state,
                                             NULL, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, NULL);
    if (result != VK_SUCCESS) {

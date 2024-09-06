@@ -263,7 +263,7 @@ terakan_shader_lower_and_optimize_post_link(
 
    NIR_PASS(_, nir, nir_lower_pack);
 
-   nir_lower_idiv_options lower_idiv_options = {};
+   nir_lower_idiv_options lower_idiv_options = {0};
    NIR_PASS(_, nir, nir_lower_idiv, &lower_idiv_options);
 
    /* Includes both mandatory lowerings and optimizations. */

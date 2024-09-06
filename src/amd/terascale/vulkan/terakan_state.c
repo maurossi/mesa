@@ -117,7 +117,7 @@ terakan_state_draw_apply_sq_pgm_ls_es_gs_vs(struct terakan_gfx_command_writer * 
       ~(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT |
         VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT | VK_SHADER_STAGE_GEOMETRY_BIT);
    command_writer->push_constants_state.usage_pre_rasterization =
-      (struct terakan_push_constants_usage){};
+      (struct terakan_push_constants_usage){0};
 
    /* Vertex shader. */
 
@@ -291,7 +291,7 @@ terakan_state_draw_apply_sq_pgm_ps(struct terakan_gfx_command_writer * const com
                                                        fs != NULL ? fs->samplers_needed : 0b0);
 
    command_writer->push_constants_state.usage_fragment =
-      fs != NULL ? fs->push_constants_usage : (struct terakan_push_constants_usage){};
+      fs != NULL ? fs->push_constants_usage : (struct terakan_push_constants_usage){0};
    if (terakan_push_constants_usage_empty(command_writer->push_constants_state.usage_fragment)) {
       command_writer->push_constants_state.graphics_stages_using_push_constants &=
          ~VK_SHADER_STAGE_FRAGMENT_BIT;

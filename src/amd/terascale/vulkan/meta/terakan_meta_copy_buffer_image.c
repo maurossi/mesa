@@ -873,7 +873,7 @@ terakan_CmdCopyBufferToImage2(VkCommandBuffer const commandBuffer,
    command_writer->push_constants_state.up_to_date_push_constants_bound_to_stages &=
       ~VK_SHADER_STAGE_FRAGMENT_BIT;
 
-   uint32_t constants[TERAKAN_META_COPY_BUFFER_IMAGE_CONSTS_COUNT] = {};
+   uint32_t constants[TERAKAN_META_COPY_BUFFER_IMAGE_CONSTS_COUNT] = {0};
    struct terakan_bo const * constants_bo = NULL;
    uint32_t constants_va_lines;
 
@@ -1014,7 +1014,7 @@ terakan_CmdCopyImageToBuffer2(VkCommandBuffer const commandBuffer,
    command_writer->push_constants_state.up_to_date_push_constants_bound_to_stages &=
       ~VK_SHADER_STAGE_FRAGMENT_BIT;
 
-   uint32_t constants[TERAKAN_META_COPY_BUFFER_IMAGE_CONSTS_COUNT] = {};
+   uint32_t constants[TERAKAN_META_COPY_BUFFER_IMAGE_CONSTS_COUNT] = {0};
    struct terakan_bo const * constants_bo = NULL;
    uint32_t constants_va_lines;
 
@@ -1089,7 +1089,7 @@ terakan_CmdCopyImageToBuffer2(VkCommandBuffer const commandBuffer,
                                          NULL, true);
 
       uint32_t image_resource[8];
-      VkComponentMapping const identity_component_mapping = {};
+      VkComponentMapping const identity_component_mapping = {0};
       if (unlikely(!terakan_image_create_resource_descriptor(
              &image_descriptor_create_info, &identity_component_mapping, image_resource))) {
          assert(!"Invalid image descriptor create info");

@@ -144,7 +144,7 @@ terakan_bo_wddm_allocate_device_memory(
    allocation_private_data_header->alignment_bytes = (uint32_t)alignment;
    allocation_private_data_header->size_bytes = (uint32_t)size;
 
-   uint8_t memory_type_priority[4] = {};
+   uint8_t memory_type_priority[4] = {0};
    bool const host_visible = (flags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
    if (host_visible) {
       if (flags & VK_MEMORY_PROPERTY_HOST_CACHED_BIT) {
