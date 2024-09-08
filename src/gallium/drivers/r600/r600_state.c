@@ -2309,7 +2309,8 @@ void r600_init_atom_start_cs(struct r600_context *rctx)
 
 	if (rctx->b.gfx_level >= R700) {
 		r600_store_context_reg(cb, R_028A50_VGT_ENHANCE, 4);
-		r600_store_config_reg(cb, R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ, 0x00004000);
+		r600_store_config_reg(cb, R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ,
+		                      S_008D8C_VS_PC_LIMIT_ENABLE(1));
 		r600_store_config_reg(cb, R_009830_DB_DEBUG, 0);
 		r600_store_config_reg(cb, R_009838_DB_WATERMARKS, 0x00420204);
 		r600_store_context_reg(cb, R_0286C8_SPI_THREAD_GROUPING, 0);

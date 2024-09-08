@@ -193,13 +193,18 @@ struct vk_sync_type {
    VkResult (*reset)(struct vk_device *device,
                      struct vk_sync *sync);
 
-   /** Moves the guts of one binary vk_sync to another
+   /** Moves the guts of one vk_sync to another
     *
-    * This moves the current binary vk_sync event from src to dst and resets
-    * src.  If dst contained an event, it is discarded.
+    * This moves the current vk_sync event from src to dst and sets src to
+    * unsignaled (for a binary type) or to 0 (for a timeline type).
+    * If dst contained an event, it is discarded.
     *
     * This is required for all binary vk_sync types that can be used for a
     * semaphore wait in conjunction with real timeline semaphores.
+    *
+    * Also, this is required for timeline vk_sync types that a binary vk_sync
+    * is emulated on top of if the emulated binary vk_sync also requires the
+    * move function.
     */
    VkResult (*move)(struct vk_device *device,
                     struct vk_sync *dst,

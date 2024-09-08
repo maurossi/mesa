@@ -2573,14 +2573,14 @@ uint32_t r600_translate_fill(uint32_t func)
 {
 	switch(func) {
 	case PIPE_POLYGON_MODE_FILL:
-		return 2;
+		return V_028814_X_DRAW_TRIANGLES;
 	case PIPE_POLYGON_MODE_LINE:
-		return 1;
+		return V_028814_X_DRAW_LINES;
 	case PIPE_POLYGON_MODE_POINT:
-		return 0;
+		return V_028814_X_DRAW_POINTS;
 	default:
 		assert(0);
-		return 0;
+		return V_028814_X_DRAW_POINTS;
 	}
 }
 

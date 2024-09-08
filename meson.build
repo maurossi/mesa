@@ -237,7 +237,7 @@ if _vulkan_drivers.contains('auto')
   endif
 elif _vulkan_drivers.contains('all')
    # Build every vulkan driver regardless of architecture.
-   _vulkan_drivers = ['amd', 'intel', 'intel_hasvk', 'swrast',
+   _vulkan_drivers = ['amd', 'amd_terascale', 'intel', 'intel_hasvk', 'swrast',
                       'freedreno', 'panfrost', 'virtio', 'broadcom',
                       'imagination-experimental', 'microsoft-experimental',
                       'nouveau']
@@ -246,6 +246,7 @@ endif
 with_intel_vk = _vulkan_drivers.contains('intel')
 with_intel_hasvk = _vulkan_drivers.contains('intel_hasvk')
 with_amd_vk = _vulkan_drivers.contains('amd')
+with_amd_terascale_vk = _vulkan_drivers.contains('amd_terascale')
 with_freedreno_vk = _vulkan_drivers.contains('freedreno')
 with_panfrost_vk = _vulkan_drivers.contains('panfrost')
 with_swrast_vk = _vulkan_drivers.contains('swrast')
@@ -1671,7 +1672,11 @@ _drm_ver = '2.4.109'
 _libdrm_checks = [
   ['intel', with_gallium_i915],
   ['amdgpu', (with_amd_vk and not with_platform_windows) or with_gallium_radeonsi],
-  ['radeon', (with_gallium_radeonsi or with_gallium_r300 or with_gallium_r600)],
+  [
+    'radeon',
+    (with_amd_terascale_vk and not with_platform_windows) or
+    with_gallium_radeonsi or with_gallium_r300 or with_gallium_r600
+  ],
 ]
 
 # Loop over the enables versions and get the highest libdrm requirement for all

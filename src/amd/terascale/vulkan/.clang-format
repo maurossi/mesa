@@ -1,0 +1,7 @@
+BasedOnStyle: InheritParentConfig
+
+# Uniform `type path name` order, with pointers styled as similarly to qualifiers (surrounded by
+# spaces) as clang-format allows.
+PointerAlignment: Middle
+QualifierAlignment: Right
+SpaceAroundPointerQualifiers: Both

@@ -49,6 +49,9 @@
 #define R600_TEXEL_PITCH_ALIGNMENT_MASK        0x7
 
 #define PKT3_NOP                               0x10
+#define EG_PKT3_SET_BASE                       0x11
+#define     EG_DRAW_INDEX_INDIRECT_PATCH_TABLE_BASE 1 /* DX11 Draw_Index_Indirect Patch Table Base */
+#define EG_PKT3_INDEX_BUFFER_SIZE              0x13
 #define PKT3_DEALLOC_STATE                     0x14
 #define PKT3_DISPATCH_DIRECT                   0x15
 #define PKT3_DISPATCH_INDIRECT                 0x16
@@ -57,10 +60,20 @@
 #define PKT3_REG_RMW                           0x21
 #define PKT3_COND_EXEC                         0x22
 #define PKT3_PRED_EXEC                         0x23
+#define EG_PKT3_DRAW_INDIRECT                  0x24
+#define EG_PKT3_DRAW_INDEX_INDIRECT            0x25
+#define EG_PKT3_INDEX_BASE                     0x26
 #define PKT3_DRAW_INDEX_2                      0x27
 #define PKT3_CONTEXT_CONTROL                   0x28
-#define PKT3_DRAW_INDEX_IMMD_BE                0x29
+#define PKT3_DRAW_INDEX_IMMD_BE                0x29 /* removed on evergreen*/
+#define EG_PKT3_DRAW_INDEX_OFFSET              0x29 /* >= evergreen*/
 #define PKT3_INDEX_TYPE                        0x2A
+#define     VGT_INDEX_16                   0
+#define     VGT_INDEX_32                   1
+#define         VGT_DMA_SWAP_NONE          (0 << 2)
+#define         VGT_DMA_SWAP_16_BIT        (1 << 2)
+#define         VGT_DMA_SWAP_32_BIT        (2 << 2)
+#define         VGT_DMA_SWAP_WORD          (3 << 2)
 #define PKT3_DRAW_INDEX                        0x2B
 #define PKT3_DRAW_INDEX_AUTO                   0x2D
 #define PKT3_DRAW_INDEX_IMMD                   0x2E
@@ -567,6 +580,8 @@
 #define   S_028C74_NUM_SAMPLES(x)                      (((unsigned)(x) & 0x7) << 24) /* cayman only */
 #define   S_028C74_NUM_FRAGMENTS(x)                    (((unsigned)(x) & 0x3) << 27) /* cayman only */
 #define   S_028C74_FORCE_DST_ALPHA_1(x)                (((unsigned)(x) & 0x1) << 31) /* cayman only */
+#define   G_028C74_FORCE_DST_ALPHA_1(x)                (((x) >> 31) & 0x1) /* cayman only */
+#define   C_028C74_FORCE_DST_ALPHA_1                   0x7FFFFFFF /* cayman only */
 
 #define R_028C78_CB_COLOR0_DIM                         0x028C78
 #define   S_028C78_WIDTH_MAX(x)                        (((unsigned)(x) & 0xFFFF) << 0)
@@ -894,9 +909,14 @@
 #define   S_028814_POLY_MODE(x)                        (((unsigned)(x) & 0x3) << 3)
 #define   G_028814_POLY_MODE(x)                        (((x) >> 3) & 0x3)
 #define   C_028814_POLY_MODE                           0xFFFFFFE7
+#define     V_028814_X_DISABLE_POLY_MODE               0
+#define     V_028814_X_DUAL_MODE                       1
 #define   S_028814_POLYMODE_FRONT_PTYPE(x)             (((unsigned)(x) & 0x7) << 5)
 #define   G_028814_POLYMODE_FRONT_PTYPE(x)             (((x) >> 5) & 0x7)
 #define   C_028814_POLYMODE_FRONT_PTYPE                0xFFFFFF1F
+#define     V_028814_X_DRAW_POINTS                     0
+#define     V_028814_X_DRAW_LINES                      1
+#define     V_028814_X_DRAW_TRIANGLES                  2
 #define   S_028814_POLYMODE_BACK_PTYPE(x)              (((unsigned)(x) & 0x7) << 8)
 #define   G_028814_POLYMODE_BACK_PTYPE(x)              (((x) >> 8) & 0x7)
 #define   C_028814_POLYMODE_BACK_PTYPE                 0xFFFFF8FF
@@ -1222,6 +1242,9 @@
 #define   S_0287F0_SOURCE_SELECT(x)                    (((unsigned)(x) & 0x3) << 0)
 #define   G_0287F0_SOURCE_SELECT(x)                    (((x) >> 0) & 0x3)
 #define   C_0287F0_SOURCE_SELECT                       0xFFFFFFFC
+#define     V_0287F0_DI_SRC_SEL_DMA                    0
+#define     V_0287F0_DI_SRC_SEL_IMMEDIATE              1
+#define     V_0287F0_DI_SRC_SEL_AUTO_INDEX             2
 #define   S_0287F0_MAJOR_MODE(x)                       (((unsigned)(x) & 0x3) << 2)
 #define   G_0287F0_MAJOR_MODE(x)                       (((x) >> 2) & 0x3)
 #define   C_0287F0_MAJOR_MODE                          0xFFFFFFF3
@@ -1418,6 +1441,8 @@
 #define   G_03000C_DST_SEL_Z(x)                        (((x) >> 9) & 0x7)
 #define   S_03000C_DST_SEL_W(x)                        (((unsigned)(x) & 0x7) << 12)
 #define   G_03000C_DST_SEL_W(x)                        (((x) >> 12) & 0x7)
+
+#define R_03FF04_SQ_TEX_RESOURCE_CLEAR               0x03FF04
 
 #define R_00A400_TD_PS_SAMPLER0_BORDER_INDEX         0x00A400
 #define R_00A404_TD_PS_SAMPLER0_BORDER_RED           0x00A404
@@ -1841,6 +1866,11 @@
 #define   S_0286D4_PNT_SPRITE_OVRD_X(x)                (((unsigned)(x) & 0x7) << 2)
 #define   G_0286D4_PNT_SPRITE_OVRD_X(x)                (((x) >> 2) & 0x7)
 #define   C_0286D4_PNT_SPRITE_OVRD_X                   0xFFFFFFE3
+#define     V_0286D4_SPI_PNT_SPRITE_SEL_0              0x00
+#define     V_0286D4_SPI_PNT_SPRITE_SEL_1              0x01
+#define     V_0286D4_SPI_PNT_SPRITE_SEL_S              0x02
+#define     V_0286D4_SPI_PNT_SPRITE_SEL_T              0x03
+#define     V_0286D4_SPI_PNT_SPRITE_SEL_NONE           0x04
 #define   S_0286D4_PNT_SPRITE_OVRD_Y(x)                (((unsigned)(x) & 0x7) << 5)
 #define   G_0286D4_PNT_SPRITE_OVRD_Y(x)                (((x) >> 5) & 0x7)
 #define   C_0286D4_PNT_SPRITE_OVRD_Y                   0xFFFFFF1F
@@ -1863,7 +1893,25 @@
 #define SQ_TEX_INST_SAMPLE_C 0x18
 
 #define R_008A14_PA_CL_ENHANCE                       0x00008A14
+#define   S_008A14_CLIP_VTX_REORDER_ENA(x)             (((unsigned)(x) & 0x1) << 0)
+#define   G_008A14_CLIP_VTX_REORDER_ENA(x)             (((x) >> 0) & 0x1)
+#define   C_008A14_CLIP_VTX_REORDER_ENA                0xFFFFFFFE
+#define   S_008A14_NUM_CLIP_SEQ(x)                     (((unsigned)(x) & 0x3) << 1)
+#define   G_008A14_NUM_CLIP_SEQ(x)                     (((x) >> 1) & 0x3)
+#define   C_008A14_NUM_CLIP_SEQ                        0xFFFFFFF9
+#define   S_008A14_CLIPPED_PRIM_SEQ_STALL(x)           (((unsigned)(x) & 0x1) << 3)
+#define   G_008A14_CLIPPED_PRIM_SEQ_STALL(x)           (((x) >> 3) & 0x1)
+#define   C_008A14_CLIPPED_PRIM_SEQ_STALL              0xFFFFFFF7
+#define   S_008A14_VE_NAN_PROC_DISABLE(x)              (((unsigned)(x) & 0x1) << 4)
+#define   G_008A14_VE_NAN_PROC_DISABLE(x)              (((x) >> 4) & 0x1)
+#define   C_008A14_VE_NAN_PROC_DISABLE                 0xFFFFFFEF
+
+/* diff */
 #define R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ        0x00008D8C
+#define   S_008D8C_DYN_GPR_ENABLE(x)                   (((unsigned)(x) & 0x1) << 8)
+#define   G_008D8C_DYN_GPR_ENABLE(x)                   (((x) >> 8) & 0x1)
+#define   C_008D8C_DYN_GPR_ENABLE                      0xFFFFFEFF
+
 #define R_028000_DB_RENDER_CONTROL                   0x00028000
 #define   S_028000_DEPTH_CLEAR_ENABLE(x)               (((unsigned)(x) & 0x1) << 0)
 #define   S_028000_STENCIL_CLEAR_ENABLE(x)             (((unsigned)(x) & 0x1) << 1)
@@ -1936,6 +1984,28 @@
 #define   G_02800C_DISABLE_PIXEL_RATE_TILES(x)         (((x) >> 26) & 0x1)
 #define   C_02800C_DISABLE_PIXEL_RATE_TILES            0xFFFDFFFF
 #define R_028010_DB_RENDER_OVERRIDE2                 0x00028010
+#define   S_028010_PARTIAL_SQUAD_LAUNCH_CONTROL(x)        (((unsigned)(x) & 0x3) << 0)
+#define   G_028010_PARTIAL_SQUAD_LAUNCH_CONTROL(x)        (((x) >> 0) & 0x3)
+#define   C_028010_PARTIAL_SQUAD_LAUNCH_CONTROL           0xFFFFFFFC
+#define     V_028010_PSLC_AUTO                            0
+#define     V_028010_PSLC_ON_HANG_ONLY                    1
+#define     V_028010_PSLC_ASAP                            2
+#define     V_028010_PSLC_COUNTDOWN                       3
+#define   S_028010_PARTIAL_SQUAD_LAUNCH_COUNTDOWN(x)      (((unsigned)(x) & 0x7) << 2)
+#define   G_028010_PARTIAL_SQUAD_LAUNCH_COUNTDOWN(x)      (((x) >> 2) & 0x7)
+#define   C_028010_PARTIAL_SQUAD_LAUNCH_COUNTDOWN         0xFFFFFFE3
+#define   S_028010_DISABLE_ZMASK_EXPCLEAR_OPTIMIZATION(x) (((unsigned)(x) & 0x1) << 5)
+#define   G_028010_DISABLE_ZMASK_EXPCLEAR_OPTIMIZATION(x) (((x) >> 5) & 0x1)
+#define   C_028010_DISABLE_ZMASK_EXPCLEAR_OPTIMIZATION    0xFFFFFFDF
+#define   S_028010_DISABLE_SMEM_EXPCLEAR_OPTIMIZATION(x)  (((unsigned)(x) & 0x1) << 6) /* cayman only */
+#define   G_028010_DISABLE_SMEM_EXPCLEAR_OPTIMIZATION(x)  (((x) >> 6) & 0x1) /* cayman only */
+#define   C_028010_DISABLE_SMEM_EXPCLEAR_OPTIMIZATION     0xFFFFFFBF /* cayman only */
+#define   S_028010_DISABLE_COLOR_ON_VALIDATION(x)         (((unsigned)(x) & 0x1) << 7) /* cayman only */
+#define   G_028010_DISABLE_COLOR_ON_VALIDATION(x)         (((x) >> 7) & 0x1) /* cayman only */
+#define   C_028010_DISABLE_COLOR_ON_VALIDATION            0xFFFFFF7F /* cayman only */
+#define   S_028010_DECOMPRESS_Z_ON_FLUSH(x)               (((unsigned)(x) & 0x1) << 8) /* cayman only */
+#define   G_028010_DECOMPRESS_Z_ON_FLUSH(x)               (((x) >> 8) & 0x1) /* cayman only */
+#define   C_028010_DECOMPRESS_Z_ON_FLUSH                  0xFFFFFEFF /* cayman only */
 #define R_028014_DB_HTILE_DATA_BASE                  0x00028014
 #define R_028028_DB_STENCIL_CLEAR                    0x00028028
 #define R_02802C_DB_DEPTH_CLEAR                      0x0002802C
@@ -1961,6 +2031,27 @@
 #define R_028228_PA_SC_CLIPRECT_3_TL                 0x00028228
 #define R_02822C_PA_SC_CLIPRECT_3_BR                 0x0002822C
 #define R_028230_PA_SC_EDGERULE                      0x00028230
+#define   S_028230_ER_TRI(x)                           (((unsigned)(x) & 0xF) << 0)
+#define   G_028230_ER_TRI(x)                           (((x) >> 0) & 0xF)
+#define   C_028230_ER_TRI                              0xFFFFFFF0
+#define   S_028230_ER_POINT(x)                         (((unsigned)(x) & 0xF) << 4)
+#define   G_028230_ER_POINT(x)                         (((x) >> 4) & 0xF)
+#define   C_028230_ER_POINT                            0xFFFFFF0F
+#define   S_028230_ER_RECT(x)                          (((unsigned)(x) & 0xF) << 8)
+#define   G_028230_ER_RECT(x)                          (((x) >> 8) & 0xF)
+#define   C_028230_ER_RECT                             0xFFFFF0FF
+#define   S_028230_ER_LINE_LR(x)                       (((unsigned)(x) & 0x3F) << 12)
+#define   G_028230_ER_LINE_LR(x)                       (((x) >> 12) & 0x3F)
+#define   C_028230_ER_LINE_LR                          0xFFFC0FFF
+#define   S_028230_ER_LINE_RL(x)                       (((unsigned)(x) & 0x3F) << 18)
+#define   G_028230_ER_LINE_RL(x)                       (((x) >> 18) & 0x3F)
+#define   C_028230_ER_LINE_RL                          0xFF03FFFF
+#define   S_028230_ER_LINE_TB(x)                       (((unsigned)(x) & 0xF) << 24)
+#define   G_028230_ER_LINE_TB(x)                       (((x) >> 24) & 0xF)
+#define   C_028230_ER_LINE_TB                          0xF0FFFFFF
+#define   S_028230_ER_LINE_BT(x)                       (((unsigned)(x) & 0xF) << 28)
+#define   G_028230_ER_LINE_BT(x)                       (((x) >> 28) & 0xF)
+#define   C_028230_ER_LINE_BT                          0x0FFFFFFF
 #define R_028234_PA_SU_HARDWARE_SCREEN_OFFSET        0x00028234
 #define R_028238_CB_TARGET_MASK                      0x00028238
 #define R_02823C_CB_SHADER_MASK                      0x0002823C
@@ -2119,22 +2210,22 @@
 #define R_02879C_CB_BLEND7_CONTROL                   0x0002879C
 #define R_028818_PA_CL_VTE_CNTL                      0x00028818
 #define   S_028818_VPORT_X_SCALE_ENA(x)                (((unsigned)(x) & 0x1) << 0)
-#define   G_028818_VPORT_X_SCALE_ENA(x)                (((x) >> 0 & 0x1)
+#define   G_028818_VPORT_X_SCALE_ENA(x)                (((x) >> 0) & 0x1)
 #define   C_028818_VPORT_X_SCALE_ENA                   0xFFFFFFFE
 #define   S_028818_VPORT_X_OFFSET_ENA(x)               (((unsigned)(x) & 0x1) << 1)
-#define   G_028818_VPORT_X_OFFSET_ENA(x)               (((x) >> 1 & 0x1)
+#define   G_028818_VPORT_X_OFFSET_ENA(x)               (((x) >> 1) & 0x1)
 #define   C_028818_VPORT_X_OFFSET_ENA                  0xFFFFFFFD
 #define   S_028818_VPORT_Y_SCALE_ENA(x)                (((unsigned)(x) & 0x1) << 2)
-#define   G_028818_VPORT_Y_SCALE_ENA(x)                (((x) >> 2 & 0x1)
+#define   G_028818_VPORT_Y_SCALE_ENA(x)                (((x) >> 2) & 0x1)
 #define   C_028818_VPORT_Y_SCALE_ENA                   0xFFFFFFFB
 #define   S_028818_VPORT_Y_OFFSET_ENA(x)               (((unsigned)(x) & 0x1) << 3)
-#define   G_028818_VPORT_Y_OFFSET_ENA(x)               (((x) >> 3 & 0x1)
+#define   G_028818_VPORT_Y_OFFSET_ENA(x)               (((x) >> 3) & 0x1)
 #define   C_028818_VPORT_Y_OFFSET_ENA                  0xFFFFFFF7
 #define   S_028818_VPORT_Z_SCALE_ENA(x)                (((unsigned)(x) & 0x1) << 4)
-#define   G_028818_VPORT_Z_SCALE_ENA(x)                (((x) >> 4 & 0x1)
+#define   G_028818_VPORT_Z_SCALE_ENA(x)                (((x) >> 4) & 0x1)
 #define   C_028818_VPORT_Z_SCALE_ENA                   0xFFFFFFEF
 #define   S_028818_VPORT_Z_OFFSET_ENA(x)               (((unsigned)(x) & 0x1) << 5)
-#define   G_028818_VPORT_Z_OFFSET_ENA(x)               (((x) >> 5 & 0x1)
+#define   G_028818_VPORT_Z_OFFSET_ENA(x)               (((x) >> 5) & 0x1)
 #define   C_028818_VPORT_Z_OFFSET_ENA                  0xFFFFFFDF
 #define   S_028818_VTX_XY_FMT(x)                       (((unsigned)(x) & 0x1) << 8)
 #define   G_028818_VTX_XY_FMT(x)                       (((x) >> 8) & 0x1)
@@ -2402,6 +2493,13 @@
 #define   S_028C08_PIX_CENTER_HALF(x)                  (((unsigned)(x) & 0x1) << 0)
 #define   G_028C08_PIX_CENTER_HALF(x)                  (((x) >> 0) & 0x1)
 #define   C_028C08_PIX_CENTER_HALF                     0xFFFFFFFE
+#define   S_028C08_ROUND_MODE(x)                       (((unsigned)(x) & 0x3) << 1)
+#define   G_028C08_ROUND_MODE(x)                       (((x) >> 1) & 0x3)
+#define   C_028C08_ROUND_MODE                          0xFFFFFFF9
+#define     V_028C08_X_TRUNCATE                        0
+#define     V_028C08_X_ROUND                           1
+#define     V_028C08_X_ROUND_TO_EVEN                   2
+#define     V_028C08_X_ROUND_TO_ODD                    3
 #define   S_028C08_QUANT_MODE(x)                       (((unsigned)(x) & 0x7) << 3)
 #define   G_028C08_QUANT_MODE(x)                       (((x) >> 3) & 0x7)
 #define   C_028C08_QUANT_MODE                          0xFFFFFFC7

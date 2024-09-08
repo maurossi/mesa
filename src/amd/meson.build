@@ -13,12 +13,18 @@ if with_amd_vk or with_gallium_radeonsi
   endif
   subdir('compiler')
 endif
+if with_gallium_r600
+  subdir('terascale/common')
+endif
 
 if with_amd_vk
   subdir('vulkan')
   if with_aco_tests
     subdir('compiler/tests')
   endif
+endif
+if with_amd_terascale_vk
+  subdir('terascale/vulkan')
 endif
 
 if with_tools.contains('drm-shim')

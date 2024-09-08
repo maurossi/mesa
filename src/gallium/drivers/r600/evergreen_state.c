@@ -997,7 +997,8 @@ static void evergreen_emit_config_state(struct r600_context *rctx, struct r600_a
 		radeon_emit(cs, a->sq_gpr_resource_mgmt_2);
 		radeon_emit(cs, a->sq_gpr_resource_mgmt_3);
 	}
-	radeon_set_config_reg(cs, R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ, (a->dyn_gpr_enabled << 8));
+	radeon_set_config_reg(cs, R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ,
+	                      S_008D8C_DYN_GPR_ENABLE(a->dyn_gpr_enabled));
 	if (a->dyn_gpr_enabled) {
 		radeon_set_context_reg(cs, R_028838_SQ_DYN_GPR_RESOURCE_LIMIT_1,
 				       S_028838_PS_GPRS(0x1e) |
@@ -2791,7 +2792,7 @@ void cayman_init_common_regs(struct r600_command_buffer *cb,
 	r600_store_value(cb, 0); /* R_008C10_SQ_GLOBAL_GPR_RESOURCE_MGMT_1 */
 	r600_store_value(cb, 0); /* R_008C14_SQ_GLOBAL_GPR_RESOURCE_MGMT_2 */
 
-	r600_store_config_reg(cb, R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ, (1 << 8));
+	r600_store_config_reg(cb, R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ, S_008D8C_DYN_GPR_ENABLE(1));
 
 	r600_store_context_reg_seq(cb, R_028350_SX_MISC, 2);
 	r600_store_value(cb, 0);
@@ -2865,7 +2866,8 @@ static void cayman_init_atom_start_cs(struct r600_context *rctx)
 
 	r600_store_context_reg(cb, R_028B98_VGT_STRMOUT_BUFFER_CONFIG, 0);
 
-	r600_store_config_reg(cb, R_008A14_PA_CL_ENHANCE, (3 << 1) | 1);
+	r600_store_config_reg(cb, R_008A14_PA_CL_ENHANCE,
+	                      S_008A14_NUM_CLIP_SEQ(3) | S_008A14_CLIP_VTX_REORDER_ENA(1));
 
 	r600_store_context_reg_seq(cb, CM_R_028BD4_PA_SC_CENTROID_PRIORITY_0, 2);
 	r600_store_value(cb, 0x76543210); /* CM_R_028BD4_PA_SC_CENTROID_PRIORITY_0 */
@@ -3284,7 +3286,8 @@ void evergreen_init_atom_start_cs(struct r600_context *rctx)
 	r600_store_value(cb, 0); /* R_028A3C_VGT_GROUP_VECT_1_FMT_CNTL */
 	r600_store_value(cb, 0); /* R_028A40_VGT_GS_MODE */
 
-	r600_store_config_reg(cb, R_008A14_PA_CL_ENHANCE, (3 << 1) | 1);
+	r600_store_config_reg(cb, R_008A14_PA_CL_ENHANCE,
+	                      S_008A14_NUM_CLIP_SEQ(3) | S_008A14_CLIP_VTX_REORDER_ENA(1));
 
         r600_store_context_reg(cb, R_0288F0_SQ_VTX_SEMANTIC_CLEAR, ~0);
 

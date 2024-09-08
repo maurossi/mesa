@@ -48,7 +48,8 @@
 #define EG_PKT3_INDEX_BASE                     0x26
 #define PKT3_DRAW_INDEX_2                      0x27
 #define PKT3_CONTEXT_CONTROL                   0x28
-#define PKT3_DRAW_INDEX_IMMD_BE                0x29
+#define PKT3_DRAW_INDEX_IMMD_BE                0x29 /* removed on evergreen*/
+#define EG_PKT3_DRAW_INDEX_OFFSET              0x29 /* >= evergreen*/
 #define PKT3_INDEX_TYPE                        0x2A
 #define		VGT_INDEX_16                   0
 #define		VGT_INDEX_32                   1
@@ -693,9 +694,14 @@
 #define   S_028814_POLY_MODE(x)                        (((unsigned)(x) & 0x3) << 3)
 #define   G_028814_POLY_MODE(x)                        (((x) >> 3) & 0x3)
 #define   C_028814_POLY_MODE                           0xFFFFFFE7
+#define     V_028814_X_DISABLE_POLY_MODE               0
+#define     V_028814_X_DUAL_MODE                       1
 #define   S_028814_POLYMODE_FRONT_PTYPE(x)             (((unsigned)(x) & 0x7) << 5)
 #define   G_028814_POLYMODE_FRONT_PTYPE(x)             (((x) >> 5) & 0x7)
 #define   C_028814_POLYMODE_FRONT_PTYPE                0xFFFFFF1F
+#define     V_028814_X_DRAW_POINTS                     0
+#define     V_028814_X_DRAW_LINES                      1
+#define     V_028814_X_DRAW_TRIANGLES                  2
 #define   S_028814_POLYMODE_BACK_PTYPE(x)              (((unsigned)(x) & 0x7) << 8)
 #define   G_028814_POLYMODE_BACK_PTYPE(x)              (((x) >> 8) & 0x7)
 #define   C_028814_POLYMODE_BACK_PTYPE                 0xFFFFF8FF

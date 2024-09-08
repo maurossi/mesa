@@ -237,13 +237,32 @@
  * 253  SQ_ALU_SRC_LITERAL: literal constant.
  * 254  SQ_ALU_SRC_PV: previous vector result.
  * 255  SQ_ALU_SRC_PS: previous scalar result.
+ * 448  EG - INTERP SRC BASE
  */
+/* LDS are Evergreen/Cayman only */
+#define     EG_V_SQ_ALU_SRC_LDS_OQ_A                                 0x000000DB
+#define     EG_V_SQ_ALU_SRC_LDS_OQ_B                                 0x000000DC
+#define     EG_V_SQ_ALU_SRC_LDS_OQ_A_POP                             0x000000DD
+#define     EG_V_SQ_ALU_SRC_LDS_OQ_B_POP                             0x000000DE
+#define     EG_V_SQ_ALU_SRC_LDS_DIRECT_A                             0x000000DF
+#define     EG_V_SQ_ALU_SRC_LDS_DIRECT_B                             0x000000E0
+#define     EG_V_SQ_ALU_SRC_TIME_HI                                  0x000000E3
+#define     EG_V_SQ_ALU_SRC_TIME_LO                                  0x000000E4
+#define     EG_V_SQ_ALU_SRC_MASK_HI                                  0x000000E5
+#define     EG_V_SQ_ALU_SRC_MASK_LO                                  0x000000E6
+#define     EG_V_SQ_ALU_SRC_HW_WAVE_ID                               0x000000E7
+#define     EG_V_SQ_ALU_SRC_SIMD_ID                                  0x000000E8
+#define     EG_V_SQ_ALU_SRC_SE_ID                                    0x000000E9
+
 #define     V_SQ_ALU_SRC_0                                           0x000000F8
 #define     V_SQ_ALU_SRC_1                                           0x000000F9
 #define     V_SQ_ALU_SRC_1_INT                                       0x000000FA
 #define     V_SQ_ALU_SRC_M_1_INT                                     0x000000FB
 #define     V_SQ_ALU_SRC_0_5                                         0x000000FC
 #define     V_SQ_ALU_SRC_LITERAL                                     0x000000FD
+#define     V_SQ_ALU_SRC_PV                                          0x000000FE
+#define     V_SQ_ALU_SRC_PS                                          0x000000FF
+#define     V_SQ_ALU_SRC_PARAM_BASE                                  0x000001C0
 #define   S_SQ_ALU_WORD0_SRC0_REL(x)                                 (((unsigned)(x) & 0x1) << 9)
 #define   G_SQ_ALU_WORD0_SRC0_REL(x)                                 (((x) >> 9) & 0x1)
 #define   C_SQ_ALU_WORD0_SRC0_REL                                    0xFFFFFDFF
@@ -588,6 +607,10 @@
 
 #define V_SQ_REL_ABSOLUTE 0
 #define V_SQ_REL_RELATIVE 1
+
+#define SQ_VTX_FETCH_VERTEX_DATA 0
+#define SQ_VTX_FETCH_INSTANCE_DATA 1
+#define SQ_VTX_FETCH_NO_INDEX_OFFSET 2
 
 /* CAYMAN has special encoding for MOVA_INT destination */
 #define CM_V_SQ_MOVA_DST_AR_X 0
