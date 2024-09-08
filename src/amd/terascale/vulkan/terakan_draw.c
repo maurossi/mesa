@@ -30,11 +30,14 @@
 #include "terakan_state.h"
 
 #include "gallium/drivers/r600/evergreend.h"
+#include "gallium/drivers/r600/r600d_common.h"
+#include "util/macros.h"
 #include "util/u_endian.h"
 #include "util/u_math.h"
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 VKAPI_ATTR void VKAPI_CALL
@@ -117,6 +120,11 @@ terakan_CmdDraw(VkCommandBuffer const commandBuffer, uint32_t const vertexCount,
                 uint32_t const instanceCount, uint32_t const firstVertex,
                 uint32_t const firstInstance)
 {
+   if (unlikely(instanceCount == 0)) {
+      /* VGT_NUM_INSTANCES 0 is interpreted as 1. */
+      return;
+   }
+
    struct terakan_gfx_command_writer * const command_writer =
       terakan_command_buffer_from_handle(commandBuffer)->command_writer.gfx;
 
@@ -124,7 +132,18 @@ terakan_CmdDraw(VkCommandBuffer const commandBuffer, uint32_t const vertexCount,
 
    terakan_before_draw(command_writer);
 
-   /* TODO(Triang3l): Draw. */
+   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 3, 0, 0, false);
+   if (unlikely(packet == NULL)) {
+      return;
+   }
+
+   /* NUM_INSTANCES in the same indirect buffer as the draw. */
+   *packet++ = PKT3(PKT3_NUM_INSTANCES, 0, 0);
+   *packet++ = instanceCount;
+
+   *packet++ = PKT3(PKT3_DRAW_INDEX_AUTO, 3 - 2, 0);
+   *packet++ = vertexCount;
+   *packet++ = S_0287F0_SOURCE_SELECT(V_0287F0_DI_SRC_SEL_AUTO_INDEX);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -132,6 +151,11 @@ terakan_CmdDrawIndexed(VkCommandBuffer const commandBuffer, uint32_t const index
                        uint32_t const instanceCount, uint32_t const firstIndex,
                        int32_t const vertexOffset, uint32_t const firstInstance)
 {
+   if (unlikely(instanceCount == 0)) {
+      /* VGT_NUM_INSTANCES 0 is interpreted as 1. */
+      return;
+   }
+
    struct terakan_gfx_command_writer * const command_writer =
       terakan_command_buffer_from_handle(commandBuffer)->command_writer.gfx;
 
@@ -139,5 +163,17 @@ terakan_CmdDrawIndexed(VkCommandBuffer const commandBuffer, uint32_t const index
 
    terakan_before_draw(command_writer);
 
-   /* TODO(Triang3l): Draw. */
+   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 4, 0, 0, false);
+   if (unlikely(packet == NULL)) {
+      return;
+   }
+
+   /* NUM_INSTANCES in the same indirect buffer as the draw. */
+   *packet++ = PKT3(PKT3_NUM_INSTANCES, 0, 0);
+   *packet++ = instanceCount;
+
+   *packet++ = PKT3(EG_PKT3_DRAW_INDEX_OFFSET, 4 - 2, 0);
+   *packet++ = firstIndex;
+   *packet++ = indexCount;
+   *packet++ = S_0287F0_SOURCE_SELECT(V_0287F0_DI_SRC_SEL_DMA);
 }

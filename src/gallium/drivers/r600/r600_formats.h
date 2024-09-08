@@ -87,7 +87,7 @@ static inline unsigned r600_endian_swap(unsigned size)
 static inline bool r600_is_buffer_format_supported(enum pipe_format format, bool for_vbo)
 {
 	const struct util_format_description *desc = util_format_description(format);
-	unsigned i;
+	int i;
 
 	if (format == PIPE_FORMAT_R11G11B10_FLOAT)
 		return true;

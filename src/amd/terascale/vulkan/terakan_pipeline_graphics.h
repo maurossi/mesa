@@ -24,13 +24,17 @@
 #ifndef TERAKAN_PIPELINE_GRAPHICS_H
 #define TERAKAN_PIPELINE_GRAPHICS_H
 
+#include "terakan_command_buffer.h"
 #include "terakan_hw_state.h"
+#include "terakan_pipeline.h"
+#include "terakan_shader.h"
 #include "terakan_state_rasterization.h"
 
+#include "compiler/shader_enums.h"
 #include "util/bitset.h"
-#include "vk_object.h"
 
 #include <stdint.h>
+#include <vulkan/vulkan_core.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -116,11 +120,15 @@ struct terakan_pipeline_graphics_multisample {
 };
 
 struct terakan_pipeline_graphics {
-   struct vk_object_base base;
+   struct terakan_pipeline base;
 
    BITSET_DECLARE(static_state, TERAKAN_PIPELINE_GRAPHICS_STATE_COUNT);
 
-   /* State fields not in static_state are undefined. */
+   /* Precompiling the state into register values rather than simply layering pipeline binding over
+    * dynamic state setters to perform less work at bind time.
+    *
+    * State fields not in static_state are undefined.
+    */
 
    struct terakan_pipeline_graphics_vertex_input vertex_input;
 
@@ -130,7 +138,16 @@ struct terakan_pipeline_graphics {
     * and of the fragment output state.
     */
    struct terakan_pipeline_graphics_multisample multisample;
+
+   VkShaderStageFlags shader_stages;
+   struct terakan_shader_impl shaders[MESA_SHADER_FRAGMENT + 1];
 };
+
+void terakan_pipeline_graphics_bind(struct terakan_gfx_command_writer * command_writer,
+                                    struct terakan_pipeline_graphics const * pipeline);
+
+void terakan_pipeline_graphics_destroy(struct terakan_pipeline_graphics * pipeline,
+                                       VkAllocationCallbacks const * allocator);
 
 #ifdef __cplusplus
 }

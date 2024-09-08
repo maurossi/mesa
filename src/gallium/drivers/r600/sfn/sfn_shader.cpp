@@ -6,6 +6,8 @@
 
 #include "sfn_shader.h"
 
+#include "gallium/drivers/r600/r600_asm.h"
+#include "gallium/drivers/r600/r600_formats.h"
 #include "gallium/drivers/r600/r600_shader.h"
 #include "nir.h"
 #include "nir_intrinsics.h"
@@ -25,6 +27,7 @@
 #include "sfn_shader_gs.h"
 #include "sfn_shader_tess.h"
 #include "sfn_shader_vs.h"
+#include "util/format/u_format.h"
 #include "util/u_math.h"
 
 #include <numeric>
@@ -565,9 +568,6 @@ Shader::scan_uniforms(nir_variable *uniform)
       int natomics = glsl_atomic_size(uniform->type) / 4; /* ATOMIC_COUNTER_SIZE */
       m_nhwatomic += natomics;
 
-      if (glsl_type_is_array(uniform->type))
-         m_indirect_files |= 1 << TGSI_FILE_HW_ATOMIC;
-
       m_flags.set(sh_uses_atomics);
 
       r600_shader_atomic atom = {0};
@@ -593,8 +593,6 @@ Shader::scan_uniforms(nir_variable *uniform)
    auto type = glsl_without_array(uniform->type);
    if (glsl_type_is_image(type) || uniform->data.mode == nir_var_mem_ssbo) {
       m_flags.set(sh_uses_images);
-      if (glsl_type_is_array(uniform->type) && !(uniform->data.mode == nir_var_mem_ssbo))
-         m_indirect_files |= 1 << TGSI_FILE_IMAGE;
    }
 
    return true;
@@ -864,6 +862,8 @@ Shader::process_intrinsic(nir_intrinsic_instr *intr)
       return emit_load_tcs_param_base(intr, 0);
    case nir_intrinsic_load_tcs_out_param_base_r600:
       return emit_load_tcs_param_base(intr, 16);
+   case nir_intrinsic_load_buffer_resource_r600:
+      return emit_load_buffer_resource(intr);
    case nir_intrinsic_barrier:
       return emit_barrier(intr);
    case nir_intrinsic_shared_atomic:
@@ -1567,9 +1567,93 @@ Shader::load_ubo(nir_intrinsic_instr *instr)
       }
       if (ir)
          ir->set_alu_flag(alu_last_instr);
-      m_indirect_files |= 1 << TGSI_FILE_CONSTANT;
       return true;
    }
+}
+
+bool
+Shader::emit_load_buffer_resource(nir_intrinsic_instr *instr)
+{
+   ValueFactory& vf = value_factory();
+
+   RegisterVec4 dest = vf.dest_vec4(instr->def, pin_group);
+
+   unsigned resource_base = nir_intrinsic_id_base(instr);
+   PRegister resource_offset = nullptr;
+   const nir_const_value *resource_offset_const = nir_src_as_const_value(instr->src[0]);
+   if (resource_offset_const != nullptr) {
+      resource_base += resource_offset_const->u32;
+   } else {
+      resource_offset = vf.src(instr->src[0], 0)->as_register();
+   }
+
+   unsigned first_component = nir_intrinsic_component(instr);
+   assert(first_component + instr->def.num_components <= 4);
+
+   unsigned fetch_format = FMT_INVALID;
+   unsigned fetch_num_format = 0;
+   unsigned fetch_format_comp = 0;
+   unsigned fetch_endian = ENDIAN_NONE;
+   RegisterVec4::Swizzle fetch_swizzle{7, 7, 7, 7};
+
+   pipe_format format = nir_intrinsic_format(instr);
+   if (format != PIPE_FORMAT_NONE) {
+      r600_vertex_data_type(format,
+                            &fetch_format,
+                            &fetch_num_format,
+                            &fetch_format_comp,
+                            &fetch_endian);
+      assert(fetch_format != FMT_INVALID);
+      const struct util_format_description& format_description =
+         *util_format_description(format);
+      for (unsigned i = 0; i < instr->def.num_components; ++i) {
+         uint8_t& fetch_component = fetch_swizzle[i];
+         auto format_component =
+            static_cast<pipe_swizzle>(format_description.swizzle[first_component + i]);
+         if (format_component == PIPE_SWIZZLE_NONE) {
+            fetch_component = i == 3 ? 5 : 4;
+         } else if (format_component >= PIPE_SWIZZLE_X &&
+                    format_component <= PIPE_SWIZZLE_W) {
+            fetch_component = static_cast<unsigned>(format_component) -
+                              static_cast<unsigned>(PIPE_SWIZZLE_X);
+         } else {
+            fetch_component = format_component == PIPE_SWIZZLE_1 ? 5 : 4;
+         }
+      }
+   } else {
+      for (unsigned i = 0; i < instr->def.num_components; ++i) {
+         fetch_swizzle[i] = first_component + i;
+      }
+   }
+
+   auto fetch = new FetchInstr(vc_fetch,
+                               dest,
+                               fetch_swizzle,
+                               vf.src(instr->src[1], 0)->as_register(),
+                               nir_intrinsic_base(instr),
+                               no_index_offset,
+                               static_cast<EVTXDataFormat>(fetch_format),
+                               static_cast<EVFetchNumFormat>(fetch_num_format),
+                               static_cast<EVFetchEndianSwap>(fetch_endian),
+                               resource_base,
+                               resource_offset);
+
+   fetch->set_fetch_flag(FetchInstr::use_tc);
+
+   if (fetch_format != FMT_INVALID) {
+      if (fetch_format_comp) {
+         fetch->set_fetch_flag(FetchInstr::format_comp_signed);
+      }
+   } else {
+      fetch->set_fetch_flag(FetchInstr::use_const_field);
+   }
+
+   unsigned mega_fetch_count = nir_intrinsic_mega_fetch_count_r600(instr);
+   fetch->set_mfc((mega_fetch_count != 0 ? mega_fetch_count : 16) - 1);
+
+   emit_instruction(fetch);
+
+   return true;
 }
 
 void
@@ -1710,12 +1794,6 @@ Shader::get_shader_info(r600_shader *sh_info)
    for (unsigned i = 0; i < m_atomics.size(); ++i)
       sh_info->atomics[i] = m_atomics[i];
 
-   if (m_flags.test(sh_indirect_const_file))
-      sh_info->indirect_files |= 1 << TGSI_FILE_CONSTANT;
-
-   if (m_flags.test(sh_indirect_atomic))
-      sh_info->indirect_files |= 1 << TGSI_FILE_HW_ATOMIC;
-
    sh_info->uses_tex_buffers = m_flags.test(sh_uses_tex_buffer);
 
    value_factory().get_shader_info(sh_info);
@@ -1725,7 +1803,6 @@ Shader::get_shader_info(r600_shader *sh_info)
    sh_info->uses_atomics = m_flags.test(sh_uses_atomics);
    sh_info->disable_sb = m_flags.test(sh_disble_sb);
    sh_info->has_txq_cube_array_z_comp = m_flags.test(sh_txs_cube_array_comp);
-   sh_info->indirect_files = m_indirect_files;
    do_get_shader_info(sh_info);
 }
 

@@ -114,7 +114,7 @@ uint32_t terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_w
 struct terakan_push_constant_buffer {
    struct terakan_bo * bo;
 
-   uint32_t cache_lines_free;
+   uint32_t kcache_lines_free;
 
    struct list_head link;
 };
@@ -169,7 +169,7 @@ VK_DEFINE_HANDLE_CASTS(terakan_command_buffer, vk.base, VkCommandBuffer,
 /* Returns the mapping, or NULL if failed. */
 void * terakan_command_buffer_allocate_push_constants(
    struct terakan_command_buffer * command_buffer, uint32_t size_bytes,
-   struct terakan_bo const ** bo_out, uint32_t * base_cache_lines_out);
+   struct terakan_bo const ** bo_out, uint32_t * base_kcache_lines_out);
 
 extern struct vk_command_buffer_ops const terakan_command_buffer_ops;
 

@@ -346,7 +346,7 @@ struct terakan_meta_shader const terakan_meta_copy_buffer_to_image_ps =
                      },
                },
          },
-      .constant_cache_needed = 0b1,
+      .kcache_needed = 0b1,
       .resources_needed =
          {
             [BITSET_BITWORD(TERAKAN_RESOURCE_RANGE_SHADER_CONSTANT_ARRAYS_OR_META)] =
@@ -440,10 +440,10 @@ terakan_CmdCopyBufferToImage2(VkCommandBuffer const commandBuffer,
             return;
          }
          memcpy(push_constants_mapping, &push_constants, sizeof(push_constants));
-         terakan_hw_state_draw_set_sq_constant_cache_fs(
+         terakan_hw_state_draw_set_sq_kcache_fs(
             &command_writer->hw_state_draw, 0,
-            (sizeof(push_constants) + (TERAKAN_CONSTANT_CACHE_LINE_BYTES - 1)) /
-               TERAKAN_CONSTANT_CACHE_LINE_BYTES,
+            (sizeof(push_constants) + (TERAKAN_KCACHE_HW_LINE_BYTES - 1)) /
+               TERAKAN_KCACHE_HW_LINE_BYTES,
             push_constants_bo, push_constants_base);
       }
 

@@ -29,13 +29,13 @@
 #include "terakan_queue.h"
 
 #include "util/macros.h"
+#include "util/u_math.h"
 #include "vk_alloc.h"
 #include "vk_log.h"
 #include "wsi_common.h"
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <string.h>
 
 void
 terakan_device_finish(struct terakan_device * const device)
@@ -142,9 +142,10 @@ terakan_device_init(struct terakan_device * const device,
             terakan_meta_shaders[meta_shader_index];
          struct terakan_meta_shader_description const * const meta_shader_description =
             is_r9xx ? &meta_shader->r9xx : &meta_shader->r8xx;
-         memcpy(meta_shaders_bo_mapping + ((VkDeviceSize)device_meta_shader->program_start
-                                           << TERAKAN_SHADER_PROGRAM_ALIGNMENT_LOG2),
-                meta_shader_description->program, meta_shader_description->program_size_bytes);
+         util_memcpy_cpu_to_le32(
+            meta_shaders_bo_mapping + ((VkDeviceSize)device_meta_shader->program_start
+                                       << TERAKAN_SHADER_PROGRAM_ALIGNMENT_LOG2),
+            meta_shader_description->program, meta_shader_description->program_size_bytes);
       }
       terakan_bo_unmap(device->meta_shaders_bo);
    }

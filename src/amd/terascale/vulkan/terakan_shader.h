@@ -26,7 +26,12 @@
 
 #include "terakan_bo.h"
 
+#include "gallium/drivers/r600/r600_shader_common.h"
+#include "nir.h"
+
+#include <stddef.h>
 #include <stdint.h>
+#include <vulkan/vulkan_core.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -37,19 +42,21 @@ extern "C" {
 
 /* Fields that don't depend on any other state. */
 struct terakan_shader_static {
-   struct terakan_bo const * program_bo;
+   struct terakan_bo * program_bo;
    uint32_t program_start;
 
    uint32_t sq_pgm_resources[2];
 
    union {
       struct {
+         uint32_t spi_vs_out_id[10];
          uint32_t spi_vs_out_config;
          uint32_t pa_cl_vs_out_cntl;
       } vs;
 
       struct {
          uint32_t sq_pgm_exports_ps;
+         uint32_t spi_ps_input_cntl[32];
          uint32_t spi_ps_in_control[2];
          uint32_t spi_input_z;
          uint32_t spi_baryc_cntl;
@@ -57,6 +64,33 @@ struct terakan_shader_static {
       } ps;
    } stage;
 };
+
+/* Shader implementation common for both pipelines (to be used in a pipeline-cached wrapper) and
+ * shader objects (for an uncached wrapper implementing VkShaderEXT).
+ */
+struct terakan_shader_impl {
+   /* This object owns the BO in `static_state`. */
+   /* TODO(Triang3l): Shader suballocation. */
+   struct terakan_shader_static static_state;
+
+   struct r600_shader shader;
+};
+
+struct terakan_device;
+
+nir_shader * terakan_shader_spirv_to_nir(struct terakan_device * device, size_t spirv_size_bytes,
+                                         uint32_t const * spirv, gl_shader_stage stage,
+                                         char const * entrypoint,
+                                         VkSpecializationInfo const * specialization_info);
+
+void terakan_shader_impl_finish(struct terakan_shader_impl * shader,
+                                VkAllocationCallbacks const * allocator);
+
+/* Modifies the input NIR, clone externally if needed. */
+VkResult terakan_shader_impl_init_from_nir(struct terakan_shader_impl * shader,
+                                           struct terakan_device * device,
+                                           union r600_shader_key const * key, nir_shader * nir,
+                                           VkAllocationCallbacks const * allocator);
 
 #ifdef __cplusplus
 }

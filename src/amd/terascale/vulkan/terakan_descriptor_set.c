@@ -56,6 +56,12 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
          terakan_descriptor_set_from_handle(descriptor_write->dstSet);
       struct terakan_descriptor_set_layout_binding const * const dst_binding =
          &dst_set->layout->bindings[descriptor_write->dstBinding];
+      /* VUID-VkWriteDescriptorSet-dstBinding-00316 "dstBinding must be a binding with a non-zero
+       * descriptorCount", no need to skip bindings with zero descriptors, which are uninitialized
+       * in descriptor set layouts in the driver except for the descriptor count, to get to the
+       * first actually updated binding.
+       */
+      assert(dst_binding->descriptor_count != 0);
 
       uint32_t const descriptor_count = descriptor_write->descriptorCount;
 
@@ -187,18 +193,51 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
    for (uint32_t descriptor_copy_index = 0; descriptor_copy_index < descriptorCopyCount;
         ++descriptor_copy_index) {
       VkCopyDescriptorSet const * const descriptor_copy = &pDescriptorCopies[descriptor_copy_index];
+      if (unlikely(descriptor_copy->descriptorCount == 0)) {
+         /* There doesn't seem to be a VU rule about descriptorCount in VkCopyDescriptorSet being
+          * nonzero, consider it valid, but don't bother trying to locate the first non-empty
+          * binding.
+          */
+         continue;
+      }
+
+      /* VkCopyDescriptorSet's valid usage doesn't require that srcBinding and dstBinding themselves
+       * are non-empty. However, empty bindings are completely skipped and not initialized by the
+       * driver during descriptor set layout creation, so take the type and the offsets from the
+       * first non-empty binding starting from srcBinding or dstBinding.
+       */
       struct terakan_descriptor_set const * const src_set =
          terakan_descriptor_set_from_handle(descriptor_copy->srcSet);
+      size_t src_binding_index = descriptor_copy->srcBinding;
+      while (src_binding_index < src_set->layout->binding_count &&
+             src_set->layout->bindings[src_binding_index].descriptor_count == 0) {
+         ++src_binding_index;
+      }
+      assert(src_binding_index < src_set->layout->binding_count);
+      if (unlikely(src_binding_index >= src_set->layout->binding_count)) {
+         continue;
+      }
       struct terakan_descriptor_set_layout_binding const * const src_binding =
-         &src_set->layout->bindings[descriptor_copy->srcBinding];
+         &src_set->layout->bindings[src_binding_index];
+
       VkDescriptorType const descriptor_type = src_binding->descriptor_type;
 
       struct terakan_descriptor_set const * const dst_set =
-         terakan_descriptor_set_from_handle(descriptor_copy->srcSet);
+         terakan_descriptor_set_from_handle(descriptor_copy->dstSet);
+      size_t dst_binding_index = descriptor_copy->dstBinding;
+      while (dst_binding_index < dst_set->layout->binding_count &&
+             dst_set->layout->bindings[dst_binding_index].descriptor_count == 0) {
+         ++dst_binding_index;
+      }
+      assert(dst_binding_index < dst_set->layout->binding_count);
+      if (unlikely(dst_binding_index >= dst_set->layout->binding_count)) {
+         continue;
+      }
       struct terakan_descriptor_set_layout_binding const * const dst_binding =
-         &dst_set->layout->bindings[descriptor_copy->dstBinding];
+         &dst_set->layout->bindings[dst_binding_index];
 
       if (terakan_descriptor_type_has_resource(descriptor_type)) {
+         assert(terakan_descriptor_type_has_resource(dst_binding->descriptor_type));
          memcpy(dst_set->descriptors +
                    sizeof(struct terakan_descriptor_set_resource) *
                       (dst_binding->first_set_resource + descriptor_copy->dstArrayElement),
@@ -209,6 +248,7 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
       }
 
       if (terakan_descriptor_type_has_sampler(descriptor_type)) {
+         assert(terakan_descriptor_type_has_sampler(dst_binding->descriptor_type));
          memcpy(dst_set->descriptors + dst_set->layout->pool_first_sampler_offset_bytes +
                    sizeof(struct terakan_descriptor_set_sampler) *
                       (dst_binding->first_set_sampler + descriptor_copy->dstArrayElement),
@@ -219,6 +259,7 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
       }
 
       if (terakan_descriptor_type_has_rat(descriptor_type)) {
+         assert(terakan_descriptor_type_has_rat(dst_binding->descriptor_type));
          memcpy(dst_set->descriptors + dst_set->layout->pool_first_rat_offset_bytes +
                    sizeof(struct terakan_descriptor_set_rat) *
                       (dst_binding->first_set_rat + descriptor_copy->dstArrayElement),

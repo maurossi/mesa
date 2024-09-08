@@ -36,6 +36,8 @@
 #include "terakan_wsi.h"
 
 #include "compiler/shader_enums.h"
+#include "gallium/drivers/r600/r600_isa.h"
+#include "gallium/drivers/r600/sfn/sfn_nir.h"
 #include "util/macros.h"
 #include "util/u_math.h"
 #include "vk_alloc.h"
@@ -50,6 +52,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 enum radeon_family
@@ -262,7 +265,7 @@ terakan_physical_device_get_capabilities(
     */
    properties_out->maxTexelBufferElements = (uint32_t)1 << (32 - 4);
 
-   properties_out->maxUniformBufferRange = TERAKAN_CONSTANT_CACHE_MAX_BUFFER_SIZE_BYTES;
+   properties_out->maxUniformBufferRange = TERAKAN_KCACHE_HW_MAX_BUFFER_SIZE_BYTES;
 
    /* Storage buffers are bound as R32 vertex fetch constants or random access targets.
     * However, buffer RATs have LINEAR_ALIGNED array more, and thus alignment equal to the tile
@@ -277,7 +280,7 @@ terakan_physical_device_get_capabilities(
    /* TODO(Triang3l): Exclude internal constants like the draw ID, ring layout, sample locations,
     * RAT alignment offsets.
     */
-   properties_out->maxPushConstantsSize = TERAKAN_CONSTANT_CACHE_MAX_BUFFER_SIZE_BYTES;
+   properties_out->maxPushConstantsSize = TERAKAN_KCACHE_HW_MAX_BUFFER_SIZE_BYTES;
 
    properties_out->maxMemoryAllocationCount = UINT32_MAX;
 
@@ -390,7 +393,7 @@ terakan_physical_device_get_capabilities(
    /* The largest is for R32G32B32A32 random access targets. */
    properties_out->minTexelBufferOffsetAlignment = sizeof(uint32_t) * 4;
 
-   properties_out->minUniformBufferOffsetAlignment = TERAKAN_CONSTANT_CACHE_LINE_BYTES;
+   properties_out->minUniformBufferOffsetAlignment = TERAKAN_KCACHE_HW_LINE_BYTES;
 
    properties_out->minStorageBufferOffsetAlignment = sizeof(uint32_t);
 
@@ -739,6 +742,8 @@ terakan_physical_device_destroy(struct vk_physical_device * const device_base)
    struct terakan_physical_device * const device =
       container_of(device_base, struct terakan_physical_device, vk);
 
+   r600_isa_destroy(device->isa);
+
    device->winsys_fn->destroy(device);
 }
 
@@ -775,11 +780,142 @@ terakan_physical_device_init(
     * For buffers, the same alignment is needed as for images with the LINEAR_ALIGNED array mode
     * because it's required for RATs (equal to the pipe interleave in tiling), so it's included in
     * the image alignment. It's normally 256 bytes, but potentially can be 512 bytes, depending on
-    * device. It's also not smaller than the constant cache buffer alignment (256 bytes).
+    * device. It's also not smaller than the kcache buffer alignment (256 bytes).
     */
    device->buffer_image_bo_alignment =
       (VkDeviceSize)1 << (MIN2(device->tiling_info.row_bytes_log2, 3 + 3 + 3 + 4) +
                           device->tiling_info.banks_log2 + device->tiling_info.pipes_log2);
+
+   device->nir_options_non_fs = (nir_shader_compiler_options){
+      .lower_fdiv = true,
+
+      .fuse_ffma16 = true,
+      .fuse_ffma32 = true,
+      .fuse_ffma64 = true,
+
+      .lower_flrp16 = true,
+      .lower_flrp32 = true,
+      .lower_flrp64 = true,
+
+      .lower_fpow = true,
+
+      .lower_fmod = true,
+
+      .lower_bitfield_extract = true,
+      .lower_bitfield_insert = true,
+
+      .lower_ifind_msb = true,
+      .lower_ufind_msb = true,
+
+      .lower_uadd_carry = true,
+      .lower_usub_borrow = true,
+
+      .lower_fisnormal = true,
+
+      .lower_isign = true,
+      .lower_fsign = true,
+      .lower_iabs = true,
+
+      .lower_ldexp = true,
+
+      .lower_pack_unorm_2x16 = true,
+      .lower_pack_snorm_2x16 = true,
+      .lower_pack_unorm_4x8 = true,
+      .lower_pack_snorm_4x8 = true,
+      .lower_pack_64_4x16 = true,
+      .lower_pack_32_2x16 = true,
+      .lower_pack_32_2x16_split = true,
+      .lower_unpack_unorm_2x16 = true,
+      .lower_unpack_snorm_2x16 = true,
+      .lower_unpack_unorm_4x8 = true,
+      .lower_unpack_snorm_4x8 = true,
+      .lower_unpack_32_2x16_split = true,
+
+      .lower_pack_split = true,
+
+      .lower_extract_byte = true,
+      .lower_extract_word = true,
+      .lower_insert_byte = true,
+      .lower_insert_word = true,
+
+      .lower_cs_local_index_to_id = true,
+
+      .lower_device_index_to_zero = true,
+
+      .lower_hadd = true,
+
+      .lower_uadd_sat = true,
+      .lower_usub_sat = true,
+      .lower_iadd_sat = true,
+
+      .lower_mul_32x16 = true,
+
+      .vectorize_io = true,
+      .vectorize_tess_levels = true,
+
+      .lower_to_scalar = true,
+      .lower_to_scalar_filter = r600_lower_to_scalar_instr_filter,
+
+      .use_interpolated_input_intrinsics = true,
+      .lower_interpolate_at = true,
+
+      .lower_mul_2x32_64 = true,
+
+      .has_umul24 = true,
+      .has_umad24 = true,
+
+      .has_fused_comp_and_csel = true,
+
+      .has_fsub = true,
+      .has_isub = true,
+
+      .has_fmulz = true,
+
+      .has_find_msb_rev = true,
+
+      .has_bfe = true,
+      .has_bfm = true,
+      /* TODO(Triang3l): Implement bfi in SFN. */
+      .has_bitfield_select = true,
+
+      /* Arbitrary (from RADV - in RadeonSI both are 128), was 255 due to a bug with the old
+       * (pre-SFN) compiler from 2014:
+       * https://bugs.freedesktop.org/show_bug.cgi?id=86720
+       */
+      /* TODO(Triang3l): Revisit max_unroll_iterations. */
+      .max_unroll_iterations = 32,
+      .max_unroll_iterations_aggressive = 128,
+
+      .linker_ignore_precision = true,
+
+      .lower_int64_options = ~(nir_lower_int64_options)0,
+
+      .lower_doubles_options = device->chip_family_info.is_r9xx
+                                  ? nir_lower_ddiv | nir_lower_dfloor | nir_lower_dceil |
+                                       nir_lower_dmod | nir_lower_dsub | nir_lower_dtrunc
+                                  : nir_lower_fp64_full_software,
+
+      .lower_image_offset_to_range_base = true,
+
+      /* lower_atomic_offset_to_range_base (needed on R8xx) is not applicable to Vulkan. */
+
+      .lower_fquantize2f16 = true,
+   };
+
+   device->nir_options_fs = device->nir_options_non_fs;
+   device->nir_options_fs.lower_all_io_to_temps = true;
+
+   /* Must be allocated using calloc because r600_isa_destroy frees it, and r600_isa_destroy also
+    * must be called even if r600_isa_init fails.
+    */
+   device->isa = calloc(1, sizeof(struct r600_isa));
+   if (device->isa == NULL) {
+      return vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+   if (r600_isa_init(device->chip_family_info.is_r9xx ? CAYMAN : EVERGREEN, device->isa) != 0) {
+      result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
+      goto fail_isa;
+   }
 
    struct vk_device_extension_table extensions;
    struct vk_features features;
@@ -799,7 +935,7 @@ terakan_physical_device_init(
    result = vk_physical_device_init(&device->vk, &instance->vk, &extensions, &features, &properties,
                                     &dispatch_table);
    if (result != VK_SUCCESS) {
-      return result;
+      goto fail_isa;
    }
 
    device->vk.supported_sync_types = supported_sync_types_static;
@@ -811,9 +947,14 @@ terakan_physical_device_init(
    /* Initialize WSI after everything else as it's a layer on top of the Vulkan physical device. */
    result = terakan_wsi_init(device);
    if (result != VK_SUCCESS) {
-      vk_physical_device_finish(&device->vk);
-      return result;
+      goto fail_device;
    }
 
    return VK_SUCCESS;
+
+fail_device:
+   vk_physical_device_finish(&device->vk);
+fail_isa:
+   r600_isa_destroy(device->isa);
+   return result;
 }

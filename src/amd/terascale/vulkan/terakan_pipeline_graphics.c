@@ -23,14 +23,24 @@
 
 #include "terakan_pipeline_graphics.h"
 
+#include "terakan_bo.h"
 #include "terakan_command_buffer.h"
+#include "terakan_device.h"
+#include "terakan_entrypoints.h"
+#include "terakan_shader.h"
 #include "terakan_state.h"
 #include "terakan_state_input_assembly.h"
 #include "terakan_state_rasterization.h"
 
+#include "gallium/drivers/r600/r600_shader_common.h"
+#include "util/bitscan.h"
 #include "util/macros.h"
+#include "util/ralloc.h"
 #include "util/u_math.h"
+#include "vk_alloc.h"
 #include "vk_graphics_state.h"
+#include "vk_log.h"
+#include "vk_util.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -217,7 +227,7 @@ static terakan_pipeline_graphics_apply_state_function const
          terakan_pipeline_graphics_apply_pa_sc_aa_mask,
 };
 
-static void
+void
 terakan_pipeline_graphics_bind(struct terakan_gfx_command_writer * const command_writer,
                                struct terakan_pipeline_graphics const * const pipeline)
 {
@@ -229,9 +239,47 @@ terakan_pipeline_graphics_bind(struct terakan_gfx_command_writer * const command
       terakan_pipeline_graphics_apply_state_functions[state_index](
          command_writer, pipeline, (enum terakan_pipeline_graphics_state_index)state_index);
    }
+
+   /* TODO(Triang3l): All vertex pipeline stages. */
+
+   bool const sq_pgm_vs_modified = command_writer->hw_state_draw.sq_pgm_vs !=
+                                   &pipeline->shaders[MESA_SHADER_VERTEX].static_state;
+   command_writer->hw_state_draw.sq_pgm_vs = &pipeline->shaders[MESA_SHADER_VERTEX].static_state;
+   terakan_hw_state_draw_written(&command_writer->hw_state_draw, TERAKAN_HW_STATE_DRAW_SQ_PGM_VS,
+                                 sq_pgm_vs_modified);
+
+   if (pipeline->shader_stages & VK_SHADER_STAGE_FRAGMENT_BIT) {
+      bool const sq_pgm_ps_modified = command_writer->hw_state_draw.sq_pgm_ps !=
+                                      &pipeline->shaders[MESA_SHADER_FRAGMENT].static_state;
+      command_writer->hw_state_draw.sq_pgm_ps =
+         &pipeline->shaders[MESA_SHADER_FRAGMENT].static_state;
+      terakan_hw_state_draw_written(&command_writer->hw_state_draw, TERAKAN_HW_STATE_DRAW_SQ_PGM_PS,
+                                    sq_pgm_ps_modified);
+   }
 }
 
-static VkResult
+void
+terakan_pipeline_graphics_destroy(struct terakan_pipeline_graphics * const pipeline,
+                                  VkAllocationCallbacks const * allocator)
+{
+   if (allocator == NULL) {
+      allocator = &pipeline->base.base.device->alloc;
+   }
+
+   unsigned remaining_shader_stages = (unsigned)pipeline->shader_stages;
+   while (remaining_shader_stages) {
+      terakan_shader_impl_finish(
+         &pipeline->shaders[vk_to_mesa_shader_stage((
+            VkShaderStageFlagBits)((VkShaderStageFlags)1 << u_bit_scan(&remaining_shader_stages)))],
+         allocator);
+   }
+
+   terakan_pipeline_finish(&pipeline->base);
+
+   vk_free(allocator, pipeline);
+}
+
+static void
 terakan_pipeline_graphics_vertex_input_init(struct terakan_pipeline_graphics * const pipeline,
                                             struct vk_graphics_pipeline_state const * const state)
 {
@@ -241,11 +289,9 @@ terakan_pipeline_graphics_vertex_input_init(struct terakan_pipeline_graphics * c
          terakan_state_draw_primitive_topology_vgt_primitive_type(state->ia->primitive_topology);
       BITSET_SET(pipeline->static_state, TERAKAN_PIPELINE_GRAPHICS_STATE_VGT_PRIMITIVE_TYPE);
    }
-
-   return VK_SUCCESS;
 }
 
-static VkResult
+static void
 terakan_pipeline_graphics_pre_rasterization_init(
    struct terakan_pipeline_graphics * const pipeline,
    struct vk_graphics_pipeline_state const * const state, bool const depth_range_unrestricted)
@@ -380,8 +426,6 @@ terakan_pipeline_graphics_pre_rasterization_init(
    if (pipeline->pre_rasterization.pa_su_sc_mode_cntl_clear != UINT32_MAX) {
       BITSET_SET(pipeline->static_state, TERAKAN_PIPELINE_GRAPHICS_STATE_PA_SU_SC_MODE_CNTL);
    }
-
-   return VK_SUCCESS;
 }
 
 static void
@@ -393,4 +437,128 @@ terakan_pipeline_graphics_multisample_init(struct terakan_pipeline_graphics * co
       pipeline->multisample.pa_sc_aa_mask = (uint16_t)state->ms->sample_mask;
       BITSET_SET(pipeline->static_state, TERAKAN_PIPELINE_GRAPHICS_STATE_PA_SC_AA_MASK);
    }
+}
+
+static VkResult
+terakan_pipeline_graphics_create(struct terakan_device * const device,
+                                 VkGraphicsPipelineCreateInfo const * const create_info,
+                                 VkAllocationCallbacks const * const allocator,
+                                 struct terakan_pipeline_graphics ** const pipeline_out)
+{
+   VkResult result;
+
+   struct terakan_pipeline_graphics * const pipeline =
+      vk_alloc2(&device->vk.alloc, allocator, sizeof(struct terakan_pipeline_graphics),
+                alignof(struct terakan_pipeline_graphics), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (pipeline == NULL) {
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+
+   terakan_pipeline_init(&pipeline->base, device, false);
+
+   BITSET_ZERO(pipeline->static_state);
+   struct vk_graphics_pipeline_all_state all_state;
+   struct vk_graphics_pipeline_state state = {};
+   result = vk_graphics_pipeline_state_fill(&device->vk, &state, create_info, NULL, 0, &all_state,
+                                            NULL, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, NULL);
+   if (result != VK_SUCCESS) {
+      goto fail_pipeline;
+   }
+   terakan_pipeline_graphics_vertex_input_init(pipeline, &state);
+   terakan_pipeline_graphics_pre_rasterization_init(
+      pipeline, &state, device->vk.enabled_extensions.EXT_depth_range_unrestricted);
+   terakan_pipeline_graphics_multisample_init(pipeline, &state);
+
+   pipeline->shader_stages = 0;
+   for (uint32_t stage_info_index = 0; stage_info_index < create_info->stageCount;
+        ++stage_info_index) {
+      VkPipelineShaderStageCreateInfo const * const stage_info =
+         &create_info->pStages[stage_info_index];
+
+      size_t spirv_size_bytes;
+      uint32_t const * spirv = terakan_pipeline_stage_spirv(stage_info, &spirv_size_bytes);
+      assert(spirv != NULL);
+
+      gl_shader_stage const stage_index = vk_to_mesa_shader_stage(stage_info->stage);
+      nir_shader * nir =
+         terakan_shader_spirv_to_nir(device, spirv_size_bytes, spirv, stage_index,
+                                     stage_info->pName, stage_info->pSpecializationInfo);
+      if (nir == NULL) {
+         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+         goto fail_shaders;
+      }
+
+      /* TODO(Triang3l): Construct the shader info from the NIR and, when available, the pipeline
+       * state.
+       */
+      union r600_shader_key shader_key = {};
+      /* TODO(Triang3l): Remove this color buffer count test. */
+      if (stage_index == MESA_SHADER_FRAGMENT) {
+         shader_key.ps.nr_cbufs = 1;
+      }
+
+      result = terakan_shader_impl_init_from_nir(&pipeline->shaders[stage_index], device,
+                                                 &shader_key, nir, allocator);
+      ralloc_free(nir);
+      if (result != VK_SUCCESS) {
+         goto fail_shaders;
+      }
+
+      /* Fully initialized now, make sure it's fully cleaned up in case of failure. */
+      pipeline->shader_stages |= stage_info->stage;
+   }
+
+   *pipeline_out = pipeline;
+   return VK_SUCCESS;
+
+fail_shaders : {
+   unsigned remaining_shader_stages = (unsigned)pipeline->shader_stages;
+   while (remaining_shader_stages) {
+      terakan_shader_impl_finish(
+         &pipeline->shaders[vk_to_mesa_shader_stage((
+            VkShaderStageFlagBits)((VkShaderStageFlags)1 << u_bit_scan(&remaining_shader_stages)))],
+         allocator);
+   }
+}
+fail_pipeline:
+   terakan_pipeline_finish(&pipeline->base);
+   vk_free2(&device->vk.alloc, allocator, pipeline);
+   return result;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+terakan_CreateGraphicsPipelines(VkDevice const deviceHandle, VkPipelineCache const pipelineCache,
+                                uint32_t const createInfoCount,
+                                VkGraphicsPipelineCreateInfo const * const pCreateInfos,
+                                VkAllocationCallbacks const * const pAllocator,
+                                VkPipeline * const pPipelines)
+{
+   VkResult result = VK_SUCCESS;
+
+   struct terakan_device * const device = terakan_device_from_handle(deviceHandle);
+
+   uint32_t pipeline_index;
+
+   for (pipeline_index = 0; pipeline_index < createInfoCount; ++pipeline_index) {
+      struct terakan_pipeline_graphics * pipeline;
+      VkGraphicsPipelineCreateInfo const * const create_info = &pCreateInfos[pipeline_index];
+      VkResult const pipeline_result =
+         terakan_pipeline_graphics_create(device, create_info, pAllocator, &pipeline);
+      if (pipeline_result != VK_SUCCESS) {
+         result = pipeline_result;
+         if (terakan_pipeline_create_flags(create_info->flags, create_info->pNext) &
+             VK_PIPELINE_CREATE_2_EARLY_RETURN_ON_FAILURE_BIT_KHR) {
+            break;
+         }
+         pPipelines[pipeline_index] = VK_NULL_HANDLE;
+         continue;
+      }
+      pPipelines[pipeline_index] = terakan_pipeline_to_handle(&pipeline->base);
+   }
+
+   for (; pipeline_index < createInfoCount; ++pipeline_index) {
+      pPipelines[pipeline_index] = VK_NULL_HANDLE;
+   }
+
+   return result;
 }

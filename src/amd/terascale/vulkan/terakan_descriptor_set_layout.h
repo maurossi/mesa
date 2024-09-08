@@ -28,6 +28,7 @@
 #include "vk_descriptor_set_layout.h"
 #include "vk_sampler.h"
 
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -37,6 +38,10 @@ extern "C" {
 struct terakan_descriptor_set_layout_binding {
    VkDescriptorType descriptor_type;
 
+   /* If descriptor_count is 0, all other fields are invalid.
+    * vkUpdateDescriptorSets should start the update at the next binding with nonzero
+    * descriptor_count.
+    */
    uint16_t descriptor_count;
 
    /* UINT16_MAX if not using an immutable sampler or dynamic offset. */
@@ -56,7 +61,7 @@ struct terakan_descriptor_set_layout_binding {
 
    uint8_t stage_flags;
 
-   /* Primarily for pushing. */
+   /* Primarily for shader compilation and pushing. */
    uint8_t first_shader_resources[MESA_SHADER_STAGES];
    uint8_t first_shader_samplers[MESA_SHADER_STAGES];
 };
@@ -93,12 +98,15 @@ struct terakan_descriptor_set_layout {
    uint32_t pool_first_rat_offset_bytes;
    uint32_t pool_size_bytes;
 
+   uint16_t dynamic_offset_count;
+
    struct terakan_sampler const ** immutable_samplers;
 
    /* Primarily for binding. */
    struct terakan_descriptor_set_layout_shader_range * shader_ranges;
    struct terakan_descriptor_set_layout_shader shaders[MESA_SHADER_STAGES];
 
+   size_t binding_count;
    struct terakan_descriptor_set_layout_binding * bindings;
 };
 

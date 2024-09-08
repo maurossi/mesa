@@ -66,17 +66,16 @@ terakan_descriptor_create_for_uniform_buffer(struct terakan_bo const * const bo,
                                              VkDeviceSize const bo_offset, VkDeviceSize const range,
                                              uint32_t resource_out[8])
 {
-   assert((bo_offset & (TERAKAN_CONSTANT_CACHE_LINE_BYTES - 1)) == 0);
+   assert((bo_offset & (TERAKAN_KCACHE_HW_LINE_BYTES - 1)) == 0);
    assert(range != VK_WHOLE_SIZE);
    if (bo == NULL || range == 0) {
       return false;
    }
 
-   /* Align to the constant cache line size for consistent out-of-bounds behavior between the fetch
-    * and the constant cache.
+   /* Align to the kcache line size for consistent out-of-bounds behavior between the fetch and the
+    * kcache.
     */
-   VkDeviceSize const range_aligned =
-      ALIGN_POT(range, (VkDeviceSize)TERAKAN_CONSTANT_CACHE_LINE_BYTES);
+   VkDeviceSize const range_aligned = ALIGN_POT(range, (VkDeviceSize)TERAKAN_KCACHE_HW_LINE_BYTES);
 
    resource_out[0] = (uint32_t)bo_offset;
    resource_out[1] = (uint32_t)(range_aligned - 1);

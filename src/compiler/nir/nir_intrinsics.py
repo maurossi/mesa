@@ -129,6 +129,10 @@ def intrinsic(name, src_comp=[], dest_comp=-1, indices=[],
 # a constant 'base' value which is added to the offset.
 index("int", "base")
 
+# Generally instructions that take an ID can encode the constant ID or a
+# constant base value which is added to the ID argument.
+index("unsigned", "id_base")
+
 # For store instructions, a writemask for the store.
 index("unsigned", "write_mask")
 
@@ -321,6 +325,9 @@ index("nir_op", "alu_op")
 # For Intel DPAS instrinsic.
 index("unsigned", "systolic_depth")
 index("unsigned", "repeat_count")
+
+# Hardware mega fetch count in bytes for load_buffer_resource_r600.
+index("unsigned", "mega_fetch_count_r600")
 
 intrinsic("nop", flags=[CAN_ELIMINATE])
 
@@ -1464,6 +1471,15 @@ intrinsic("load_local_shared_r600", src_comp=[0], dest_comp=0, indices = [], fla
 
 store("local_shared_r600", [1], [WRITE_MASK])
 store("tf_r600", [])
+
+# Load from a vertex fetch resource.
+# Reorderable, don't use for purposes like random access target immediate buffer reads.
+# src[] = { buffer index offset relative to ID_BASE, element index }
+# ID_BASE = buffer index base
+# BASE = data additional 16-bit offset in bytes
+# FORMAT = data format, or PIPE_FORMAT_NONE to use the format from the fetch constant
+load("buffer_resource_r600", src_comp=[1, 1], indices=[ACCESS, ID_BASE, BASE, COMPONENT, FORMAT, MEGA_FETCH_COUNT_R600],
+     flags=[CAN_ELIMINATE, CAN_REORDER])
 
 # AMD GCN/RDNA specific intrinsics
 

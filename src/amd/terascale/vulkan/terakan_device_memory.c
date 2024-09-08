@@ -192,8 +192,7 @@ terakan_AllocateMemory(VkDevice const deviceHandle,
     * with the smallest SLICE_TILE_MAX it considers them zero-size, so the RAT pitch alignment is
     * not important here.
     */
-   VkDeviceSize const bo_size =
-      ALIGN_POT(device_memory->vk.size, TERAKAN_CONSTANT_CACHE_LINE_BYTES);
+   VkDeviceSize const bo_size = ALIGN_POT(device_memory->vk.size, TERAKAN_KCACHE_HW_LINE_BYTES);
 
    VkMemoryPropertyFlags const memory_property_flags =
       physical_device->memory_properties.memoryTypes[device_memory->vk.memory_type_index]

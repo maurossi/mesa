@@ -93,7 +93,6 @@ struct r600_shader {
 	   Stages with only one ring items 123 will be set to 0. */
 	unsigned		ring_item_sizes[4];
 
-	unsigned		indirect_files;
 	unsigned		max_arrays;
 	unsigned		num_arrays;
 	unsigned		vs_as_es;

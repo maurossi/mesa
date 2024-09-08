@@ -27,7 +27,9 @@
 #include "terakan_instance.h"
 #include "wsi_common.h"
 
+#include "gallium/drivers/r600/r600_isa.h"
 #include "amd_family.h"
+#include "nir.h"
 #include "vk_physical_device.h"
 #include "vk_sync.h"
 #include "vk_sync_binary.h"
@@ -124,6 +126,11 @@ struct terakan_physical_device {
 
    struct terakan_physical_device_tiling_info tiling_info;
    VkDeviceSize buffer_image_bo_alignment;
+
+   /* nir_shader_compiler_options's lifetime must be at least as long as that of any NIR shader. */
+   nir_shader_compiler_options nir_options_non_fs;
+   nir_shader_compiler_options nir_options_fs;
+   struct r600_isa * isa;
 
    VkPhysicalDeviceMemoryProperties memory_properties;
 

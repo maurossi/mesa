@@ -56,7 +56,7 @@ struct terakan_meta_shader {
    struct terakan_meta_shader_description r8xx;
    struct terakan_meta_shader_description r9xx;
 
-   uint16_t constant_cache_needed;
+   uint16_t kcache_needed;
    BITSET_DECLARE(resources_needed, TERAKAN_RESOURCE_HW_COUNT_PIXEL_COMPUTE);
 };
 

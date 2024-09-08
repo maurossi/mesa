@@ -197,9 +197,6 @@ GDSInstr::emit_atomic_op2(nir_intrinsic_instr *instr, Shader& shader)
    } else
       src_as_register = src_val->as_register();
 
-   if (uav_id != nullptr)
-      shader.set_flag(Shader::sh_indirect_atomic);
-
    GDSInstr *ir = nullptr;
    if (shader.chip_class() < ISA_CC_CAYMAN) {
       RegisterVec4 src(nullptr, src_as_register, nullptr, nullptr, pin_free);

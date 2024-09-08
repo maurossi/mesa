@@ -99,7 +99,6 @@ void print_shader_info(FILE *f , int id, struct r600_shader *shader)
    PRINT_UINT_MEMBER(ring_item_sizes[2]);
    PRINT_UINT_MEMBER(ring_item_sizes[3]);
 
-   PRINT_UINT_MEMBER(indirect_files);
    PRINT_UINT_MEMBER(max_arrays);
    PRINT_UINT_MEMBER(num_arrays);
    PRINT_UINT_MEMBER(vs_as_es);
