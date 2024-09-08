@@ -26,8 +26,16 @@
 
 #include "terakan_physical_device.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void terakan_wsi_finish(struct terakan_physical_device * physical_device);
 
 VkResult terakan_wsi_init(struct terakan_physical_device * physical_device);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_WSI_H */

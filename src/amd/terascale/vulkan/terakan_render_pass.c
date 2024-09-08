@@ -56,7 +56,7 @@ terakan_CmdBeginRendering(VkCommandBuffer const commandBuffer,
       } else {
          state_draw->cb_color_bo[color_attachment_index] = NULL;
       }
-      terakan_state_draw_written(
+      terakan_state_draw_set_pending(
          state_draw, (enum terakan_state_draw_index)((uint32_t)TERAKAN_STATE_DRAW_CB_COLOR_FIRST +
                                                      color_attachment_index));
    }

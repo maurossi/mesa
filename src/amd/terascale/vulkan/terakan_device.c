@@ -23,7 +23,6 @@
 
 #include "terakan_device.h"
 
-#include "winsys/terakan_winsys.h"
 #include "terakan_command_buffer.h"
 #include "terakan_entrypoints.h"
 #include "terakan_physical_device.h"
@@ -38,8 +37,8 @@
 #include <stddef.h>
 #include <string.h>
 
-static void
-terakan_device_destroy(struct terakan_device * const device)
+void
+terakan_device_finish(struct terakan_device * const device)
 {
    if (device->queue_graphics != NULL) {
       terakan_queue_destroy(device->queue_graphics);
@@ -53,11 +52,9 @@ terakan_device_destroy(struct terakan_device * const device)
    cnd_destroy(&device->completion_condition);
    mtx_destroy(&device->completion_mutex);
 
-   terakan_winsys_bo_free(device->meta_shaders_bo);
+   terakan_bo_free(device->meta_shaders_bo, NULL);
 
    vk_device_finish(&device->vk);
-
-   vk_free(&device->vk.alloc, device);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -69,39 +66,39 @@ terakan_DestroyDevice(VkDevice const deviceHandle, VkAllocationCallbacks const *
       return;
    }
 
-   terakan_device_destroy(device);
+   device->winsys_fn->destroy(device);
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL
-terakan_CreateDevice(VkPhysicalDevice const physicalDevice,
-                     VkDeviceCreateInfo const * const pCreateInfo,
-                     VkAllocationCallbacks const * const pAllocator, VkDevice * const pDevice)
+VkResult
+terakan_device_init(struct terakan_device * const device,
+                    struct terakan_physical_device * const physical_device,
+                    VkDeviceCreateInfo const * const create_info,
+                    VkAllocationCallbacks const * const allocator,
+                    struct terakan_device_winsys_fn const * const winsys_fn_static,
+                    size_t const bo_reference_size, size_t const bo_reference_alignment)
 {
    VkResult result;
-
-   struct terakan_physical_device * const physical_device =
-      terakan_physical_device_from_handle(physicalDevice);
-
-   struct terakan_device * const device =
-      vk_alloc2(&physical_device->vk.instance->alloc, pAllocator, sizeof(struct terakan_device),
-                alignof(struct terakan_device), VK_SYSTEM_ALLOCATION_SCOPE_DEVICE);
-   if (device == NULL) {
-      return vk_error(physical_device->vk.instance, VK_ERROR_OUT_OF_HOST_MEMORY);
-   }
 
    struct vk_device_dispatch_table dispatch_table;
    vk_device_dispatch_table_from_entrypoints(&dispatch_table, &terakan_device_entrypoints, true);
    vk_device_dispatch_table_from_entrypoints(&dispatch_table, &wsi_device_entrypoints, false);
 
    result =
-      vk_device_init(&device->vk, &physical_device->vk, &dispatch_table, pCreateInfo, pAllocator);
+      vk_device_init(&device->vk, &physical_device->vk, &dispatch_table, create_info, allocator);
    if (result != VK_SUCCESS) {
-      goto fail_alloc;
+      return result;
    }
 
    device->vk.command_buffer_ops = &terakan_command_buffer_ops;
 
-   bool const is_r9xx = physical_device->winsys->gpu_info.gfx_level >= CAYMAN;
+   device->winsys_fn = winsys_fn_static;
+
+   device->bo_reference_size = bo_reference_size;
+   device->bo_reference_alignment = bo_reference_alignment;
+
+   device->last_bo_creation_number = 0;
+
+   bool const is_r9xx = physical_device->chip_family_info.is_r9xx;
 
    VkDeviceSize meta_shaders_bo_size = 0;
    for (size_t meta_shader_index = 0; meta_shader_index < TERAKAN_META_SHADER_COUNT;
@@ -119,18 +116,18 @@ terakan_CreateDevice(VkPhysicalDevice const physicalDevice,
          meta_shader_offset >> TERAKAN_SHADER_PROGRAM_ALIGNMENT_LOG2;
       meta_shaders_bo_size = meta_shader_offset + meta_shader_description->program_size_bytes;
    }
-   device->meta_shaders_bo = physical_device->winsys->bo_fn->allocate_device_memory(
-      physical_device->winsys, meta_shaders_bo_size, TERAKAN_SHADER_PROGRAM_ALIGNMENT,
+   result = device->winsys_fn->bo->allocate_device_memory(
+      device, meta_shaders_bo_size, TERAKAN_SHADER_PROGRAM_ALIGNMENT,
       VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
          VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-      0);
-   if (device->meta_shaders_bo == NULL) {
-      result = vk_errorf(physical_device->vk.instance, VK_ERROR_OUT_OF_DEVICE_MEMORY,
+      0, NULL, VK_SYSTEM_ALLOCATION_SCOPE_DEVICE, &device->meta_shaders_bo);
+   if (result != VK_SUCCESS) {
+      result = vk_errorf(physical_device->vk.instance, result,
                          "Failed to allocate memory for internal shaders");
       goto fail_device;
    }
    {
-      char * const meta_shaders_bo_mapping = terakan_winsys_bo_map(device->meta_shaders_bo);
+      char * const meta_shaders_bo_mapping = terakan_bo_map(device->meta_shaders_bo);
       if (meta_shaders_bo_mapping == NULL) {
          result = vk_errorf(physical_device->vk.instance, VK_ERROR_OUT_OF_HOST_MEMORY,
                             "Failed to map the internal shaders buffer object");
@@ -149,7 +146,7 @@ terakan_CreateDevice(VkPhysicalDevice const physicalDevice,
                                            << TERAKAN_SHADER_PROGRAM_ALIGNMENT_LOG2),
                 meta_shader_description->program, meta_shader_description->program_size_bytes);
       }
-      terakan_winsys_bo_unmap(device->meta_shaders_bo);
+      terakan_bo_unmap(device->meta_shaders_bo);
    }
 
    if (mtx_init(&device->completion_mutex, mtx_plain) != thrd_success) {
@@ -166,42 +163,58 @@ terakan_CreateDevice(VkPhysicalDevice const physicalDevice,
    device->completion_lost = false;
 
    device->queue_graphics = NULL;
-
-   /* The device can be finished at this point in case of an error. Create optional queues. */
-
    for (uint32_t queue_create_info_index = 0;
-        queue_create_info_index < pCreateInfo->queueCreateInfoCount; ++queue_create_info_index) {
+        queue_create_info_index < create_info->queueCreateInfoCount; ++queue_create_info_index) {
       VkDeviceQueueCreateInfo const * const queue_create_info =
-         &pCreateInfo->pQueueCreateInfos[queue_create_info_index];
+         &create_info->pQueueCreateInfos[queue_create_info_index];
       if (queue_create_info->queueFamilyIndex == 0) {
          if (queue_create_info->queueCount != 1 || device->queue_graphics != NULL) {
-            terakan_device_destroy(device);
-            return vk_errorf(physical_device->vk.instance, VK_ERROR_INITIALIZATION_FAILED,
-                             "Only one graphics queue can be created");
+            result = vk_errorf(physical_device->vk.instance, VK_ERROR_INITIALIZATION_FAILED,
+                               "Only one graphics queue can be created");
+            goto fail_queues;
          }
          result = terakan_queue_create(device, queue_create_info, 0, &device->queue_graphics);
          if (result != VK_SUCCESS) {
-            terakan_device_destroy(device);
-            return result;
+            goto fail_queues;
          }
       } else {
-         terakan_device_destroy(device);
-         return vk_errorf(physical_device->vk.instance, VK_ERROR_INITIALIZATION_FAILED,
-                          "Unknown queue family requested");
+         result = vk_errorf(physical_device->vk.instance, VK_ERROR_INITIALIZATION_FAILED,
+                            "Unknown queue family requested");
+         goto fail_queues;
       }
    }
 
-   *pDevice = terakan_device_to_handle(device);
-
    return VK_SUCCESS;
 
+fail_queues:
+   if (device->queue_graphics != NULL) {
+      terakan_queue_destroy(device->queue_graphics);
+   }
+   cnd_destroy(&device->completion_condition);
 fail_completion_mutex:
    mtx_destroy(&device->completion_mutex);
 fail_meta_shaders_bo:
-   terakan_winsys_bo_free(device->meta_shaders_bo);
+   terakan_bo_free(device->meta_shaders_bo, NULL);
 fail_device:
    vk_device_finish(&device->vk);
-fail_alloc:
-   vk_free(&device->vk.alloc, device);
    return result;
+}
+
+VKAPI_ATTR VkResult VKAPI_CALL
+terakan_CreateDevice(VkPhysicalDevice const physicalDevice,
+                     VkDeviceCreateInfo const * const pCreateInfo,
+                     VkAllocationCallbacks const * const pAllocator, VkDevice * const pDevice)
+{
+   struct terakan_physical_device * const physical_device =
+      terakan_physical_device_from_handle(physicalDevice);
+
+   struct terakan_device * device;
+   VkResult const result =
+      physical_device->winsys_fn->create_device(physical_device, pCreateInfo, pAllocator, &device);
+   if (result != VK_SUCCESS) {
+      return result;
+   }
+
+   *pDevice = terakan_device_to_handle(device);
+   return VK_SUCCESS;
 }

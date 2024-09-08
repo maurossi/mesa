@@ -21,56 +21,46 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef TERAKAN_BUFFER_H
-#define TERAKAN_BUFFER_H
+#ifndef TERAKAN_PIPELINE_LAYOUT_H
+#define TERAKAN_PIPELINE_LAYOUT_H
 
-#include "terakan_bo.h"
-#include "terakan_descriptor.h"
+#include "compiler/shader_enums.h"
+#include "vk_pipeline_layout.h"
 
-#include "vk_buffer.h"
-#include "vk_buffer_view.h"
-
-#include <stdbool.h>
-#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-struct terakan_buffer {
-   struct vk_buffer vk;
-
-   struct terakan_bo const * bo;
-   VkDeviceSize bo_offset;
+struct terakan_pipeline_layout_set {
+   uint8_t first_shader_resources[MESA_SHADER_STAGES];
+   uint8_t first_shader_samplers[MESA_SHADER_STAGES];
 };
 
-VK_DEFINE_NONDISP_HANDLE_CASTS(terakan_buffer, vk.base, VkBuffer, VK_OBJECT_TYPE_BUFFER)
+struct terakan_pipeline_layout {
+   struct vk_pipeline_layout vk;
 
-struct terakan_bo const *
-terakan_buffer_create_uniform_buffer_descriptor(VkDescriptorBufferInfo const * buffer_info,
-                                                uint32_t resource_out[8]);
+   struct terakan_pipeline_layout_set * sets;
 
-struct terakan_bo const *
-terakan_buffer_create_storage_buffer_descriptor(VkDescriptorBufferInfo const * buffer_info,
-                                                uint32_t resource_out[8],
-                                                struct terakan_color_descriptor * color_out);
+   uint32_t shader_non_immutable_samplers[MESA_SHADER_STAGES];
+   uint32_t shader_immutable_samplers_unnormalized_coordinates[MESA_SHADER_STAGES];
 
-struct terakan_buffer_view {
-   struct vk_buffer_view vk;
-
-   struct terakan_bo const * bo;
-
-   uint32_t resource[8];
-
-   struct terakan_color_descriptor color;
+   uint32_t shader_push_constant_extents_bytes[MESA_SHADER_STAGES];
 };
 
-VK_DEFINE_NONDISP_HANDLE_CASTS(terakan_buffer_view, vk.base, VkBufferView,
-                               VK_OBJECT_TYPE_BUFFER_VIEW)
+VK_DEFINE_NONDISP_HANDLE_CASTS(terakan_pipeline_layout, vk.base, VkPipelineLayout,
+                               VK_OBJECT_TYPE_PIPELINE_LAYOUT)
+
+struct terakan_device;
+
+VkResult terakan_pipeline_layout_create(struct terakan_device * device,
+                                        VkPipelineLayoutCreateInfo const * create_info,
+                                        VkShaderStageFlags stage_mask,
+                                        struct terakan_pipeline_layout ** pipeline_layout_out);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* TERAKAN_BUFFER_H */
+#endif /* TERAKAN_PIPELINE_LAYOUT_H */

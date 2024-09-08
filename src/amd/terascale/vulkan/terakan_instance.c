@@ -40,6 +40,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#if defined(TERAKAN_PHYSICAL_DEVICE_HAS_WINSYS_DRM_RADEON)
+#include "winsys/drm_radeon/terakan_physical_device_drm_radeon.h"
+#endif
+
 static struct debug_control const terakan_debug_options[] = {{"startup", TERAKAN_DEBUG_STARTUP},
                                                              {NULL, 0}};
 
@@ -184,7 +188,11 @@ terakan_CreateInstance(VkInstanceCreateInfo const * const pCreateInfo,
 
    /* Initialize physical device management. */
 
-   instance->vk.physical_devices.try_create_for_drm = terakan_physical_device_try_create_for_drm;
+#if defined(TERAKAN_PHYSICAL_DEVICE_HAS_WINSYS_DRM_RADEON)
+   instance->vk.physical_devices.try_create_for_drm = terakan_physical_device_drm_radeon_try_create;
+#else
+#error "No physical device enumeration function for the target platform"
+#endif
 
    instance->vk.physical_devices.destroy = terakan_physical_device_destroy;
 
@@ -193,7 +201,6 @@ terakan_CreateInstance(VkInstanceCreateInfo const * const pCreateInfo,
    }
 
    *pInstance = terakan_instance_to_handle(instance);
-
    return VK_SUCCESS;
 }
 

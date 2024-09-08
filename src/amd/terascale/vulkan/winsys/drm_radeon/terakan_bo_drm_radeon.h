@@ -26,23 +26,21 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef TERAKAN_WINSYS_DRM_RADEON_H
-#define TERAKAN_WINSYS_DRM_RADEON_H
+#ifndef TERAKAN_BO_DRM_RADEON_H
+#define TERAKAN_BO_DRM_RADEON_H
 
-#include "../terakan_winsys.h"
+#include "terakan_bo.h"
 
-#include "c11/threads.h"
-#include "util/hash_table.h"
-#include "vk_sync.h"
-#include "vk_sync_binary.h"
-
-#include <stddef.h>
+#include <stdbool.h>
 #include <xf86drm.h>
 #include <vulkan/vulkan_core.h>
-#include <radeon_surface.h>
 
-struct terakan_winsys_drm_radeon_bo {
-   struct terakan_winsys_bo base;
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct terakan_bo_drm_radeon {
+   struct terakan_bo base;
 
    VkDeviceSize size;
 
@@ -53,33 +51,10 @@ struct terakan_winsys_drm_radeon_bo {
    bool handle_shareable;
 };
 
-extern struct terakan_winsys_surface_fn const terakan_winsys_drm_radeon_surface_fn;
+extern struct terakan_bo_winsys_fn const terakan_bo_drm_radeon_fn;
 
-extern struct terakan_winsys_bo_fn const terakan_winsys_drm_radeon_bo_fn;
+#ifdef __cplusplus
+}
+#endif
 
-extern struct terakan_winsys_cs_fn const terakan_winsys_drm_radeon_cs_fn;
-
-struct terakan_winsys_drm_radeon {
-   struct terakan_winsys base;
-
-   /* Not owned by the winsys. */
-   int fd;
-
-   struct radeon_surface_manager * surface_manager;
-
-   /* Implementing reference counting for shared BO handles, since drmPrimeFDToHandle returns the
-    * same handle when importing the same BO multiple times even with different file descriptors,
-    * and GEM has no implicit reference counting for BO handles.
-    * Reference count updates must be done atomically with drmPrimeFDToHandle and
-    * DRM_IOCTL_GEM_CLOSE using the mutex.
-    */
-   mtx_t shared_bo_mutex;
-   struct hash_table * shared_bo_reference_counts;
-
-   struct vk_sync_binary_type sync_type_binary;
-   struct vk_sync_type const * sync_types[3];
-};
-
-struct terakan_winsys * terakan_winsys_drm_radeon_create(int fd);
-
-#endif /* TERAKAN_WINSYS_DRM_RADEON_H */
+#endif /* TERAKAN_BO_DRM_RADEON_H */

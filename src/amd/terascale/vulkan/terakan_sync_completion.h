@@ -21,12 +21,16 @@
  * IN THE SOFTWARE.
  */
 
+#ifndef TERAKAN_SYNC_COMPLETION_H
+#define TERAKAN_SYNC_COMPLETION_H
+
 #include "vk_sync.h"
 
 #include <stdint.h>
 
-#ifndef TERAKAN_SYNC_COMPLETION_H
-#define TERAKAN_SYNC_COMPLETION_H
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct terakan_sync_completion {
    struct vk_sync vk;
@@ -40,5 +44,9 @@ struct terakan_sync_completion {
 };
 
 extern struct vk_sync_type const terakan_sync_completion_type;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_SYNC_COMPLETION_H */

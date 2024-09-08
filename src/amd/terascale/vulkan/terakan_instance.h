@@ -28,6 +28,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
 #define TERAKAN_USE_WSI_PLATFORM
 #endif
@@ -53,5 +57,9 @@ struct terakan_instance {
 };
 
 VK_DEFINE_HANDLE_CASTS(terakan_instance, vk.base, VkInstance, VK_OBJECT_TYPE_INSTANCE)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_INSTANCE_H */

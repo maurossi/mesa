@@ -54,9 +54,9 @@ terakan_bo_reference_writer_reset(struct terakan_bo_reference_writer * const wri
 
 uint32_t
 terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_writer * const writer,
-                                          struct terakan_winsys_bo const * const bo,
-                                          bool const is_reading, bool const is_writing,
-                                          enum terakan_winsys_cs_bo_priority const priority)
+                                          struct terakan_bo const * const bo, bool const is_reading,
+                                          bool const is_writing,
+                                          enum terakan_bo_priority const priority)
 {
    /* Provide two slots per hash value for quick handling of collisions by effectively doing
     * separate chaining if there are only 2 BOs per hash in this open addressing scheme (though this
@@ -102,9 +102,9 @@ terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_writer * c
    }
 
    /* Create the new or update the existing reference. */
-   size_t const reference_size = bo->winsys->gpu_info.cs_bo_reference_size;
+   size_t const reference_size = bo->device->bo_reference_size;
    if (reference_index != UINT32_MAX) {
-      bo->winsys->cs_fn->update_bo_reference(
+      bo->device->winsys_fn->bo->update_reference(
          (char *)writer->references + reference_size * reference_index, bo, is_reading, is_writing,
          priority);
    } else {
@@ -113,7 +113,7 @@ terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_writer * c
       }
       reference_index = writer->reference_count++;
       writer->reference_bos[reference_index] = bo;
-      bo->winsys->cs_fn->create_bo_reference(
+      bo->device->winsys_fn->bo->create_reference(
          (char *)writer->references + reference_size * reference_index, bo, is_reading, is_writing,
          priority);
    }
@@ -137,7 +137,7 @@ terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_writer * c
 void *
 terakan_command_buffer_allocate_push_constants(struct terakan_command_buffer * const command_buffer,
                                                uint32_t const size_bytes,
-                                               struct terakan_winsys_bo const ** const bo_out,
+                                               struct terakan_bo const ** const bo_out,
                                                uint32_t * base_cache_lines_out)
 {
    assert(size_bytes <= TERAKAN_CONSTANT_CACHE_MAX_BUFFER_SIZE_BYTES);
@@ -200,26 +200,24 @@ terakan_command_buffer_allocate_push_constants(struct terakan_command_buffer * c
          return NULL;
       }
 
-      struct terakan_winsys * const winsys =
-         container_of(command_buffer->vk.pool->base.device->physical,
-                      struct terakan_physical_device const, vk)
-            ->winsys;
+      struct terakan_device * const device =
+         container_of(command_buffer->vk.pool->base.device, struct terakan_device, vk);
 
-      new_buffer->bo = winsys->bo_fn->allocate_device_memory(
-         winsys, TERAKAN_CONSTANT_CACHE_LINE_BYTES * buffer_size_cache_lines,
+      VkResult const bo_allocate_result = device->winsys_fn->bo->allocate_device_memory(
+         device, TERAKAN_CONSTANT_CACHE_LINE_BYTES * buffer_size_cache_lines,
          TERAKAN_CONSTANT_CACHE_LINE_BYTES,
          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-         0);
-      if (new_buffer->bo == NULL) {
-         vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_DEVICE_MEMORY);
+         0, &command_pool->vk.alloc, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, &new_buffer->bo);
+      if (bo_allocate_result != VK_SUCCESS) {
+         vk_command_buffer_set_error(&command_buffer->vk, bo_allocate_result);
          vk_free(&command_pool->vk.alloc, new_buffer);
          return NULL;
       }
 
-      if (terakan_winsys_bo_map(new_buffer->bo) == NULL) {
+      if (terakan_bo_map(new_buffer->bo) == NULL) {
          vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
-         terakan_winsys_bo_free(new_buffer->bo);
+         terakan_bo_free(new_buffer->bo, &command_pool->vk.alloc);
          vk_free(&command_pool->vk.alloc, new_buffer);
          return NULL;
       }
@@ -265,15 +263,13 @@ terakan_command_buffer_new_indirect_buffer(struct terakan_command_buffer * const
 
       indirect_buffer->base.is_secondary_execution = false;
 
-      struct terakan_gpu_info const * const gpu_info =
-         &container_of(command_buffer->vk.pool->base.device->physical,
-                       struct terakan_physical_device const, vk)
-             ->winsys->gpu_info;
+      struct terakan_device const * const device =
+         container_of(command_buffer->vk.pool->base.device, struct terakan_device const, vk);
 
       indirect_buffer->bo_references =
          vk_alloc(&command_pool->vk.alloc,
-                  gpu_info->cs_bo_reference_size * TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT,
-                  gpu_info->cs_bo_reference_alignment, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+                  device->bo_reference_size * TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT,
+                  device->bo_reference_alignment, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (indirect_buffer->bo_references == NULL) {
          vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
          vk_free(&command_pool->vk.alloc, indirect_buffer);
@@ -314,9 +310,8 @@ terakan_command_buffer_release_resources(struct terakan_command_buffer * const c
       command_buffer->command_writer.gfx = NULL;
    }
 
-   list_for_each_entry_safe(struct terakan_command_buffer_submission, submission_base,
-                            &command_buffer->submissions, command_buffer_submission_link)
-   {
+   list_for_each_entry_safe (struct terakan_command_buffer_submission, submission_base,
+                             &command_buffer->submissions, command_buffer_submission_link) {
       list_del(&submission_base->command_buffer_submission_link);
       if (submission_base->is_secondary_execution) {
          struct terakan_command_buffer_submission_secondary_execution * const submission =
@@ -392,7 +387,6 @@ terakan_command_buffer_create(struct vk_command_pool * const command_pool,
    command_buffer->command_writer.gfx = NULL;
 
    *command_buffer_out = &command_buffer->vk;
-
    return VK_SUCCESS;
 }
 
@@ -436,10 +430,10 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
     * - fglrx indirect buffers
     */
 
-   struct terakan_gpu_info const * const gpu_info =
-      &container_of(command_writer->base.command_buffer->vk.pool->base.device->physical,
-                    struct terakan_physical_device const, vk)
-          ->winsys->gpu_info;
+   struct terakan_physical_device const * const physical_device =
+      container_of(command_writer->base.command_buffer->vk.pool->base.device->physical,
+                   struct terakan_physical_device const, vk);
+   bool const is_r9xx = physical_device->chip_family_info.is_r9xx;
 
    uint32_t * packet;
 
@@ -456,7 +450,7 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
     * Setup graphics context registers outside terakan_hw_state_draw.
     */
 
-   if (gpu_info->gfx_level <= EVERGREEN) {
+   if (!is_r9xx) {
       /* Workaround for hardware issues with dynamic GPRs - must set all limits to 240 (in units of
        * 8 registers) instead of 0. */
       packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
@@ -676,11 +670,8 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       S_028A08_WIDTH((uint32_t)1 << 3),
 
       /* TODO(Triang3l): Move to hw_state_draw. */
-      PKT3(PKT3_SET_CONTEXT_REG, 2, 0),
-      TERAKAN_CONTEXT_REG_OFFSET(R_028A48_PA_SC_MODE_CNTL_0),
-      /* R_028A48_PA_SC_MODE_CNTL_0 */
-      0,
-      /* R_028A4C_PA_SC_MODE_CNTL_1 */
+      PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
+      TERAKAN_CONTEXT_REG_OFFSET(R_028A4C_PA_SC_MODE_CNTL_1),
       EG_S_028A4C_FORCE_EOV_CNTDWN_ENABLE(1) | EG_S_028A4C_FORCE_EOV_REZ_ENABLE(1),
 
       /*
@@ -695,11 +686,8 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       /* TODO(Triang3l): Move to hw_state_draw.
        * DECOMPRESS_Z_ON_FLUSH on R9xx must be enabled for 4x+ AA.
        */
-      PKT3(PKT3_SET_CONTEXT_REG, 2, 0),
-      TERAKAN_CONTEXT_REG_OFFSET(R_02800C_DB_RENDER_OVERRIDE),
-      /* R_02800C_DB_RENDER_OVERRIDE */
-      0,
-      /* R_028010_DB_RENDER_OVERRIDE2 */
+      PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
+      TERAKAN_CONTEXT_REG_OFFSET(R_028010_DB_RENDER_OVERRIDE2),
       0,
 
       /* TODO(Triang3l): Move to hw_state_draw. */
@@ -747,7 +735,7 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
    }
    memcpy(packet, draw_context_regs, sizeof(draw_context_regs));
 
-   if (gpu_info->gfx_level >= CAYMAN) {
+   if (is_r9xx) {
       /* TODO(Triang3l): Move to hw_state_draw. */
       packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
       if (unlikely(packet == NULL)) {
@@ -781,8 +769,8 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       return;
    }
    *packet++ = PKT3(PKT3_SET_CONTEXT_REG, 1, 0);
-   *packet++ = TERAKAN_CONTEXT_REG_OFFSET(gpu_info->gfx_level >= CAYMAN ? CM_R_028BE4_PA_SU_VTX_CNTL
-                                                                        : R_028C08_PA_SU_VTX_CNTL);
+   *packet++ =
+      TERAKAN_CONTEXT_REG_OFFSET(is_r9xx ? CM_R_028BE4_PA_SU_VTX_CNTL : R_028C08_PA_SU_VTX_CNTL);
    *packet++ = S_028C08_PIX_CENTER_HALF(1) | S_028C08_ROUND_MODE(V_028C08_X_ROUND_TO_EVEN) |
                S_028C08_QUANT_MODE(V_028C08_X_1_256TH);
 
@@ -790,11 +778,12 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
     * Setup configuration registers common between graphics and compute.
     */
 
-   uint32_t sq_config = S_008C00_VC_ENABLE(gpu_info->has_vertex_cache) | S_008C00_EXPORT_SRC_C(1);
+   uint32_t sq_config = S_008C00_VC_ENABLE(physical_device->chip_family_info.has_vertex_cache) |
+                        S_008C00_EXPORT_SRC_C(1);
    /* Not raising CS2 priority in SQ_CONFIG on R9xx unlike in Linux Radeon 2.50.0 because it doesn't
     * expose the compute rings at all.
     */
-   if (gpu_info->gfx_level <= EVERGREEN) {
+   if (!is_r9xx) {
       sq_config |= S_008C00_LS_PRIO(3) | S_008C00_HS_PRIO(3) | S_008C00_ES_PRIO(3) |
                    S_008C00_GS_PRIO(2) | S_008C00_VS_PRIO(1) | S_008C00_PS_PRIO(0) |
                    S_008C00_CS_PRIO(0);
@@ -803,13 +792,13 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
    if (unlikely(packet == NULL)) {
       return;
    }
-   *packet++ = PKT3(PKT3_SET_CONFIG_REG, gpu_info->gfx_level >= CAYMAN ? 2 : 6, 0);
+   *packet++ = PKT3(PKT3_SET_CONFIG_REG, is_r9xx ? 2 : 6, 0);
    *packet++ = TERAKAN_CONFIG_REG_OFFSET(R_008C00_SQ_CONFIG);
    /* R_008C00_SQ_CONFIG */
    *packet++ = sq_config;
    /* R_008C04_SQ_GPR_RESOURCE_MGMT_1 */
    *packet++ = S_008C04_NUM_CLAUSE_TEMP_GPRS(4);
-   if (gpu_info->gfx_level >= CAYMAN) {
+   if (is_r9xx) {
       *packet++ = PKT3(PKT3_SET_CONFIG_REG, 2, 0);
       *packet++ = TERAKAN_CONFIG_REG_OFFSET(R_008C10_SQ_GLOBAL_GPR_RESOURCE_MGMT_1);
    } else {
@@ -874,16 +863,18 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
 
    /* TODO(Triang3l): Emit the values for graphics or compute when switching between the two. */
 
-   if (gpu_info->gfx_level <= EVERGREEN) {
+   if (!is_r9xx) {
       /* The thread counts should be a multiple of 8 as space is allocated in blocks of 8 according
        * to the register reference.
        * Linux Radeon 2.50.0 spreads the non-pixel-shader threads evenly between 6 stages, but aside
        * from the pixel shader there are 5 stages - allocate more.
        */
-      uint32_t const sq_vertex_threads =
-         (gpu_info->sq_max_threads - gpu_info->sq_ps_threads_r8xx) / 5 / 8 * 8;
+      uint32_t const sq_vertex_threads = (physical_device->chip_family_info.sq_max_threads -
+                                          physical_device->chip_family_info.sq_ps_threads_r8xx) /
+                                         5 / 8 * 8;
 
-      uint32_t const sq_stage_stack_entries = gpu_info->sq_max_stack_entries / 6;
+      uint32_t const sq_stage_stack_entries =
+         physical_device->chip_family_info.sq_max_stack_entries / 6;
 
       uint32_t const sq_thread_stack_register_count =
          (R_008C28_SQ_STACK_RESOURCE_MGMT_3 - R_008C18_SQ_THREAD_RESOURCE_MGMT_1) /
@@ -897,7 +888,7 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       *packet++ = PKT3(PKT3_SET_CONFIG_REG, sq_thread_stack_register_count, 0);
       *packet++ = TERAKAN_CONFIG_REG_OFFSET(R_008C18_SQ_THREAD_RESOURCE_MGMT_1);
       /* R_008C18_SQ_THREAD_RESOURCE_MGMT_1 */
-      *packet++ = S_008C18_NUM_PS_THREADS(gpu_info->sq_ps_threads_r8xx) |
+      *packet++ = S_008C18_NUM_PS_THREADS(physical_device->chip_family_info.sq_ps_threads_r8xx) |
                   S_008C18_NUM_VS_THREADS(sq_vertex_threads) |
                   S_008C18_NUM_GS_THREADS(sq_vertex_threads) |
                   S_008C18_NUM_ES_THREADS(sq_vertex_threads);
@@ -1073,7 +1064,9 @@ terakan_BeginCommandBuffer(VkCommandBuffer const commandBuffer,
 
    terakan_hw_state_draw_reset(&command_buffer->command_writer.gfx->hw_state_draw);
 
-   terakan_state_draw_reset(&command_buffer->command_writer.gfx->state_draw);
+   terakan_state_draw_reset(
+      &command_buffer->command_writer.gfx->state_draw,
+      command_buffer->vk.pool->base.device->enabled_extensions.EXT_depth_range_unrestricted);
 
    return vk_command_buffer_get_record_result(&command_buffer->vk);
 }
@@ -1081,23 +1074,20 @@ terakan_BeginCommandBuffer(VkCommandBuffer const commandBuffer,
 static void
 terakan_command_pool_trim_resources(struct terakan_command_pool * const command_pool)
 {
-   list_for_each_entry_safe(struct terakan_gfx_command_writer, command_writer,
-                            &command_pool->command_writers_free, base.free_link)
-   {
+   list_for_each_entry_safe (struct terakan_gfx_command_writer, command_writer,
+                             &command_pool->command_writers_free, base.free_link) {
       vk_free(&command_pool->vk.alloc, command_writer);
    }
    list_inithead(&command_pool->command_writers_free);
 
-   list_for_each_entry_safe(struct terakan_command_buffer_submission_secondary_execution,
-                            submission, &command_pool->secondary_executions_free, free_link)
-   {
+   list_for_each_entry_safe (struct terakan_command_buffer_submission_secondary_execution,
+                             submission, &command_pool->secondary_executions_free, free_link) {
       vk_free(&command_pool->vk.alloc, submission);
    }
    list_inithead(&command_pool->secondary_executions_free);
 
-   list_for_each_entry_safe(struct terakan_command_buffer_submission_indirect_buffer, submission,
-                            &command_pool->indirect_buffers_free, free_link)
-   {
+   list_for_each_entry_safe (struct terakan_command_buffer_submission_indirect_buffer, submission,
+                             &command_pool->indirect_buffers_free, free_link) {
       vk_free(&command_pool->vk.alloc, submission->indirect_buffer);
       vk_free(&command_pool->vk.alloc, submission->bo_references);
       vk_free(&command_pool->vk.alloc, submission);
@@ -1106,7 +1096,7 @@ terakan_command_pool_trim_resources(struct terakan_command_pool * const command_
 
    list_for_each_entry_safe (struct terakan_push_constant_buffer, push_constant_buffer,
                              &command_pool->push_constant_buffers_free, link) {
-      terakan_winsys_bo_free(push_constant_buffer->bo);
+      terakan_bo_free(push_constant_buffer->bo, &command_pool->vk.alloc);
       vk_free(&command_pool->vk.alloc, push_constant_buffer);
    }
    list_inithead(&command_pool->push_constant_buffers_free);
@@ -1178,6 +1168,5 @@ terakan_CreateCommandPool(VkDevice const deviceHandle,
    }
 
    *pCommandPool = terakan_command_pool_to_handle(command_pool);
-
    return VK_SUCCESS;
 }

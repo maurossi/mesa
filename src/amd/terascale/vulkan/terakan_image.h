@@ -24,20 +24,23 @@
 #ifndef TERAKAN_IMAGE_H
 #define TERAKAN_IMAGE_H
 
-#include "winsys/terakan_winsys.h"
+#include "terakan_bo.h"
 #include "terakan_descriptor.h"
 
 #include "gallium/drivers/r600/evergreend.h"
 #include "util/bitscan.h"
 #include "util/u_math.h"
 #include "ac_surface.h"
-#include "amd_family.h"
 #include "vk_format.h"
 #include "vk_image.h"
 
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES_LOG2 14
 #define TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES                                                   \
@@ -88,19 +91,19 @@ struct terakan_image {
     *
     * The stencil fields are valid only if has_stencil is true.
     *
-    * u.legacy.num_banks may be zero - use terakan_gpu_info::tile_banks_log2 instead.
+    * u.legacy.num_banks may be zero - use terakan_physical_device_tiling_info::banks_log2 instead.
     */
    struct radeon_surf surface;
 
-   struct terakan_winsys_bo const * bo;
+   struct terakan_bo const * bo;
    VkDeviceSize bo_offset;
 };
 
-VK_DEFINE_HANDLE_CASTS(terakan_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
+VK_DEFINE_NONDISP_HANDLE_CASTS(terakan_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
 
-bool terakan_image_uses_tc_non_display_tiling(enum amd_gfx_level gfx_level, VkFormat image_format,
+bool terakan_image_uses_tc_non_display_tiling(bool is_r9xx, VkFormat image_format,
                                               bool level_is_linear);
-bool terakan_image_uses_cb_non_display_tiling(enum amd_gfx_level gfx_level, VkFormat image_format,
+bool terakan_image_uses_cb_non_display_tiling(bool is_r9xx, VkFormat image_format,
                                               bool level_is_linear);
 
 bool terakan_image_create_resource_descriptor(VkImageViewCreateInfo const * image_view_create_info,
@@ -118,10 +121,18 @@ uint32_t terakan_image_create_color_descriptor(
    struct terakan_color_descriptor * descriptor_out,
    struct terakan_color_meta_descriptor * meta_descriptor_out_opt);
 
+struct terakan_device;
+
+struct terakan_image_winsys_fn {
+   bool (*get_surface_info)(struct terakan_device const * device,
+                            VkImageCreateInfo const * image_create_info,
+                            struct radeon_surf * surface_out);
+};
+
 struct terakan_image_view {
    struct vk_image_view vk;
 
-   struct terakan_winsys_bo const * bo;
+   struct terakan_bo const * bo;
 
    uint32_t resource[8];
 
@@ -129,6 +140,10 @@ struct terakan_image_view {
    struct terakan_color_meta_descriptor color_meta;
 };
 
-VK_DEFINE_HANDLE_CASTS(terakan_image_view, vk.base, VkImageView, VK_OBJECT_TYPE_IMAGE_VIEW);
+VK_DEFINE_NONDISP_HANDLE_CASTS(terakan_image_view, vk.base, VkImageView, VK_OBJECT_TYPE_IMAGE_VIEW)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

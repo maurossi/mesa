@@ -605,30 +605,6 @@ terakan_format_data_get_swizzle(VkFormat const format)
 }
 
 uint32_t
-terakan_format_data_component_swizzle_to_dst_sel(VkComponentSwizzle component_swizzle,
-                                                 VkComponentSwizzle const identity_swizzle,
-                                                 unsigned char const format_swizzle[4])
-{
-   if (component_swizzle == VK_COMPONENT_SWIZZLE_IDENTITY) {
-      component_swizzle = identity_swizzle;
-   }
-   if (component_swizzle >= VK_COMPONENT_SWIZZLE_R && component_swizzle <= VK_COMPONENT_SWIZZLE_A) {
-      enum pipe_swizzle const format_component_swizzle =
-         format_swizzle[(unsigned)component_swizzle - (unsigned)VK_COMPONENT_SWIZZLE_R];
-      if (format_component_swizzle >= PIPE_SWIZZLE_X &&
-          format_component_swizzle <= PIPE_SWIZZLE_W) {
-         return V_03000C_SQ_SEL_X + ((unsigned)format_component_swizzle - (unsigned)PIPE_SWIZZLE_X);
-      }
-      return format_component_swizzle == PIPE_SWIZZLE_1 ||
-                   (format_component_swizzle == PIPE_SWIZZLE_NONE &&
-                    identity_swizzle == VK_COMPONENT_SWIZZLE_A)
-                ? V_03000C_SQ_SEL_1
-                : V_03000C_SQ_SEL_0;
-   }
-   return component_swizzle == VK_COMPONENT_SWIZZLE_ONE ? V_03000C_SQ_SEL_1 : V_03000C_SQ_SEL_0;
-}
-
-uint32_t
 terakan_format_texture_get_format(VkFormat const format)
 {
    uint32_t const common_format = terakan_format_data_get_common_format(format);
@@ -831,7 +807,7 @@ terakan_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice const physicalDevice
          /* According to R800 AddrLib, "Tex2D UAV on cypress will fail/hang if tile mode is
           * linear".
           */
-         if (device->winsys->gpu_info.chip_family == CHIP_CYPRESS) {
+         if (device->chip_family_info.chip_family == CHIP_CYPRESS) {
             image_optimal_only_features |= storage_image_features;
          } else {
             image_features |= storage_image_features;
@@ -896,7 +872,7 @@ terakan_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice const physicalDevice
    pFormatProperties->formatProperties.bufferFeatures = (VkFormatFeatureFlags)buffer_features;
 
    VkFormatProperties3 * const format_properties_3 =
-      vk_find_struct(pFormatProperties, FORMAT_PROPERTIES_3);
+      vk_find_struct(pFormatProperties->pNext, FORMAT_PROPERTIES_3);
    if (format_properties_3 != NULL) {
       format_properties_3->linearTilingFeatures = image_linear_features;
       format_properties_3->optimalTilingFeatures = image_optimal_features;
@@ -994,26 +970,29 @@ terakan_GetPhysicalDeviceImageFormatProperties2(
    struct terakan_physical_device const * const device =
       terakan_physical_device_from_handle(physicalDevice);
 
-   image_format_properties.maxResourceSize = device->winsys->gpu_info.max_bo_size;
+   image_format_properties.maxResourceSize = device->max_memory_allocation_size;
 
    VkExternalMemoryProperties external_properties = {};
    VkPhysicalDeviceExternalImageFormatInfo const * const external_info =
-      vk_find_struct_const(pImageFormatInfo, PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO);
+      vk_find_struct_const(pImageFormatInfo->pNext, PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO);
    if (external_info != NULL && external_info->handleType) {
+      VkExternalMemoryHandleTypeFlags const supported_handle_types =
+         terakan_physical_device_supported_external_memory_types(device);
+      if (!(supported_handle_types & external_info->handleType)) {
+         return VK_ERROR_FORMAT_NOT_SUPPORTED;
+      }
       switch (external_info->handleType) {
-#if !defined(_WIN32)
       case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
-      case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
+      case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT: {
          external_properties.externalMemoryFeatures =
             VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT |
             VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT | VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT;
-         external_properties.exportFromImportedHandleTypes =
-            VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
-            VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-         external_properties.compatibleHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
-                                                     VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT;
-         break;
-#endif
+         VkExternalMemoryHandleTypeFlags const supported_fd_types =
+            supported_handle_types & (VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
+                                      VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT);
+         external_properties.exportFromImportedHandleTypes = supported_fd_types;
+         external_properties.compatibleHandleTypes = supported_fd_types;
+      } break;
 
       default:
          return VK_ERROR_FORMAT_NOT_SUPPORTED;

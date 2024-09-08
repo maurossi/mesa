@@ -21,19 +21,46 @@
  * IN THE SOFTWARE.
  */
 
-#ifndef TERAKAN_DRAW_H
-#define TERAKAN_DRAW_H
+#include "terakan_bo.h"
 
-#include "terakan_command_buffer.h"
+#include "terakan_device.h"
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "util/u_atomic.h"
 
-void terakan_before_hw_draw(struct terakan_gfx_command_writer * command_writer);
+#include <stddef.h>
 
-#ifdef __cplusplus
+void *
+terakan_bo_map(struct terakan_bo * const bo)
+{
+   if (bo->mapping == NULL) {
+      bo->mapping = bo->device->winsys_fn->bo->map_impl(bo);
+   }
+   return bo->mapping;
 }
-#endif
 
-#endif /* TERAKAN_DRAW_H */
+void
+terakan_bo_unmap(struct terakan_bo * const bo)
+{
+   if (bo->mapping == NULL) {
+      return;
+   }
+   bo->device->winsys_fn->bo->unmap_impl(bo);
+   bo->mapping = NULL;
+}
+
+void
+terakan_bo_free(struct terakan_bo * const bo, VkAllocationCallbacks const * const allocator)
+{
+   terakan_bo_unmap(bo);
+   bo->device->winsys_fn->bo->free_impl(bo, allocator);
+}
+
+void
+terakan_bo_init(struct terakan_bo * const bo, struct terakan_device * const device)
+{
+   bo->device = device;
+
+   bo->creation_number = p_atomic_inc_return(&device->last_bo_creation_number);
+
+   bo->mapping = NULL;
+}

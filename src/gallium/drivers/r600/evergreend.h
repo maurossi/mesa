@@ -1498,6 +1498,8 @@
 #define   C_03C000_XY_MAG_FILTER                       0xFFFFF9FF
 #define     V_03C000_SQ_TEX_XY_FILTER_POINT            0x00000000
 #define     V_03C000_SQ_TEX_XY_FILTER_BILINEAR         0x00000001
+#define     V_03C000_SQ_TEX_XY_FILTER_ANISO_POINT      0x00000002
+#define     V_03C000_SQ_TEX_XY_FILTER_ANISO_BILINEAR   0x00000003
 #define   S_03C000_XY_MIN_FILTER(x)                    (((unsigned)(x) & 0x3) << 11)
 #define   G_03C000_XY_MIN_FILTER(x)                    (((x) >> 11) & 0x3)
 #define   C_03C000_XY_MIN_FILTER                       0xFFFFE7FF
@@ -1531,12 +1533,15 @@
 #define     V_03C000_SQ_TEX_DEPTH_COMPARE_NOTEQUAL     0x00000005
 #define     V_03C000_SQ_TEX_DEPTH_COMPARE_GREATEREQUAL 0x00000006
 #define     V_03C000_SQ_TEX_DEPTH_COMPARE_ALWAYS       0x00000007
-#define   S_03C000_CHROMA_KEY(x)                       (((unsigned)(x) & 0x3) << 25)
-#define   G_03C000_CHROMA_KEY(x)                       (((x) >> 25) & 0x3)
-#define   C_03C000_CHROMA_KEY                          0xF9FFFFFF
+#define   S_03C000_CHROMA_KEY(x)                       (((unsigned)(x) & 0x3) << 25) /* removed on cayman */
+#define   G_03C000_CHROMA_KEY(x)                       (((x) >> 25) & 0x3) /* removed on cayman */
+#define   C_03C000_CHROMA_KEY                          0xF9FFFFFF /* removed on cayman */
 #define     V_03C000_SQ_TEX_CHROMA_KEY_DISABLE         0x00000000
 #define     V_03C000_SQ_TEX_CHROMA_KEY_KILL            0x00000001
 #define     V_03C000_SQ_TEX_CHROMA_KEY_BLEND           0x00000002
+#define   S_03C000_FORCE_UNNORMALIZED(x)               (((unsigned)(x) & 0x1) << 25) /* cayman only */
+#define   G_03C000_FORCE_UNNORMALIZED(x)               (((x) >> 25) & 0x1) /* cayman only */
+#define   C_03C000_FORCE_UNNORMALIZED                  0xFDFFFFFF /* cayman only */
 
 #define R_03C004_SQ_TEX_SAMPLER_WORD1_0              0x03C004
 #define   S_03C004_MIN_LOD(x)                          (((unsigned)(x) & 0xFFF) << 0)

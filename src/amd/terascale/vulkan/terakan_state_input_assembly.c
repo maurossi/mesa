@@ -37,5 +37,5 @@ terakan_CmdSetPrimitiveTopology(VkCommandBuffer const commandBuffer,
       &terakan_command_buffer_from_handle(commandBuffer)->command_writer.gfx->state_draw;
    state_draw->vgt_primitive_type =
       terakan_state_draw_primitive_topology_vgt_primitive_type(primitiveTopology);
-   terakan_state_draw_written(state_draw, TERAKAN_STATE_DRAW_VGT_PRIMITIVE_TYPE);
+   terakan_state_draw_set_pending(state_draw, TERAKAN_STATE_DRAW_VGT_PRIMITIVE_TYPE);
 }

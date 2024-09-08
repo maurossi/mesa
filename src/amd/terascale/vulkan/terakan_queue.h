@@ -24,19 +24,21 @@
 #ifndef TERAKAN_QUEUE_H
 #define TERAKAN_QUEUE_H
 
-#include "winsys/terakan_winsys.h"
 #include "terakan_command_buffer.h"
 #include "terakan_sync_completion.h"
 
 #include "c11/threads.h"
 #include "util/list.h"
+#include "amd_family.h"
 #include "vk_queue.h"
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-struct terakan_device;
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 struct terakan_queue_completion_signal {
    struct list_head link;
@@ -45,20 +47,21 @@ struct terakan_queue_completion_signal {
    uint64_t value;
 };
 
+struct terakan_queue;
+
+/* Partially implemented by the winsys. */
 struct terakan_queue_completion_submission {
+   struct terakan_queue * queue;
+
    struct list_head link;
 
-   struct terakan_winsys_bo * bo;
-
-   uint64_t expected_bo_data;
+   uint64_t expected_payload;
 
    struct list_head signals;
 };
 
 struct terakan_queue {
    struct vk_queue vk;
-
-   struct terakan_device * device;
 
    enum amd_ip_type ip_type;
 
@@ -80,18 +83,48 @@ struct terakan_queue {
     */
    thrd_t completion_thread;
 
-   /* Accessed by vkQueueSubmit, the next value to write from the GPU to a completion BO, used for
-    * verifying that the submission has been executed successfully.
+   /* Accessed by vkQueueSubmit, the next value to write to a winsys-specific submission completion
+    * fence from the GPU, used for verifying that the submission has been executed successfully.
     */
-   uint64_t next_completion_bo_data;
+   uint64_t next_completion_payload;
 };
 
 VK_DEFINE_HANDLE_CASTS(terakan_queue, vk.base, VkQueue, VK_OBJECT_TYPE_QUEUE)
 
 void terakan_queue_destroy(struct terakan_queue * queue);
 
+struct terakan_device;
+
 VkResult terakan_queue_create(struct terakan_device * device,
                               VkDeviceQueueCreateInfo const * create_info, uint32_t index_in_family,
                               struct terakan_queue ** queue_out);
+
+struct terakan_queue_winsys_fn {
+   /* Not exposing queue priorities as the Linux Radeon 2.50.0 kernel driver only provides a
+    * high-priority DMA ring on R9xx.
+    * On failure, returns VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY or
+    * VK_ERROR_UNKNOWN.
+    */
+   VkResult (*submit)(struct terakan_device * device, enum amd_ip_type ip_type,
+                      uint32_t bo_reference_count, void const * bo_references,
+                      uint32_t indirect_buffer_size_dwords, uint32_t const * indirect_buffer);
+
+   /* On failure, returns VK_ERROR_OUT_OF_HOST_MEMORY, VK_ERROR_OUT_OF_DEVICE_MEMORY or
+    * VK_ERROR_UNKNOWN.
+    */
+   VkResult (*completion_submission_submit)(struct terakan_queue_completion_submission * submission);
+   /* Returns whether the wait was successful. In case of a GPU hang, must return in finite time. */
+   bool (*completion_submission_await)(struct terakan_queue_completion_submission * submission);
+   void (*completion_submission_finish_winsys_and_free)(
+      struct terakan_queue_completion_submission * submission);
+   /* On failure, returns VK_ERROR_OUT_OF_HOST_MEMORY or VK_ERROR_OUT_OF_DEVICE_MEMORY. */
+   VkResult (*completion_submission_alloc_and_init_winsys)(
+      struct terakan_queue * queue, uint64_t initial_payload,
+      struct terakan_queue_completion_submission ** submission_out);
+};
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_QUEUE_H */

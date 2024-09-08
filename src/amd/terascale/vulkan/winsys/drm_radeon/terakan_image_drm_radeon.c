@@ -26,8 +26,8 @@
  * IN THE SOFTWARE.
  */
 
+#include "terakan_device_drm_radeon.h"
 #include "terakan_image.h"
-#include "terakan_winsys_drm_radeon.h"
 
 #include "gallium/drivers/r600/evergreend.h"
 #include "util/macros.h"
@@ -37,10 +37,9 @@
 #include <assert.h>
 #include <stdint.h>
 #include <string.h>
-#include <radeon_surface.h>
 
 static void
-terakan_winsys_drm_radeon_surface_level_drm_to_ac(
+terakan_image_drm_radeon_surface_level_drm_to_ac(
    struct radeon_surface_level const * const drm_level, struct legacy_surf_level * const level_out)
 {
    level_out->offset_256B = drm_level->offset / 256;
@@ -51,8 +50,8 @@ terakan_winsys_drm_radeon_surface_level_drm_to_ac(
 }
 
 static void
-terakan_winsys_drm_radeon_surface_drm_to_ac(struct radeon_surface const * const drm_surface,
-                                            struct radeon_surf * const surface_out)
+terakan_image_drm_radeon_surface_drm_to_ac(struct radeon_surface const * const drm_surface,
+                                           struct radeon_surf * const surface_out)
 {
    memset(surface_out, 0, sizeof(*surface_out));
 
@@ -91,8 +90,8 @@ terakan_winsys_drm_radeon_surface_drm_to_ac(struct radeon_surface const * const 
    }
 
    for (uint32_t level = 0; level <= drm_surface->last_level; ++level) {
-      terakan_winsys_drm_radeon_surface_level_drm_to_ac(&drm_surface->level[level],
-                                                        &surface_out->u.legacy.level[level]);
+      terakan_image_drm_radeon_surface_level_drm_to_ac(&drm_surface->level[level],
+                                                       &surface_out->u.legacy.level[level]);
       surface_out->u.legacy.tiling_index[level] = drm_surface->tiling_index[level];
    }
 
@@ -104,7 +103,7 @@ terakan_winsys_drm_radeon_surface_drm_to_ac(struct radeon_surface const * const 
        */
       if (drm_surface->flags & RADEON_SURF_ZBUFFER) {
          for (uint32_t level = 0; level <= drm_surface->last_level; ++level) {
-            terakan_winsys_drm_radeon_surface_level_drm_to_ac(
+            terakan_image_drm_radeon_surface_level_drm_to_ac(
                &drm_surface->stencil_level[level], &surface_out->u.legacy.zs.stencil_level[level]);
             surface_out->u.legacy.zs.stencil_tiling_index[level] =
                drm_surface->stencil_tiling_index[level];
@@ -120,9 +119,9 @@ terakan_winsys_drm_radeon_surface_drm_to_ac(struct radeon_surface const * const 
 }
 
 static bool
-terakan_winsys_drm_radeon_surface_translate_image_create_info(
-   struct terakan_winsys const * const winsys_base,
-   VkImageCreateInfo const * const image_create_info, struct radeon_surf * const surface_out)
+terakan_image_drm_radeon_get_surface_info(struct terakan_device const * const device_base,
+                                          VkImageCreateInfo const * const image_create_info,
+                                          struct radeon_surf * const surface_out)
 {
    bool const has_depth = vk_format_has_depth(image_create_info->format);
 
@@ -211,11 +210,11 @@ terakan_winsys_drm_radeon_surface_translate_image_create_info(
       }
    }
 
-   struct terakan_winsys_drm_radeon const * const winsys =
-      container_of(winsys_base, struct terakan_winsys_drm_radeon const, base);
+   struct terakan_device_drm_radeon const * const device =
+      container_of(device_base, struct terakan_device_drm_radeon const, base);
    {
       int const drm_surface_best_result =
-         radeon_surface_best(winsys->surface_manager, &drm_surface);
+         radeon_surface_best(device->surface_manager, &drm_surface);
       assert(drm_surface_best_result == 0);
       if (drm_surface_best_result != 0) {
          return false;
@@ -223,14 +222,14 @@ terakan_winsys_drm_radeon_surface_translate_image_create_info(
    }
    {
       int const drm_surface_init_result =
-         radeon_surface_init(winsys->surface_manager, &drm_surface);
+         radeon_surface_init(device->surface_manager, &drm_surface);
       assert(drm_surface_init_result == 0);
       if (drm_surface_init_result != 0) {
          return false;
       }
    }
 
-   terakan_winsys_drm_radeon_surface_drm_to_ac(&drm_surface, surface_out);
+   terakan_image_drm_radeon_surface_drm_to_ac(&drm_surface, surface_out);
 
    assert(!(image_create_info->tiling == VK_IMAGE_TILING_LINEAR &&
             surface_out->u.legacy.level[0].mode != RADEON_SURF_MODE_LINEAR_ALIGNED));
@@ -238,6 +237,6 @@ terakan_winsys_drm_radeon_surface_translate_image_create_info(
    return true;
 }
 
-struct terakan_winsys_surface_fn const terakan_winsys_drm_radeon_surface_fn = {
-   .translate_image_create_info = terakan_winsys_drm_radeon_surface_translate_image_create_info,
+struct terakan_image_winsys_fn const terakan_image_drm_radeon_fn = {
+   .get_surface_info = terakan_image_drm_radeon_get_surface_info,
 };

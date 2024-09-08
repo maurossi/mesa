@@ -15,6 +15,7 @@ if with_amd_vk or with_gallium_radeonsi
 endif
 if with_amd_terascale_vk or with_gallium_r600
   subdir('terascale/common')
+  subdir('terascale/compiler')
 endif
 
 if with_amd_vk

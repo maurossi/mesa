@@ -24,12 +24,18 @@
 #ifndef TERAKAN_DESCRIPTOR_H
 #define TERAKAN_DESCRIPTOR_H
 
-#include "winsys/terakan_winsys.h"
+#include "terakan_bo.h"
 #include "terakan_limits.h"
 
 #include "gallium/drivers/r600/evergreend.h"
 
+#include <stdbool.h>
 #include <stdint.h>
+#include <vulkan/vulkan_core.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define TERAKAN_CONSTANT_CACHE_LINE_BYTES_LOG2          8
 #define TERAKAN_CONSTANT_CACHE_LINE_BYTES               (1 << TERAKAN_CONSTANT_CACHE_LINE_BYTES_LOG2)
@@ -109,6 +115,9 @@ static_assert(
    TERAKAN_RESOURCE_RANGE_MUTABLE_MAX_COUNT_PIXEL >= 15 + 4 + 128 + 8 + 4,
    "There should be enough pixel shader mutable resource bindings for the minimum Direct3D 11 "
    "binding counts plus Vulkan storage buffers and input attachments.");
+#define TERAKAN_RESOURCE_RANGE_MUTABLE_MAX_COUNT_IN_PIPELINE                                       \
+   (TERAKAN_RESOURCE_RANGE_MUTABLE_MAX_COUNT_NON_PIXEL * 5 +                                       \
+    TERAKAN_RESOURCE_RANGE_MUTABLE_MAX_COUNT_PIXEL)
 
 /* SQ_VTX_CONSTANT doesn't have words 5 and 6, so using word 5 for the BO priority. */
 #define TERAKAN_RESOURCE_BUFFER_PRIORITY_WORD 5
@@ -125,6 +134,14 @@ struct terakan_color_descriptor {
    uint32_t base;
    uint32_t pitch;
    uint32_t slice;
+   /* Because according to Radeon Evergreen / Northern Islands Acceleration, buffer RATs must use
+    * the LINEAR_ALIGNED array mode (not LINEAR_GENERAL), for smaller alignments required by
+    * Direct3D 11 (and even if disregarding Direct3D 11, by Vulkan itself as well - at most 256,
+    * while the pipe interleave can potentially be 512 bytes), an offset needs to be added to
+    * element indices in shaders. In buffer views within the driver, it's stored in SLICE_START in
+    * elements (not in bytes unlike for LINEAR_GENERAL in the hardware), and must be zeroed before
+    * being passed to the actual CB_COLOR registers.
+    */
    uint32_t view;
    /* In image views, the INFO register is for a color attachment. */
    uint32_t info;
@@ -133,24 +150,29 @@ struct terakan_color_descriptor {
    uint32_t dim;
 };
 
+void terakan_color_descriptor_calculate_buffer_base_pitch_view_dim(
+   struct terakan_color_descriptor * descriptor, VkDeviceSize bo_address, VkDeviceSize elements,
+   unsigned bpe, unsigned tile_pipe_interleave_bytes_log2);
+
 static inline void
 terakan_color_descriptor_image_view_to_color_attachment(
    struct terakan_color_descriptor * const descriptor)
 {
+   descriptor->info &= C_028C70_RESOURCE_TYPE;
    /* The meaning of DIM depends on RESOURCE_TYPE, but it's used only for RATs.
     * DIM is ignored for color attachments, scissor must be used to prevent out-of-bounds access.
     */
    descriptor->dim = 0;
 }
 
-/* The resource type must be the one actually requested by the shader in the binding declaration. */
 static inline void
 terakan_color_descriptor_image_view_to_storage_image(
-   struct terakan_color_descriptor * const descriptor, uint32_t const resource_type)
+   struct terakan_color_descriptor * const descriptor)
 {
-   descriptor->info = (descriptor->info & (C_028C70_FAST_CLEAR & C_028C70_SOURCE_FORMAT)) |
-                      S_028C70_SOURCE_FORMAT(V_028C70_EXPORT_4C_32BPC) | S_028C70_RAT(1) |
-                      S_028C70_RESOURCE_TYPE(resource_type);
+   descriptor->info &= C_028C70_FAST_CLEAR & C_028C70_COMPRESSION & C_028C70_BLEND_CLAMP &
+                       C_028C70_SIMPLE_FLOAT & C_028C70_SOURCE_FORMAT;
+   descriptor->info |=
+      S_028C70_BLEND_BYPASS(1) | S_028C70_SOURCE_FORMAT(V_028C70_EXPORT_4C_32BPC) | S_028C70_RAT(1);
    descriptor->attrib &= C_028C74_FORCE_DST_ALPHA_1;
 }
 
@@ -161,5 +183,41 @@ struct terakan_color_meta_descriptor {
    uint32_t fmask;
    uint32_t fmask_slice;
 };
+
+static inline bool
+terakan_descriptor_type_has_resource(VkDescriptorType const descriptor_type)
+{
+   return descriptor_type != VK_DESCRIPTOR_TYPE_SAMPLER;
+}
+
+static inline bool
+terakan_descriptor_type_has_sampler(VkDescriptorType const descriptor_type)
+{
+   return descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
+          descriptor_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+}
+
+static inline bool
+terakan_descriptor_type_has_rat(VkDescriptorType const descriptor_type)
+{
+   return descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_IMAGE ||
+          descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER ||
+          descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER ||
+          descriptor_type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC;
+}
+
+bool terakan_descriptor_create_for_uniform_buffer(struct terakan_bo const * bo,
+                                                  VkDeviceSize bo_offset, VkDeviceSize range,
+                                                  uint32_t resource_out[8]);
+
+bool terakan_descriptor_create_for_storage_buffer(struct terakan_bo const * bo,
+                                                  VkDeviceSize bo_offset, VkDeviceSize range,
+                                                  unsigned tile_pipe_interleave_bytes_log2,
+                                                  uint32_t resource_out[8],
+                                                  struct terakan_color_descriptor * color_out);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_DESCRIPTOR_H */

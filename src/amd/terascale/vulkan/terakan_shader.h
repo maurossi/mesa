@@ -24,16 +24,20 @@
 #ifndef TERAKAN_SHADER_H
 #define TERAKAN_SHADER_H
 
-#include "winsys/terakan_winsys.h"
+#include "terakan_bo.h"
 
 #include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define TERAKAN_SHADER_PROGRAM_ALIGNMENT_LOG2 8
 #define TERAKAN_SHADER_PROGRAM_ALIGNMENT      (1 << TERAKAN_SHADER_PROGRAM_ALIGNMENT_LOG2)
 
 /* Fields that don't depend on any other state. */
 struct terakan_shader_static {
-   struct terakan_winsys_bo const * program_bo;
+   struct terakan_bo const * program_bo;
    uint32_t program_start;
 
    uint32_t sq_pgm_resources[2];
@@ -53,5 +57,9 @@ struct terakan_shader_static {
       } ps;
    } stage;
 };
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_SHADER_H */

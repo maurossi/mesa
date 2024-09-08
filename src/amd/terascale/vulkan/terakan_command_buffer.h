@@ -24,7 +24,7 @@
 #ifndef TERAKAN_COMMAND_BUFFER_H
 #define TERAKAN_COMMAND_BUFFER_H
 
-#include "winsys/terakan_winsys.h"
+#include "terakan_bo.h"
 #include "terakan_hw_state.h"
 #include "terakan_state.h"
 
@@ -37,6 +37,10 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define TERAKAN_CONFIG_REG_OFFSET(address)  (((address)-EVERGREEN_CONFIG_REG_OFFSET) >> 2)
 #define TERAKAN_CONTEXT_REG_OFFSET(address) (((address)-EVERGREEN_CONTEXT_REG_OFFSET) >> 2)
@@ -80,19 +84,19 @@ static_assert(
    "overflow of the total BO reference count and not because of the hash map.");
 
 struct terakan_bo_reference_writer {
-   struct terakan_winsys const * winsys;
+   struct terakan_device const * device;
    void * references;
 
    uint32_t reference_count;
 
-   struct terakan_winsys_bo const * reference_bos[TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT];
+   struct terakan_bo const * reference_bos[TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT];
 
    /* Which elements of the map are used, faster to clear than the array itself. */
    BITSET_DECLARE(map_entries_used, TERAKAN_BO_REFERENCE_HASH_MASK + 1);
    uint32_t map[TERAKAN_BO_REFERENCE_HASH_MASK + 1];
 };
 
-/* bo_references must point to `terakan_gpu_info::cs_bo_reference_size *
+/* bo_references must point to `terakan_device::bo_reference_size *
  * TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT` references that will be passed to the winsys during
  * submission.
  */
@@ -103,12 +107,12 @@ void terakan_bo_reference_writer_reset(struct terakan_bo_reference_writer * writ
  * references.
  */
 uint32_t terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_writer * writer,
-                                                   struct terakan_winsys_bo const * bo,
-                                                   bool is_reading, bool is_writing,
-                                                   enum terakan_winsys_cs_bo_priority priority);
+                                                   struct terakan_bo const * bo, bool is_reading,
+                                                   bool is_writing,
+                                                   enum terakan_bo_priority priority);
 
 struct terakan_push_constant_buffer {
-   struct terakan_winsys_bo * bo;
+   struct terakan_bo * bo;
 
    uint32_t cache_lines_free;
 
@@ -165,7 +169,7 @@ VK_DEFINE_HANDLE_CASTS(terakan_command_buffer, vk.base, VkCommandBuffer,
 /* Returns the mapping, or NULL if failed. */
 void * terakan_command_buffer_allocate_push_constants(
    struct terakan_command_buffer * command_buffer, uint32_t size_bytes,
-   struct terakan_winsys_bo const ** bo_out, uint32_t * base_cache_lines_out);
+   struct terakan_bo const ** bo_out, uint32_t * base_cache_lines_out);
 
 extern struct vk_command_buffer_ops const terakan_command_buffer_ops;
 
@@ -221,6 +225,11 @@ struct terakan_command_pool {
    struct list_head command_writers_free;
 };
 
-VK_DEFINE_HANDLE_CASTS(terakan_command_pool, vk.base, VkCommandPool, VK_OBJECT_TYPE_COMMAND_POOL)
+VK_DEFINE_NONDISP_HANDLE_CASTS(terakan_command_pool, vk.base, VkCommandPool,
+                               VK_OBJECT_TYPE_COMMAND_POOL)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_COMMAND_BUFFER_H */

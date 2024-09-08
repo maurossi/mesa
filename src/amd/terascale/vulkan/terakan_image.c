@@ -26,12 +26,10 @@
 
 #include "terakan_image.h"
 
-#include "winsys/terakan_winsys.h"
 #include "terakan_device.h"
 #include "terakan_device_memory.h"
 #include "terakan_entrypoints.h"
 #include "terakan_format.h"
-#include "terakan_gpu_info.h"
 #include "terakan_physical_device.h"
 
 #include "gallium/drivers/r600/evergreend.h"
@@ -95,12 +93,9 @@ terakan_GetDeviceImageMemoryRequirements(VkDevice const deviceHandle,
                                          VkMemoryRequirements2 * const pMemoryRequirements)
 {
    struct terakan_device const * const device = terakan_device_from_handle(deviceHandle);
-   struct terakan_physical_device const * const physical_device =
-      container_of(device->vk.physical, struct terakan_physical_device const, vk);
 
    struct radeon_surf surface;
-   if (physical_device->winsys->surface_fn->translate_image_create_info(
-          physical_device->winsys, pInfo->pCreateInfo, &surface)) {
+   if (device->winsys_fn->image->get_surface_info(device, pInfo->pCreateInfo, &surface)) {
       pMemoryRequirements->memoryRequirements.size = surface.total_size;
       pMemoryRequirements->memoryRequirements.alignment = (VkDeviceSize)1 << surface.alignment_log2;
    } else {
@@ -109,6 +104,8 @@ terakan_GetDeviceImageMemoryRequirements(VkDevice const deviceHandle,
       pMemoryRequirements->memoryRequirements.alignment = 1;
    }
 
+   struct terakan_physical_device const * const physical_device =
+      container_of(device->vk.physical, struct terakan_physical_device const, vk);
    pMemoryRequirements->memoryRequirements.memoryTypeBits =
       ((uint32_t)1 << physical_device->memory_properties.memoryTypeCount) - 1;
 
@@ -118,7 +115,7 @@ terakan_GetDeviceImageMemoryRequirements(VkDevice const deviceHandle,
          VkMemoryDedicatedRequirements * const dedicated_requirements =
             (VkMemoryDedicatedRequirements *)ext;
          VkExternalMemoryImageCreateInfo const * const external_memory_info =
-            vk_find_struct_const(pInfo, EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
+            vk_find_struct_const(pInfo->pNext, EXTERNAL_MEMORY_IMAGE_CREATE_INFO);
          dedicated_requirements->requiresDedicatedAllocation =
             external_memory_info != NULL && external_memory_info->handleTypes != 0;
          dedicated_requirements->prefersDedicatedAllocation =
@@ -139,8 +136,14 @@ terakan_GetImageMemoryRequirements2(VkDevice const deviceHandle,
 {
    struct terakan_image const * const image = terakan_image_from_handle(pInfo->image);
    pMemoryRequirements->memoryRequirements.size = image->surface.total_size;
-   pMemoryRequirements->memoryRequirements.alignment = (VkDeviceSize)1
-                                                       << image->surface.alignment_log2;
+   /* sizeof(uint32_t) alignment is additionally required so writes to the end of storage buffers
+    * with an unaligned size can't affect the image placed next to them because VK_EXT_robustness2
+    * defines rounding up of the size for them, though all aligned array modes naturally require a
+    * much larger alignment anyway, but making this explicit in case LINEAR_GENERAL images ever
+    * become supported for any reason.
+    */
+   pMemoryRequirements->memoryRequirements.alignment =
+      MAX2((VkDeviceSize)1 << image->surface.alignment_log2, sizeof(uint32_t));
 
    struct terakan_device const * const device = terakan_device_from_handle(deviceHandle);
    struct terakan_physical_device const * const physical_device =
@@ -211,13 +214,13 @@ terakan_BindImageMemory2(VkDevice const device, uint32_t const bindInfoCount,
 }
 
 bool
-terakan_image_uses_tc_non_display_tiling(enum amd_gfx_level const gfx_level,
-                                         VkFormat const image_format, bool const level_is_linear)
+terakan_image_uses_tc_non_display_tiling(bool const is_r9xx, VkFormat const image_format,
+                                         bool const level_is_linear)
 {
    if (level_is_linear) {
       /* Linear textures must use display tiling, but it's not supported for 128bpp at all on R9xx.
        */
-      return gfx_level >= CAYMAN && vk_format_get_blocksizebits(image_format) >= 128;
+      return is_r9xx && vk_format_get_blocksizebits(image_format) >= 128;
    }
    /* Depth, stencil and FMask implicitly utilize non-display tiling. */
    if (vk_format_is_depth_or_stencil(image_format)) {
@@ -229,11 +232,11 @@ terakan_image_uses_tc_non_display_tiling(enum amd_gfx_level const gfx_level,
 }
 
 bool
-terakan_image_uses_cb_non_display_tiling(enum amd_gfx_level const gfx_level,
-                                         VkFormat const image_format, bool const level_is_linear)
+terakan_image_uses_cb_non_display_tiling(bool const is_r9xx, VkFormat const image_format,
+                                         bool const level_is_linear)
 {
    return level_is_linear || vk_format_is_depth_or_stencil(image_format) ||
-          (gfx_level >= CAYMAN && vk_format_get_blocksizebits(image_format) >= 128);
+          (is_r9xx && vk_format_get_blocksizebits(image_format) >= 128);
 }
 
 bool
@@ -265,9 +268,8 @@ terakan_image_create_resource_descriptor(VkImageViewCreateInfo const * const ima
       layer_count = image_view_create_info->subresourceRange.layerCount;
       break;
    case VK_IMAGE_VIEW_TYPE_2D_ARRAY:
-      dimension = image->vk.samples > VK_SAMPLE_COUNT_1_BIT
-                     ? V_030000_SQ_TEX_DIM_2D_ARRAY_MSAA
-                     : V_030000_SQ_TEX_DIM_2D_ARRAY;
+      dimension = image->vk.samples > VK_SAMPLE_COUNT_1_BIT ? V_030000_SQ_TEX_DIM_2D_ARRAY_MSAA
+                                                            : V_030000_SQ_TEX_DIM_2D_ARRAY;
       layer_count = image_view_create_info->subresourceRange.layerCount;
       break;
    case VK_IMAGE_VIEW_TYPE_CUBE_ARRAY:
@@ -322,12 +324,12 @@ terakan_image_create_resource_descriptor(VkImageViewCreateInfo const * const ima
                .stencil_level[image_view_create_info->subresourceRange.baseMipLevel]
          : &image->surface.u.legacy.level[image_view_create_info->subresourceRange.baseMipLevel];
 
-   struct terakan_gpu_info const * const gpu_info =
-      &container_of(image->vk.base.device->physical, struct terakan_physical_device const, vk)
-          ->winsys->gpu_info;
+   struct terakan_physical_device const * const physical_device =
+      container_of(image->vk.base.device->physical, struct terakan_physical_device const, vk);
 
    bool const non_display_tiling = terakan_image_uses_tc_non_display_tiling(
-      gpu_info->gfx_level, image->vk.format, level->mode <= RADEON_SURF_MODE_LINEAR_ALIGNED);
+      physical_device->chip_family_info.is_r9xx, image->vk.format,
+      level->mode <= RADEON_SURF_MODE_LINEAR_ALIGNED);
 
    uint32_t width =
       u_minify(image->vk.extent.width, image_view_create_info->subresourceRange.baseMipLevel);
@@ -340,11 +342,11 @@ terakan_image_create_resource_descriptor(VkImageViewCreateInfo const * const ima
    }
 
    /* nblk is expected to have already been aligned appropriately in the surface computation. */
-   descriptor_out[0] =
-      S_030000_DIM(dimension) |
-      (gpu_info->gfx_level >= CAYMAN ? CM_S_030000_NON_DISP_TILING_ORDER(non_display_tiling)
-                                     : S_030000_NON_DISP_TILING_ORDER(non_display_tiling)) |
-      S_030000_PITCH(level->nblk_x / 8 - 1) | S_030000_TEX_WIDTH(width - 1);
+   descriptor_out[0] = S_030000_DIM(dimension) |
+                       (physical_device->chip_family_info.is_r9xx
+                           ? CM_S_030000_NON_DISP_TILING_ORDER(non_display_tiling)
+                           : S_030000_NON_DISP_TILING_ORDER(non_display_tiling)) |
+                       S_030000_PITCH(level->nblk_x / 8 - 1) | S_030000_TEX_WIDTH(width - 1);
 
    descriptor_out[1] = S_030004_ARRAY_MODE(terakan_image_array_mode_ac_to_hw(level->mode));
    if (dimension != V_030000_SQ_TEX_DIM_1D) {
@@ -354,8 +356,8 @@ terakan_image_create_resource_descriptor(VkImageViewCreateInfo const * const ima
          descriptor_out[1] |= S_030004_TEX_HEIGHT(height - 1);
          if (image->vk.image_type == VK_IMAGE_TYPE_3D) {
             assert(image_view_create_info->viewType == VK_IMAGE_VIEW_TYPE_2D ||
-                  image_view_create_info->viewType == VK_IMAGE_VIEW_TYPE_2D_ARRAY ||
-                  image_view_create_info->viewType == VK_IMAGE_VIEW_TYPE_3D);
+                   image_view_create_info->viewType == VK_IMAGE_VIEW_TYPE_2D_ARRAY ||
+                   image_view_create_info->viewType == VK_IMAGE_VIEW_TYPE_3D);
             descriptor_out[1] |= S_030004_TEX_DEPTH(image->vk.extent.depth - 1);
          } else {
             descriptor_out[1] |= S_030004_TEX_DEPTH(image->vk.array_layers - 1);
@@ -406,7 +408,7 @@ terakan_image_create_resource_descriptor(VkImageViewCreateInfo const * const ima
       S_03001C_BANK_HEIGHT(util_logbase2(image->surface.u.legacy.bankh)) |
       S_03001C_DEPTH_SAMPLE_ORDER(vk_format_is_depth_or_stencil(image->vk.format) &&
                                   level->mode > RADEON_SURF_MODE_LINEAR_ALIGNED) |
-      S_03001C_NUM_BANKS(gpu_info->tile_banks_log2 - 1) |
+      S_03001C_NUM_BANKS(physical_device->tiling_info.banks_log2 - 1) |
       S_03001C_TYPE(V_03001C_SQ_TEX_VTX_VALID_TEXTURE);
 
    if (dimension == V_030000_SQ_TEX_DIM_2D_MSAA || dimension == V_030000_SQ_TEX_DIM_2D_ARRAY_MSAA) {
@@ -415,7 +417,7 @@ terakan_image_create_resource_descriptor(VkImageViewCreateInfo const * const ima
       descriptor_out[3] = S_03000C_MIP_ADDRESS(0);
 
       unsigned const samples_log2 = util_logbase2((uint32_t)image->vk.samples);
-      if (gpu_info->gfx_level >= CAYMAN) {
+      if (physical_device->chip_family_info.is_r9xx) {
          descriptor_out[4] |= S_030010_LOG2_NUM_FRAGMENTS(samples_log2);
       }
       /* LAST_LEVEL is used for the sample count instead. */
@@ -535,32 +537,45 @@ terakan_image_create_color_descriptor(
    default:
       break;
    }
+   uint32_t resource_type;
+   switch (image_view_create_info->viewType) {
+   case VK_IMAGE_VIEW_TYPE_1D:
+   case VK_IMAGE_VIEW_TYPE_1D_ARRAY:
+      resource_type = image->vk.array_layers > 1 ? V_028C70_TEXTURE1DARRAY : V_028C70_TEXTURE1D;
+      break;
+   case VK_IMAGE_VIEW_TYPE_3D:
+      resource_type = V_028C70_TEXTURE3D;
+      break;
+   default:
+      resource_type = image->vk.array_layers > 1 ? V_028C70_TEXTURE2DARRAY : V_028C70_TEXTURE2D;
+   }
    descriptor_out->info = S_028C70_FORMAT(color_format) |
                           S_028C70_ARRAY_MODE(terakan_image_array_mode_ac_to_hw(level->mode)) |
                           S_028C70_NUMBER_TYPE(number_type) | S_028C70_COMP_SWAP(swap) |
-                          S_028C70_SIMPLE_FLOAT(1) | S_028C70_SOURCE_FORMAT(source_format);
+                          S_028C70_SIMPLE_FLOAT(1) | S_028C70_SOURCE_FORMAT(source_format) |
+                          S_028C70_RESOURCE_TYPE(resource_type);
    if (terakan_format_color_is_blendable(color_format, number_type)) {
       descriptor_out->info |= S_028C70_BLEND_CLAMP(blend_clamp);
    } else {
       descriptor_out->info |= S_028C70_BLEND_BYPASS(1);
    }
 
-   struct terakan_gpu_info const * const gpu_info =
-      &container_of(image->vk.base.device->physical, struct terakan_physical_device const, vk)
-          ->winsys->gpu_info;
+   struct terakan_physical_device const * const physical_device =
+      container_of(image->vk.base.device->physical, struct terakan_physical_device const, vk);
    descriptor_out->attrib =
       S_028C74_NON_DISP_TILING_ORDER(terakan_image_uses_cb_non_display_tiling(
-         gpu_info->gfx_level, image->vk.format, level->mode <= RADEON_SURF_MODE_LINEAR_ALIGNED)) |
+         physical_device->chip_family_info.is_r9xx, image->vk.format,
+         level->mode <= RADEON_SURF_MODE_LINEAR_ALIGNED)) |
       S_028C74_TILE_SPLIT(terakan_image_tile_split_bytes_to_hw(
          is_stencil_layout ? image->surface.u.legacy.stencil_tile_split
                            : image->surface.u.legacy.tile_split)) |
-      S_028C74_NUM_BANKS(gpu_info->tile_banks_log2 - 1) |
+      S_028C74_NUM_BANKS(physical_device->tiling_info.banks_log2 - 1) |
       S_028C74_BANK_WIDTH(util_logbase2(image->surface.u.legacy.bankw)) |
       S_028C74_BANK_HEIGHT(util_logbase2(image->surface.u.legacy.bankh)) |
       S_028C74_MACRO_TILE_ASPECT(util_logbase2(image->surface.u.legacy.mtilea)) |
       S_028C74_FMASK_BANK_HEIGHT(util_logbase2(image->surface.u.legacy.bankh));
-   if (gpu_info->gfx_level >= CAYMAN) {
-      /* Cayman has EQAA, and additionally doesn't support displayable tiling for 128 bits per pixel
+   if (physical_device->chip_family_info.is_r9xx) {
+      /* R9xx has EQAA, and additionally doesn't support displayable tiling for 128 bits per pixel
        * color targets.
        */
       unsigned const samples_log2 = util_logbase2((uint32_t)image->vk.samples);
@@ -632,9 +647,7 @@ terakan_CreateImage(VkDevice const deviceHandle, VkImageCreateInfo const * const
 
    vk_image_init(&device->vk, &image->vk, pCreateInfo);
 
-   struct terakan_winsys const * const winsys =
-      container_of(device->vk.physical, struct terakan_physical_device const, vk)->winsys;
-   if (!winsys->surface_fn->translate_image_create_info(winsys, pCreateInfo, &image->surface)) {
+   if (!device->winsys_fn->image->get_surface_info(device, pCreateInfo, &image->surface)) {
       result = vk_errorf(device, VK_ERROR_UNKNOWN,
                          "Failed to translate the image creation info into surface info");
       goto fail_image;
@@ -644,7 +657,6 @@ terakan_CreateImage(VkDevice const deviceHandle, VkImageCreateInfo const * const
    image->bo_offset = 0;
 
    *pImage = terakan_image_to_handle(image);
-
    return VK_SUCCESS;
 
 fail_image:
@@ -703,6 +715,5 @@ terakan_CreateImageView(VkDevice const deviceHandle,
    /* TODO(Triang3l): Other descriptor types. */
 
    *pView = terakan_image_view_to_handle(image_view);
-
    return VK_SUCCESS;
 }

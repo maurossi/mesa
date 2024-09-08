@@ -77,9 +77,7 @@ terakan_sync_completion_get_value(struct vk_device * const device, struct vk_syn
 {
    struct terakan_sync_completion const * const sync =
       container_of(sync_base, struct terakan_sync_completion, vk);
-
    *value_out = p_atomic_read(&sync->current_value);
-
    return VK_SUCCESS;
 }
 

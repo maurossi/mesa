@@ -26,10 +26,16 @@
 
 #include "gallium/drivers/r600/evergreend.h"
 #include "gallium/drivers/r600/r600_formats.h"
+#include "util/format/u_format.h"
+#include "util/u_math.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 #include <vulkan/vulkan_core.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 bool terakan_format_is_linear_only(VkFormat format);
 bool terakan_format_is_tiled_only(VkFormat format);
@@ -100,9 +106,36 @@ uint32_t terakan_format_data_get_common_format(VkFormat format);
 /* Returns UINT32_MAX if invalid. */
 uint32_t terakan_format_data_get_number_format(VkFormat format);
 unsigned char const * terakan_format_data_get_swizzle(VkFormat format);
-uint32_t terakan_format_data_component_swizzle_to_dst_sel(VkComponentSwizzle component_swizzle,
-                                                          VkComponentSwizzle identity_swizzle,
-                                                          unsigned char const format_swizzle[4]);
+
+static inline uint32_t
+terakan_format_data_pipe_swizzle_to_dst_sel(enum pipe_swizzle swizzle,
+                                            enum pipe_swizzle const missing_substitute)
+{
+   if (swizzle == PIPE_SWIZZLE_NONE) {
+      swizzle = missing_substitute;
+   }
+   if (swizzle >= PIPE_SWIZZLE_X && swizzle <= PIPE_SWIZZLE_W) {
+      return V_03000C_SQ_SEL_X + ((unsigned)swizzle - (unsigned)PIPE_SWIZZLE_X);
+   }
+   return swizzle == PIPE_SWIZZLE_1 ? V_03000C_SQ_SEL_1 : V_03000C_SQ_SEL_0;
+}
+
+static inline uint32_t
+terakan_format_data_component_swizzle_to_dst_sel(VkComponentSwizzle component_swizzle,
+                                                 VkComponentSwizzle const identity_swizzle,
+                                                 unsigned char const format_swizzle[4])
+{
+   if (component_swizzle == VK_COMPONENT_SWIZZLE_IDENTITY) {
+      component_swizzle = identity_swizzle;
+   }
+   if (component_swizzle >= VK_COMPONENT_SWIZZLE_R && component_swizzle <= VK_COMPONENT_SWIZZLE_A) {
+      return terakan_format_data_pipe_swizzle_to_dst_sel(
+         (enum pipe_swizzle)
+            format_swizzle[(unsigned)component_swizzle - (unsigned)VK_COMPONENT_SWIZZLE_R],
+         identity_swizzle == VK_COMPONENT_SWIZZLE_A ? PIPE_SWIZZLE_1 : PIPE_SWIZZLE_0);
+   }
+   return component_swizzle == VK_COMPONENT_SWIZZLE_ONE ? V_03000C_SQ_SEL_1 : V_03000C_SQ_SEL_0;
+}
 
 /* Returns FMT_INVALID if invalid. */
 uint32_t terakan_format_texture_get_format(VkFormat format);
@@ -111,5 +144,16 @@ uint32_t terakan_format_texture_get_word4_signs(VkFormat format);
 /* Returns FMT_INVALID if invalid. */
 uint32_t terakan_format_vertex_get_format(VkFormat format);
 uint32_t terakan_format_vertex_get_sign(VkFormat format);
+
+static inline uint32_t
+terakan_format_pitch_alignment_linear_bytes(unsigned const bpe,
+                                            unsigned const tile_pipe_interleave_bytes_log2)
+{
+   return MAX2((uint32_t)bpe << 6, (uint32_t)1 << tile_pipe_interleave_bytes_log2);
+}
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_FORMAT_H */

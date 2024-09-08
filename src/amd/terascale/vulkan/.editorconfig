@@ -1,0 +1,2 @@
+[*.{c,h,cpp}]
+max_line_length = 100

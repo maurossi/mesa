@@ -31,14 +31,61 @@
 #include <stdint.h>
 #include <vulkan/vulkan_core.h>
 
-#define TERAKAN_STATE_DRAW_DEPTH_CLIP_NEGATIVE_ONE_TO_ONE_PA_CL_CLIP_CNTL_CLEAR                    \
-   ((uint32_t)C_028810_DX_CLIP_SPACE_DEF)
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-static inline uint32_t
-terakan_state_draw_depth_clip_negative_one_to_one_pa_cl_clip_cntl(bool const negative_one_to_one)
+/* Viewport and rasterization state. */
+
+static inline void
+terakan_state_draw_finalize_scissor(uint16_t tl_br_xy[4])
 {
-   return S_028810_DX_CLIP_SPACE_DEF(!negative_one_to_one);
+   /* Hardware bug workarounds, see:
+    * - evergreen_fix_scissor_coordinates in xf86-video-ati
+    * - evergreen_apply_scissor_bug_workaround in the Gallium R600 driver
+    *
+    * On both R8xx and R9xx:
+    * if (br.x == 0) {
+    *    tl.x = 1;
+    * }
+    * if (br.y == 0) {
+    *    tl.y = 1;
+    * }
+    *
+    * This functionally changes nothing as it affects only empty rectangles.
+    * For simplicity and to make the workaround even stronger, turn any empty rectangle into -1x-1
+    * at (1, 1).
+    *
+    * The issue may be related to the GFX6 hardware bug when bottom or right of any scissor is <= 0
+    * and PA_SU_HARDWARE_SCREEN_OFFSET is not 0, see si_emit_one_scissor in RadeonSI.
+    *
+    * On R9xx only:
+    * if (br.x == 1 && br.y == 1) {
+    *    br.x = 2;
+    * }
+    *
+    * This is clearly non-conformant as it makes it impossible to specify a 1x1 scissor at (0, 0).
+    * Not implementing it until a solid confirmation that it's necessary is provided.
+    */
+   /* TODO(Triang3l): Research the need for the 1x1 to 2x1 workaround on R9xx. */
+   if (tl_br_xy[0] >= tl_br_xy[2] || tl_br_xy[1] >= tl_br_xy[3]) {
+      tl_br_xy[0] = 1;
+      tl_br_xy[1] = 1;
+      tl_br_xy[2] = 0;
+      tl_br_xy[3] = 0;
+   }
 }
+
+struct terakan_state_draw_viewport {
+   float pa_cl_vport_xy_scale_offset[2][2];
+   float pa_cl_vport_z_gl_dx_scale_offset[2][2];
+   float pa_cl_gb_vert_horz_clip_adj[2];
+   uint16_t pa_sc_vport_scissor_tl_br_xy[2][2];
+   float pa_sc_vport_z_min_max[2];
+};
+
+void terakan_state_draw_viewport_translate(VkViewport const * viewport,
+                                           struct terakan_state_draw_viewport * hw_viewport_out);
 
 #define TERAKAN_STATE_DRAW_RASTERIZER_DISCARD_ENABLE_PA_CL_CLIP_CNTL_CLEAR                         \
    ((uint32_t)C_028810_DX_RASTERIZATION_KILL)
@@ -127,5 +174,9 @@ terakan_state_draw_depth_bias_enable_pa_su_sc_mode_cntl(bool const depth_bias_en
           S_028814_POLY_OFFSET_BACK_ENABLE(depth_bias_enable) |
           S_028814_POLY_OFFSET_PARA_ENABLE(depth_bias_enable);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_STATE_RASTERIZATION_H */

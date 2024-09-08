@@ -33,5 +33,5 @@ terakan_CmdSetSampleMaskEXT(VkCommandBuffer const commandBuffer,
    struct terakan_state_draw * const state_draw =
       &terakan_command_buffer_from_handle(commandBuffer)->command_writer.gfx->state_draw;
    state_draw->pa_sc_aa_mask = (uint16_t)pSampleMask[0];
-   terakan_state_draw_written(state_draw, TERAKAN_STATE_DRAW_PA_SC_AA_MASK);
+   terakan_state_draw_set_pending(state_draw, TERAKAN_STATE_DRAW_PA_SC_AA_MASK);
 }

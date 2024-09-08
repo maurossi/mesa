@@ -36,6 +36,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#define TERAKAN_META_DB_RENDER_OVERRIDE_DEFAULT 0
+
 #define TERAKAN_META_SQ_PGM_RESOURCES_COMMON S_028844_DX10_CLAMP(1)
 #define TERAKAN_META_SQ_PGM_RESOURCES_2_COMMON                                                     \
    (S_028848_SINGLE_ROUND(V_SQ_ROUND_NEAREST_EVEN) | S_028848_DOUBLE_ROUND(V_SQ_ROUND_NEAREST_EVEN))
@@ -75,6 +81,16 @@ void terakan_meta_modify_state_draw_dword(struct terakan_gfx_command_writer * co
                                           enum terakan_hw_state_draw_index hw_state_index,
                                           uint32_t * hw_state_item, uint32_t value);
 
+static inline void
+terakan_meta_set_db_render_override(struct terakan_gfx_command_writer * const command_writer,
+                                    uint32_t const db_render_override)
+{
+   terakan_meta_modify_state_draw_dword(command_writer, TERAKAN_STATE_DRAW_DB_RENDER_OVERRIDE,
+                                        TERAKAN_HW_STATE_DRAW_DB_RENDER_OVERRIDE,
+                                        &command_writer->hw_state_draw.db_render_override,
+                                        db_render_override);
+}
+
 void terakan_meta_set_vs(struct terakan_gfx_command_writer * command_writer,
                          enum terakan_meta_shader_index shader_index);
 void terakan_meta_set_ps(struct terakan_gfx_command_writer * command_writer,
@@ -86,17 +102,19 @@ void terakan_meta_begin_rectangles(struct terakan_gfx_command_writer * command_w
 
 void terakan_meta_begin_index_immediate_32(struct terakan_gfx_command_writer * command_writer);
 
-void terakan_meta_emit_rectangle_3_vertices_draw(struct terakan_gfx_command_writer * command_writer,
-                                                 VkRect2D const * rectangle,
-                                                 uint32_t instance_count);
-
 static inline void
-terakan_meta_begin_2d_immediate_rectangles(struct terakan_gfx_command_writer * const command_writer)
+terakan_meta_begin_2d_immediate_rectangles(struct terakan_gfx_command_writer * const command_writer,
+                                           uint32_t const db_render_override)
 {
+   terakan_meta_set_db_render_override(command_writer, db_render_override);
    terakan_meta_begin_2d(command_writer);
    terakan_meta_begin_rectangles(command_writer);
    terakan_meta_begin_index_immediate_32(command_writer);
 }
+
+void terakan_meta_emit_rectangle_3_vertices_draw(struct terakan_gfx_command_writer * command_writer,
+                                                 VkRect2D const * rectangle,
+                                                 uint32_t instance_count);
 
 static inline VkFormat
 terakan_meta_transfer_image_block_format(unsigned const bpe)
@@ -119,5 +137,9 @@ terakan_meta_transfer_image_block_format(unsigned const bpe)
       return VK_FORMAT_UNDEFINED;
    }
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_META_H */

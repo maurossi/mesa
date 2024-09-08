@@ -28,7 +28,9 @@
 
 #include <assert.h>
 
-#define TERAKAN_LIMITS_HW_VIEWPORTS 16
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define TERAKAN_LIMITS_HW_COLOR_MRT_COUNT 8
 #define TERAKAN_LIMITS_HW_COLOR_RAT_COUNT 12
@@ -42,5 +44,9 @@
 
 #define TERAKAN_LIMITS_HW_COMPUTE_GROUP_SIZE           1024
 #define TERAKAN_LIMITS_HW_COMPUTE_GROUPS_PER_DIMENSION UINT16_MAX
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_LIMITS_H */

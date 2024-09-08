@@ -30,6 +30,10 @@
 #include <stdint.h>
 #include <vulkan/vulkan_core.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 static inline uint32_t
 terakan_state_draw_primitive_topology_vgt_primitive_type(
    VkPrimitiveTopology const primitive_topology)
@@ -75,5 +79,9 @@ terakan_state_draw_primitive_topology_vgt_primitive_type(
    }
    return S_008958_PRIM_TYPE(hw_primitive_type);
 }
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_STATE_INPUT_ASSEMBLY_H */

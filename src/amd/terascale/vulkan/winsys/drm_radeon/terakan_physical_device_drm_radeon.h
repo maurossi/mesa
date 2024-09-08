@@ -21,51 +21,46 @@
  * IN THE SOFTWARE.
  */
 
-#include "terakan_winsys.h"
+#ifndef TERAKAN_PHYSICAL_DEVICE_DRM_RADEON_H
+#define TERAKAN_PHYSICAL_DEVICE_DRM_RADEON_H
 
-#include "util/u_atomic.h"
+#include "terakan_physical_device.h"
 
-#include <stddef.h>
+#include "vk_sync.h"
+#include "vk_sync_binary.h"
 
-void
-terakan_winsys_base_init(struct terakan_winsys * const winsys)
-{
-   winsys->last_bo_creation_number = 0;
+#include <stdbool.h>
+#include <stdint.h>
+#include <xf86drm.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct terakan_physical_device_drm_radeon {
+   struct terakan_physical_device base;
+
+   drmPciBusInfo pci_bus_info;
+
+   bool has_primary_node;
+   int64_t primary_node_device_id_major;
+   int64_t primary_node_device_id_minor;
+
+   int64_t render_node_device_id_major;
+   int64_t render_node_device_id_minor;
+   char * render_node_path;
+   int render_node_validation_fd;
+
+   struct vk_sync_binary_type sync_type_binary;
+   struct vk_sync_type const * sync_types[3];
+};
+
+VkResult terakan_physical_device_drm_radeon_try_create(struct vk_instance * instance,
+                                                       struct _drmDevice * drm_device,
+                                                       struct vk_physical_device ** device_out);
+
+#ifdef __cplusplus
 }
+#endif
 
-void *
-terakan_winsys_bo_map(struct terakan_winsys_bo * const bo)
-{
-   if (bo->mapping == NULL) {
-      bo->mapping = bo->winsys->bo_fn->map_impl(bo);
-   }
-   return bo->mapping;
-}
-
-void
-terakan_winsys_bo_unmap(struct terakan_winsys_bo * const bo)
-{
-   if (bo->mapping == NULL) {
-      return;
-   }
-   bo->winsys->bo_fn->unmap_impl(bo);
-   bo->mapping = NULL;
-}
-
-void
-terakan_winsys_bo_free(struct terakan_winsys_bo * const bo)
-{
-   terakan_winsys_bo_unmap(bo);
-   bo->winsys->bo_fn->free_impl(bo);
-}
-
-void
-terakan_winsys_bo_base_init(struct terakan_winsys_bo * const bo,
-                            struct terakan_winsys * const winsys)
-{
-   bo->winsys = winsys;
-
-   bo->creation_number = p_atomic_inc_return(&winsys->last_bo_creation_number);
-
-   bo->mapping = NULL;
-}
+#endif /* TERAKAN_PHYSICAL_DEVICE_DRM_RADEON_H */

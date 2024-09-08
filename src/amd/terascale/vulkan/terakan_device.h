@@ -25,19 +25,47 @@
 #define TERAKAN_DEVICE_H
 
 #include "meta/terakan_meta.h"
-#include "winsys/terakan_winsys.h"
+#include "terakan_bo.h"
+#include "terakan_image.h"
+#include "terakan_physical_device.h"
 #include "terakan_queue.h"
 #include "terakan_shader.h"
 
 #include "c11/threads.h"
+#include "ac_surface.h"
+#include "amd_family.h"
 #include "vk_device.h"
 
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct terakan_device_winsys_fn {
+   struct terakan_image_winsys_fn const * image;
+
+   struct terakan_bo_winsys_fn const * bo;
+
+   struct terakan_queue_winsys_fn const * queue;
+
+   void (*destroy)(struct terakan_device * device);
+};
+
+/* Partially implemented by the winsys. */
 struct terakan_device {
    struct vk_device vk;
 
-   struct terakan_winsys_bo * meta_shaders_bo;
+   struct terakan_device_winsys_fn const * winsys_fn;
+
+   size_t bo_reference_size;
+   size_t bo_reference_alignment;
+
+   uint32_t last_bo_creation_number;
+
+   struct terakan_bo * meta_shaders_bo;
    struct terakan_shader_static meta_shaders[TERAKAN_META_SHADER_COUNT];
 
    /* Mutex and condition variable for terakan_sync_completion timeline semaphore value updates and
@@ -57,5 +85,18 @@ struct terakan_device {
 };
 
 VK_DEFINE_HANDLE_CASTS(terakan_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
+
+void terakan_device_finish(struct terakan_device * device);
+
+VkResult terakan_device_init(struct terakan_device * device,
+                             struct terakan_physical_device * physical_device,
+                             VkDeviceCreateInfo const * create_info,
+                             VkAllocationCallbacks const * allocator,
+                             struct terakan_device_winsys_fn const * winsys_fn_static,
+                             size_t bo_reference_size, size_t bo_reference_alignment);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* TERAKAN_DEVICE_H */
