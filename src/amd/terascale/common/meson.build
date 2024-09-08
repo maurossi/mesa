@@ -1,4 +1,4 @@
-# Copyright © 2023 Vitaliy Triang3l Kuzmin
+# Copyright © 2024 Vitaliy Triang3l Kuzmin
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -32,6 +32,15 @@ idep_amd_terascale_registers = declare_dependency(
   sources : [amd_terascale_registers_files],
 )
 
+amd_terascale_formats_c = custom_target(
+  'terascale_formats.c',
+  input : ['terascale_formats.py', '../../../util/format/u_format.csv'],
+  output : 'terascale_formats.c',
+  command : [prog_python, '@INPUT@'],
+  depend_files : files('../../../util/format/u_format_parse.py'),
+  capture : true,
+)
+
 amd_terascale_common_files = files(
   '../../../gallium/drivers/r600/eg_asm.c',
   '../../../gallium/drivers/r600/r600_asm.c',
@@ -41,6 +50,9 @@ amd_terascale_common_files = files(
   '../../../gallium/drivers/r600/r600_isa.h',
   '../../../gallium/drivers/r600/r600_shader_common.h',
   '../../../gallium/drivers/r600/r700_asm.c',
+  'terascale_format.c',
+  'terascale_format.h',
+  'terascale_wddm.h',
 )
 
 amd_terascale_common_includes = [
@@ -50,7 +62,7 @@ amd_terascale_common_includes = [
 
 libamd_terascale_common = static_library(
   'amd_terascale_common',
-  [amd_terascale_common_files],
+  [amd_terascale_common_files, amd_terascale_formats_c],
   include_directories : amd_terascale_common_includes,
   dependencies : [
     idep_amd_terascale_registers,

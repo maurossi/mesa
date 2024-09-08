@@ -138,20 +138,28 @@ vk_shader_to_nir(struct vk_device *device,
    return nir;
 }
 
-struct set_layouts {
-   struct vk_descriptor_set_layout *set_layouts[MESA_VK_MAX_DESCRIPTOR_SETS];
-};
-
-static void
-vk_shader_compile_info_init(struct vk_shader_compile_info *info,
-                            struct set_layouts *set_layouts,
+static VkResult
+vk_shader_compile_info_init(const struct vk_device *device,
+                            struct vk_shader_compile_info *info,
                             const VkShaderCreateInfoEXT *vk_info,
                             const struct vk_pipeline_robustness_state *rs,
-                            nir_shader *nir)
+                            nir_shader *nir,
+                            const VkAllocationCallbacks *alloc)
 {
-   for (uint32_t sl = 0; sl < vk_info->setLayoutCount; sl++) {
-      set_layouts->set_layouts[sl] =
-         vk_descriptor_set_layout_from_handle(vk_info->pSetLayouts[sl]);
+   struct vk_descriptor_set_layout **set_layouts = NULL;
+   if (vk_info->setLayoutCount != 0) {
+      set_layouts = vk_alloc2(
+         &device->alloc, alloc,
+         vk_info->setLayoutCount * sizeof(struct vk_descriptor_set_layout *),
+         alignof(struct vk_descriptor_set_layout *),
+         VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+      if (set_layouts == NULL)
+         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+      for (uint32_t sl = 0; sl < vk_info->setLayoutCount; sl++) {
+         set_layouts[sl] =
+            vk_descriptor_set_layout_from_handle(vk_info->pSetLayouts[sl]);
+      }
    }
 
    *info = (struct vk_shader_compile_info) {
@@ -161,10 +169,21 @@ vk_shader_compile_info_init(struct vk_shader_compile_info *info,
       .nir = nir,
       .robustness = rs,
       .set_layout_count = vk_info->setLayoutCount,
-      .set_layouts = set_layouts->set_layouts,
+      .set_layouts = set_layouts,
       .push_constant_range_count = vk_info->pushConstantRangeCount,
       .push_constant_ranges = vk_info->pPushConstantRanges,
    };
+
+   return VK_SUCCESS;
+}
+
+static void
+vk_shader_compile_info_finish(const struct vk_device *device,
+                              struct vk_shader_compile_info *info,
+                              const VkAllocationCallbacks *alloc)
+{
+   vk_free2(&device->alloc, alloc,
+            (struct vk_descriptor_set_layout *)info->set_layouts);
 }
 
 PRAGMA_DIAGNOSTIC_PUSH
@@ -460,15 +479,21 @@ vk_common_CreateShadersEXT(VkDevice _device,
             }
 
             struct vk_shader_compile_info info;
-            struct set_layouts set_layouts;
-            vk_shader_compile_info_init(&info, &set_layouts,
-                                        vk_info, &rs, nir);
+            result = vk_shader_compile_info_init(device, &info, vk_info, &rs,
+                                                 nir, pAllocator);
+            if (result != VK_SUCCESS) {
+               ralloc_free(nir);
+               break;
+            }
 
             struct vk_shader *shader;
             result = ops->compile(device, 1, &info, NULL /* state */,
                                   pAllocator, &shader);
-            if (result != VK_SUCCESS)
+            vk_shader_compile_info_finish(device, &info, pAllocator);
+            if (result != VK_SUCCESS) {
+               ralloc_free(nir);
                break;
+            }
 
             pShaders[i] = vk_shader_to_handle(shader);
          }
@@ -484,15 +509,12 @@ vk_common_CreateShadersEXT(VkDevice _device,
    }
 
    if (linked_count > 0) {
-      struct set_layouts set_layouts[VK_MAX_LINKED_SHADER_STAGES];
       struct vk_shader_compile_info infos[VK_MAX_LINKED_SHADER_STAGES];
+      uint32_t infos_initialized = 0;
       VkResult result = VK_SUCCESS;
 
       /* Sort so we guarantee the driver always gets them in-order */
       qsort(linked, linked_count, sizeof(*linked), cmp_stage_idx);
-
-      /* Memset for easy error handling */
-      memset(infos, 0, sizeof(infos));
 
       for (uint32_t l = 0; l < linked_count; l++) {
          const VkShaderCreateInfoEXT *vk_info = &pCreateInfos[linked[l].idx];
@@ -504,8 +526,13 @@ vk_common_CreateShadersEXT(VkDevice _device,
             break;
          }
 
-         vk_shader_compile_info_init(&infos[l], &set_layouts[l],
-                                     vk_info, &rs, nir);
+         result = vk_shader_compile_info_init(device, &infos[l], vk_info, &rs,
+                                              nir, pAllocator);
+         if (result != VK_SUCCESS) {
+            ralloc_free(nir);
+            break;
+         }
+         infos_initialized = l + 1;
       }
 
       if (result == VK_SUCCESS) {
@@ -518,11 +545,12 @@ vk_common_CreateShadersEXT(VkDevice _device,
                pShaders[linked[l].idx] = vk_shader_to_handle(shaders[l]);
          }
       } else {
-         for (uint32_t l = 0; l < linked_count; l++) {
-            if (infos[l].nir != NULL)
-               ralloc_free(infos[l].nir);
-         }
+         for (uint32_t l = 0; l < infos_initialized; l++)
+            ralloc_free(infos[l].nir);
       }
+
+      for (uint32_t l = 0; l < infos_initialized; l++)
+         vk_shader_compile_info_finish(device, &infos[l], pAllocator);
 
       if (first_fail_or_success == VK_SUCCESS)
          first_fail_or_success = result;

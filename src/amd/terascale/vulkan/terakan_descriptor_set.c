@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -27,6 +27,7 @@
 #include "terakan_descriptor.h"
 #include "terakan_device.h"
 #include "terakan_entrypoints.h"
+#include "terakan_format.h"
 #include "terakan_image.h"
 #include "terakan_sampler.h"
 
@@ -72,25 +73,25 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
          (struct terakan_descriptor_set_sampler *)(dst_set->descriptors +
                                                    dst_set->layout->pool_first_sampler_offset_bytes) +
          dst_binding->first_set_sampler + descriptor_write->dstArrayElement;
-      struct terakan_descriptor_set_rat * const dst_rats =
-         (struct terakan_descriptor_set_rat *)(dst_set->descriptors +
-                                               dst_set->layout->pool_first_rat_offset_bytes) +
-         dst_binding->first_set_rat + descriptor_write->dstArrayElement;
+      struct terakan_descriptor_set_uav * const dst_uavs =
+         (struct terakan_descriptor_set_uav *)(dst_set->descriptors +
+                                               dst_set->layout->pool_first_uav_offset_bytes) +
+         dst_binding->first_set_uav + descriptor_write->dstArrayElement;
 
       switch (descriptor_write->descriptorType) {
       case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE: {
          for (uint32_t descriptor_index = 0; descriptor_index < descriptor_count;
               ++descriptor_index) {
-            struct terakan_descriptor_set_rat * const dst_rat = &dst_rats[descriptor_index];
+            struct terakan_descriptor_set_uav * const dst_uav = &dst_uavs[descriptor_index];
             struct terakan_image_view const * const image_view = terakan_image_view_from_handle(
                descriptor_write->pImageInfo[descriptor_index].imageView);
             if (image_view != NULL &&
-                G_028C70_FORMAT(image_view->color.info) != V_028C70_COLOR_INVALID) {
-               dst_rat->bo = image_view->bo;
-               memcpy(&dst_rat->color, &image_view->color, sizeof(struct terakan_color_descriptor));
-               terakan_color_descriptor_image_view_to_storage_image(&dst_rat->color);
+                G_028C70_FORMAT(image_view->color.info) != TERASCALE_FORMAT_INDEX_INVALID) {
+               dst_uav->bo = image_view->bo;
+               memcpy(&dst_uav->color, &image_view->color, sizeof(struct terakan_color_descriptor));
+               terakan_color_descriptor_image_view_to_storage_image(&dst_uav->color);
             } else {
-               dst_rat->bo = NULL;
+               dst_uav->bo = NULL;
             }
          }
       }
@@ -99,12 +100,15 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
       case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
       case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
       case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: {
-         if (descriptor_write->descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
-             descriptor_write->descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+         if ((descriptor_write->descriptorType == VK_DESCRIPTOR_TYPE_SAMPLER ||
+              descriptor_write->descriptorType == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) &&
+             dst_binding->first_immutable_sampler_or_dynamic_offset == UINT16_MAX) {
             for (uint32_t descriptor_index = 0; descriptor_index < descriptor_count;
                  ++descriptor_index) {
-               dst_samplers[descriptor_index].sampler = terakan_sampler_from_handle(
-                  descriptor_write->pImageInfo[descriptor_index].sampler);
+               terakan_descriptor_set_sampler_init(
+                  &dst_samplers[descriptor_index],
+                  terakan_sampler_from_handle(
+                     descriptor_write->pImageInfo[descriptor_index].sampler));
             }
          }
          if (descriptor_write->descriptorType != VK_DESCRIPTOR_TYPE_SAMPLER) {
@@ -128,16 +132,16 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
       case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER: {
          for (uint32_t descriptor_index = 0; descriptor_index < descriptor_count;
               ++descriptor_index) {
-            struct terakan_descriptor_set_rat * const dst_rat = &dst_rats[descriptor_index];
+            struct terakan_descriptor_set_uav * const dst_uav = &dst_uavs[descriptor_index];
             struct terakan_buffer_view const * const buffer_view = terakan_buffer_view_from_handle(
                descriptor_write->pTexelBufferView[descriptor_index]);
             if (buffer_view != NULL &&
-                G_028C70_FORMAT(buffer_view->color.info) != V_028C70_COLOR_INVALID) {
-               dst_rat->bo = buffer_view->bo;
-               memcpy(&dst_rat->color, &buffer_view->color,
+                G_028C70_FORMAT(buffer_view->color.info) != TERASCALE_FORMAT_INDEX_INVALID) {
+               dst_uav->bo = buffer_view->bo;
+               memcpy(&dst_uav->color, &buffer_view->color,
                       sizeof(struct terakan_color_descriptor));
             } else {
-               dst_rat->bo = NULL;
+               dst_uav->bo = NULL;
             }
          }
       }
@@ -176,12 +180,12 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
               ++descriptor_index) {
             struct terakan_descriptor_set_resource * const dst_resource =
                &dst_resources[descriptor_index];
-            struct terakan_descriptor_set_rat * const dst_rat = &dst_rats[descriptor_index];
+            struct terakan_descriptor_set_uav * const dst_uav = &dst_uavs[descriptor_index];
             struct terakan_bo const * const bo = terakan_buffer_create_storage_buffer_descriptor(
                &descriptor_write->pBufferInfo[descriptor_index], dst_resource->resource,
-               &dst_rat->color);
+               &dst_uav->color);
             dst_resource->bo = bo;
-            dst_rat->bo = bo;
+            dst_uav->bo = bo;
          }
       } break;
 
@@ -258,22 +262,34 @@ terakan_UpdateDescriptorSets(UNUSED VkDevice const device, uint32_t const descri
                 sizeof(struct terakan_descriptor_set_sampler) * descriptor_copy->descriptorCount);
       }
 
-      if (terakan_descriptor_type_has_rat(descriptor_type)) {
-         assert(terakan_descriptor_type_has_rat(dst_binding->descriptor_type));
-         memcpy(dst_set->descriptors + dst_set->layout->pool_first_rat_offset_bytes +
-                   sizeof(struct terakan_descriptor_set_rat) *
-                      (dst_binding->first_set_rat + descriptor_copy->dstArrayElement),
-                src_set->descriptors + src_set->layout->pool_first_rat_offset_bytes +
-                   sizeof(struct terakan_descriptor_set_rat) *
-                      (src_binding->first_set_rat + descriptor_copy->srcArrayElement),
-                sizeof(struct terakan_descriptor_set_rat) * descriptor_copy->descriptorCount);
+      if (terakan_descriptor_type_has_uav(descriptor_type)) {
+         assert(terakan_descriptor_type_has_uav(dst_binding->descriptor_type));
+         memcpy(dst_set->descriptors + dst_set->layout->pool_first_uav_offset_bytes +
+                   sizeof(struct terakan_descriptor_set_uav) *
+                      (dst_binding->first_set_uav + descriptor_copy->dstArrayElement),
+                src_set->descriptors + src_set->layout->pool_first_uav_offset_bytes +
+                   sizeof(struct terakan_descriptor_set_uav) *
+                      (src_binding->first_set_uav + descriptor_copy->srcArrayElement),
+                sizeof(struct terakan_descriptor_set_uav) * descriptor_copy->descriptorCount);
       }
    }
 }
 
 static void
-terakan_descriptor_set_finish(struct terakan_descriptor_set * const set)
+terakan_descriptor_set_free_descriptors_and_finish(struct terakan_descriptor_pool * const pool,
+                                                   uint32_t const set_index)
 {
+   struct terakan_descriptor_set * const set = &pool->sets[set_index];
+
+   uint32_t const descriptors_size = set->layout->pool_size_bytes;
+   if (descriptors_size != 0) {
+      assert(pool->descriptor_memory_size - pool->descriptor_memory_unallocated >=
+             descriptors_size);
+      pool->descriptor_memory_unallocated += descriptors_size;
+      util_vma_heap_free(&pool->descriptor_memory_heap, (uint64_t)set->descriptors,
+                         descriptors_size);
+   }
+
    vk_descriptor_set_layout_unref(set->base.device, &set->layout->vk);
 
    vk_object_base_finish(&set->base);
@@ -293,29 +309,27 @@ terakan_FreeDescriptorSets(UNUSED VkDevice const device, VkDescriptorPool const 
       struct terakan_descriptor_set * const set =
          terakan_descriptor_set_from_handle(pDescriptorSets[array_set_index]);
 
-      terakan_descriptor_set_finish(set);
-
       uint32_t const set_index = set - pool->sets;
       assert(set_index < pool->max_sets);
 
-      if (set->pool_prev != UINT32_MAX) {
-         struct terakan_descriptor_set * const set_prev = &pool->sets[set->pool_prev];
-         assert(set_prev->pool_next == set_index);
-         set_prev->pool_next = set->pool_next;
+      terakan_descriptor_set_free_descriptors_and_finish(pool, set_index);
+
+      if (set->pool_allocated_prev != UINT32_MAX) {
+         struct terakan_descriptor_set * const set_prev = &pool->sets[set->pool_allocated_prev];
+         assert(set_prev->pool_allocated_or_freed_next == set_index);
+         set_prev->pool_allocated_or_freed_next = set->pool_allocated_or_freed_next;
       } else {
          assert(pool->allocated_sets_head == set_index);
-         pool->allocated_sets_head = set->pool_next;
+         pool->allocated_sets_head = set->pool_allocated_or_freed_next;
       }
-      if (set->pool_next != UINT32_MAX) {
-         struct terakan_descriptor_set * const set_next = &pool->sets[set->pool_next];
-         assert(set_next->pool_prev == set_index);
-         set_next->pool_prev = set->pool_prev;
-      } else {
-         assert(pool->allocated_sets_tail == set_index);
-         pool->allocated_sets_tail = set->pool_prev;
+      if (set->pool_allocated_or_freed_next != UINT32_MAX) {
+         struct terakan_descriptor_set * const set_next =
+            &pool->sets[set->pool_allocated_or_freed_next];
+         assert(set_next->pool_allocated_prev == set_index);
+         set_next->pool_allocated_prev = set->pool_allocated_prev;
       }
 
-      set->pool_next = pool->freed_sets_head;
+      set->pool_allocated_or_freed_next = pool->freed_sets_head;
       pool->freed_sets_head = set_index;
    }
 
@@ -341,29 +355,38 @@ terakan_AllocateDescriptorSets(VkDevice const deviceHandle,
       return vk_error(device, VK_ERROR_OUT_OF_POOL_MEMORY);
    }
 
-   size_t descriptor_memory_after_tail_size = pool->descriptor_memory_size;
-   if (pool->allocated_sets_tail != UINT32_MAX) {
-      struct terakan_descriptor_set const * const allocated_tail_set =
-         &pool->sets[pool->allocated_sets_tail];
-      descriptor_memory_after_tail_size -= allocated_tail_set->descriptors -
-                                           pool->descriptor_memory +
-                                           allocated_tail_set->layout->pool_size_bytes;
-   }
-
-   uint32_t set_after_hole_index = UINT32_MAX;
-   char * hole = NULL;
-   size_t hole_size = 0;
-
    for (uint32_t array_set_index = 0; array_set_index < set_count; ++array_set_index) {
       struct terakan_descriptor_set_layout * const set_layout =
          terakan_descriptor_set_layout_from_handle(pAllocateInfo->pSetLayouts[array_set_index]);
       size_t const set_size = set_layout->pool_size_bytes;
 
+      char * set_descriptors = NULL;
+      if (set_size != 0) {
+         VkResult set_descriptors_allocate_error = VK_ERROR_OUT_OF_POOL_MEMORY;
+         /* Distinguish between trying to allocate too much memory and fragmentation. */
+         if (pool->descriptor_memory_unallocated >= set_size) {
+            set_descriptors_allocate_error = VK_ERROR_FRAGMENTED_POOL;
+            set_descriptors =
+               (char *)util_vma_heap_alloc(&pool->descriptor_memory_heap, set_size,
+                                           TERAKAN_DESCRIPTOR_SET_DESCRIPTOR_ALIGNMENT);
+         }
+         if (set_descriptors == NULL) {
+            terakan_FreeDescriptorSets(deviceHandle, pAllocateInfo->descriptorPool, array_set_index,
+                                       pDescriptorSets);
+            for (uint32_t null_set_index = 0; null_set_index < set_count; ++null_set_index) {
+               pDescriptorSets[null_set_index] = VK_NULL_HANDLE;
+            }
+            return vk_error(device, set_descriptors_allocate_error);
+         }
+         assert(pool->descriptor_memory_unallocated >= set_size);
+         pool->descriptor_memory_unallocated -= set_size;
+      }
+
       uint32_t set_index = pool->freed_sets_head;
       if (set_index != UINT32_MAX) {
          assert(pool->sets_freed != 0);
          --pool->sets_freed;
-         pool->freed_sets_head = pool->sets[set_index].pool_next;
+         pool->freed_sets_head = pool->sets[set_index].pool_allocated_or_freed_next;
       } else {
          set_index = pool->sets_allocated + pool->sets_freed;
          assert(set_index < pool->max_sets);
@@ -371,92 +394,48 @@ terakan_AllocateDescriptorSets(VkDevice const deviceHandle,
       ++pool->sets_allocated;
       struct terakan_descriptor_set * const set = &pool->sets[set_index];
 
-      /* Try to quickly allocate linearly first, after the last set in the descriptor memory. */
-      if (descriptor_memory_after_tail_size >= set_size) {
-         set->descriptors = pool->descriptor_memory +
-                            (pool->descriptor_memory_size - descriptor_memory_after_tail_size);
-         descriptor_memory_after_tail_size -= pool->descriptor_memory_size;
-         set->pool_prev = pool->allocated_sets_tail;
-         set->pool_next = UINT32_MAX;
-         if (pool->allocated_sets_tail != UINT32_MAX) {
-            struct terakan_descriptor_set * const allocated_tail_set =
-               &pool->sets[pool->allocated_sets_tail];
-            assert(allocated_tail_set->pool_next == UINT32_MAX);
-            allocated_tail_set->pool_next = set_index;
-         } else {
-            assert(pool->allocated_sets_head == UINT32_MAX);
-            pool->allocated_sets_head = set_index;
-         }
-         pool->allocated_sets_tail = set_index;
-      } else {
-         /* Search for a large enough hole starting from where the oldest linearly allocated sets
-          * will likely be.
-          * If allocating multiple descriptor sets, try reusing the hole found for the previous
-          * allocation, it may still have space.
-          */
-         assert(set_size != 0);
-         if (hole_size < set_size) {
-            set_after_hole_index = pool->allocated_sets_head;
-            hole = pool->descriptor_memory;
-            while (set_after_hole_index != UINT32_MAX) {
-               struct terakan_descriptor_set const * const set_after_hole =
-                  &pool->sets[set_after_hole_index];
-               hole_size = set_after_hole->descriptors - hole;
-               if (hole_size >= set_size) {
-                  break;
-               }
-               /* This hole is not large enough, try the hole after set_after_hole next time. */
-               hole = set_after_hole->descriptors + set_after_hole->layout->pool_size_bytes;
-               set_after_hole_index = set_after_hole->pool_next;
-            }
-
-            if (set_after_hole_index == UINT32_MAX) {
-               /* Failed to either allocate linearly or find a hole. */
-
-               --pool->sets_allocated;
-               set->pool_next = pool->freed_sets_head;
-               pool->freed_sets_head = set_index;
-               ++pool->sets_freed;
-
-               terakan_FreeDescriptorSets(deviceHandle, pAllocateInfo->descriptorPool,
-                                          array_set_index, pDescriptorSets);
-
-               for (uint32_t null_set_index = 0; null_set_index < set_count; ++null_set_index) {
-                  pDescriptorSets[null_set_index] = VK_NULL_HANDLE;
-               }
-
-               return vk_error(device, VK_ERROR_OUT_OF_POOL_MEMORY);
-            }
-         }
-
-         assert(set_after_hole_index != UINT32_MAX);
-         assert(hole != NULL);
-         assert(hole_size >= set_size);
-
-         set->descriptors = hole;
-         struct terakan_descriptor_set * const set_after_hole = &pool->sets[set_after_hole_index];
-         set->pool_prev = set_after_hole->pool_prev;
-         set->pool_next = set_after_hole_index;
-         set_after_hole->pool_prev = set_index;
-         if (set->pool_prev != UINT32_MAX) {
-            struct terakan_descriptor_set * const set_prev = &pool->sets[set->pool_prev];
-            assert(set_prev->pool_next == set_after_hole_index);
-            set_prev->pool_next = set_index;
-         } else {
-            assert(pool->allocated_sets_head == set_after_hole_index);
-            pool->allocated_sets_head = set_index;
-         }
-
-         hole_size -= set_size;
-         hole += set_size;
+      set->pool_allocated_prev = UINT32_MAX;
+      set->pool_allocated_or_freed_next = pool->allocated_sets_head;
+      if (pool->allocated_sets_head != UINT32_MAX) {
+         struct terakan_descriptor_set * const allocated_head_set =
+            &pool->sets[pool->allocated_sets_head];
+         assert(allocated_head_set->pool_allocated_prev == UINT32_MAX);
+         allocated_head_set->pool_allocated_prev = set_index;
       }
-
-      /* Allocated the set successfully, initialize it. */
+      pool->allocated_sets_head = set_index;
 
       vk_object_base_init(&device->vk, &set->base, VK_OBJECT_TYPE_DESCRIPTOR_SET);
 
       vk_descriptor_set_layout_ref(&set_layout->vk);
       set->layout = set_layout;
+
+      set->descriptors = set_descriptors;
+
+      if (set_size != 0) {
+         /* Section 14.2.3. "Allocation of Descriptor Sets" of the Vulkan 1.3.275 specification
+          * says:
+          *
+          *     "Entries that are not used by a pipeline can have undefined descriptors."
+          *
+          * Make sure hardware binding setters can work with potentially outdated, but never with
+          * completely invalid data with potentially broken invariants. Initialize BO pointers to
+          * NULL, and samplers to TYPE = 0, border color unused, and unnormalized coordinates
+          * disabled.
+          */
+         memset(set->descriptors, 0, set_size);
+
+         /* Write immutable samplers. */
+         struct terakan_descriptor_set_sampler * const set_samplers =
+            (struct terakan_descriptor_set_sampler *)(set->descriptors +
+                                                      set_layout->pool_first_sampler_offset_bytes);
+         for (uint8_t immutable_sampler_index = 0;
+              immutable_sampler_index < set_layout->immutable_sampler_count;
+              ++immutable_sampler_index) {
+            terakan_descriptor_set_sampler_init(
+               &set_samplers[set_layout->immutable_sampler_indices_in_set[immutable_sampler_index]],
+               set_layout->immutable_samplers[immutable_sampler_index]);
+         }
+      }
 
       pDescriptorSets[array_set_index] = terakan_descriptor_set_to_handle(set);
    }
@@ -472,13 +451,12 @@ terakan_ResetDescriptorPool(UNUSED VkDevice const device, VkDescriptorPool const
       terakan_descriptor_pool_from_handle(descriptorPool);
 
    for (uint32_t set_index = pool->allocated_sets_head; set_index != UINT32_MAX;
-        set_index = pool->sets[set_index].pool_next) {
-      terakan_descriptor_set_finish(&pool->sets[set_index]);
+        set_index = pool->sets[set_index].pool_allocated_or_freed_next) {
+      terakan_descriptor_set_free_descriptors_and_finish(pool, set_index);
    }
 
    pool->sets_allocated = 0;
    pool->allocated_sets_head = UINT32_MAX;
-   pool->allocated_sets_tail = UINT32_MAX;
 
    pool->sets_freed = 0;
    pool->freed_sets_head = UINT32_MAX;
@@ -498,8 +476,12 @@ terakan_DestroyDescriptorPool(VkDevice const deviceHandle, VkDescriptorPool cons
    }
 
    for (uint32_t set_index = pool->allocated_sets_head; set_index != UINT32_MAX;
-        set_index = pool->sets[set_index].pool_next) {
-      terakan_descriptor_set_finish(&pool->sets[set_index]);
+        set_index = pool->sets[set_index].pool_allocated_or_freed_next) {
+      terakan_descriptor_set_free_descriptors_and_finish(pool, set_index);
+   }
+
+   if (pool->descriptor_memory_size != 0) {
+      util_vma_heap_finish(&pool->descriptor_memory_heap);
    }
 
    struct terakan_device const * const device = terakan_device_from_handle(deviceHandle);
@@ -517,7 +499,7 @@ terakan_CreateDescriptorPool(VkDevice const deviceHandle,
 {
    struct terakan_device * const device = terakan_device_from_handle(deviceHandle);
 
-   size_t resource_count = 0, sampler_count = 0, rat_count = 0;
+   size_t resource_count = 0, sampler_count = 0, uav_count = 0;
    for (uint32_t pool_size_index = 0; pool_size_index < pCreateInfo->poolSizeCount;
         ++pool_size_index) {
       VkDescriptorPoolSize const pool_size = pCreateInfo->pPoolSizes[pool_size_index];
@@ -527,14 +509,14 @@ terakan_CreateDescriptorPool(VkDevice const deviceHandle,
       if (terakan_descriptor_type_has_sampler(pool_size.type)) {
          sampler_count += pool_size.descriptorCount;
       }
-      if (terakan_descriptor_type_has_rat(pool_size.type)) {
-         rat_count += pool_size.descriptorCount;
+      if (terakan_descriptor_type_has_uav(pool_size.type)) {
+         uav_count += pool_size.descriptorCount;
       }
    }
    size_t const descriptor_memory_size =
       sizeof(struct terakan_descriptor_set_resource) * resource_count +
       sizeof(struct terakan_descriptor_set_sampler) * sampler_count +
-      sizeof(struct terakan_descriptor_set_rat) * rat_count;
+      sizeof(struct terakan_descriptor_set_uav) * uav_count;
 
    VK_MULTIALLOC(multialloc);
    VK_MULTIALLOC_DECL(&multialloc, struct terakan_descriptor_pool, pool, 1);
@@ -551,13 +533,24 @@ terakan_CreateDescriptorPool(VkDevice const deviceHandle,
 
    pool->descriptor_memory_size = descriptor_memory_size;
    pool->descriptor_memory = descriptor_memory;
+   if (descriptor_memory_size != 0) {
+      static_assert(
+         sizeof(descriptor_memory) <= sizeof(uint64_t),
+         "Using VMA directly for CPU pointers, expecting offsets in it to be large enough to store "
+         "one.");
+      /* Use the descriptor memory pointer directly as the start because VMA expects the start
+       * address to be nonzero since it uses 0 to report allocation errors.
+       */
+      util_vma_heap_init(&pool->descriptor_memory_heap, (uint64_t)descriptor_memory,
+                         descriptor_memory_size);
+   }
+   pool->descriptor_memory_unallocated = descriptor_memory_size;
 
    pool->sets = sets;
    pool->max_sets = pCreateInfo->maxSets;
 
    pool->sets_allocated = 0;
    pool->allocated_sets_head = UINT32_MAX;
-   pool->allocated_sets_tail = UINT32_MAX;
 
    pool->sets_freed = 0;
    pool->freed_sets_head = UINT32_MAX;

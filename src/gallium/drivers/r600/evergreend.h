@@ -26,14 +26,19 @@
 #define EVERGREEN_CTL_CONST_END                     0x0003FF0C
 
 #define EVENT_TYPE_CS_PARTIAL_FLUSH            0x07
+#define EVENT_TYPE_VS_PARTIAL_FLUSH            0x0f
 #define EVENT_TYPE_PS_PARTIAL_FLUSH            0x10
 #define EVENT_TYPE_ZPASS_DONE                  0x15
 #define EVENT_TYPE_CACHE_FLUSH_AND_INV_EVENT   0x16
 #define EVENT_TYPE_SO_VGTSTREAMOUT_FLUSH       0x1f
 #define EVENT_TYPE_VGT_FLUSH                   0x24
+#define EVENT_TYPE_DB_CACHE_FLUSH_AND_INV      0x2a
+#define EVENT_TYPE_FLUSH_AND_INV_DB_DATA_TS    0x2b
 #define EVENT_TYPE_FLUSH_AND_INV_DB_META       0x2c
+#define EVENT_TYPE_FLUSH_AND_INV_CB_DATA_TS    0x2d
 #define EVENT_TYPE_CS_DONE                     0x2f
 #define EVENT_TYPE_PS_DONE                     0x30
+#define EVENT_TYPE_FLUSH_AND_INV_CB_PIXEL_DATA 0x31
 
 #define		EVENT_TYPE(x)                           ((x) << 0)
 #define		EVENT_INDEX(x)                          ((x) << 8)
@@ -56,6 +61,7 @@
 #define PKT3_DISPATCH_DIRECT                   0x15
 #define PKT3_DISPATCH_INDIRECT                 0x16
 #define PKT3_INDIRECT_BUFFER_END               0x17
+#define PKT3_MODE_CONTROL                      0x18
 #define PKT3_SET_PREDICATION                   0x20
 #define PKT3_REG_RMW                           0x21
 #define PKT3_COND_EXEC                         0x22
@@ -451,6 +457,80 @@
 #define   C_00913C_VTX_DONE_DELAY(x)                0xFFFFFFF0
 
 
+#define R_002760_MC_ARB_RAMCFG                        0x00002760
+#define   S_002760_NOOFBANK(x)                         (((unsigned)(x) & 0x3) << 0)
+#define   G_002760_NOOFBANK(x)                         (((x) >> 0) & 0x3)
+#define   C_002760_NOOFBANK                            0xFFFFFFFC
+#define   S_002760_NOOFRANK(x)                         (((unsigned)(x) & 0x1) << 2)
+#define   G_002760_NOOFRANK(x)                         (((x) >> 2) & 0x1)
+#define   C_002760_NOOFRANK                            0xFFFFFFFB
+#define   S_002760_NOOFROWS(x)                         (((unsigned)(x) & 0x7) << 3)
+#define   G_002760_NOOFROWS(x)                         (((x) >> 3) & 0x7)
+#define   C_002760_NOOFROWS                            0xFFFFFFC7
+#define   S_002760_NOOFCOLS(x)                         (((unsigned)(x) & 0x3) << 6)
+#define   G_002760_NOOFCOLS(x)                         (((x) >> 6) & 0x3)
+#define   C_002760_NOOFCOLS                            0xFFFFFF3F
+#define   S_002760_CHANSIZE(x)                         (((unsigned)(x) & 0x1) << 8)
+#define   G_002760_CHANSIZE(x)                         (((x) >> 8) & 0x1)
+#define   C_002760_CHANSIZE                            0xFFFFFEFF
+#define   S_002760_BURSTLENGTH(x)                      (((unsigned)(x) & 0x1) << 9)
+#define   G_002760_BURSTLENGTH(x)                      (((x) >> 9) & 0x1)
+#define   C_002760_BURSTLENGTH                         0xFFFFFDFF
+#define   S_002760_CHANSIZE_OVERRIDE(x)                (((unsigned)(x) & 0x1) << 11)
+#define   G_002760_CHANSIZE_OVERRIDE(x)                (((x) >> 11) & 0x1)
+#define   C_002760_CHANSIZE_OVERRIDE                   0xFFFFF7FF
+/* R_002760_MC_ARB_RAMCFG's address on CHIP_PALM, CHIP_SUMO and CHIP_SUMO2. */
+#define FUS_R_002768_MC_ARB_RAMCFG                    0x00002768
+
+
+/* Set up by the kernel. */
+#define R_0098F8_GB_ADDR_CONFIG                       0x000098F8
+#define   S_0098F8_NUM_PIPES(x)                        (((unsigned)(x) & 0x7) << 0)
+#define   G_0098F8_NUM_PIPES(x)                        (((x) >> 0) & 0x7)
+#define   C_0098F8_NUM_PIPES                           0xFFFFFFF8
+#define     V_0098F8_1_PIPE                            0x00000000
+#define     V_0098F8_2_PIPE                            0x00000001
+#define     V_0098F8_4_PIPE                            0x00000002
+#define     V_0098F8_8_PIPE                            0x00000003
+#define   S_0098F8_PIPE_INTERLEAVE_SIZE(x)             (((unsigned)(x) & 0x7) << 4)
+#define   G_0098F8_PIPE_INTERLEAVE_SIZE(x)             (((x) >> 4) & 0x7)
+#define   C_0098F8_PIPE_INTERLEAVE_SIZE                0xFFFFFF8F
+#define     V_0098F8_PIPE_INTERLEAVE_256B              0x00000000
+#define     V_0098F8_PIPE_INTERLEAVE_512B              0x00000001
+#define   S_0098F8_BANK_INTERLEAVE_SIZE(x)             (((unsigned)(x) & 0x7) << 8)
+#define   G_0098F8_BANK_INTERLEAVE_SIZE(x)             (((x) >> 8) & 0x7)
+#define   C_0098F8_BANK_INTERLEAVE_SIZE                0xFFFFF8FF
+#define     V_0098F8_BANK_INTERLEAVE_1                 0x00000000
+#define     V_0098F8_BANK_INTERLEAVE_2                 0x00000001
+#define     V_0098F8_BANK_INTERLEAVE_4                 0x00000002
+#define     V_0098F8_BANK_INTERLEAVE_8                 0x00000003
+#define   S_0098F8_NUM_SHADER_ENGINES(x)               (((unsigned)(x) & 0x3) << 12)
+#define   G_0098F8_NUM_SHADER_ENGINES(x)               (((x) >> 12) & 0x3)
+#define   C_0098F8_NUM_SHADER_ENGINES                  0xFFFFCFFF
+#define     V_0098F8_1_SHADER_ENGINE                   0x00000000
+#define     V_0098F8_2_SHADER_ENGINE                   0x00000001
+#define   S_0098F8_SHADER_ENGINE_TILE_SIZE(x)          (((unsigned)(x) & 0x7) << 16)
+#define   G_0098F8_SHADER_ENGINE_TILE_SIZE(x)          (((x) >> 16) & 0x7)
+#define   C_0098F8_SHADER_ENGINE_TILE_SIZE             0xFFF8FFFF
+#define     V_0098F8_SE_TILE_16                        0x00000000
+#define     V_0098F8_SE_TILE_32                        0x00000001
+#define   S_0098F8_NUM_GPUS(x)                         (((unsigned)(x) & 0x7) << 20)
+#define   G_0098F8_NUM_GPUS(x)                         (((x) >> 20) & 0x7)
+#define   C_0098F8_NUM_GPUS                            0xFF8FFFFF
+#define   S_0098F8_MULTI_GPU_TILE_SIZE(x)              (((unsigned)(x) & 0x3) << 24)
+#define   G_0098F8_MULTI_GPU_TILE_SIZE(x)              (((x) >> 24) & 0x3)
+#define   C_0098F8_MULTI_GPU_TILE_SIZE                 0xFCFFFFFF
+#define   S_0098F8_ROW_SIZE(x)                         (((unsigned)(x) & 0x3) << 28)
+#define   G_0098F8_ROW_SIZE(x)                         (((x) >> 28) & 0x3)
+#define   C_0098F8_ROW_SIZE                            0xCFFFFFFF
+#define     V_0098F8_1KB_ROW                           0x00000000
+#define     V_0098F8_2KB_ROW                           0x00000001
+#define     V_0098F8_4KB_ROW                           0x00000002
+#define   S_0098F8_NUM_LOWER_PIPES(x)                  (((unsigned)(x) & 0x1) << 30) /* cayman only */
+#define   G_0098F8_NUM_LOWER_PIPES(x)                  (((x) >> 30) & 0x1) /* cayman only */
+#define   C_0098F8_NUM_LOWER_PIPES                     0xBFFFFFFF /* cayman only */
+
+
 #define R_028C64_CB_COLOR0_PITCH                      0x028C64
 #define   S_028C64_PITCH_TILE_MAX(x)                   (((unsigned)(x) & 0x7FF) << 0)
 #define   G_028C64_PITCH_TILE_MAX(x)                   (((x) >> 0) & 0x7FF)
@@ -796,6 +876,8 @@
 #define   G_028040_ZRANGE_PRECISION(x)                 (((x) >> 31) & 0x1)
 #define   C_028040_ZRANGE_PRECISION                    0x7FFFFFFF
 #define   S_028040_TILE_SPLIT(x)                       (((unsigned)(x) & 0x7) << 8)
+#define   G_028040_TILE_SPLIT(x)                       (((x) >> 8) & 0x7)
+#define   C_028040_TILE_SPLIT                          0xFFFFF8FF
 #define   S_028040_NUM_BANKS(x)                        (((unsigned)(x) & 0x3) << 12)
 #define   S_028040_BANK_WIDTH(x)                       (((unsigned)(x) & 0x3) << 16)
 #define   S_028040_BANK_HEIGHT(x)                      (((unsigned)(x) & 0x3) << 20)
@@ -895,7 +977,7 @@
 #define   C_028780_SEPARATE_ALPHA_BLEND                0xDFFFFFFF
 #define   S_028780_BLEND_CONTROL_ENABLE(x)             (((unsigned)(x) & 0x1) << 30)
 #define   G_028780_BLEND_CONTROL_ENABLE(x)             (((x) >> 30) & 0x1)
-#define   C_028780_BLEND_CONTROL_ENABLE                0xEFFFFFFF
+#define   C_028780_BLEND_CONTROL_ENABLE                0xBFFFFFFF
 #define R_028814_PA_SU_SC_MODE_CNTL                  0x028814
 #define   S_028814_CULL_FRONT(x)                       (((unsigned)(x) & 0x1) << 0)
 #define   G_028814_CULL_FRONT(x)                       (((x) >> 0) & 0x1)

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -26,27 +26,19 @@
 
 #include "terakan_device.h"
 #include "terakan_physical_device_drm_radeon.h"
+#include "terakan_queue_drm_radeon.h"
 
 #include "c11/threads.h"
 #include "util/hash_table.h"
-
-#include <xf86drm.h>
-#include <radeon_surface.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-extern struct terakan_image_winsys_fn const terakan_image_drm_radeon_fn;
-
-extern struct terakan_queue_winsys_fn const terakan_queue_drm_radeon_fn;
-
 struct terakan_device_drm_radeon {
    struct terakan_device base;
 
    int render_node_fd;
-
-   struct radeon_surface_manager * surface_manager;
 
    /* Implementing reference counting for shared BO handles, since drmPrimeFDToHandle returns the
     * same handle when importing the same BO multiple times even with different file descriptors,
@@ -56,6 +48,8 @@ struct terakan_device_drm_radeon {
     */
    mtx_t shared_bo_mutex;
    struct hash_table * shared_bo_reference_counts;
+
+   struct terakan_queue_submission_context_drm_radeon gfx_submission_context;
 };
 
 VkResult terakan_device_drm_radeon_create(struct terakan_physical_device * physical_device,

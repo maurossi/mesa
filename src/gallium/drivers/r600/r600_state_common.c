@@ -932,8 +932,8 @@ int r600_shader_select(struct pipe_context *ctx,
 
 		r = r600_pipe_shader_create(ctx, shader, key);
 		if (unlikely(r)) {
-			R600_ERR("Failed to build shader variant (type=%u) %d\n",
-				 sel->type, r);
+			R600_ERR_F("Failed to build shader variant (type=%u) %d\n",
+			           sel->type, r);
 			sel->current = NULL;
 			FREE(shader);
 			return r;
@@ -2562,7 +2562,7 @@ uint32_t r600_translate_stencil_op(int s_op)
 	case PIPE_STENCIL_OP_INVERT:
 		return V_028800_STENCIL_INVERT;
 	default:
-		R600_ERR("Unknown stencil op %d", s_op);
+		R600_ERR_F("Unknown stencil op %d", s_op);
 		assert(0);
 		break;
 	}
@@ -3120,7 +3120,7 @@ out_word4:
 		*yuv_format_p = yuv_format;
 	return result;
 out_unknown:
-	/* R600_ERR("Unable to handle texformat %d %s\n", format, util_format_name(format)); */
+	/* R600_ERR_F("Unable to handle texformat %d %s\n", format, util_format_name(format)); */
 	return ~0;
 }
 

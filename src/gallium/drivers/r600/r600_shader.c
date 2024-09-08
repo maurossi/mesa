@@ -414,7 +414,7 @@ void *r600_create_vertex_fetch_shader(struct pipe_context *ctx,
 
 		if (elements[i].src_offset > 65535) {
 			r600_bytecode_clear(&bc);
-			R600_ERR("too big src_offset: %u\n", elements[i].src_offset);
+			R600_ERR_F("too big src_offset: %u\n", elements[i].src_offset);
 			return NULL;
 		}
 
@@ -580,14 +580,14 @@ static int emit_streamout(struct r600_shader_ctx *ctx, struct pipe_stream_output
 
 	/* Sanity checking. */
 	if (so->num_outputs > PIPE_MAX_SO_OUTPUTS) {
-		R600_ERR("Too many stream outputs: %d\n", so->num_outputs);
+		R600_ERR_F("Too many stream outputs: %d\n", so->num_outputs);
 		r = -EINVAL;
 		goto out_err;
 	}
 	for (i = 0; i < so->num_outputs; i++) {
 		if (so->output[i].output_buffer >= 4) {
-			R600_ERR("Exceeded the max number of stream output buffers, got: %d\n",
-				 so->output[i].output_buffer);
+			R600_ERR_F("Exceeded the max number of stream output buffers, got: %d\n",
+			           so->output[i].output_buffer);
 			r = -EINVAL;
 			goto out_err;
 		}

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -35,6 +35,7 @@ extern "C" {
 
 struct terakan_pipeline_layout_set {
    uint8_t first_shader_resources[MESA_SHADER_STAGES];
+   uint8_t first_shader_uniform_buffers[MESA_SHADER_STAGES];
    uint8_t first_shader_samplers[MESA_SHADER_STAGES];
 };
 
@@ -46,7 +47,7 @@ struct terakan_pipeline_layout {
    uint32_t shader_non_immutable_samplers[MESA_SHADER_STAGES];
    uint32_t shader_immutable_samplers_unnormalized_coordinates[MESA_SHADER_STAGES];
 
-   uint32_t shader_push_constant_extents_bytes[MESA_SHADER_STAGES];
+   uint32_t shader_app_push_constants_extents_bytes[MESA_SHADER_STAGES];
 };
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(terakan_pipeline_layout, vk.base, VkPipelineLayout,

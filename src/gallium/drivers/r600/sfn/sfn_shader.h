@@ -28,6 +28,10 @@ struct nir_instr;
 
 namespace r600 {
 
+struct ShaderBindingLayout {
+   uint8_t texture_resource_offset = 0;
+};
+
 class ShaderIO {
 public:
    void print(std::ostream& os) const;
@@ -140,7 +144,8 @@ public:
                                      r600_shader *gs_shader,
                                      const r600_shader_key& key,
                                      r600_chip_class chip_class,
-                                     radeon_family family);
+                                     radeon_family family,
+                                     const ShaderBindingLayout& binding_layout);
 
    bool process(nir_shader *nir);
 
@@ -190,6 +195,12 @@ public:
 
    radeon_family chip_family() const { return m_chip_family; }
    void set_chip_family(radeon_family family) { m_chip_family = family; }
+
+   const ShaderBindingLayout& binding_layout() const { return m_binding_layout; }
+   void set_binding_layout(const ShaderBindingLayout& binding_layout)
+   {
+      m_binding_layout = binding_layout;
+   }
 
    void start_new_block(int nesting_depth);
 
@@ -309,6 +320,7 @@ private:
    bool emit_local_store(nir_intrinsic_instr *intr);
    bool emit_local_load(nir_intrinsic_instr *instr);
    bool emit_load_tcs_param_base(nir_intrinsic_instr *instr, int offset);
+   bool emit_mbcnt(nir_intrinsic_instr *instr);
    bool emit_group_barrier(nir_intrinsic_instr *intr);
    bool emit_shader_clock(nir_intrinsic_instr *instr);
    bool emit_wait_ack();
@@ -318,6 +330,7 @@ private:
    bool emit_store_reg(nir_intrinsic_instr *intr);
    bool emit_store_reg_indirect(nir_intrinsic_instr *intr);
    bool emit_load_buffer_resource(nir_intrinsic_instr *instr);
+   bool emit_load_kcache(nir_intrinsic_instr *instr);
 
    bool equal_to(const Shader& other) const;
    void finalize();
@@ -335,6 +348,8 @@ private:
    IOMap<ShaderInput> m_inputs;
    r600_chip_class m_chip_class;
    radeon_family m_chip_family{CHIP_CEDAR};
+
+   ShaderBindingLayout m_binding_layout;
 
    int m_scratch_size;
    int m_next_block;

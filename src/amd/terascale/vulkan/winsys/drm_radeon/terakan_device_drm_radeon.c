@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,6 +24,7 @@
 #include "terakan_device_drm_radeon.h"
 
 #include "terakan_bo_drm_radeon.h"
+#include "terakan_queue_drm_radeon.h"
 
 #include "util/macros.h"
 #include "vk_alloc.h"
@@ -32,6 +33,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <radeon_drm.h>
 
 static void
@@ -45,15 +47,12 @@ terakan_device_drm_radeon_destroy(struct terakan_device * const device_base)
    _mesa_hash_table_destroy(device->shared_bo_reference_counts, NULL);
    mtx_destroy(&device->shared_bo_mutex);
 
-   radeon_surface_manager_free(device->surface_manager);
-
    close(device->render_node_fd);
 
    vk_free(&device->base.vk.alloc, device);
 }
 
 static struct terakan_device_winsys_fn const terakan_device_drm_radeon_fn = {
-   .image = &terakan_image_drm_radeon_fn,
    .bo = &terakan_bo_drm_radeon_fn,
    .queue = &terakan_queue_drm_radeon_fn,
    .destroy = terakan_device_drm_radeon_destroy,
@@ -109,18 +108,10 @@ terakan_device_drm_radeon_create(struct terakan_physical_device * const physical
 
    /* Initialize the device. */
 
-   device->surface_manager = radeon_surface_manager_new(device->render_node_fd);
-   if (device->surface_manager == NULL) {
-      result = vk_errorf(instance, VK_ERROR_INITIALIZATION_FAILED,
-                         "Failed to create the surface manager for the DRM device '%s'",
-                         physical_device->render_node_path);
-      goto fail_render_node_fd;
-   }
-
    if (mtx_init(&device->shared_bo_mutex, mtx_plain) != thrd_success) {
       result = vk_errorf(instance, VK_ERROR_OUT_OF_HOST_MEMORY,
                          "Failed to initialize the shared buffer reference counting mutex");
-      goto fail_surface_manager;
+      goto fail_render_node_fd;
    }
    device->shared_bo_reference_counts = _mesa_pointer_hash_table_create(NULL);
    if (device->shared_bo_reference_counts == NULL) {
@@ -128,6 +119,19 @@ terakan_device_drm_radeon_create(struct terakan_physical_device * const physical
                          "Failed to create the shared buffer reference count table");
       goto fail_shared_bo_mutex;
    }
+
+   /* TODO(Triang3l): With virtual memory, query RADEON_INFO_IB_VM_MAX_SIZE for the maximum indirect
+    * buffer size in dwords.
+    */
+   terakan_queue_submission_context_init(
+      &device->gfx_submission_context.base,
+      (struct terakan_queue_submission_size){
+         /* DRM Radeon accepts BO reference offsets in dwords in relocations. */
+         .bo_references = UINT32_MAX / (sizeof(struct drm_radeon_cs_reloc) / sizeof(__u32)),
+         .indirect_buffer_dwords = UINT32_MAX,
+      });
+   device->gfx_submission_context.device = device;
+   device->gfx_submission_context.ring = RADEON_CS_RING_GFX;
 
    result = terakan_device_init(&device->base, &physical_device->base, create_info, allocator,
                                 &terakan_device_drm_radeon_fn, sizeof(struct drm_radeon_cs_reloc),
@@ -143,8 +147,6 @@ fail_shared_bo_reference_counts:
    _mesa_hash_table_destroy(device->shared_bo_reference_counts, NULL);
 fail_shared_bo_mutex:
    mtx_destroy(&device->shared_bo_mutex);
-fail_surface_manager:
-   radeon_surface_manager_free(device->surface_manager);
 fail_render_node_fd:
    close(device->render_node_fd);
 fail_alloc:

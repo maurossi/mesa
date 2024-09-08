@@ -291,13 +291,13 @@ VertexExportForFs::emit_stream(int stream)
 {
    assert(m_so_info);
    if (m_so_info->num_outputs > PIPE_MAX_SO_OUTPUTS) {
-      R600_ASM_ERR("Too many stream outputs: %d\n", m_so_info->num_outputs);
+      R600_ASM_ERR_F("Too many stream outputs: %d\n", m_so_info->num_outputs);
       return false;
    }
    for (unsigned i = 0; i < m_so_info->num_outputs; i++) {
       if (m_so_info->output[i].output_buffer >= 4) {
-         R600_ASM_ERR("Exceeded the max number of stream output buffers, got: %d\n",
-                      m_so_info->output[i].output_buffer);
+         R600_ASM_ERR_F("Exceeded the max number of stream output buffers, got: %d\n",
+                        m_so_info->output[i].output_buffer);
          return false;
       }
    }

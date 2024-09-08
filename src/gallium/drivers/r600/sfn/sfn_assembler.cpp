@@ -570,8 +570,8 @@ AssamblerVisitor::visit(const ExportInstr& exi)
       output.array_base = exi.location();
       break;
    default:
-      R600_ASM_ERR("shader_from_nir: export %d type not yet supported\n",
-                   exi.export_type());
+      R600_ASM_ERR_F("shader_from_nir: export %d type not yet supported\n",
+                     exi.export_type());
       m_result = false;
    }
 
@@ -584,7 +584,7 @@ AssamblerVisitor::visit(const ExportInstr& exi)
 
    int r = 0;
    if ((r = r600_bytecode_add_output(m_bc, &output))) {
-      R600_ASM_ERR("Error adding export at location %d : err: %d\n", exi.location(), r);
+      R600_ASM_ERR_F("Error adding export at location %d : err: %d\n", exi.location(), r);
       m_result = false;
    }
 }
@@ -1186,9 +1186,9 @@ bool
 AssamblerVisitor::copy_dst(r600_bytecode_alu_dst& dst, const Register& d, bool write)
 {
    if (write && d.sel() > g_clause_local_end) {
-      R600_ASM_ERR("shader_from_nir: Don't support more then 123 GPRs + 4 clause "
-                   "local, but try using %d\n",
-                   d.sel());
+      R600_ASM_ERR_F("shader_from_nir: Don't support more then 123 GPRs + 4 clause "
+                     "local, but try using %d\n",
+                     d.sel());
       m_result = false;
       return false;
    }

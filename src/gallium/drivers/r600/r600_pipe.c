@@ -186,7 +186,7 @@ static struct pipe_context *r600_create_context(struct pipe_screen *screen,
 							 PIPE_USAGE_DEFAULT, 32);
 		break;
 	default:
-		R600_ERR("Unsupported gfx level %d.\n", rctx->b.gfx_level);
+		R600_ERR_F("Unsupported gfx level %d.\n", rctx->b.gfx_level);
 		goto fail;
 	}
 

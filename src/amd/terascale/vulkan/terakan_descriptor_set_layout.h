@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -53,9 +53,9 @@ struct terakan_descriptor_set_layout_binding {
     * Descriptors of each type for consecutive bindings are laid out in descriptor memory
     * sequentially so descriptor counts in writes can span both array elements and consecutive
     * bindings.
-    * RATs are allocated regardless of the stage flags for the simplicity of writing and copying.
+    * UAVs are allocated regardless of the stage flags for the simplicity of writing and copying.
     */
-   uint16_t first_set_rat;
+   uint16_t first_set_uav;
    uint16_t first_set_resource;
    uint8_t first_set_sampler;
 
@@ -63,14 +63,15 @@ struct terakan_descriptor_set_layout_binding {
 
    /* Primarily for shader compilation and pushing. */
    uint8_t first_shader_resources[MESA_SHADER_STAGES];
+   uint8_t first_shader_uniform_buffers[MESA_SHADER_STAGES];
    uint8_t first_shader_samplers[MESA_SHADER_STAGES];
 };
 
 struct terakan_descriptor_set_layout_shader_range {
    /* Of the range's type. */
    uint16_t first_set_descriptor;
-   /* UINT16_MAX if not using an immutable sampler or dynamic offset. */
-   uint16_t first_immutable_sampler_or_dynamic_offset;
+   /* UINT16_MAX if not using a dynamic offset. */
+   uint16_t first_dynamic_offset;
    /* Of the range's type. */
    uint8_t first_shader_descriptor;
    uint8_t descriptor_count;
@@ -86,6 +87,7 @@ struct terakan_descriptor_set_layout_shader {
    uint8_t sampler_range_count;
 
    uint8_t resource_count;
+   uint8_t uniform_buffer_count;
    uint8_t sampler_count;
 };
 
@@ -94,12 +96,22 @@ struct terakan_descriptor_set_layout {
 
    /* Resources are the in the beginning of the set's descriptor memory. */
    uint32_t pool_first_sampler_offset_bytes;
-   /* Immutable samplers are not included in the sampler allocation. */
-   uint32_t pool_first_rat_offset_bytes;
+   /* For simplicity of copying descriptors (the destination must not be immutable, but the source
+    * may be - VUID-VkCopyDescriptorSet-dstBinding-02753), immutable samplers are stored in the set
+    * memory, but are initialized when allocating a set.
+    * This also simplifies binding, which is done frequently. Note that immutable samplers must be
+    * bound at vkCmdBindDescriptorSets time, while vkCmdBindPipeline (or draws / dispatches) must
+    * not destructively overwrite bindings from previously bound sets, to maintain pipeline layout
+    * compatibility - binding a pipeline or drawing / dispatching doesn't disturb descriptor sets,
+    * binding descriptor sets does.
+    */
+   uint32_t pool_first_uav_offset_bytes;
    uint32_t pool_size_bytes;
 
    uint16_t dynamic_offset_count;
+   uint8_t immutable_sampler_count;
 
+   uint8_t * immutable_sampler_indices_in_set;
    struct terakan_sampler const ** immutable_samplers;
 
    /* Primarily for binding. */

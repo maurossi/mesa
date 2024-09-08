@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -37,5 +37,5 @@ terakan_CmdSetPrimitiveTopology(VkCommandBuffer const commandBuffer,
       &terakan_command_buffer_from_handle(commandBuffer)->command_writer.gfx->state_draw;
    state_draw->vgt_primitive_type =
       terakan_state_draw_primitive_topology_vgt_primitive_type(primitiveTopology);
-   terakan_state_draw_set_pending(state_draw, TERAKAN_STATE_DRAW_VGT_PRIMITIVE_TYPE);
+   terakan_state_draw_set_pending(state_draw, TERAKAN_STATE_DRAW_INDEX_VGT_PRIMITIVE_TYPE);
 }

@@ -1,16 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
- *
- * Based in part on r600_state_common.c and r600_texture.c which are:
- * Copyright 2010 Red Hat Inc.
- *           2010 Jerome Glisse <glisse@freedesktop.org>
- *
- * Based in part on radv_formats.c which is:
- * Copyright © 2016 Red Hat.
- * Copyright © 2016 Bas Nieuwenhuizen
- *
- * Based in parts of r800addrlib.cpp which is:
- * Copyright (c) 2007-2023 Advanced Micro Devices, Inc. All Rights Reserved.
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -39,724 +28,84 @@
 #include "terakan_physical_device.h"
 
 #include "util/bitscan.h"
-#include "util/format/u_format.h"
-#include "util/u_endian.h"
+#include "util/macros.h"
+#include "util/u_math.h"
 #include "vk_format.h"
 #include "vk_util.h"
 
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
-/* TODO(Triang3l): Big-endian. */
+#define TERAKAN_FORMAT_ASPECT_MAP_DECLARE(name, aspect_0, aspect_1, aspect_2)                      \
+   [name] = {(aspect_0), (aspect_1), (aspect_2)},
+VkImageAspectFlagBits const
+   terakan_format_aspect_map_aspects[TERAKAN_FORMAT_ASPECT_MAP_COUNT][TERAKAN_FORMAT_MAX_ASPECTS] = {
+      TERAKAN_FORMAT_ASPECT_MAP_DECLARE_ALL};
+#undef TERAKAN_FORMAT_ASPECT_MAP_DECLARE
 
-static bool
-terakan_format_is_unsupported(VkFormat const format)
+#define TERAKAN_FORMAT_ASPECT_MAP_DECLARE(name, aspect_0, aspect_1, aspect_2)                      \
+   [name] = (aspect_0) | (aspect_1) | (aspect_2),
+VkImageAspectFlags const terakan_format_aspect_map_aspect_masks[TERAKAN_FORMAT_ASPECT_MAP_COUNT] = {
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE_ALL};
+#undef TERAKAN_FORMAT_ASPECT_MAP_DECLARE
+
+enum terakan_format_aspect_map
+terakan_format_aspect_map_for_format_aspects(VkImageAspectFlags const format_aspects)
 {
-   /* Mapped to 16_UNORM PIPE_FORMAT, but not supported. */
-   if (format == VK_FORMAT_R10X6_UNORM_PACK16 || format == VK_FORMAT_R10X6G10X6_UNORM_2PACK16) {
-      return true;
+   for (unsigned aspect_map_index = 0; aspect_map_index < TERAKAN_FORMAT_ASPECT_MAP_COUNT;
+        ++aspect_map_index) {
+      if (terakan_format_aspect_map_aspect_masks[aspect_map_index] == format_aspects) {
+         return (enum terakan_format_aspect_map)aspect_map_index;
+      }
    }
+   return TERAKAN_FORMAT_ASPECT_MAP_INVALID;
+}
 
-   return false;
+unsigned
+terakan_format_aspect_index(enum terakan_format_aspect_map const aspect_map,
+                            VkImageAspectFlagBits const aspect, unsigned result_if_not_present)
+{
+   assert(aspect_map < TERAKAN_FORMAT_ASPECT_MAP_COUNT);
+   VkImageAspectFlagBits const * const map_aspects = terakan_format_aspect_map_aspects[aspect_map];
+   for (unsigned aspect_index = 0; aspect_index < TERAKAN_FORMAT_MAX_ASPECTS; ++aspect_index) {
+      VkImageAspectFlagBits const map_aspect = map_aspects[aspect_index];
+      if (map_aspect == VK_IMAGE_ASPECT_NONE) {
+         break;
+      }
+      if (map_aspect == aspect) {
+         return aspect_index;
+      }
+   }
+   return result_if_not_present;
 }
 
 bool
-terakan_format_is_linear_only(VkFormat const format)
+terakan_format_info_get(VkFormat const format, struct terakan_format_info * const info_out)
 {
-   if (vk_format_is_depth_or_stencil(format)) {
-      /* Depth or stencil images are always tiled.
-       * PIPE_FORMAT_Z16_UNORM_S8_UINT is considered 24-bit though, not power-of-two, but it's
-       * stored as separate 16 UNORM and 8 UINT surfaces on the hardware.
-       */
+   enum terakan_format_aspect_map const aspect_map =
+      terakan_format_aspect_map_for_format_aspects(vk_format_aspects(format));
+   if (unlikely(aspect_map == TERAKAN_FORMAT_ASPECT_MAP_INVALID)) {
       return false;
    }
-
-   /* According to the R800 AddrLib:
-    * "Special format such as FMT_1 and FMT_32_32_32 can be linear only".
-    *
-    * In Terakan specifically, copying to tiled images is done via a color texture target with the
-    * same number of bits per element - and they're supported only for power-of-two formats.
-    * Copying to linear images is done using a buffer random access target, to which the three
-    * components can be written separately.
-    */
-   unsigned const block_size_bits = vk_format_get_blocksizebits(format);
-   if (block_size_bits < 8 || !util_is_power_of_two_or_zero(block_size_bits)) {
-      return true;
-   }
-
-   /* According to the Gallium R600 and RadeonSI drivers, tiling doesn't work with the subsampled
-    * formats.
-    */
-   if (vk_format_description(format)->layout == UTIL_FORMAT_LAYOUT_SUBSAMPLED) {
-      return true;
-   }
-
-   return false;
-}
-
-bool
-terakan_format_is_tiled_only(VkFormat const format)
-{
-   /* Combined depth and stencil images are always tiled, libdrm_radeon forces tiling for
-    * RADEON_ZBUFFER or RADEON_SBUFFER (which both must be specified so the stencil layout is
-    * computed, so can't omit them if depth / stencil attachment usage is not needed) even when a
-    * linear array mode is requested.
-    * According to the Gallium R600 driver, compressed textures must always be tiled.
-    */
-   if ((vk_format_has_depth(format) && vk_format_has_stencil(format)) ||
-       vk_format_is_block_compressed(format)) {
-      return true;
-   }
-
-   return false;
-}
-
-static int
-terakan_format_get_depth_or_first_non_void_channel(
-   struct util_format_description const * const description)
-{
-   /* If the format has depth, getters are for the depth aspect - for channel swizzle[0]. */
-   return util_format_has_depth(description)
-             ? description->swizzle[0]
-             : util_format_get_first_non_void_channel(description->format);
-}
-
-uint32_t
-terakan_format_color_get_format(VkFormat const format)
-{
-   if (terakan_format_is_unsupported(format)) {
-      return V_028C70_COLOR_INVALID;
-   }
-
-   /* Not a plain format.*/
-   if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
-      return V_028C70_COLOR_10_11_11_FLOAT;
-   }
-
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->format == PIPE_FORMAT_NONE || description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      return V_028C70_COLOR_INVALID;
-   }
-
-   switch (description->nr_channels) {
-   case 1:
-      switch (description->channel[0].size) {
-      case 8:
-         return V_028C70_COLOR_8;
-      case 16:
-         if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-            return V_028C70_COLOR_16_FLOAT;
-         }
-         return V_028C70_COLOR_16;
-      case 32:
-         if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-            return V_028C70_COLOR_32_FLOAT;
-         }
-         return V_028C70_COLOR_32;
+   info_out->aspect_map = aspect_map;
+   memset(info_out->aspect_formats, 0, sizeof(info_out->aspect_formats));
+   VkImageAspectFlagBits const * const map_aspects = terakan_format_aspect_map_aspects[aspect_map];
+   for (unsigned aspect_index = 0; aspect_index < TERAKAN_FORMAT_MAX_ASPECTS; ++aspect_index) {
+      VkImageAspectFlagBits const map_aspect = map_aspects[aspect_index];
+      if (map_aspect == VK_IMAGE_ASPECT_NONE) {
+         break;
       }
-      break;
-
-   case 2:
-      if (description->channel[0].size == description->channel[1].size) {
-         switch (description->channel[0].size) {
-         case 8:
-            return V_028C70_COLOR_8_8;
-         case 16:
-            if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-               return V_028C70_COLOR_16_16_FLOAT;
-            }
-            return V_028C70_COLOR_16_16;
-         case 32:
-            if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-               return V_028C70_COLOR_32_32_FLOAT;
-            }
-            return V_028C70_COLOR_32_32;
-         }
-      } else if (description->channel[0].size == 16 && description->channel[1].size == 8) {
-         /* Depth aspect of VK_FORMAT_D16_UNORM_S8_UINT. */
-         return V_028C70_COLOR_16;
-      } else if (description->channel[0].size == 8 && description->channel[1].size == 24) {
-         return V_028C70_COLOR_24_8;
-      } else if (description->channel[0].size == 24 && description->channel[1].size == 8) {
-         return V_028C70_COLOR_8_24;
-      }
-      break;
-
-   case 3:
-      if (description->channel[0].size == 5 && description->channel[1].size == 6 &&
-          description->channel[2].size == 5) {
-         return V_028C70_COLOR_5_6_5;
-      } else if (description->channel[0].size == 32 && description->channel[1].size == 8 &&
-                 description->channel[2].size == 24) {
-         /* Depth aspect, not X24_8_32_FLOAT. */
-         return V_028C70_COLOR_32_FLOAT;
-      }
-      break;
-
-   case 4:
-      if (description->channel[0].size == description->channel[1].size &&
-          description->channel[0].size == description->channel[2].size) {
-         if (description->channel[0].size == description->channel[3].size) {
-            switch (description->channel[0].size) {
-            case 4:
-               return V_028C70_COLOR_4_4_4_4;
-            case 8:
-               return V_028C70_COLOR_8_8_8_8;
-            case 16:
-               if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-                  return V_028C70_COLOR_16_16_16_16_FLOAT;
-               }
-               return V_028C70_COLOR_16_16_16_16;
-            case 32:
-               if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-                  return V_028C70_COLOR_32_32_32_32_FLOAT;
-               }
-               return V_028C70_COLOR_32_32_32_32;
-            }
-         } else if (description->channel[0].size == 5 && description->channel[3].size == 1) {
-            return V_028C70_COLOR_1_5_5_5;
-         } else if (description->channel[0].size == 10 && description->channel[3].size == 2) {
-            return V_028C70_COLOR_2_10_10_10;
-         }
-      } else if (description->channel[1].size == description->channel[2].size &&
-                 description->channel[1].size == description->channel[3].size) {
-         if (description->channel[0].size == 1 && description->channel[1].size == 5) {
-            return V_028C70_COLOR_5_5_5_1;
-         } else if (description->channel[0].size == 2 && description->channel[1].size == 10) {
-            return V_028C70_COLOR_10_10_10_2;
-         }
-      }
-      break;
-   }
-
-   return V_028C70_COLOR_INVALID;
-}
-
-uint32_t
-terakan_format_color_get_number_type(VkFormat const format)
-{
-   /* Not a plain format.*/
-   if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
-      return V_028C70_NUMBER_FLOAT;
-   }
-
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      return UINT32_MAX;
-   }
-
-   if (description->colorspace == UTIL_FORMAT_COLORSPACE_SRGB) {
-      return V_028C70_NUMBER_SRGB;
-   }
-
-   int const channel_index = terakan_format_get_depth_or_first_non_void_channel(description);
-   if (channel_index < 0) {
-      return UINT32_MAX;
-   }
-   struct util_format_channel_description const * const channel =
-      &description->channel[channel_index];
-
-   switch (channel->type) {
-   case UTIL_FORMAT_TYPE_UNSIGNED:
-      if (channel->normalized) {
-         return V_028C70_NUMBER_UNORM;
-      } else if (channel->pure_integer) {
-         return V_028C70_NUMBER_UINT;
-      }
-      break;
-
-   case UTIL_FORMAT_TYPE_SIGNED:
-      if (channel->normalized) {
-         return V_028C70_NUMBER_SNORM;
-      } else if (channel->pure_integer) {
-         return V_028C70_NUMBER_SINT;
-      }
-      break;
-
-   case UTIL_FORMAT_TYPE_FLOAT:
-      return V_028C70_NUMBER_FLOAT;
-
-   default:
-      break;
-   }
-
-   return UINT32_MAX;
-}
-
-uint32_t
-terakan_format_color_get_swap(VkFormat const format)
-{
-   /* Not a plain format.*/
-   if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
-      return V_028C70_SWAP_STD;
-   }
-
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->colorspace == UTIL_FORMAT_COLORSPACE_ZS) {
-      /* In Vulkan, both depth and stencil are in X (which one is accessed depends on the view
-       * aspect).
-       */
-      return V_028C70_SWAP_STD;
-   }
-
-   if (description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      return UINT32_MAX;
-   }
-
-   switch (description->nr_channels) {
-   case 1:
-      if (description->swizzle[0] == PIPE_SWIZZLE_X) {
-         /* X___ */
-         return V_028C70_SWAP_STD;
-      } else if (description->swizzle[3] == PIPE_SWIZZLE_X) {
-         /* ___X */
-         return V_028C70_SWAP_ALT_REV;
-      }
-      break;
-
-   case 2:
-      if ((description->swizzle[0] == PIPE_SWIZZLE_X &&
-           (description->swizzle[1] == PIPE_SWIZZLE_Y ||
-            description->swizzle[1] == PIPE_SWIZZLE_NONE)) ||
-          (description->swizzle[0] == PIPE_SWIZZLE_NONE &&
-           description->swizzle[1] == PIPE_SWIZZLE_Y)) {
-         /* XY__ */
-         return V_028C70_SWAP_STD;
-      } else if ((description->swizzle[0] == PIPE_SWIZZLE_Y &&
-                  (description->swizzle[1] == PIPE_SWIZZLE_X ||
-                   description->swizzle[1] == PIPE_SWIZZLE_NONE)) ||
-                 (description->swizzle[0] == PIPE_SWIZZLE_NONE &&
-                  description->swizzle[1] == PIPE_SWIZZLE_X)) {
-         /* YX__ */
-         return V_028C70_SWAP_STD_REV;
-      } else if (description->swizzle[0] == PIPE_SWIZZLE_X &&
-                 description->swizzle[3] == PIPE_SWIZZLE_Y) {
-         /* X__Y */
-         return V_028C70_SWAP_ALT;
-      } else if (description->swizzle[0] == PIPE_SWIZZLE_Y &&
-                 description->swizzle[3] == PIPE_SWIZZLE_X) {
-         /* Y__X */
-         return V_028C70_SWAP_ALT_REV;
-      }
-      break;
-
-   case 3:
-      if (description->swizzle[0] == PIPE_SWIZZLE_X) {
-         /* XYZ_ */
-         return V_028C70_SWAP_STD;
-      } else if (description->swizzle[0] == PIPE_SWIZZLE_Z) {
-         /* ZYX_ */
-         return V_028C70_SWAP_STD_REV;
-      }
-      break;
-
-   case 4:
-      /* Check the middle channels, the [0] and [3] channels can be NONE. */
-      if (description->swizzle[1] == PIPE_SWIZZLE_Y) {
-         if (description->swizzle[2] == PIPE_SWIZZLE_Z) {
-            /* XYZW */
-            return V_028C70_SWAP_STD;
-         } else if (description->swizzle[2] == PIPE_SWIZZLE_X) {
-            /* ZYXW */
-            return V_028C70_SWAP_ALT;
-         }
-      } else if (description->swizzle[1] == PIPE_SWIZZLE_Z) {
-         if (description->swizzle[2] == PIPE_SWIZZLE_Y) {
-            /* WZYX */
-            return V_028C70_SWAP_STD_REV;
-         } else if (description->swizzle[2] == PIPE_SWIZZLE_W) {
-            /* YZWX */
-            return V_028C70_SWAP_ALT_REV;
-         }
-      }
-      break;
-   }
-
-   return UINT32_MAX;
-}
-
-bool
-terakan_format_color_is_blendable(uint32_t const color_format, uint32_t const number_type)
-{
-   return number_type != V_028C70_NUMBER_UINT && number_type != V_028C70_NUMBER_SINT &&
-          color_format != V_028C70_COLOR_8_24 && color_format != V_028C70_COLOR_24_8 &&
-          color_format != V_028C70_COLOR_X24_8_32_FLOAT;
-}
-
-uint32_t
-terakan_format_depth_get_format(VkFormat const format)
-{
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (!util_format_has_depth(description)) {
-      return V_028040_Z_INVALID;
-   }
-
-   struct util_format_channel_description const * const depth_channel =
-      &description->channel[description->swizzle[0]];
-   if (depth_channel->type == UTIL_FORMAT_TYPE_UNSIGNED) {
-      if (depth_channel->normalized) {
-         switch (depth_channel->size) {
-         case 16:
-            return V_028040_Z_16;
-         case 24:
-            return V_028040_Z_24;
-         }
-      }
-   } else if (depth_channel->type == UTIL_FORMAT_TYPE_FLOAT) {
-      if (depth_channel->size == 32) {
-         return V_028040_Z_32_FLOAT;
+      struct terascale_format_info * const aspect_format_info =
+         &info_out->aspect_formats[aspect_index];
+      *aspect_format_info = terascale_format_info_r8xx[vk_format_to_pipe_format(
+         vk_format_get_aspect_format(format, map_aspect))];
+      if (unlikely(aspect_format_info->format == TERASCALE_FORMAT_INDEX_INVALID)) {
+         return false;
       }
    }
-
-   return V_028040_Z_INVALID;
-}
-
-bool
-terakan_format_has_stencil_8(VkFormat const format)
-{
-   struct util_format_description const * const description = vk_format_description(format);
-   return util_format_has_stencil(description) &&
-          description->channel[description->swizzle[1]].size == 8;
-}
-
-uint32_t
-terakan_format_data_get_common_format(VkFormat const format)
-{
-   if (terakan_format_is_unsupported(format)) {
-      return FMT_INVALID;
-   }
-
-   /* Not plain formats. */
-   if (format == VK_FORMAT_B10G11R11_UFLOAT_PACK32) {
-      return FMT_10_11_11_FLOAT;
-   } else if (format == VK_FORMAT_E5B9G9R9_UFLOAT_PACK32) {
-      return FMT_5_9_9_9_SHAREDEXP;
-   }
-
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->format == PIPE_FORMAT_NONE || description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      return FMT_INVALID;
-   }
-
-   switch (description->nr_channels) {
-   case 1:
-      switch (description->channel[0].size) {
-      case 8:
-         return FMT_8;
-      case 16:
-         if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-            return FMT_16_FLOAT;
-         }
-         return FMT_16;
-      case 32:
-         if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-            return FMT_32_FLOAT;
-         }
-         return FMT_32;
-      }
-      break;
-
-   case 2:
-      if (description->channel[0].size == description->channel[1].size) {
-         switch (description->channel[0].size) {
-         case 4:
-            return FMT_4_4;
-         case 8:
-            return FMT_8_8;
-         case 16:
-            if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-               return FMT_16_16_FLOAT;
-            }
-            return FMT_16_16;
-         case 32:
-            if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-               return FMT_32_32_FLOAT;
-            }
-            return FMT_32_32;
-         }
-      } else if (description->channel[0].size == 16 && description->channel[1].size == 8) {
-         /* Depth aspect of VK_FORMAT_D16_UNORM_S8_UINT. */
-         return FMT_16;
-      } else if (description->channel[0].size == 8 && description->channel[1].size == 24) {
-         return FMT_24_8;
-      } else if (description->channel[0].size == 24 && description->channel[1].size == 8) {
-         return FMT_8_24;
-      }
-      break;
-
-   case 3:
-      if (description->channel[0].size == 5) {
-         if (description->channel[1].size == 6 && description->channel[2].size == 5) {
-            return FMT_5_6_5;
-         } else if (description->channel[1].size == 5 && description->channel[2].size == 6) {
-            return FMT_6_5_5;
-         }
-      } else if (description->channel[0].size == 32) {
-         if (description->channel[1].size == 8 && description->channel[2].size == 24) {
-            /* Depth aspect, not X24_8_32_FLOAT. */
-            return FMT_32_FLOAT;
-         } else if (description->channel[1].size == 32 && description->channel[2].size == 32) {
-            if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-               return FMT_32_32_32_FLOAT;
-            }
-            return FMT_32_32_32;
-         }
-      }
-      break;
-
-   case 4:
-      if (description->channel[0].size == description->channel[1].size &&
-          description->channel[0].size == description->channel[2].size) {
-         if (description->channel[0].size == description->channel[3].size) {
-            switch (description->channel[0].size) {
-            case 4:
-               return FMT_4_4_4_4;
-            case 8:
-               return FMT_8_8_8_8;
-            case 16:
-               if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-                  return FMT_16_16_16_16_FLOAT;
-               }
-               return FMT_16_16_16_16;
-            case 32:
-               if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-                  return FMT_32_32_32_32_FLOAT;
-               }
-               return FMT_32_32_32_32;
-            }
-         } else if (description->channel[0].size == 5 && description->channel[3].size == 1) {
-            return FMT_1_5_5_5;
-         } else if (description->channel[0].size == 10 && description->channel[3].size == 2) {
-            return FMT_2_10_10_10;
-         }
-      } else if (description->channel[1].size == description->channel[2].size &&
-                 description->channel[1].size == description->channel[3].size) {
-         if (description->channel[0].size == 1 && description->channel[1].size == 5) {
-            return FMT_5_5_5_1;
-         } else if (description->channel[0].size == 2 && description->channel[1].size == 10) {
-            return FMT_10_10_10_2;
-         }
-      }
-      break;
-   }
-
-   return FMT_INVALID;
-}
-
-uint32_t
-terakan_format_data_get_number_format(VkFormat const format)
-{
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      /* All supported non-plain formats are NORM. */
-      return V_030010_SQ_NUM_FORMAT_NORM;
-   }
-
-   int const channel_index = terakan_format_get_depth_or_first_non_void_channel(description);
-   if (channel_index < 0) {
-      return UINT32_MAX;
-   }
-   struct util_format_channel_description const * const channel =
-      &description->channel[channel_index];
-
-   switch (channel->type) {
-   case UTIL_FORMAT_TYPE_UNSIGNED:
-   case UTIL_FORMAT_TYPE_SIGNED:
-      if (channel->normalized) {
-         return V_030010_SQ_NUM_FORMAT_NORM;
-      } else if (channel->pure_integer) {
-         return V_030010_SQ_NUM_FORMAT_INT;
-      } else {
-         return V_030010_SQ_NUM_FORMAT_SCALED;
-      }
-      break;
-
-      /* Fixed-point formats are not supported. */
-
-   case UTIL_FORMAT_TYPE_FLOAT:
-      return V_030010_SQ_NUM_FORMAT_NORM;
-
-   default:
-      break;
-   }
-
-   return UINT32_MAX;
-}
-
-unsigned char const *
-terakan_format_data_get_swizzle(VkFormat const format)
-{
-   if (vk_format_is_depth_or_stencil(format)) {
-      /* In Vulkan, both depth and stencil are in X (which one is accessed depends on the view
-       * aspect).
-       */
-      static unsigned char const depth_stencil_swizzle[] = {PIPE_SWIZZLE_X, PIPE_SWIZZLE_0,
-                                                            PIPE_SWIZZLE_0, PIPE_SWIZZLE_1};
-      return depth_stencil_swizzle;
-   }
-   return vk_format_description(format)->swizzle;
-}
-
-uint32_t
-terakan_format_texture_get_format(VkFormat const format)
-{
-   uint32_t const common_format = terakan_format_data_get_common_format(format);
-   if (common_format != FMT_INVALID) {
-      return common_format;
-   }
-
-   /* Handle texture-only formats. */
-
-   switch (format) {
-   case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
-   case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-   case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
-   case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
-      return FMT_BC1;
-
-   case VK_FORMAT_BC2_UNORM_BLOCK:
-   case VK_FORMAT_BC2_SRGB_BLOCK:
-      return FMT_BC2;
-
-   case VK_FORMAT_BC3_UNORM_BLOCK:
-   case VK_FORMAT_BC3_SRGB_BLOCK:
-      return FMT_BC3;
-
-   case VK_FORMAT_BC4_UNORM_BLOCK:
-   case VK_FORMAT_BC4_SNORM_BLOCK:
-      return FMT_BC4;
-
-   case VK_FORMAT_BC5_UNORM_BLOCK:
-   case VK_FORMAT_BC5_SNORM_BLOCK:
-      return FMT_BC5;
-
-   case VK_FORMAT_BC6H_UFLOAT_BLOCK:
-   case VK_FORMAT_BC6H_SFLOAT_BLOCK:
-      return FMT_BC6;
-
-   case VK_FORMAT_BC7_UNORM_BLOCK:
-   case VK_FORMAT_BC7_SRGB_BLOCK:
-      return FMT_BC7;
-
-   case VK_FORMAT_G8B8G8R8_422_UNORM:
-      return FMT_BG_RG;
-
-   case VK_FORMAT_B8G8R8G8_422_UNORM:
-      return FMT_GB_GR;
-
-   default:
-      break;
-   }
-
-   return FMT_INVALID;
-}
-
-uint32_t
-terakan_format_texture_get_word4_signs(VkFormat const format)
-{
-   /* Not plain formats. */
-   switch (format) {
-   case VK_FORMAT_BC4_SNORM_BLOCK:
-      return V_030010_SQ_FORMAT_COMP_SIGNED;
-   case VK_FORMAT_BC5_SNORM_BLOCK:
-      return V_030010_SQ_FORMAT_COMP_SIGNED * 0b0101;
-   case VK_FORMAT_BC6H_SFLOAT_BLOCK:
-      return V_030010_SQ_FORMAT_COMP_SIGNED * 0b010101;
-   default:
-      break;
-   }
-
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      /* All supported non-plain texture formats except for the ones already handled are unsigned or
-       * float.
-       */
-      return 0;
-   }
-
-   uint32_t word4_signs = 0;
-   for (size_t channel_index = 0; channel_index < 4; ++channel_index) {
-      if (description->channel[channel_index].type == UTIL_FORMAT_TYPE_SIGNED) {
-         word4_signs |= V_030010_SQ_FORMAT_COMP_SIGNED << (2 * channel_index);
-      }
-   }
-
-   return word4_signs;
-}
-
-uint32_t
-terakan_format_vertex_get_format(VkFormat const format)
-{
-   uint32_t const common_format = terakan_format_data_get_common_format(format);
-   if (common_format != FMT_INVALID) {
-      return common_format;
-   }
-
-   /* Handle vertex-only formats. */
-
-   if (terakan_format_is_unsupported(format)) {
-      return FMT_INVALID;
-   }
-
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->format == PIPE_FORMAT_NONE || description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      return FMT_INVALID;
-   }
-
-   if (description->nr_channels == 3) {
-      if (description->channel[0].size == description->channel[1].size) {
-         if (description->channel[0].size == description->channel[2].size) {
-            switch (description->channel[0].size) {
-            case 8:
-               return FMT_8_8_8;
-            case 16:
-               if (description->channel[0].type == UTIL_FORMAT_TYPE_FLOAT) {
-                  return FMT_16_16_16_FLOAT;
-               }
-               return FMT_16_16_16;
-            }
-         } else if (description->channel[0].size == 11 && description->channel[2].size == 10) {
-            return FMT_10_11_11;
-         }
-      } else if (description->channel[1].size == description->channel[2].size) {
-         if (description->channel[0].size == 2 && description->channel[1].size == 3) {
-            return FMT_3_3_2;
-         } else if (description->channel[0].size == 10 && description->channel[1].size == 11) {
-            return FMT_11_11_10;
-         }
-      }
-   }
-
-   return FMT_INVALID;
-}
-
-uint32_t
-terakan_format_vertex_get_sign(VkFormat const format)
-{
-   struct util_format_description const * const description = vk_format_description(format);
-
-   if (description->layout != UTIL_FORMAT_LAYOUT_PLAIN) {
-      /* All supported non-plain vertex formats are unsigned or float. */
-      return 0;
-   }
-
-   int const channel_index = terakan_format_get_depth_or_first_non_void_channel(description);
-   if (channel_index < 0) {
-      return 0;
-   }
-   struct util_format_channel_description const * const channel =
-      &description->channel[channel_index];
-
-   return (uint32_t)(channel->type == UTIL_FORMAT_TYPE_SIGNED);
+   return true;
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -764,118 +113,214 @@ terakan_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice const physicalDevice
                                            VkFormat const format,
                                            VkFormatProperties2 * const pFormatProperties)
 {
-   struct terakan_physical_device const * const device =
-      terakan_physical_device_from_handle(physicalDevice);
-
-   VkFormatFeatureFlags2 image_features = 0;
-   VkFormatFeatureFlags2 image_optimal_only_features = 0;
+   VkFormatFeatureFlags2 image_linear_tiling_features = 0;
+   VkFormatFeatureFlags2 image_optimal_tiling_features = 0;
    VkFormatFeatureFlags2 buffer_features = 0;
 
-   bool const is_tiled_only = terakan_format_is_tiled_only(format);
+   struct terakan_format_info format_info;
+   if (terakan_format_info_get(format, &format_info)) {
+      /* Image features for the intersection of the aspects - gather hardware features for it. */
 
-   uint32_t const color_format = terakan_format_color_get_format(format);
-   uint32_t const color_number_type = terakan_format_color_get_number_type(format);
-   bool const color_supported = color_format != V_028C70_COLOR_INVALID &&
-                                color_number_type != UINT32_MAX &&
-                                terakan_format_color_get_swap(format) != UINT32_MAX;
+      uint64_t image_formats_used = 0b0;
 
-   uint32_t const depth_format = terakan_format_depth_get_format(format);
-   bool const has_stencil_8 = terakan_format_has_stencil_8(format);
-   bool const is_depth_stencil = depth_format != V_028040_Z_INVALID || has_stencil_8;
+      bool image_sq_vertex_fetch = true;
 
-   uint32_t const data_number_format = terakan_format_data_get_number_format(format);
-   uint32_t const texture_format =
-      data_number_format != UINT32_MAX ? terakan_format_texture_get_format(format) : FMT_INVALID;
-   uint32_t const vertex_format =
-      data_number_format != UINT32_MAX ? terakan_format_vertex_get_format(format) : FMT_INVALID;
+      bool image_sq_texture_fetch = true;
+      /* Ignore if image_sq_texture_fetch is false. */
+      bool image_sq_texture_fetch_linear_filter = true;
 
-   if (color_supported) {
-      image_features |= VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT | VK_FORMAT_FEATURE_2_BLIT_DST_BIT;
-      if (terakan_format_color_is_blendable(color_format, color_number_type)) {
-         image_features |= VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT;
-      }
-      /* Storage images and buffers require both a random access target and a texture resource.
-       * 1D storage images must be linear according to the Gallium R600 driver, so don't permit
-       * storage image usage for tiled-only formats at all (as well as for depth / stencil formats,
-       * because depth / stencil attachments must be tiled).
-       */
-      if (texture_format != FMT_INVALID && !is_tiled_only && !is_depth_stencil) {
-         VkFormatFeatureFlags2 const storage_image_features =
-            VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT |
-            VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
-            VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
-         /* According to R800 AddrLib, "Tex2D UAV on cypress will fail/hang if tile mode is
-          * linear".
-          */
-         if (device->chip_family_info.chip_family == CHIP_CYPRESS) {
-            image_optimal_only_features |= storage_image_features;
+      bool image_cb_color = true;
+      /* Ignore if cb_color is false. */
+      bool image_cb_color_blend = true;
+      bool image_cb_color_atomic = true;
+
+      for (unsigned aspect_index = 0; aspect_index < TERAKAN_FORMAT_MAX_ASPECTS; ++aspect_index) {
+         struct terascale_format_info const aspect_format_info =
+            format_info.aspect_formats[aspect_index];
+         if (aspect_format_info.format == TERASCALE_FORMAT_INDEX_INVALID) {
+            break;
+         }
+
+         image_formats_used |= BITFIELD64_BIT(aspect_format_info.format);
+
+         if (!aspect_format_info.supports_sq_vertex_fetch) {
+            image_sq_vertex_fetch = false;
+         }
+
+         if (aspect_format_info.supports_sq_texture_fetch) {
+            /* Section 49.2. "Format Properties" of the Vulkan 1.3.288 specification says:
+             *
+             *     "VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT
+             *
+             *     [...]
+             *
+             *     If the format being queried is a depth/stencil format, this bit only specifies
+             *     that the depth aspect (not the stencil aspect) of an image of this format
+             *     supports linear filtering, and that linear filtering of the depth aspect is
+             *     supported whether depth compare is enabled in the sampler or not."
+             */
+            if (!((terakan_format_aspect_map_aspect_masks[format_info.aspect_map] &
+                   (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT)) ==
+                     (VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT) &&
+                  terakan_format_aspect_map_aspects[format_info.aspect_map][aspect_index] !=
+                     VK_IMAGE_ASPECT_DEPTH_BIT) &&
+                (aspect_format_info.number_type == TERASCALE_FORMAT_NUMBER_TYPE_UINT ||
+                 aspect_format_info.number_type == TERASCALE_FORMAT_NUMBER_TYPE_SINT)) {
+               image_sq_texture_fetch_linear_filter = false;
+            }
          } else {
-            image_features |= storage_image_features;
+            image_sq_texture_fetch = false;
+         }
+
+         if (aspect_format_info.supports_cb_color) {
+            if (terascale_format_blend_bypass(
+                   (enum terascale_format_number_type)aspect_format_info.number_type,
+                   (enum terascale_format_index)aspect_format_info.format)) {
+               image_cb_color_blend = false;
+            }
+            if (!terascale_format_supports_uav_atomic_int(&aspect_format_info)) {
+               image_cb_color_atomic = false;
+            }
+         } else {
+            image_cb_color = false;
          }
       }
-      if (vertex_format != FMT_INVALID) {
-         buffer_features |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT |
-                            VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
-                            VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
+
+      /* Translate hardware image features into Vulkan image features. */
+
+      VkFormatFeatureFlags2 image_features = 0;
+      VkFormatFeatureFlags2 image_tiled_only_features = 0;
+
+      if (image_sq_texture_fetch) {
+         image_features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_2_BLIT_SRC_BIT;
+         if (image_sq_texture_fetch_linear_filter) {
+            image_features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT |
+                              VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_DEPTH_COMPARISON_BIT;
+         }
+         /* DEPTH_STENCIL_ATTACHMENT requires both depth / stencil attachment (DB, can't be linear)
+          * and input attachment (SQ texture) usage.
+          */
+         if (terascale_get_r8xx_depth_stencil_format(vk_format_to_pipe_format(format), NULL,
+                                                     NULL)) {
+            image_tiled_only_features |= VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT;
+         }
       }
-      if (format == VK_FORMAT_R32_UINT || format == VK_FORMAT_R32_SINT) {
-         image_features |= VK_FORMAT_FEATURE_2_STORAGE_IMAGE_ATOMIC_BIT;
-         buffer_features |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_ATOMIC_BIT;
+
+      if (image_cb_color) {
+         /* STORAGE requires a CB unordered access view, an SQ buffer / texture depending on the
+          * type (for size queries as well as certain read-only usage cases), and an SQ buffer for
+          * CB_IMMED.
+          */
+         if (image_sq_vertex_fetch && image_sq_texture_fetch) {
+            VkFormatFeatureFlags2 const storage_image_features =
+               VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT |
+               VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
+               VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT |
+               (image_cb_color_atomic ? VK_FORMAT_FEATURE_2_STORAGE_IMAGE_ATOMIC_BIT : 0);
+            /* According to R800 AddrLib, "Tex2D UAV on cypress will fail/hang if tile mode is
+             * linear".
+             * Hemlock is a variant of Cypress, and AddrLib doesn't distinguish between the two, for
+             * safety, assume the bug is present on Hemlock too.
+             */
+            enum radeon_family const chip_family =
+               terakan_physical_device_from_handle(physicalDevice)->chip_family_info.chip_family;
+            if (chip_family == CHIP_CYPRESS || chip_family == CHIP_HEMLOCK) {
+               image_tiled_only_features |= storage_image_features;
+            } else {
+               image_features |= storage_image_features;
+            }
+         }
+
+         /* COLOR_ATTACHMENT requires both color attachment (CB color) and input attachment (SQ
+          * texture) usage.
+          */
+         if (image_sq_texture_fetch) {
+            image_features |= VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT;
+            if (image_cb_color_blend) {
+               image_features |= VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT;
+            }
+         }
+
+         image_features |= VK_FORMAT_FEATURE_2_BLIT_DST_BIT;
       }
+
+      bool const image_linear_only = (TERASCALE_FORMATS_LINEAR_ONLY & image_formats_used) != 0;
+      bool const image_tiled_only = (TERASCALE_FORMATS_TILED_ONLY_R8XX & image_formats_used) != 0;
+      if (!(image_linear_only && image_tiled_only)) {
+         if (!image_tiled_only) {
+            image_linear_tiling_features |= image_features;
+         }
+         image_optimal_tiling_features |= image_features;
+         if (!image_linear_only) {
+            image_optimal_tiling_features |= image_tiled_only_features;
+         }
+      }
+
+      /* Buffer features - buffers can be created only with single-aspect formats.
+       *
+       * bufferFeatures must not support any features for depth or stencil (even though internally
+       * for simplicity Terakan largely doesn't distinguish between depth / stencil formats and
+       * color formats corresponding to their aspects) or block-compressed formats according to the
+       * Vulkan specification.
+       */
+
+      if (util_bitcount(terakan_format_aspect_map_aspect_masks[format_info.aspect_map]) &&
+          !vk_format_is_depth_or_stencil(format) && !vk_format_is_block_compressed(format)) {
+         /* If there's only one aspect, its format inherently must match the whole format.
+          * Assuming that makes it possible to skip terakan_format_info for buffers and just use the
+          * application-provided format directly without decomposing it into aspects to get the
+          * hardware format info.
+          */
+         assert(vk_format_get_aspect_format(
+                   format, terakan_format_aspect_map_aspects[format_info.aspect_map][0]) == format);
+         struct terascale_format_info const buffer_format_info = format_info.aspect_formats[0];
+         if (buffer_format_info.supports_sq_vertex_fetch) {
+            buffer_features |=
+               VK_FORMAT_FEATURE_2_UNIFORM_TEXEL_BUFFER_BIT | VK_FORMAT_FEATURE_2_VERTEX_BUFFER_BIT;
+            /* STORAGE requires a CB unordered access view, and an SQ buffer for CB_IMMED. */
+            if (buffer_format_info.supports_cb_color) {
+               buffer_features |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_BIT |
+                                  VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
+                                  VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
+               if (terascale_format_supports_uav_atomic_int(&buffer_format_info)) {
+                  buffer_features |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_ATOMIC_BIT;
+               }
+            }
+         }
+      }
+
+      /* TODO(Triang3l): On R9xx, handle disabling CB features for linear tiling for formats
+       * requiring endian swap according to "Prohibited combinations" in the Programming Guide.
+       * This, however, may result in R9xx completely not supporting Vulkan on big-endian hosts if
+       * that applies to buffers too - research if that limitation is texture/RTV-specific, or if
+       * endian swap is not supported for buffer UAVs as well.
+       */
    }
 
-   if (is_depth_stencil) {
-      image_optimal_only_features |= VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT;
+   if (image_linear_tiling_features) {
+      image_linear_tiling_features |=
+         VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
    }
-
-   if (texture_format != FMT_INVALID) {
-      image_features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_2_BLIT_SRC_BIT;
-      if (data_number_format != V_030010_SQ_NUM_FORMAT_INT) {
-         image_features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
-      }
-      if (depth_format != V_028040_Z_INVALID) {
-         image_features |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_DEPTH_COMPARISON_BIT;
-      }
-   }
-
-   if (vertex_format != FMT_INVALID) {
-      buffer_features |=
-         VK_FORMAT_FEATURE_2_UNIFORM_TEXEL_BUFFER_BIT | VK_FORMAT_FEATURE_2_VERTEX_BUFFER_BIT;
-   }
-
-   if (image_features) {
-      image_features |= VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
+   if (image_optimal_tiling_features) {
+      image_optimal_tiling_features |=
+         VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
    }
    if (buffer_features) {
       buffer_features |=
          VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT | VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
    }
 
-   if (is_depth_stencil || vk_format_is_block_compressed(format)) {
-      /* bufferFeatures must not support any features for depth or stencil or block-compressed
-       * formats according to the Vulkan specification. Internally, for simplicity of both
-       * implementation and usage, Terakan format logic commonly doesn't distinguish between R8 and
-       * S8, R16 and D16, R32 and D32, and also provides depth aspect information for combined depth
-       * and stencil formats.
-       */
-      buffer_features = 0;
-   }
-
-   VkFormatFeatureFlags2 const image_linear_features = is_tiled_only ? 0 : image_features;
-   /* If the format supports only linear images, linear tiling is considered optimal. */
-   VkFormatFeatureFlags2 const image_optimal_features =
-      image_features | (terakan_format_is_linear_only(format) ? 0 : image_optimal_only_features);
-
-   pFormatProperties->formatProperties.linearTilingFeatures = image_linear_features;
+   pFormatProperties->formatProperties.linearTilingFeatures =
+      (VkFormatFeatureFlags)image_linear_tiling_features;
    pFormatProperties->formatProperties.optimalTilingFeatures =
-      (VkFormatFeatureFlags)image_optimal_features;
+      (VkFormatFeatureFlags)image_optimal_tiling_features;
    pFormatProperties->formatProperties.bufferFeatures = (VkFormatFeatureFlags)buffer_features;
 
    VkFormatProperties3 * const format_properties_3 =
       vk_find_struct(pFormatProperties->pNext, FORMAT_PROPERTIES_3);
    if (format_properties_3 != NULL) {
-      format_properties_3->linearTilingFeatures = image_linear_features;
-      format_properties_3->optimalTilingFeatures = image_optimal_features;
+      format_properties_3->linearTilingFeatures = image_linear_tiling_features;
+      format_properties_3->optimalTilingFeatures = image_optimal_tiling_features;
       format_properties_3->bufferFeatures = buffer_features;
    }
 }
@@ -925,46 +370,68 @@ terakan_GetPhysicalDeviceImageFormatProperties2(
       (pImageFormatInfo->usage & (VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                   VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) != 0;
 
-   image_format_properties.maxExtent.width = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+   image_format_properties.maxExtent.width = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
    switch (pImageFormatInfo->type) {
    case VK_IMAGE_TYPE_1D:
       image_format_properties.maxExtent.height = 1;
       image_format_properties.maxExtent.depth = 1;
       image_format_properties.maxArrayLayers =
-         is_target ? TERAKAN_IMAGE_MAX_TARGET_SLICES : TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+         is_target ? TERAKAN_IMAGE_MAX_TARGET_SLICES : TERAKAN_IMAGE_MAX_SLICES;
       break;
    case VK_IMAGE_TYPE_2D:
-      image_format_properties.maxExtent.height = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+      image_format_properties.maxExtent.height = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
       image_format_properties.maxExtent.depth = 1;
       image_format_properties.maxArrayLayers =
-         is_target ? TERAKAN_IMAGE_MAX_TARGET_SLICES : TERAKAN_IMAGE_MAX_DEPTH_2D_SLICES;
+         is_target ? TERAKAN_IMAGE_MAX_TARGET_SLICES : TERAKAN_IMAGE_MAX_SLICES;
       break;
    case VK_IMAGE_TYPE_3D:
-      image_format_properties.maxExtent.height = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+      image_format_properties.maxExtent.height = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
       image_format_properties.maxExtent.depth =
          (pImageFormatInfo->usage & VK_IMAGE_USAGE_STORAGE_BIT) ||
                (is_target && (pImageFormatInfo->flags & VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT))
             ? TERAKAN_IMAGE_MAX_TARGET_SLICES
-            : TERAKAN_IMAGE_MAX_DEPTH_2D_SLICES;
+            : TERAKAN_IMAGE_MAX_SLICES;
       image_format_properties.maxArrayLayers = 1;
       break;
    default:
       return VK_ERROR_FORMAT_NOT_SUPPORTED;
    }
-   image_format_properties.maxMipLevels = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES_LOG2 + 1;
+   image_format_properties.maxMipLevels =
+      util_logbase2(MAX3(image_format_properties.maxExtent.width,
+                         image_format_properties.maxExtent.height,
+                         image_format_properties.maxExtent.depth)) +
+      1;
 
    image_format_properties.sampleCounts = VK_SAMPLE_COUNT_1_BIT;
-   /* Multisampled images must be 2D-tiled.
-    * For linear-only formats, the optimal tiling is linear tiling, so check both conditions.
-    */
+   /* Multisampled images must be 2D-tiled. */
    if ((features & (VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT |
                     VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT)) &&
        pImageFormatInfo->type == VK_IMAGE_TYPE_2D &&
        !(pImageFormatInfo->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) &&
-       pImageFormatInfo->tiling == VK_IMAGE_TILING_OPTIMAL &&
-       !terakan_format_is_linear_only(pImageFormatInfo->format)) {
-      image_format_properties.sampleCounts |=
-         VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT | VK_SAMPLE_COUNT_8_BIT;
+       pImageFormatInfo->tiling == VK_IMAGE_TILING_OPTIMAL) {
+      /* For linear-only formats, the optimal tiling is linear, check if that's not the case for the
+       * requested format.
+       */
+      struct terakan_format_info format_info;
+      if (terakan_format_info_get(pImageFormatInfo->format, &format_info)) {
+         bool format_linear_only = false;
+         for (unsigned aspect_index = 0; aspect_index < TERAKAN_FORMAT_MAX_ASPECTS;
+              ++aspect_index) {
+            struct terascale_format_info const aspect_format_info =
+               format_info.aspect_formats[aspect_index];
+            if (aspect_format_info.format == TERASCALE_FORMAT_INDEX_INVALID) {
+               break;
+            }
+            if (TERASCALE_FORMATS_LINEAR_ONLY & BITFIELD64_BIT(aspect_format_info.format)) {
+               format_linear_only = true;
+               break;
+            }
+         }
+         if (!format_linear_only) {
+            image_format_properties.sampleCounts |=
+               VK_SAMPLE_COUNT_2_BIT | VK_SAMPLE_COUNT_4_BIT | VK_SAMPLE_COUNT_8_BIT;
+         }
+      }
    }
 
    struct terakan_physical_device const * const device =

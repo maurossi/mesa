@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -23,11 +23,16 @@
 
 #include "terakan_pipeline_layout.h"
 
+#include "terakan_command_buffer.h"
 #include "terakan_descriptor.h"
+#include "terakan_descriptor_set.h"
 #include "terakan_descriptor_set_layout.h"
 #include "terakan_device.h"
 #include "terakan_entrypoints.h"
+#include "terakan_hw_state.h"
 
+#include "compiler/shader_enums.h"
+#include "gallium/drivers/r600/evergreend.h"
 #include "util/bitscan.h"
 #include "util/macros.h"
 #include "util/u_math.h"
@@ -37,6 +42,142 @@
 #include <assert.h>
 #include <stddef.h>
 #include <stdint.h>
+
+VKAPI_ATTR void VKAPI_CALL
+terakan_CmdBindDescriptorSets(VkCommandBuffer const commandBuffer,
+                              VkPipelineBindPoint const pipelineBindPoint,
+                              VkPipelineLayout const layoutHandle, uint32_t const firstSet,
+                              uint32_t const descriptorSetCount,
+                              VkDescriptorSet const * const pDescriptorSets,
+                              UNUSED uint32_t const dynamicOffsetCount,
+                              uint32_t const * const pDynamicOffsets)
+{
+   struct terakan_gfx_command_writer * const command_writer =
+      terakan_command_buffer_from_handle(commandBuffer)->command_writer.gfx;
+
+   struct terakan_pipeline_layout const * const layout =
+      terakan_pipeline_layout_from_handle(layoutHandle);
+
+   bool const is_compute = pipelineBindPoint == VK_PIPELINE_BIND_POINT_COMPUTE;
+   gl_shader_stage const shader_stage_first = is_compute ? MESA_SHADER_COMPUTE : MESA_SHADER_VERTEX;
+   gl_shader_stage const shader_stage_last =
+      is_compute ? MESA_SHADER_COMPUTE : MESA_SHADER_FRAGMENT;
+   /* TODO(Triang3l): Apply bindings to the compute stage. */
+
+   uint32_t const * set_dynamic_offsets = pDynamicOffsets;
+
+   for (uint32_t set_relative_index = 0; set_relative_index < descriptorSetCount;
+        ++set_relative_index) {
+      struct terakan_pipeline_layout_set const * const layout_set =
+         &layout->sets[firstSet + set_relative_index];
+
+      struct terakan_descriptor_set const * const set =
+         terakan_descriptor_set_from_handle(pDescriptorSets[set_relative_index]);
+      if (set == NULL) {
+         continue;
+      }
+      struct terakan_descriptor_set_layout const * const set_layout = set->layout;
+
+      struct terakan_descriptor_set_resource const * const set_resources =
+         (struct terakan_descriptor_set_resource const *)set->descriptors;
+      struct terakan_descriptor_set_sampler const * const set_samplers =
+         (struct terakan_descriptor_set_sampler const *)(set->descriptors +
+                                                         set_layout
+                                                            ->pool_first_sampler_offset_bytes);
+
+      for (gl_shader_stage shader_stage = shader_stage_first; shader_stage <= shader_stage_last;
+           ++shader_stage) {
+         struct terakan_descriptor_set_layout_shader const * const set_layout_shader =
+            &set_layout->shaders[shader_stage];
+
+         /* Resources. */
+
+         terakan_hw_state_draw_set_sq_resource_function const graphics_resource_setter =
+            is_compute ? NULL : terakan_hw_state_draw_set_sq_resource_for_stage[shader_stage];
+         uint8_t const shader_resource_set_base = layout_set->first_shader_resources[shader_stage];
+         struct terakan_descriptor_set_layout_shader_range const * const resource_ranges =
+            set_layout->shader_ranges + set_layout_shader->first_resource_range;
+         for (uint8_t range_index = 0; range_index < set_layout_shader->resource_range_count;
+              ++range_index) {
+            struct terakan_descriptor_set_layout_shader_range const * const range =
+               &resource_ranges[range_index];
+            struct terakan_descriptor_set_resource const * const range_set_resources =
+               set_resources + range->first_set_descriptor;
+            uint8_t const range_shader_base =
+               shader_resource_set_base + range->first_shader_descriptor;
+            if (range->first_dynamic_offset != UINT16_MAX) {
+               uint32_t const * const range_dynamic_offsets =
+                  set_dynamic_offsets + range->first_dynamic_offset;
+               for (uint8_t resource_index = 0; resource_index < range->descriptor_count;
+                    ++resource_index) {
+                  struct terakan_descriptor_set_resource resource =
+                     range_set_resources[resource_index];
+                  /* Because descriptors for bindings not statically referenced by the pipeline can
+                   * be undefined, the BO pointer must not be dereferenced here as it may be
+                   * outdated.
+                   */
+                  if (resource.bo != NULL) {
+                     assert(G_03001C_TYPE(resource.resource[7]) ==
+                            V_03001C_SQ_TEX_VTX_VALID_BUFFER);
+                     uint64_t const resource_address =
+                        (resource.resource[0] |
+                         ((uint64_t)G_030008_BASE_ADDRESS_HI(resource.resource[2]) << 32)) +
+                        range_dynamic_offsets[resource_index];
+                     resource.resource[0] = (uint32_t)resource_address;
+                     resource.resource[2] = (resource.resource[2] & C_030008_BASE_ADDRESS_HI) |
+                                            S_030008_BASE_ADDRESS_HI(resource_address >> 32);
+                  }
+                  graphics_resource_setter(&command_writer->hw_state_draw,
+                                           range_shader_base + resource_index, resource.bo,
+                                           resource.resource);
+               }
+            } else {
+               for (uint8_t resource_index = 0; resource_index < range->descriptor_count;
+                    ++resource_index) {
+                  struct terakan_descriptor_set_resource const * const resource =
+                     &range_set_resources[resource_index];
+                  graphics_resource_setter(&command_writer->hw_state_draw,
+                                           range_shader_base + resource_index, resource->bo,
+                                           resource->resource);
+               }
+            }
+         }
+
+         /* Samplers. */
+
+         terakan_hw_state_draw_set_sq_sampler_function const graphics_sampler_setter =
+            is_compute ? NULL : terakan_hw_state_draw_set_sq_sampler_for_stage[shader_stage];
+         uint8_t const shader_sampler_set_base = layout_set->first_shader_samplers[shader_stage];
+         struct terakan_descriptor_set_layout_shader_range const * const sampler_ranges =
+            set_layout->shader_ranges + set_layout_shader->first_sampler_range;
+         for (uint8_t range_index = 0; range_index < set_layout_shader->sampler_range_count;
+              ++range_index) {
+            struct terakan_descriptor_set_layout_shader_range const * const range =
+               &sampler_ranges[range_index];
+            struct terakan_descriptor_set_sampler const * const range_set_samplers =
+               set_samplers + range->first_set_descriptor;
+            uint8_t const range_shader_base =
+               shader_sampler_set_base + range->first_shader_descriptor;
+            for (uint8_t sampler_index = 0; sampler_index < range->descriptor_count;
+                 ++sampler_index) {
+               struct terakan_descriptor_set_sampler const * const sampler =
+                  &range_set_samplers[sampler_index];
+               /* Skip uninitialized (zeroed in descriptor set allocation) samplers, as descriptors
+                * may be left uninitialized if they're not statically referenced by the pipeline.
+                */
+               if (likely(G_03C008_TYPE(sampler->sampler[2]))) {
+                  graphics_sampler_setter(&command_writer->hw_state_draw,
+                                          range_shader_base + sampler_index, sampler->sampler,
+                                          sampler->border_color);
+               }
+               /* TODO(Triang3l): Unnormalized coordinates on R8xx. */
+            }
+         }
+      }
+
+      set_dynamic_offsets += set_layout->dynamic_offset_count;
+   }
+}
 
 VkResult
 terakan_pipeline_layout_create(struct terakan_device * const device,
@@ -59,6 +200,7 @@ terakan_pipeline_layout_create(struct terakan_device * const device,
    layout->sets = sets;
 
    uint8_t next_first_mutable_shader_resources[MESA_SHADER_STAGES] = {};
+   uint8_t next_first_shader_uniform_buffers[MESA_SHADER_STAGES] = {};
    uint8_t next_first_shader_samplers[MESA_SHADER_STAGES] = {};
 
    for (uint32_t set_index = 0; set_index < layout->vk.set_count; ++set_index) {
@@ -90,8 +232,13 @@ terakan_pipeline_layout_create(struct terakan_device * const device,
             TERAKAN_RESOURCE_RANGE_MUTABLE_BASE + first_mutable_shader_resource;
          next_first_mutable_shader_resources[stage_index] += set_layout_shader->resource_count;
 
+         set->first_shader_uniform_buffers[stage_index] =
+            next_first_shader_uniform_buffers[stage_index];
+         next_first_shader_uniform_buffers[stage_index] += set_layout_shader->uniform_buffer_count;
+
          uint8_t const first_shader_sampler = next_first_shader_samplers[stage_index];
-         if (TERAKAN_SAMPLERS_PER_STAGE - first_shader_sampler < set_layout_shader->sampler_count) {
+         if (TERAKAN_SAMPLER_HW_COUNT_PER_STAGE - first_shader_sampler <
+             set_layout_shader->sampler_count) {
             goto too_many_descriptors;
          }
          set->first_shader_samplers[stage_index] = first_shader_sampler;
@@ -112,10 +259,10 @@ terakan_pipeline_layout_create(struct terakan_device * const device,
          push_constant_range->offset + push_constant_range->size;
       unsigned remaining_stages = (unsigned)(push_constant_range->stageFlags & stage_mask);
       while (remaining_stages) {
-         uint32_t * const shader_push_constant_extent =
-            &layout->shader_push_constant_extents_bytes[u_bit_scan(&remaining_stages)];
-         *shader_push_constant_extent =
-            MAX2(push_constant_range_extent, *shader_push_constant_extent);
+         uint32_t * const shader_app_push_constants_extent =
+            &layout->shader_app_push_constants_extents_bytes[u_bit_scan(&remaining_stages)];
+         *shader_app_push_constants_extent =
+            MAX2(push_constant_range_extent, *shader_app_push_constants_extent);
       }
    }
 

@@ -22,12 +22,14 @@
 #include "sfn_instr_lds.h"
 #include "sfn_instr_mem.h"
 #include "sfn_liverangeevaluator.h"
+#include "sfn_nir.h"
 #include "sfn_shader_cs.h"
 #include "sfn_shader_fs.h"
 #include "sfn_shader_gs.h"
 #include "sfn_shader_tess.h"
 #include "sfn_shader_vs.h"
 #include "util/format/u_format.h"
+#include "util/macros.h"
 #include "util/u_math.h"
 
 #include <numeric>
@@ -438,7 +440,8 @@ Shader::translate_from_nir(nir_shader *nir,
                            struct r600_shader *gs_shader,
                            const r600_shader_key& key,
                            r600_chip_class chip_class,
-                           radeon_family family)
+                           radeon_family family,
+                           const ShaderBindingLayout& binding_layout)
 {
    Shader *shader = nullptr;
 
@@ -473,6 +476,8 @@ Shader::translate_from_nir(nir_shader *nir,
 
    shader->set_chip_class(chip_class);
    shader->set_chip_family(family);
+
+   shader->set_binding_layout(binding_layout);
 
    if (!shader->process(nir))
       return nullptr;
@@ -864,11 +869,15 @@ Shader::process_intrinsic(nir_intrinsic_instr *intr)
       return emit_load_tcs_param_base(intr, 16);
    case nir_intrinsic_load_buffer_resource_r600:
       return emit_load_buffer_resource(intr);
+   case nir_intrinsic_load_kcache_r600:
+      return emit_load_kcache(intr);
    case nir_intrinsic_barrier:
       return emit_barrier(intr);
    case nir_intrinsic_shared_atomic:
    case nir_intrinsic_shared_atomic_swap:
       return emit_atomic_local_shared(intr);
+   case nir_intrinsic_mbcnt_amd:
+      return emit_mbcnt(intr);
    case nir_intrinsic_shader_clock:
       return emit_shader_clock(intr);
    case nir_intrinsic_load_reg:
@@ -1443,6 +1452,41 @@ Shader::emit_load_tcs_param_base(nir_intrinsic_instr *instr, int offset)
 }
 
 bool
+Shader::emit_mbcnt(nir_intrinsic_instr *instr)
+{
+   auto& vf = value_factory();
+
+   const auto dest = vf.dest(instr->def, 0, pin_chan);
+
+   const auto mask = vf.src(instr->src[0], 0);
+   const auto mbcnt_group = new AluGroup();
+   mbcnt_group->add_instruction(new AluInstr(op1_mbcnt_32lo_accum_prev_int,
+                                             dest,
+                                             mask,
+                                             AluInstr::write));
+   mbcnt_group->add_instruction(new AluInstr(op1_mbcnt_32hi_int,
+                                             vf.dummy_dest(1),
+                                             mask,
+                                             AluInstr::last));
+   emit_instruction(mbcnt_group);
+
+   const nir_src& base_src = instr->src[1];
+   const nir_const_value *base_const = nir_src_as_const_value(base_src);
+   if (!base_const || base_const->u32) {
+      /* TeraScale, unlike GCN, doesn't accept the base of the accumulator,
+       * add it separately.
+       */
+      emit_instruction(new AluInstr(op2_add_int,
+                                    dest,
+                                    dest,
+                                    vf.src(base_src, 0),
+                                    AluInstr::last_write));
+   }
+
+   return true;
+}
+
+bool
 Shader::emit_shader_clock(nir_intrinsic_instr *instr)
 {
    auto& vf = value_factory();
@@ -1578,6 +1622,8 @@ Shader::emit_load_buffer_resource(nir_intrinsic_instr *instr)
 
    RegisterVec4 dest = vf.dest_vec4(instr->def, pin_group);
 
+   const unsigned instr_flags = nir_intrinsic_flags(instr);
+
    unsigned resource_base = nir_intrinsic_id_base(instr);
    PRegister resource_offset = nullptr;
    const nir_const_value *resource_offset_const = nir_src_as_const_value(instr->src[0]);
@@ -1638,7 +1684,9 @@ Shader::emit_load_buffer_resource(nir_intrinsic_instr *instr)
                                resource_base,
                                resource_offset);
 
-   fetch->set_fetch_flag(FetchInstr::use_tc);
+   if (!(instr_flags & R600_NIR_LOAD_BUFFER_RESOURCE_FLAG_USE_VERTEX_CACHE)) {
+      fetch->set_fetch_flag(FetchInstr::use_tc);
+   }
 
    if (fetch_format != FMT_INVALID) {
       if (fetch_format_comp) {
@@ -1649,9 +1697,68 @@ Shader::emit_load_buffer_resource(nir_intrinsic_instr *instr)
    }
 
    unsigned mega_fetch_count = nir_intrinsic_mega_fetch_count_r600(instr);
-   fetch->set_mfc((mega_fetch_count != 0 ? mega_fetch_count : 16) - 1);
+   if (mega_fetch_count == 0) {
+      if (format != PIPE_FORMAT_NONE) {
+         mega_fetch_count = util_format_get_blocksize(format);
+      }
+      if (mega_fetch_count == 0) {
+         /* Format not known (specified in the fetch constant), assume dwords
+          * if the expected mega-fetch count is not specified explicitly.
+          */
+         mega_fetch_count =
+            sizeof(uint32_t) * (first_component + instr->def.num_components);
+      }
+   }
+   mega_fetch_count = CLAMP(mega_fetch_count, 1u, 64u);
+   fetch->set_mfc(mega_fetch_count - 1);
+   if (instr_flags & R600_NIR_LOAD_BUFFER_RESOURCE_FLAG_IS_MINI_FETCH) {
+      /* The mega-fetch count is still specified as the hardware may convert
+       * the instruction into a mega-fetch.
+       */
+      fetch->reset_fetch_flag(FetchInstr::is_mega_fetch);
+   } else {
+      fetch->set_fetch_flag(FetchInstr::is_mega_fetch);
+   }
 
    emit_instruction(fetch);
+
+   return true;
+}
+
+bool
+Shader::emit_load_kcache(nir_intrinsic_instr *instr)
+{
+   ValueFactory& vf = value_factory();
+
+   unsigned bank_base = nir_intrinsic_id_base(instr);
+   PVirtualValue bank_offset = nullptr;
+   const nir_const_value *bank_offset_const = nir_src_as_const_value(instr->src[0]);
+   if (bank_offset_const != nullptr) {
+      bank_base += bank_offset_const->u32;
+   } else {
+      bank_offset = vf.src(instr->src[0], 0);
+   }
+
+   unsigned element_index = static_cast<unsigned>(nir_intrinsic_base(instr));
+   assert(element_index < R600_MAX_CONST_BUFFER_SIZE / (sizeof(float) * 4));
+
+   unsigned first_component = nir_intrinsic_component(instr);
+   assert(first_component + instr->def.num_components <= 4);
+
+   AluInstr *alu = nullptr;
+   for (unsigned i = 0; i < instr->def.num_components; ++i) {
+      alu = new AluInstr(op1_mov,
+                         vf.dest(instr->def, i, pin_none),
+                         new UniformValue(512 + element_index,
+                                          first_component + i,
+                                          bank_offset,
+                                          bank_base),
+                         AluInstr::write);
+      emit_instruction(alu);
+   }
+   if (alu != nullptr) {
+      alu->set_alu_flag(alu_last_instr);
+   }
 
    return true;
 }

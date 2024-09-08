@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -31,9 +31,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-#define TERAKAN_LIMITS_HW_COLOR_MRT_COUNT 8
-#define TERAKAN_LIMITS_HW_COLOR_RAT_COUNT 12
 
 #define TERAKAN_LIMITS_HW_PARAMETER_CACHE_VECTOR_COUNT 32
 

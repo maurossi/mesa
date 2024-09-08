@@ -7,6 +7,10 @@
 #ifndef SFN_NIR_LOWER_TEX_H
 #define SFN_NIR_LOWER_TEX_H
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 struct nir_shader;
 
 bool
@@ -15,5 +19,9 @@ bool
 r600_nir_lower_txl_txf_array_or_cube(nir_shader *shader);
 bool
 r600_nir_lower_cube_to_2darray(nir_shader *shader);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // LALA_H

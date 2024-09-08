@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Based in part on radv_physical_device.c which is:
  * Copyright © 2016 Red Hat.
@@ -33,6 +33,8 @@
 #include "terakan_image.h"
 #include "terakan_instance.h"
 #include "terakan_limits.h"
+#include "terakan_push_constants.h"
+#include "terakan_vertex_input.h"
 #include "terakan_wsi.h"
 
 #include "compiler/shader_enums.h"
@@ -89,10 +91,13 @@ terakan_physical_device_chip_family_name(enum radeon_family const chip_family)
       return "Hemlock";
    case CHIP_PALM:
       return "Palm";
+   /* sumo_id.h DEVICE_ID_SUMO_SUPER_* correspond to CHIP_SUMO, non-SUPER are CHIP_SUMO2.
+    * SUMO also has more SIMDs, render backends and contexts.
+    */
    case CHIP_SUMO:
-      return "Sumo";
-   case CHIP_SUMO2:
       return "SuperSumo";
+   case CHIP_SUMO2:
+      return "Sumo";
    case CHIP_BARTS:
       return "Barts";
    case CHIP_TURKS:
@@ -140,7 +145,7 @@ terakan_physical_device_chip_family_info_init(
       chip_family_info_out->has_vertex_cache = false;
       break;
    default:
-      /* R9xx vertex fetch always goes through the texture cache, but Linux Radeon 2.50.0 and the
+      /* R9xx vertex fetch always goes through the texture cache, but DRM Radeon 2.50.0 and the
        * Gallium R600 driver set SQ_CONFIG.VC_ENABLE to 1 on it.
        */
       chip_family_info_out->has_vertex_cache = true;
@@ -195,7 +200,7 @@ terakan_physical_device_get_capabilities(
    struct terakan_instance const * const instance, uint32_t const pci_device_id,
    struct terakan_physical_device_chip_family_info const * const chip_family_info,
    unsigned const tile_pipe_interleave_bytes_log2, VkDeviceSize const min_memory_map_alignment,
-   uint32_t const clock_crystal_frequency, VkDeviceSize const max_memory_allocation_size,
+   uint32_t const clock_crystal_frequency_hz, VkDeviceSize const max_memory_allocation_size,
    struct vk_device_extension_table * const extensions_out, struct vk_features * const features_out,
    struct vk_properties * const properties_out)
 {
@@ -208,16 +213,16 @@ terakan_physical_device_get_capabilities(
    features_out->robustBufferAccess = true;
    features_out->fullDrawIndexUint32 = true;
    features_out->imageCubeArray = true;
-   /* TODO(Triang3l): independentBlend. */
+   features_out->independentBlend = true;
    /* TODO(Triang3l): geometryShader. */
    /* TODO(Triang3l): tessellationShader. */
    /* TODO(Triang3l): sampleRateShading. */
-   /* TODO(Triang3l): dualSrcBlend. */
-   /* TODO(Triang3l): logicOp. */
+   features_out->dualSrcBlend = true;
+   features_out->logicOp = true;
    /* TODO(Triang3l): multiDrawIndirect. */
    /* TODO(Triang3l): drawIndirectFirstInstance. */
    features_out->depthClamp = true;
-   /* TODO(Triang3l): depthBiasClamp. */
+   features_out->depthBiasClamp = true;
    features_out->fillModeNonSolid = true;
    /* TODO(Triang3l): wideLines. */
    /* TODO(Triang3l): largePoints. */
@@ -253,34 +258,34 @@ terakan_physical_device_get_capabilities(
             terakan_physical_device_chip_family_name(chip_family_info->chip_family));
    /* TODO(Triang3l): pipelineCacheUUID when pipeline cache is implemented. */
 
-   properties_out->maxImageDimension1D = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
-   properties_out->maxImageDimension2D = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+   properties_out->maxImageDimension1D = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
+   properties_out->maxImageDimension2D = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
    properties_out->maxImageDimension3D = TERAKAN_IMAGE_MAX_TARGET_SLICES;
-   properties_out->maxImageDimensionCube = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+   properties_out->maxImageDimensionCube = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
    properties_out->maxImageArrayLayers = TERAKAN_IMAGE_MAX_TARGET_SLICES;
 
-   /* Vertex fetch constants have 32-bit size minus one in bytes.
-    * Random access targets have 32-bit size minus one in elements.
-    * Support the maximum possible number of R32G32B32A32 elements.
+   /* Buffer UAVs have LINEAR_ALIGNED array mode, and thus alignment equal to the pipe interleave,
+    * with the offset (in element units) applied in shaders. Adding the offset may result in
+    * out-of-bounds index values near UINT32_MAX wrapping and becoming valid indices near 0. Instead
+    * of comparing the index to the buffer size in shaders to implement robustness with the offset,
+    * the index value can be clamped to this maximum range as unsigned so that adding any alignment
+    * offset after the clamping won't cause wraparound.
     */
-   properties_out->maxTexelBufferElements = (uint32_t)1 << (32 - 4);
+   uint32_t const max_uav_range_bytes = ~(((uint32_t)1 << tile_pipe_interleave_bytes_log2) - 1);
+
+   /* Vertex fetch constants have 32-bit size minus one in bytes, so the theoretical maximum element
+    * count depends on the element size. But instead of exposing the worst case value, letting
+    * maxMemoryAllocationSize impose that limitation instead, which as of this writing never exceeds
+    * UINT32_MAX (also rounded down to the pipe interleave so the maximum valid size still makes it
+    * possible to provide the padding for UAV alignment base offsetting).
+    */
+   properties_out->maxTexelBufferElements = max_uav_range_bytes;
 
    properties_out->maxUniformBufferRange = TERAKAN_KCACHE_HW_MAX_BUFFER_SIZE_BYTES;
 
-   /* Storage buffers are bound as R32 vertex fetch constants or random access targets.
-    * However, buffer RATs have LINEAR_ALIGNED array more, and thus alignment equal to the tile
-    * interleave, with the offset (in element units) applied in shaders. Adding the offset may
-    * result in out-of-bounds index values near UINT32_MAX wrapping and becoming valid indices
-    * near 0. Instead of comparing the index to the buffer size in shaders to implement robustness
-    * with the offset, the index value can be clamped to this maximum range as unsigned so that
-    * adding any alignment offset after the clamping won't cause wraparound.
-    */
-   properties_out->maxStorageBufferRange = ~(((uint32_t)1 << tile_pipe_interleave_bytes_log2) - 1);
+   properties_out->maxStorageBufferRange = max_uav_range_bytes;
 
-   /* TODO(Triang3l): Exclude internal constants like the draw ID, ring layout, sample locations,
-    * RAT alignment offsets.
-    */
-   properties_out->maxPushConstantsSize = TERAKAN_KCACHE_HW_MAX_BUFFER_SIZE_BYTES;
+   properties_out->maxPushConstantsSize = TERAKAN_PUSH_CONSTANTS_APP_SIZE_BYTES;
 
    properties_out->maxMemoryAllocationCount = UINT32_MAX;
 
@@ -288,15 +293,15 @@ terakan_physical_device_get_capabilities(
 
    properties_out->bufferImageGranularity = 1;
 
-   properties_out->maxPerStageDescriptorSamplers = TERAKAN_SAMPLERS_PER_STAGE;
+   properties_out->maxPerStageDescriptorSamplers = TERAKAN_SAMPLER_HW_COUNT_PER_STAGE;
    properties_out->maxPerStageDescriptorUniformBuffers = instance->max_per_stage_uniform_buffers;
    properties_out->maxPerStageDescriptorStorageBuffers = instance->max_per_stage_storage_buffers;
    properties_out->maxPerStageDescriptorSampledImages = instance->max_per_stage_sampled_images;
    properties_out->maxPerStageDescriptorStorageImages =
-      TERAKAN_LIMITS_HW_COLOR_RAT_COUNT - instance->max_per_stage_storage_buffers;
+      TERAKAN_COLOR_HW_RTV_AND_UAV_COUNT - instance->max_per_stage_storage_buffers;
    properties_out->maxPerStageDescriptorInputAttachments =
       instance->max_per_stage_input_attachments;
-   properties_out->maxColorAttachments = TERAKAN_LIMITS_HW_COLOR_MRT_COUNT;
+   properties_out->maxColorAttachments = TERAKAN_COLOR_HW_RTV_COUNT;
 
    properties_out->maxPerStageResources = properties_out->maxPerStageDescriptorUniformBuffers +
                                           properties_out->maxPerStageDescriptorStorageBuffers +
@@ -334,14 +339,14 @@ terakan_physical_device_get_capabilities(
                                             properties_out->maxDescriptorSetInputAttachments;
    properties_out->maxBoundDescriptorSets = max_per_set_descriptors;
 
-   properties_out->maxVertexInputAttributes = TERAKAN_RESOURCE_HW_COUNT_FETCH;
+   properties_out->maxVertexInputAttributes = TERAKAN_VERTEX_INPUT_MAX_ATTRIBUTES;
    properties_out->maxVertexInputBindings = TERAKAN_RESOURCE_HW_COUNT_FETCH;
-   properties_out->maxVertexInputAttributeOffset = UINT32_MAX;
+   properties_out->maxVertexInputAttributeOffset = UINT16_MAX;
    /* NON-CONFORMANT: R8xx has 11 bits for the stride in bytes, which can store values up to 2047.
     * Vulkan requires at least 2048. R9xx has 12 bits.
     */
-   /* TODO(Triang3l): Research a workaround scaling the index (in a saturating way to maintain
-    * defined overflow behavior) in the fetch shader.
+   /* TODO(Triang3l): Expose 2048 on R8xx when the fetch shader workaround is fully implemented
+    * (when vertex shaders start loading the base instance to R0.Z when it's needed).
     */
    properties_out->maxVertexInputBindingStride =
       ((uint32_t)1 << (chip_family_info->is_r9xx ? 12 : 11)) - 1;
@@ -354,10 +359,9 @@ terakan_physical_device_get_capabilities(
 
    properties_out->maxFragmentInputComponents = 4 * TERAKAN_LIMITS_HW_PARAMETER_CACHE_VECTOR_COUNT;
 
-   properties_out->maxFragmentOutputAttachments = TERAKAN_LIMITS_HW_COLOR_MRT_COUNT;
-   /* TODO(Triang3l): maxFragmentDualSrcAttachments when dual-source blending is enabled. */
-   properties_out->maxFragmentCombinedOutputResources =
-      MAX2(TERAKAN_LIMITS_HW_COLOR_MRT_COUNT, TERAKAN_LIMITS_HW_COLOR_RAT_COUNT);
+   properties_out->maxFragmentOutputAttachments = TERAKAN_COLOR_HW_RTV_COUNT;
+   properties_out->maxFragmentDualSrcAttachments = 1;
+   properties_out->maxFragmentCombinedOutputResources = TERAKAN_COLOR_UAV_COUNT_PIXEL;
 
    properties_out->maxComputeSharedMemorySize =
       sizeof(uint32_t) * TERAKAN_LIMITS_HW_LDS_SIMD_DWORD_COUNT;
@@ -382,8 +386,8 @@ terakan_physical_device_get_capabilities(
    properties_out->maxSamplerAnisotropy = 0x1.0p4f;
 
    properties_out->maxViewports = TERAKAN_HW_STATE_DRAW_MAX_VIEWPORTS;
-   properties_out->maxViewportDimensions[0] = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
-   properties_out->maxViewportDimensions[1] = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+   properties_out->maxViewportDimensions[0] = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
+   properties_out->maxViewportDimensions[1] = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
    properties_out->viewportBoundsRange[0] = (float)INT16_MIN;
    properties_out->viewportBoundsRange[1] = (float)INT16_MAX;
    properties_out->viewportSubPixelBits = 8;
@@ -406,8 +410,8 @@ terakan_physical_device_get_capabilities(
 
    /* TODO(Triang3l): Interpolation offset properties when sample-rate shading is enabled. */
 
-   properties_out->maxFramebufferWidth = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
-   properties_out->maxFramebufferHeight = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES;
+   properties_out->maxFramebufferWidth = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
+   properties_out->maxFramebufferHeight = TERAKAN_IMAGE_MAX_WIDTH_HEIGHT;
    properties_out->maxFramebufferLayers = TERAKAN_IMAGE_MAX_TARGET_SLICES;
 
    VkSampleCountFlags const sample_counts =
@@ -430,9 +434,9 @@ terakan_physical_device_get_capabilities(
 
    properties_out->maxSampleMaskWords = 1;
 
-   if (clock_crystal_frequency != 0) {
+   if (clock_crystal_frequency_hz != 0) {
       properties_out->timestampComputeAndGraphics = VK_TRUE;
-      properties_out->timestampPeriod = (float)(1000000.0 / (double)clock_crystal_frequency);
+      properties_out->timestampPeriod = (float)(1e9 / (double)clock_crystal_frequency_hz);
    }
 
    /* TODO(Triang3l): Maximum clip and cull distances when enabled. */
@@ -453,6 +457,10 @@ terakan_physical_device_get_capabilities(
     * Otherwise sysconf(_SC_LEVEL1_DCACHE_LINESIZE) on Linux.
     */
    properties_out->nonCoherentAtomSize = 1;
+
+   /* VK_KHR_sampler_mirror_clamp_to_edge (#15, Vulkan 1.2). */
+   extensions_out->KHR_sampler_mirror_clamp_to_edge = true;
+   features_out->samplerMirrorClampToEdge = true;
 
    /* VK_KHR_dynamic_rendering (#45, Vulkan 1.3). */
    extensions_out->KHR_dynamic_rendering = true;
@@ -493,9 +501,9 @@ terakan_physical_device_get_capabilities(
    properties_out->provokingVertexModePerPipeline = VK_TRUE;
    properties_out->transformFeedbackPreservesTriangleFanProvokingVertex = VK_TRUE;
 
-   /* TODO(Triang3l): VK_EXT_extended_dynamic_state (#268, Vulkan 1.3) when all state is
-    * implemented.
-    */
+   /* VK_EXT_extended_dynamic_state (#268, Vulkan 1.3). */
+   extensions_out->EXT_extended_dynamic_state = true;
+   features_out->extendedDynamicState = true;
 
    /* VK_KHR_map_memory2 (#272). */
    extensions_out->KHR_map_memory2 = true;
@@ -510,6 +518,13 @@ terakan_physical_device_get_capabilities(
    properties_out->uniformTexelBufferOffsetAlignmentBytes = sizeof(uint32_t);
    properties_out->uniformTexelBufferOffsetSingleTexelAlignment = VK_TRUE;
 
+   /* VK_EXT_depth_bias_control (#284). */
+   extensions_out->EXT_depth_bias_control = true;
+   features_out->depthBiasControl = true;
+   features_out->leastRepresentableValueForceUnormRepresentation = true;
+   features_out->floatRepresentation = true;
+   features_out->depthBiasExact = true;
+
    /* TODO(Triang3l): Research border color formats with regard to VK_EXT_custom_border_color (#288)
     * and VK_EXT_border_color_swizzle (#412).
     */
@@ -518,6 +533,10 @@ terakan_physical_device_get_capabilities(
    extensions_out->EXT_4444_formats = true;
    features_out->formatA4R4G4B4 = true;
    features_out->formatA4B4G4R4 = true;
+
+   /* VK_EXT_vertex_input_dynamic_state (#353). */
+   extensions_out->EXT_vertex_input_dynamic_state = true;
+   features_out->vertexInputDynamicState = true;
 
    /* VK_EXT_depth_clip_control (#356). */
    extensions_out->EXT_depth_clip_control = true;
@@ -530,12 +549,17 @@ terakan_physical_device_get_capabilities(
     * implemented.
     */
 
+   /* VK_EXT_color_write_enable (#382). */
+   extensions_out->EXT_color_write_enable = true;
+   features_out->colorWriteEnable = true;
+
    /* TODO(Triang3l): VK_KHR_maintenance4 (#414, Vulkan 1.3): maxBufferSize = UINT32_MAX. */
    /* Addresses within buffers are limited to 32 bits in several places:
     * - Index buffer binding via INDEX_BASE.
     * - Wraparound in copying (most importantly image copying) not handled.
-    * The Linux Radeon driver, however, limits addresses within device memory to 32 bits in various
-    * areas, so there's no sufficient justification for making workarounds to support more.
+    * The DRM Radeon driver, however, limits addresses within device memory to 32 bits in various
+    * areas as of 2.50.0, so there's no sufficient justification for making workarounds to support
+    * more.
     */
 
    /* VK_EXT_non_seamless_cube_map (#423). */
@@ -548,10 +572,22 @@ terakan_physical_device_get_capabilities(
    features_out->extendedDynamicState3DepthClampEnable = true;
    features_out->extendedDynamicState3PolygonMode = true;
    features_out->extendedDynamicState3SampleMask = true;
+   features_out->extendedDynamicState3LogicOpEnable = true;
+   features_out->extendedDynamicState3ColorBlendEnable = true;
+   features_out->extendedDynamicState3ColorBlendEquation = true;
+   features_out->extendedDynamicState3ColorWriteMask = true;
    features_out->extendedDynamicState3ProvokingVertexMode = true;
    features_out->extendedDynamicState3DepthClipEnable = true;
    features_out->extendedDynamicState3DepthClipNegativeOneToOne = true;
    properties_out->dynamicPrimitiveTopologyUnrestricted = VK_TRUE;
+
+   /* VK_KHR_vertex_attribute_divisor (#526). */
+   extensions_out->EXT_vertex_attribute_divisor = true;
+   extensions_out->KHR_vertex_attribute_divisor = true;
+   features_out->vertexAttributeInstanceRateDivisor = true;
+   features_out->vertexAttributeInstanceRateZeroDivisor = true;
+   properties_out->maxVertexAttribDivisor = UINT32_MAX;
+   properties_out->supportsNonZeroFirstInstance = VK_TRUE;
 
    /* Mesa WSI. */
 #ifdef TERAKAN_USE_WSI_PLATFORM
@@ -574,8 +610,8 @@ terakan_physical_device_supported_external_memory_types(
 
 static void
 terakan_physical_device_init_memory_properties(
-   bool const has_dedicated_vram, VkDeviceSize const gtt_page_size, VkDeviceSize const gtt_size,
-   VkDeviceSize const vram_size, VkDeviceSize const vram_visible,
+   bool const has_dedicated_vram, VkDeviceSize const gtt_allocation_granularity,
+   VkDeviceSize const gtt_size, VkDeviceSize const vram_size, VkDeviceSize const vram_visible,
    VkPhysicalDeviceMemoryProperties * const memory_properties_out)
 {
    /* Based on radv_physical_device_init_mem_types. */
@@ -595,7 +631,7 @@ terakan_physical_device_init_memory_properties(
        * entire system memory is VRAM and occupy it like it doesn't affect memory available to the
        * CPU).
        */
-      vram_visible_size = ALIGN_POT((total_size * 2) / 3, gtt_page_size);
+      vram_visible_size = ALIGN_POT((total_size * 2) / 3, gtt_allocation_granularity);
       gtt_heap_size = total_size - vram_visible_size;
       vram_not_visible_size = 0;
    }
@@ -751,11 +787,12 @@ VkResult
 terakan_physical_device_init(
    struct terakan_physical_device * const device, struct terakan_instance * const instance,
    struct terakan_physical_device_winsys_fn const * const winsys_fn_static,
-   uint32_t const pci_device_id, VkDeviceSize const gtt_page_size, VkDeviceSize const gtt_size,
-   VkDeviceSize const vram_size, VkDeviceSize const vram_visible,
+   uint32_t const pci_device_id, VkDeviceSize const gtt_allocation_granularity,
+   VkDeviceSize const gtt_size, VkDeviceSize const vram_size, VkDeviceSize const vram_visible,
    VkDeviceSize const max_memory_allocation_size, VkDeviceSize const min_memory_map_alignment,
    struct terakan_physical_device_tiling_info const * const tiling_info,
-   uint32_t const clock_crystal_frequency,
+   struct terakan_physical_device_submission_info_gfx const * const submission_info_gfx,
+   uint32_t const clock_crystal_frequency_hz,
    struct vk_sync_type const * const * const supported_sync_types_static)
 {
    VkResult result;
@@ -778,13 +815,15 @@ terakan_physical_device_init(
     * With the largest tile size, the bank width and height can be treated as 1.
     *
     * For buffers, the same alignment is needed as for images with the LINEAR_ALIGNED array mode
-    * because it's required for RATs (equal to the pipe interleave in tiling), so it's included in
+    * because it's required for UAVs (equal to the pipe interleave in tiling), so it's included in
     * the image alignment. It's normally 256 bytes, but potentially can be 512 bytes, depending on
     * device. It's also not smaller than the kcache buffer alignment (256 bytes).
     */
    device->buffer_image_bo_alignment =
       (VkDeviceSize)1 << (MIN2(device->tiling_info.row_bytes_log2, 3 + 3 + 3 + 4) +
                           device->tiling_info.banks_log2 + device->tiling_info.pipes_log2);
+
+   device->submission_info_gfx = *submission_info_gfx;
 
    device->nir_options_non_fs = (nir_shader_compiler_options){
       .lower_fdiv = true,
@@ -923,7 +962,7 @@ terakan_physical_device_init(
    terakan_physical_device_get_capabilities(
       instance, device->pci_device_id, &device->chip_family_info,
       device->tiling_info.pipe_interleave_bytes_log2, min_memory_map_alignment,
-      clock_crystal_frequency, max_memory_allocation_size, &extensions, &features, &properties);
+      clock_crystal_frequency_hz, max_memory_allocation_size, &extensions, &features, &properties);
    device->winsys_fn->get_winsys_extensions(device, &extensions, &features, &properties);
 
    struct vk_physical_device_dispatch_table dispatch_table;
@@ -941,8 +980,8 @@ terakan_physical_device_init(
    device->vk.supported_sync_types = supported_sync_types_static;
 
    terakan_physical_device_init_memory_properties(device->chip_family_info.has_dedicated_vram,
-                                                  gtt_page_size, gtt_size, vram_size, vram_visible,
-                                                  &device->memory_properties);
+                                                  gtt_allocation_granularity, gtt_size, vram_size,
+                                                  vram_visible, &device->memory_properties);
 
    /* Initialize WSI after everything else as it's a layer on top of the Vulkan physical device. */
    result = terakan_wsi_init(device);

@@ -608,9 +608,56 @@
 #define V_SQ_REL_ABSOLUTE 0
 #define V_SQ_REL_RELATIVE 1
 
+#define SQ_ALU_VEC_012                                0x00
+#define SQ_ALU_VEC_021                                0x01
+#define SQ_ALU_VEC_120                                0x02
+#define SQ_ALU_VEC_102                                0x03
+#define SQ_ALU_VEC_201                                0x04
+#define SQ_ALU_VEC_210                                0x05
+
+#define SQ_ALU_SCL_210                           0x00000000
+#define SQ_ALU_SCL_122                           0x00000001
+#define SQ_ALU_SCL_212                           0x00000002
+#define SQ_ALU_SCL_221                           0x00000003
+
 #define SQ_VTX_FETCH_VERTEX_DATA 0
 #define SQ_VTX_FETCH_INSTANCE_DATA 1
 #define SQ_VTX_FETCH_NO_INDEX_OFFSET 2
+
+/* EG RAT functions */
+#define       V_RAT_INST_NOP                                         0
+#define       V_RAT_INST_STORE_TYPED                                 1
+#define       V_RAT_INST_CMPXCHG_INT                                 4
+#define       V_RAT_INST_ADD                                         7
+#define       V_RAT_INST_SUB                                         8
+#define       V_RAT_INST_RSUB                                        9
+#define       V_RAT_INST_MIN_INT                                     10
+#define       V_RAT_INST_MIN_UINT                                    11
+#define       V_RAT_INST_MAX_INT                                     12
+#define       V_RAT_INST_MAX_UINT                                    13
+#define       V_RAT_INST_AND                                         14
+#define       V_RAT_INST_OR                                          15
+#define       V_RAT_INST_XOR                                         16
+#define       V_RAT_INST_INC_UINT                                    18
+#define       V_RAT_INST_DEC_UINT                                    19
+#define       V_RAT_INST_STORE_DWORD                                 20
+#define       V_RAT_INST_STORE_SHORT                                 21
+#define       V_RAT_INST_STORE_BYTE                                  22
+#define       V_RAT_INST_NOP_RTN                                     32
+#define       V_RAT_INST_XCHG_RTN                                    34
+#define       V_RAT_INST_CMPXCHG_INT_RTN                             36
+#define       V_RAT_INST_ADD_RTN                                     39
+#define       V_RAT_INST_SUB_RTN                                     40
+#define       V_RAT_INST_RSUB_RTN                                    41
+#define       V_RAT_INST_MIN_INT_RTN                                 42
+#define       V_RAT_INST_MIN_UINT_RTN                                43
+#define       V_RAT_INST_MAX_INT_RTN                                 44
+#define       V_RAT_INST_MAX_UINT_RTN                                45
+#define       V_RAT_INST_AND_RTN                                     46
+#define       V_RAT_INST_OR_RTN                                      47
+#define       V_RAT_INST_XOR_RTN                                     48
+#define       V_RAT_INST_INC_UINT_RTN                                50
+#define       V_RAT_INST_DEC_UINT_RTN                                51
 
 /* CAYMAN has special encoding for MOVA_INT destination */
 #define CM_V_SQ_MOVA_DST_AR_X 0

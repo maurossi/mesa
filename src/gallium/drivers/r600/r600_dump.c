@@ -32,7 +32,6 @@ void print_shader_info(FILE *f , int id, struct r600_shader *shader)
    PRINT_UINT_MEMBER(noutput);
    PRINT_UINT_MEMBER(nhwatomic);
    PRINT_UINT_MEMBER(nlds);
-   PRINT_UINT_MEMBER(nsys_inputs);
    PRINT_UINT_MEMBER(highest_export_param);
 
    for (unsigned i = 0; i < shader->ninput; ++i) {

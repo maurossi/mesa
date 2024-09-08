@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -23,9 +23,11 @@
 
 #include "terakan_shader.h"
 
+#include "nir/terakan_nir.h"
 #include "terakan_bo.h"
 #include "terakan_device.h"
 #include "terakan_physical_device.h"
+#include "terakan_vertex_input.h"
 
 #include "compiler/shader_enums.h"
 #include "gallium/drivers/r600/evergreend.h"
@@ -48,16 +50,13 @@
 #include <cstring>
 
 VkResult
-terakan_shader_impl_init_from_nir(terakan_shader_impl * const shader, terakan_device * const device,
-                                  r600_shader_key const * const key, nir_shader * const nir,
-                                  VkAllocationCallbacks const * const allocator)
+terakan_shader_impl_compile(terakan_shader_impl * const shader, terakan_device * const device,
+                            r600_shader_key const * const key, nir_shader * const nir,
+                            VkAllocationCallbacks const * const allocator)
 {
    VkResult result;
 
-   std::memset(shader, 0, sizeof(*shader));
-
-   terakan_physical_device const & physical_device =
-      *container_of(device->vk.physical, terakan_physical_device const, vk);
+   terakan_physical_device const & physical_device = *terakan_device_physical_device(device);
    terakan_physical_device_chip_family_info const & chip_family_info =
       physical_device.chip_family_info;
    amd_gfx_level const gfx_level = chip_family_info.is_r9xx ? CAYMAN : EVERGREEN;
@@ -67,14 +66,21 @@ terakan_shader_impl_init_from_nir(terakan_shader_impl * const shader, terakan_de
 
    r600::init_pool();
 
+#if 0
    r600_finalize_nir_common(nir, gfx_level);
-   /* For r600_lower_and_optimize_nir, for fields like number bit sizes. */
+#endif
+   /* For r600_lower_and_optimize_nir, for fields like number bit sizes, and also for
+    * DB_SHADER_CONTROL in fragment shaders.
+    */
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
    r600_lower_and_optimize_nir(nir, key, gfx_level, &so_info);
 
+   r600::ShaderBindingLayout binding_layout;
+   binding_layout.texture_resource_offset = 0;
+
    r600::Shader * const unscheduled_sfn_shader = r600::Shader::translate_from_nir(
       nir, &so_info, nullptr, *key, chip_family_info.is_r9xx ? ISA_CC_CAYMAN : ISA_CC_EVERGREEN,
-      chip_family_info.chip_family);
+      chip_family_info.chip_family, binding_layout);
    if (unscheduled_sfn_shader == nullptr) {
       r600::release_pool();
       return vk_errorf(device, VK_ERROR_UNKNOWN, "Failed to translate the shader from NIR");
@@ -131,7 +137,7 @@ terakan_shader_impl_init_from_nir(terakan_shader_impl * const shader, terakan_de
       return vk_errorf(device, VK_ERROR_UNKNOWN, "Failed to build the shader bytecode");
    }
 
-   /* Fill shader registers. */
+   /* Fill shader registers and other info. */
 
    shader->static_state.sq_pgm_resources[0] = S_028844_NUM_GPRS(shader->shader.bc.ngpr) |
                                               S_028844_STACK_SIZE(shader->shader.bc.nstack) |
@@ -176,15 +182,53 @@ terakan_shader_impl_init_from_nir(terakan_shader_impl * const shader, terakan_de
    } break;
 
    case MESA_SHADER_FRAGMENT: {
-      bool export_z = false;
+      uint32_t db_shader_control =
+         S_02880C_KILL_ENABLE(shader->shader.uses_kill) |
+         S_02880C_CONSERVATIVE_Z_EXPORT(nir->info.fs.depth_layout == FRAG_DEPTH_LAYOUT_GREATER
+                                           ? V_02880C_EXPORT_GREATER_THAN_Z
+                                           : (nir->info.fs.depth_layout == FRAG_DEPTH_LAYOUT_LESS
+                                                 ? V_02880C_EXPORT_LESS_THAN_Z
+                                                 : V_02880C_EXPORT_ANY_Z));
       for (unsigned output_index = 0; output_index < shader->shader.noutput; ++output_index) {
-         gl_frag_result const frag_result = shader->shader.output[output_index].frag_result;
-         if (frag_result == FRAG_RESULT_DEPTH || frag_result == FRAG_RESULT_STENCIL ||
-             frag_result == FRAG_RESULT_SAMPLE_MASK) {
-            export_z = true;
+         switch (shader->shader.output[output_index].frag_result) {
+         case FRAG_RESULT_DEPTH:
+            db_shader_control |= S_02880C_Z_EXPORT_ENABLE(1);
+            break;
+         case FRAG_RESULT_STENCIL:
+            db_shader_control |= S_02880C_STENCIL_EXPORT_ENABLE(1);
+            break;
+         case FRAG_RESULT_SAMPLE_MASK:
+            db_shader_control |= S_02880C_MASK_EXPORT_ENABLE(1);
+            break;
+         default:
             break;
          }
       }
+      db_shader_control |= S_02880C_DB_SOURCE_FORMAT(
+         db_shader_control & S_02880C_MASK_EXPORT_ENABLE(1)
+            ? (db_shader_control & S_02880C_Z_EXPORT_ENABLE(1) ? V_02880C_EXPORT_DB_FULL
+                                                               : V_02880C_EXPORT_DB_FOUR16)
+            : V_02880C_EXPORT_DB_TWO);
+      db_shader_control |= S_02880C_DUAL_EXPORT_ENABLE(
+         G_02880C_DB_SOURCE_FORMAT(db_shader_control) != V_02880C_EXPORT_DB_FULL);
+      /* See RadeonSI DB_SHADER_CONTROL setup for more details about the possible Z order and
+       * EXEC_ON_* cases.
+       * Not using ReZ currently due to unknown performance impact.
+       */
+      if (nir->info.fs.early_fragment_tests) {
+         db_shader_control |= S_02880C_DEPTH_BEFORE_SHADER(1) |
+                              S_02880C_Z_ORDER(V_02880C_EARLY_Z_THEN_LATE_Z) |
+                              S_02880C_EXEC_ON_NOOP(nir->info.writes_memory);
+      } else if (nir->info.writes_memory) {
+         db_shader_control |= S_02880C_Z_ORDER(V_02880C_LATE_Z) | S_02880C_EXEC_ON_HIER_FAIL(1);
+      } else {
+         db_shader_control |= S_02880C_Z_ORDER(V_02880C_EARLY_Z_THEN_LATE_Z);
+      }
+      shader->fs.db_shader_control = db_shader_control;
+
+      bool export_z = (db_shader_control &
+                       ~(uint32_t)(C_02880C_Z_EXPORT_ENABLE & C_02880C_STENCIL_EXPORT_ENABLE &
+                                   C_02880C_MASK_EXPORT_ENABLE)) != 0;
       /* Something must be exported, either at least one color or at least the DB export.
        * Explicitly ensuring that is not necessary in this code due to the + 1.
        */
@@ -280,12 +324,21 @@ terakan_shader_impl_init_from_nir(terakan_shader_impl * const shader, terakan_de
          S_0286D8_PROVIDE_Z_TO_SPI(position_input != nullptr);
 
       shader->static_state.stage.ps.cb_shader_mask = shader->shader.ps_color_export_mask;
-
-      /* TODO(Triang3l): DB_SHADER_CONTROL. */
    } break;
 
    default:
       break;
+   }
+
+   if (nir->info.stage == MESA_SHADER_VERTEX) {
+      for (unsigned input_index = 0; input_index < shader->shader.ninput; ++input_index) {
+         struct r600_shader_io const * const input = &shader->shader.input[input_index];
+         assert(input->gpr > 0);
+         assert(input->gpr - 1 < TERAKAN_VERTEX_INPUT_MAX_ATTRIBUTES);
+         if (input->gpr > 0 && input->gpr - 1 < TERAKAN_VERTEX_INPUT_MAX_ATTRIBUTES) {
+            BITSET_SET(shader->vs.vertex_attributes_needed, input->gpr - 1);
+         }
+      }
    }
 
    /* Write the program to the BO. */
@@ -302,7 +355,7 @@ terakan_shader_impl_init_from_nir(terakan_shader_impl * const shader, terakan_de
       }
       return vk_error(device, result);
    }
-   shader->static_state.program_start = 0;
+   shader->static_state.program_va_shr8 = 0;
    {
       void * const program_bo_mapping = terakan_bo_map(shader->static_state.program_bo);
       if (program_bo_mapping == nullptr) {

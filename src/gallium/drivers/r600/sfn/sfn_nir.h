@@ -13,6 +13,9 @@
 #include "nir.h"
 #include "nir_builder.h"
 
+#define R600_NIR_LOAD_BUFFER_RESOURCE_FLAG_USE_VERTEX_CACHE (1u << 0)
+#define R600_NIR_LOAD_BUFFER_RESOURCE_FLAG_IS_MINI_FETCH    (1u << 1)
+
 #ifdef __cplusplus
 #include "sfn_shader.h"
 

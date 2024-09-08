@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -23,13 +23,16 @@
 
 #include "terakan_shader.h"
 
+#include "nir/terakan_nir.h"
 #include "terakan_bo.h"
 #include "terakan_descriptor.h"
 #include "terakan_device.h"
 #include "terakan_physical_device.h"
 
 #include "compiler/glsl_types.h"
+#include "gallium/drivers/r600/sfn/sfn_nir_lower_tex.h"
 #include "spirv/nir_spirv.h"
+#include "util/bitscan.h"
 #include "util/macros.h"
 #include "vk_nir.h"
 
@@ -58,7 +61,7 @@ terakan_shader_spirv_to_nir(struct terakan_device * const device, size_t const s
                             VkSpecializationInfo const * const specialization_info)
 {
    struct terakan_physical_device const * const physical_device =
-      container_of(device->vk.physical, struct terakan_physical_device const, vk);
+      terakan_device_physical_device(device);
 
    static struct spirv_to_nir_options const spirv_options = {
       .environment = NIR_SPIRV_VULKAN,
@@ -86,117 +89,197 @@ terakan_shader_spirv_to_nir(struct terakan_device * const device, size_t const s
                                                     : &physical_device->nir_options_non_fs,
                       false, NULL);
 
-   /* Relevant st_glsl_to_nir passes. */
+   /* SFN expects certain fragment shader system values to be accessed via load_input rather than
+    * the system value load intrinsics, make sure that's the case before nir_lower_system_values is
+    * done that would otherwise generate system value load intrinsics.
+    */
 
-   /* st_link_glsl_to_nir, but without linkage. */
-
-   /* preprocess_shader. */
-
-   if (nir->options->lower_all_io_to_temps) {
-      NIR_PASS_V(nir, nir_lower_io_to_temporaries, nir_shader_get_entrypoint(nir), true, true);
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      struct nir_lower_sysvals_to_varyings_options const lower_sysvals_to_varyings_options = {
+         .frag_coord = true,
+         .front_face = true,
+         .point_coord = true,
+      };
+      NIR_PASS(_, nir, nir_lower_sysvals_to_varyings, &lower_sysvals_to_varyings_options);
    }
 
-   NIR_PASS_V(nir, nir_lower_global_vars_to_local);
+   /* Assign meanings and indices to variables in cases that don't depend on the actual executable
+    * code once all variables are set up (including via nir_lower_sysvals_to_varyings).
+    */
 
-   NIR_PASS_V(nir, nir_split_var_copies);
-   NIR_PASS_V(nir, nir_lower_var_copies);
+   if (nir->info.stage != MESA_SHADER_COMPUTE) {
+      if (nir->info.stage == MESA_SHADER_VERTEX) {
+         nir_foreach_shader_in_variable (var, nir) {
+            assert(var->data.location >= VERT_ATTRIB_GENERIC0);
+            var->data.driver_location = var->data.location - VERT_ATTRIB_GENERIC0;
+         }
+      } else {
+         nir_assign_io_var_locations(nir, nir_var_shader_in, &nir->num_inputs, nir->info.stage);
+      }
+      /* Fragment shader outputs are compacted in the end, not assigning locations here. */
+      if (nir->info.stage != MESA_SHADER_FRAGMENT) {
+         nir_assign_io_var_locations(nir, nir_var_shader_out, &nir->num_outputs, nir->info.stage);
+      }
+   }
 
-   assert(nir->options->lower_to_scalar);
-   NIR_PASS_V(nir, nir_remove_dead_variables,
-              nir_var_function_temp | nir_var_shader_temp | nir_var_mem_shared, NULL);
-   NIR_PASS_V(nir, nir_opt_copy_prop_vars);
-   NIR_PASS_V(nir, nir_lower_alu_to_scalar, nir->options->lower_to_scalar_filter, NULL);
+   /* Make sure output writes are done only once, so they can be treated as exports, and also make
+    * fragment inputs interpolated once.
+    */
 
-   NIR_PASS_V(nir, nir_opt_barrier_modes);
+   if (nir->info.stage != MESA_SHADER_COMPUTE) {
+      nir_lower_io_to_temporaries(nir, nir_shader_get_entrypoint(nir), true,
+                                  nir->options->lower_all_io_to_temps);
+   }
+
+   /* Lower interface and binding derefs. */
+
+   NIR_PASS(_, nir, nir_lower_system_values);
+   /* TODO(Triang3l): Lower compute system values with the correct options. */
 
    if (nir->info.stage == MESA_SHADER_COMPUTE) {
-      NIR_PASS_V(nir, nir_lower_vars_to_explicit_types, nir_var_mem_shared,
-                 terakan_nir_shared_type_info);
-      NIR_PASS_V(nir, nir_lower_explicit_io, nir_var_mem_shared, nir_address_format_32bit_offset);
+      NIR_PASS(_, nir, nir_lower_vars_to_explicit_types, nir_var_mem_shared,
+               terakan_nir_shared_type_info);
    }
 
-   /* Do a round of constant folding to clean up address calculations. */
-   NIR_PASS_V(nir, nir_opt_constant_folding);
+   assert(spirv_options.ubo_addr_format == nir_address_format_32bit_index_offset);
+   assert(spirv_options.ssbo_addr_format == nir_address_format_32bit_index_offset);
+   NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_ubo | nir_var_mem_ssbo,
+            nir_address_format_32bit_index_offset);
 
-   assert(nir->options->lower_to_scalar);
-   NIR_PASS_V(nir, nir_lower_load_const_to_scalar);
+   assert(spirv_options.push_const_addr_format == nir_address_format_32bit_offset);
+   assert(spirv_options.shared_addr_format == nir_address_format_32bit_offset);
+   NIR_PASS(
+      _, nir, nir_lower_explicit_io,
+      nir_var_mem_push_const | (nir->info.stage == MESA_SHADER_COMPUTE ? nir_var_mem_shared : 0),
+      nir_address_format_32bit_offset);
 
-   /* gl_nir_opts from prelink_lowering with num_shaders == 1. */
+   /* Lower basic instructions that won't be generated by other lowerings. */
 
-   bool progress;
-   do {
-      progress = false;
-
-      NIR_PASS_V(nir, nir_lower_vars_to_ssa);
-
-      /* Remove things local to the shader in the hopes that we can cleanup other things. This pass
-       * will also remove variables with only stores, so we might be able to make progress after it.
-       */
-      NIR_PASS(progress, nir, nir_remove_dead_variables,
-               nir_var_function_temp | nir_var_shader_temp | nir_var_mem_shared, NULL);
-
-      NIR_PASS(progress, nir, nir_opt_find_array_copies);
-      NIR_PASS(progress, nir, nir_opt_copy_prop_vars);
-      NIR_PASS(progress, nir, nir_opt_dead_write_vars);
-
-      assert(nir->options->lower_to_scalar);
-      NIR_PASS_V(nir, nir_lower_alu_to_scalar, nir->options->lower_to_scalar_filter, NULL);
-      NIR_PASS_V(nir, nir_lower_phis_to_scalar, false);
-
-      NIR_PASS_V(nir, nir_lower_alu);
-      NIR_PASS_V(nir, nir_lower_pack);
-      NIR_PASS(progress, nir, nir_copy_prop);
-      NIR_PASS(progress, nir, nir_opt_remove_phis);
-      NIR_PASS(progress, nir, nir_opt_dce);
-      if (nir_opt_trivial_continues(nir)) {
-         progress = true;
-         NIR_PASS(progress, nir, nir_copy_prop);
-         NIR_PASS(progress, nir, nir_opt_dce);
-      }
-      NIR_PASS(progress, nir, nir_opt_if, 0);
-      NIR_PASS(progress, nir, nir_opt_dead_cf);
-      NIR_PASS(progress, nir, nir_opt_cse);
-      NIR_PASS(progress, nir, nir_opt_peephole_select, 8, true, true);
-
-      NIR_PASS(progress, nir, nir_opt_phi_precision);
-      NIR_PASS(progress, nir, nir_opt_algebraic);
-      NIR_PASS(progress, nir, nir_opt_constant_folding);
-
-      if (!nir->info.flrp_lowered) {
-         assert(nir->options->lower_flrp16 && nir->options->lower_flrp32 &&
-                nir->options->lower_flrp64);
-         bool lower_flrp_progress = false;
-         NIR_PASS(lower_flrp_progress, nir, nir_lower_flrp, 16 | 32 | 64, false);
-         if (lower_flrp_progress) {
-            NIR_PASS(progress, nir, nir_opt_constant_folding);
-            progress = true;
-         }
-         /* Nothing should rematerialize any flrps, so we only need to do this lowering once. */
-         nir->info.flrp_lowered = true;
-      }
-
-      NIR_PASS(progress, nir, nir_opt_undef);
-      NIR_PASS(progress, nir, nir_opt_conditional_discard);
-
-      assert(nir->options->max_unroll_iterations != 0);
-      NIR_PASS(progress, nir, nir_opt_loop_unroll);
-   } while (progress);
-
-   NIR_PASS_V(nir, nir_lower_var_copies);
-
-   /* prelink_lowering. */
-
-   nir_opt_access_options const opt_access_options = {.is_vulkan = true};
-   NIR_PASS_V(nir, nir_opt_access, &opt_access_options);
-
-   NIR_PASS_V(nir, nir_lower_clip_cull_distance_arrays);
-
-   /* st_link_glsl_to_nir. */
-
-   NIR_PASS_V(nir, nir_lower_system_values);
-   NIR_PASS_V(nir, nir_lower_compute_system_values, NULL);
+   NIR_PASS(_, nir, terakan_nir_lower_sin_cos);
 
    return nir;
+}
+
+static bool
+terakan_nir_should_vectorize_load_store(unsigned const align_mul, unsigned const align_offset,
+                                        unsigned const bit_size, unsigned const num_components,
+                                        nir_intrinsic_instr * const low,
+                                        nir_intrinsic_instr * const high, UNUSED void * data)
+{
+   if (num_components > 4) {
+      return false;
+   }
+
+   /* TODO(Triang3l): Handle the alignment. */
+
+   return true;
+}
+
+void
+terakan_shader_lower_and_optimize_post_link(
+   nir_shader * const nir, struct terakan_pipeline_layout const * const pipeline_layout,
+   BITSET_WORD * const resources_needed, uint32_t * const samplers_needed,
+   uint8_t * const fragment_data_uncompacted_locations_out)
+{
+   bool progress;
+
+   /* Finally eliminate all dead code that may have effect on lowerings below and on analysis within
+    * SFN, so that the demands of the shader can be estimated as accurately as possible.
+    *
+    * SFN also needs SSA, local variables need to be lowered to SSA, and the stores left after the
+    * lowering need to be cleaned up, at some point.
+    * Do that as part of the DCE loop, so that DCE works accurately through variable access, and can
+    * provide feedback to dead variable removal.
+    * Note that while the shader has functions inlined as part of SPIR-V to NIR conversion,
+    * nir_var_shader_temp may be generated by passes like nir_lower_io_to_temporaries. They must be
+    * lowered to nir_var_function_temp for this cleanup to work.
+    */
+
+   NIR_PASS(_, nir, nir_lower_global_vars_to_local);
+   NIR_PASS(_, nir, nir_lower_vars_to_ssa);
+   do {
+      progress = false;
+      NIR_PASS(progress, nir, nir_remove_dead_variables, nir_var_function_temp, NULL);
+      NIR_PASS(progress, nir, nir_opt_dce);
+      NIR_PASS(progress, nir, nir_opt_dead_cf);
+   } while (progress);
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      /* For fragment data location compaction. */
+      NIR_PASS(_, nir, nir_remove_dead_variables, nir_var_shader_in, NULL);
+   }
+
+   /* Compact fragment shader output locations.
+    * See the description of terakan_nir_compact_fragment_data_locations.
+    */
+
+   uint8_t fragment_data_uncompacted_locations = 0b0;
+   NIR_PASS(_, nir, terakan_nir_compact_fragment_data_locations,
+            &fragment_data_uncompacted_locations);
+   if (fragment_data_uncompacted_locations_out != NULL) {
+      *fragment_data_uncompacted_locations_out = fragment_data_uncompacted_locations;
+   }
+
+   /* Assign gl_frag_result values to variables after the fragment data location compaction has
+    * remapped the locations to the hardware values.
+    */
+
+   if (nir->info.stage == MESA_SHADER_FRAGMENT) {
+      nir_assign_io_var_locations(nir, nir_var_shader_out, &nir->num_outputs, nir->info.stage);
+   }
+
+   /* Lower texture operations. */
+
+   NIR_PASS(_, nir, r600_nir_lower_cube_to_2darray);
+
+   /* Vectorize loads that will be lowered to typed buffer load (vertex fetch) instructions. */
+
+   nir_load_store_vectorize_options const load_store_vectorize_options = {
+      .callback = terakan_nir_should_vectorize_load_store,
+      .modes = nir_var_mem_ubo | nir_var_mem_push_const,
+      /* TODO(Triang3l): Vectorize SSBO loads, but not those done via a UAV. */
+      /* TODO(Triang3l): Robust access variable modes. */
+   };
+   NIR_PASS(_, nir, nir_opt_load_store_vectorize, &load_store_vectorize_options);
+
+   /* Lower bindings according to the pipeline layout.
+    * In fragment shaders, this is done after compacting the fragment data output locations as UAVs
+    * must be placed above color attachments.
+    */
+
+   NIR_PASS(_, nir, terakan_nir_lower_bindings, pipeline_layout, resources_needed, samplers_needed);
+
+   /* Perform lowerings on the level of basic building blocks after the interface has been set up.
+    */
+
+   /* TODO(Triang3l): Invoke nir_lower_fragcoord_wtrans when r600_lower_and_optimize_nir is removed.
+    */
+
+   assert(nir->options->lower_to_scalar);
+   NIR_PASS(_, nir, nir_lower_alu_to_scalar, nir->options->lower_to_scalar_filter, NULL);
+   NIR_PASS(_, nir, nir_lower_phis_to_scalar, false);
+
+   /* Everything lowered by nir_lower_alu is supported natively as of this writing. */
+
+   NIR_PASS(_, nir, nir_lower_pack);
+
+   nir_lower_idiv_options lower_idiv_options = {};
+   NIR_PASS(_, nir, nir_lower_idiv, &lower_idiv_options);
+
+   /* Includes both mandatory lowerings and optimizations. */
+   NIR_PASS(_, nir, nir_opt_algebraic);
+
+   if (!nir->info.flrp_lowered) {
+      assert(nir->options->lower_flrp16 && nir->options->lower_flrp32 &&
+             nir->options->lower_flrp64);
+      bool lower_flrp_progress = false;
+      NIR_PASS(lower_flrp_progress, nir, nir_lower_flrp, 16 | 32 | 64, false);
+      if (lower_flrp_progress) {
+         NIR_PASS(_, nir, nir_opt_constant_folding);
+      }
+      /* Nothing should rematerialize any flrps, so we only need to do this lowering once. */
+      nir->info.flrp_lowered = true;
+   }
 }
 
 void

@@ -1,4 +1,4 @@
-# Copyright © 2023 Vitaliy Triang3l Kuzmin
+# Copyright © 2024 Vitaliy Triang3l Kuzmin
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal

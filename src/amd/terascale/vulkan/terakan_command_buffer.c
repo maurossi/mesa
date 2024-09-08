@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -23,14 +23,21 @@
 
 #include "terakan_command_buffer.h"
 
+#include "terakan_cp_dma.h"
 #include "terakan_descriptor.h"
 #include "terakan_device.h"
 #include "terakan_entrypoints.h"
 #include "terakan_image.h"
 #include "terakan_limits.h"
 #include "terakan_physical_device.h"
+#include "terakan_queue.h"
+#include "terakan_shader.h"
+#include "terakan_vertex_input.h"
 
+#include "amd/terascale/common/terascale_wddm.h"
+#include "gallium/drivers/r600/evergreend.h"
 #include "gallium/drivers/r600/r600d_common.h"
+#include "util/bitscan.h"
 #include "util/macros.h"
 #include "vk_alloc.h"
 #include "vk_log.h"
@@ -43,9 +50,11 @@
 
 void
 terakan_bo_reference_writer_reset(struct terakan_bo_reference_writer * const writer,
-                                  void * const bo_references)
+                                  void * const bo_references, uint32_t const max_bo_reference_count)
 {
    writer->references = bo_references;
+   assert(max_bo_reference_count <= TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT);
+   writer->max_reference_count = max_bo_reference_count;
 
    writer->reference_count = 0;
 
@@ -97,23 +106,23 @@ terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_writer * c
        * A hash map smaller than the maximum BO reference count is pointless anyway because it would
        * effectively clamp the maximum BO reference count.
        */
-      assert(writer->reference_count >= TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT);
+      assert(writer->reference_count >= writer->max_reference_count);
       return UINT32_MAX;
    }
 
    /* Create the new or update the existing reference. */
    size_t const reference_size = bo->device->bo_reference_size;
    if (reference_index != UINT32_MAX) {
-      bo->device->winsys_fn->bo->update_reference(
+      bo->device->winsys_fn->queue->update_bo_reference(
          (char *)writer->references + reference_size * reference_index, bo, is_reading, is_writing,
          priority);
    } else {
-      if (unlikely(writer->reference_count >= TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT)) {
+      if (unlikely(writer->reference_count >= writer->max_reference_count)) {
          return UINT32_MAX;
       }
       reference_index = writer->reference_count++;
       writer->reference_bos[reference_index] = bo;
-      bo->device->winsys_fn->bo->create_reference(
+      bo->device->winsys_fn->queue->create_bo_reference(
          (char *)writer->references + reference_size * reference_index, bo, is_reading, is_writing,
          priority);
    }
@@ -130,81 +139,103 @@ terakan_bo_reference_writer_add_reference(struct terakan_bo_reference_writer * c
    BITSET_SET(writer->map_entries_used, (hash + collisions) & TERAKAN_BO_REFERENCE_HASH_MASK);
    writer->map[hash] = reference_index;
 
-   assert(reference_size % sizeof(uint32_t) == 0);
-   return (uint32_t)(reference_size / sizeof(uint32_t)) * reference_index;
+   return reference_index;
 }
 
-void *
-terakan_command_buffer_allocate_push_constants(struct terakan_command_buffer * const command_buffer,
-                                               uint32_t const size_bytes,
-                                               struct terakan_bo const ** const bo_out,
-                                               uint32_t * base_kcache_lines_out)
+struct terakan_queue_submission_size
+terakan_command_buffer_optimal_submission_size_gfx(
+   struct terakan_physical_device_submission_info const * const submission_info_gfx)
 {
-   assert(size_bytes <= TERAKAN_KCACHE_HW_MAX_BUFFER_SIZE_BYTES);
-
-   uint32_t const size_kcache_lines =
-      (size_bytes + (TERAKAN_KCACHE_HW_LINE_BYTES - 1)) / TERAKAN_KCACHE_HW_LINE_BYTES;
-
-   /* One constant buffer of the maximum possible size.
-    * Because allocation is linear, there may be a lot of fragmentation if requested push constant
-    * amounts are large.
-    * However, it's expected that very large push constants are rare, so it's more preferable not to
-    * allocate too much memory for push constants in small command buffers instead of creating
-    * larger BOs.
-    * Fragmentation can also be filled with 1-cache-line push constants.
+   /* Subtract the reserved amount from the optimal size of the application's indirect buffers
+    * because it's preferable to keep the amount round, as the winsys may internally allocate its
+    * submission memory with a large alignment (for instance, according to the addresses, it seems
+    * that in the WDDM Radeon Software driver, memory for submissions is allocated with VirtualAlloc
+    * granularity), and adding a few BO references or relocations beyond some power-of-two amount
+    * may result in a lot of padding.
     */
-   uint32_t const buffer_size_kcache_lines = TERAKAN_KCACHE_HW_MAX_LINES_IN_BUFFER;
+   return terakan_queue_submission_size_subtract_saturating(
+      (struct terakan_queue_submission_size){
+         .bo_references = TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT,
+         .indirect_buffer_dwords = TERAKAN_GFX_OPTIMAL_INDIRECT_BUFFER_SIZE_DWORDS,
+         .relocations =
+            submission_info_gfx->relocation_type == TERAKAN_QUEUE_RELOCATION_TYPE_WDDM_PATCH
+               ? TERAKAN_GFX_OPTIMAL_WDDM_RELOCATION_COUNT
+               : 0,
+      },
+      submission_info_gfx->submission_outer_reserved_amount);
+}
 
-   if (!list_is_empty(&command_buffer->push_constant_buffers_with_free_space) &&
-       list_first_entry(&command_buffer->push_constant_buffers_with_free_space,
-                        struct terakan_push_constant_buffer, link)
-             ->kcache_lines_free >= size_kcache_lines) {
-      /* Small buffers (not larger than 1 kcache line) are expected to be the most common, and they
-       * are allocated from the tail rather than from the head to fill the fragmentation padding.
-       */
-      struct terakan_push_constant_buffer * const existing_buffer =
-         size_kcache_lines <= 1
-            ? list_last_entry(&command_buffer->push_constant_buffers_with_free_space,
-                              struct terakan_push_constant_buffer, link)
-            : list_first_entry(&command_buffer->push_constant_buffers_with_free_space,
-                               struct terakan_push_constant_buffer, link);
-      uint32_t const existing_buffer_offset_kcache_lines =
-         buffer_size_kcache_lines - existing_buffer->kcache_lines_free;
+#define TERAKAN_PUSH_BUFFER_SIZE_BYTES                                                             \
+   ALIGN_POT(MAX2((uint32_t)1 << 16, sizeof(uint32_t) * 2 * TERAKAN_VERTEX_INPUT_FS_MAX_QWORDS),   \
+             TERAKAN_KCACHE_HW_LINE_BYTES)
+#define TERAKAN_PUSH_BUFFER_ALIGNMENT ((uint32_t)1 << 8)
+static_assert(TERAKAN_PUSH_BUFFER_SIZE_BYTES >= TERAKAN_KCACHE_HW_MAX_BUFFER_SIZE_BYTES &&
+                 TERAKAN_PUSH_BUFFER_ALIGNMENT >= TERAKAN_KCACHE_HW_LINE_BYTES,
+              "Push buffers must be usable for kcache buffers.");
+static_assert(TERAKAN_PUSH_BUFFER_SIZE_BYTES >= ((uint32_t)1 << 16) &&
+                 TERAKAN_PUSH_BUFFER_ALIGNMENT >= TERAKAN_CP_DMA_COPY_OPTIMAL_ALIGNMENT,
+              "Push buffers must be usable for vkCmdUpdateBuffer done via CP DMA.");
+static_assert(TERAKAN_PUSH_BUFFER_SIZE_BYTES >=
+                    sizeof(uint32_t) * 2 * TERAKAN_VERTEX_INPUT_FS_MAX_QWORDS &&
+                 TERAKAN_PUSH_BUFFER_ALIGNMENT >= TERAKAN_SHADER_PROGRAM_ALIGNMENT,
+              "Push buffers must be usable for dynamic vertex fetch shaders.");
+static_assert(TERAKAN_PUSH_BUFFER_SIZE_BYTES >= sizeof(uint32_t) * 3 &&
+                 TERAKAN_PUSH_BUFFER_ALIGNMENT >= sizeof(uint32_t),
+              "Push buffers must be usable for direct draw and dispatch parameters.");
+static_assert(
+   TERAKAN_PUSH_BUFFER_SIZE_BYTES >= sizeof(uint32_t) * 4 &&
+      TERAKAN_PUSH_BUFFER_ALIGNMENT >= sizeof(uint32_t),
+   "Push buffers must be usable for at least one rectangle with 16.16 coordinates packed in vertex "
+   "indices.");
 
-      existing_buffer->kcache_lines_free -= size_kcache_lines;
-      if (existing_buffer->kcache_lines_free == 0) {
-         list_move_to(&existing_buffer->link, &command_buffer->push_constant_buffers_full);
-      }
+void *
+terakan_push_buffer_allocate(struct terakan_command_buffer * const command_buffer,
+                             uint32_t const size_bytes, uint32_t const alignment_bytes,
+                             struct terakan_bo const ** const bo_out, uint64_t * const va_out)
+{
+   assert(util_is_power_of_two_nonzero(alignment_bytes));
+   assert(alignment_bytes <= TERAKAN_PUSH_BUFFER_ALIGNMENT);
 
-      *bo_out = existing_buffer->bo;
-      *base_kcache_lines_out = existing_buffer_offset_kcache_lines;
-      return (char *)existing_buffer->bo->mapping +
-             TERAKAN_KCACHE_HW_LINE_BYTES * existing_buffer_offset_kcache_lines;
+   assert(size_bytes <= TERAKAN_PUSH_BUFFER_SIZE_BYTES);
+   if (unlikely(size_bytes > TERAKAN_PUSH_BUFFER_SIZE_BYTES)) {
+      vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_UNKNOWN);
+      return NULL;
    }
 
-   struct terakan_push_constant_buffer * new_buffer;
+   if (!list_is_empty(&command_buffer->push_buffers)) {
+      uint32_t const existing_buffer_offset_bytes =
+         ALIGN_POT(command_buffer->current_push_buffer_used_bytes, alignment_bytes);
+      uint32_t const existing_buffer_new_used_bytes = existing_buffer_offset_bytes + size_bytes;
+      if (existing_buffer_new_used_bytes <= TERAKAN_PUSH_BUFFER_SIZE_BYTES) {
+         command_buffer->current_push_buffer_used_bytes = existing_buffer_new_used_bytes;
+         struct terakan_push_buffer * const existing_buffer =
+            list_first_entry(&command_buffer->push_buffers, struct terakan_push_buffer, link);
+         *bo_out = existing_buffer->bo;
+         *va_out = existing_buffer->bo->va + existing_buffer_offset_bytes;
+         return (char *)existing_buffer->bo->mapping + existing_buffer_offset_bytes;
+      }
+   }
+
+   struct terakan_push_buffer * new_buffer;
 
    struct terakan_command_pool * const command_pool =
       container_of(command_buffer->vk.pool, struct terakan_command_pool, vk);
-   if (!list_is_empty(&command_pool->push_constant_buffers_free)) {
-      new_buffer = list_first_entry(&command_pool->push_constant_buffers_free,
-                                    struct terakan_push_constant_buffer, link);
+   if (!list_is_empty(&command_pool->push_buffers_free)) {
+      new_buffer =
+         list_first_entry(&command_pool->push_buffers_free, struct terakan_push_buffer, link);
       list_del(&new_buffer->link);
    } else {
-      new_buffer =
-         vk_alloc(&command_pool->vk.alloc, sizeof(struct terakan_push_constant_buffer),
-                  alignof(struct terakan_push_constant_buffer), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      new_buffer = vk_alloc(&command_pool->vk.alloc, sizeof(struct terakan_push_buffer),
+                            alignof(struct terakan_push_buffer), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (new_buffer == NULL) {
          vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
          return NULL;
       }
 
-      struct terakan_device * const device =
-         container_of(command_buffer->vk.pool->base.device, struct terakan_device, vk);
+      struct terakan_device * const device = terakan_command_buffer_device(command_buffer);
 
       VkResult const bo_allocate_result = device->winsys_fn->bo->allocate_device_memory(
-         device, TERAKAN_KCACHE_HW_LINE_BYTES * buffer_size_kcache_lines,
-         TERAKAN_KCACHE_HW_LINE_BYTES,
+         device, TERAKAN_PUSH_BUFFER_SIZE_BYTES, TERAKAN_PUSH_BUFFER_ALIGNMENT,
          VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
             VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
          0, &command_pool->vk.alloc, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT, &new_buffer->bo);
@@ -222,19 +253,14 @@ terakan_command_buffer_allocate_push_constants(struct terakan_command_buffer * c
       }
    }
 
-   if (size_kcache_lines < buffer_size_kcache_lines) {
-      new_buffer->kcache_lines_free = buffer_size_kcache_lines - size_kcache_lines;
-      list_add(&new_buffer->link, &command_buffer->push_constant_buffers_with_free_space);
-   } else {
-      list_add(&new_buffer->link, &command_buffer->push_constant_buffers_full);
-   }
-
+   list_add(&new_buffer->link, &command_buffer->push_buffers);
+   command_buffer->current_push_buffer_used_bytes = size_bytes;
    *bo_out = new_buffer->bo;
-   *base_kcache_lines_out = 0;
+   *va_out = new_buffer->bo->va;
    return new_buffer->bo->mapping;
 }
 
-static struct terakan_command_buffer_submission_indirect_buffer *
+static struct terakan_command_buffer_indirect_buffer *
 terakan_command_buffer_new_indirect_buffer(struct terakan_command_buffer * const command_buffer)
 {
    if (vk_command_buffer_has_error(&command_buffer->vk)) {
@@ -244,31 +270,26 @@ terakan_command_buffer_new_indirect_buffer(struct terakan_command_buffer * const
    struct terakan_command_pool * const command_pool =
       container_of(command_buffer->vk.pool, struct terakan_command_pool, vk);
 
-   struct terakan_command_buffer_submission_indirect_buffer * indirect_buffer;
+   struct terakan_command_buffer_indirect_buffer * indirect_buffer;
    if (!list_is_empty(&command_pool->indirect_buffers_free)) {
-      indirect_buffer =
-         list_first_entry(&command_pool->indirect_buffers_free,
-                          struct terakan_command_buffer_submission_indirect_buffer, free_link);
-      list_del(&indirect_buffer->free_link);
+      indirect_buffer = list_first_entry(&command_pool->indirect_buffers_free,
+                                         struct terakan_command_buffer_indirect_buffer, link);
+      list_del(&indirect_buffer->link);
    } else {
-      indirect_buffer = vk_alloc(&command_pool->vk.alloc,
-                                 sizeof(struct terakan_command_buffer_submission_indirect_buffer),
-                                 alignof(struct terakan_command_buffer_submission_indirect_buffer),
-                                 VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      indirect_buffer = vk_alloc(
+         &command_pool->vk.alloc, sizeof(struct terakan_command_buffer_indirect_buffer),
+         alignof(struct terakan_command_buffer_indirect_buffer), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (indirect_buffer == NULL) {
          vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
          return NULL;
       }
 
-      indirect_buffer->base.is_secondary_execution = false;
+      struct terakan_device const * const device = terakan_command_buffer_device(command_buffer);
 
-      struct terakan_device const * const device =
-         container_of(command_buffer->vk.pool->base.device, struct terakan_device const, vk);
-
-      indirect_buffer->bo_references =
-         vk_alloc(&command_pool->vk.alloc,
-                  device->bo_reference_size * TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT,
-                  device->bo_reference_alignment, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      indirect_buffer->bo_references = vk_alloc(
+         &command_pool->vk.alloc,
+         device->bo_reference_size * device->command_buffer_submission_size_gfx.bo_references,
+         device->bo_reference_alignment, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (indirect_buffer->bo_references == NULL) {
          vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
          vk_free(&command_pool->vk.alloc, indirect_buffer);
@@ -276,7 +297,8 @@ terakan_command_buffer_new_indirect_buffer(struct terakan_command_buffer * const
       }
 
       indirect_buffer->indirect_buffer = vk_alloc(
-         &command_pool->vk.alloc, sizeof(uint32_t) * TERAKAN_MAX_INDIRECT_BUFFER_SIZE_DWORDS,
+         &command_pool->vk.alloc,
+         sizeof(uint32_t) * device->command_buffer_submission_size_gfx.indirect_buffer_dwords,
          alignof(uint32_t), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
       if (indirect_buffer->indirect_buffer == NULL) {
          vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -284,13 +306,29 @@ terakan_command_buffer_new_indirect_buffer(struct terakan_command_buffer * const
          vk_free(&command_pool->vk.alloc, indirect_buffer);
          return NULL;
       }
+
+      indirect_buffer->relocations = NULL;
+      if (device->command_buffer_submission_size_gfx.relocations != 0) {
+         indirect_buffer->relocations = vk_alloc(
+            &command_pool->vk.alloc,
+            sizeof(struct terakan_queue_relocation_wddm_patch) *
+               device->command_buffer_submission_size_gfx.relocations,
+            alignof(struct terakan_queue_relocation_wddm_patch), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+         if (indirect_buffer->relocations == NULL) {
+            vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
+            vk_free(&command_pool->vk.alloc, indirect_buffer->indirect_buffer);
+            vk_free(&command_pool->vk.alloc, indirect_buffer->bo_references);
+            vk_free(&command_pool->vk.alloc, indirect_buffer);
+            return NULL;
+         }
+      }
    }
 
    indirect_buffer->bo_reference_count = 0;
    indirect_buffer->indirect_buffer_size_dwords = 0;
+   indirect_buffer->relocation_count = 0;
 
-   list_addtail(&indirect_buffer->base.command_buffer_submission_link,
-                &command_buffer->submissions);
+   list_addtail(&indirect_buffer->link, &command_buffer->indirect_buffers);
 
    return indirect_buffer;
 }
@@ -302,34 +340,18 @@ terakan_command_buffer_release_resources(struct terakan_command_buffer * const c
       container_of(command_buffer->vk.pool, struct terakan_command_pool, vk);
 
    if (command_buffer->command_writer.gfx != NULL) {
-      struct terakan_command_pool * const command_pool =
-         container_of(command_buffer->vk.pool, struct terakan_command_pool, vk);
       list_add(&command_buffer->command_writer.gfx->base.free_link,
                &command_pool->command_writers_free);
       command_buffer->command_writer.gfx = NULL;
    }
 
-   list_for_each_entry_safe (struct terakan_command_buffer_submission, submission_base,
-                             &command_buffer->submissions, command_buffer_submission_link) {
-      list_del(&submission_base->command_buffer_submission_link);
-      if (submission_base->is_secondary_execution) {
-         struct terakan_command_buffer_submission_secondary_execution * const submission =
-            container_of(submission_base,
-                         struct terakan_command_buffer_submission_secondary_execution, base);
-         list_add(&submission->free_link, &command_pool->secondary_executions_free);
-      } else {
-         struct terakan_command_buffer_submission_indirect_buffer * const submission = container_of(
-            submission_base, struct terakan_command_buffer_submission_indirect_buffer, base);
-         list_add(&submission->free_link, &command_pool->indirect_buffers_free);
-      }
+   list_for_each_entry_safe (struct terakan_command_buffer_indirect_buffer, indirect_buffer,
+                             &command_buffer->indirect_buffers, link) {
+      list_move_to(&indirect_buffer->link, &command_pool->indirect_buffers_free);
    }
 
-   list_splice(&command_buffer->push_constant_buffers_full,
-               &command_pool->push_constant_buffers_free);
-   list_inithead(&command_buffer->push_constant_buffers_full);
-   list_splice(&command_buffer->push_constant_buffers_with_free_space,
-               &command_pool->push_constant_buffers_free);
-   list_inithead(&command_buffer->push_constant_buffers_with_free_space);
+   list_splice(&command_buffer->push_buffers, &command_pool->push_buffers_free);
+   list_inithead(&command_buffer->push_buffers);
 }
 
 static void
@@ -378,10 +400,10 @@ terakan_command_buffer_create(struct vk_command_pool * const command_pool,
       return result;
    }
 
-   list_inithead(&command_buffer->push_constant_buffers_with_free_space);
-   list_inithead(&command_buffer->push_constant_buffers_full);
+   list_inithead(&command_buffer->push_buffers);
+   command_buffer->current_push_buffer_used_bytes = TERAKAN_PUSH_BUFFER_SIZE_BYTES;
 
-   list_inithead(&command_buffer->submissions);
+   list_inithead(&command_buffer->indirect_buffers);
 
    command_buffer->command_writer.gfx = NULL;
 
@@ -399,6 +421,12 @@ static void
 terakan_gfx_command_writer_end_indirect_buffer(
    struct terakan_gfx_command_writer * const command_writer)
 {
+#ifndef NDEBUG
+   assert(!command_writer->is_emitting &&
+          "terakan_gfx_command_writer_emit_done must be called with the final append pointer after "
+          "every command emission");
+#endif
+
    if (command_writer->indirect_buffer == NULL) {
       return;
    }
@@ -406,8 +434,8 @@ terakan_gfx_command_writer_end_indirect_buffer(
    command_writer->indirect_buffer->bo_reference_count =
       command_writer->base.bo_reference_writer.reference_count;
 
-   /* Pad the GFX ring indirect buffer to a multiple of 8 dwords with NOPs. */
-   while ((command_writer->indirect_buffer->indirect_buffer_size_dwords & 7) != 0) {
+   while (command_writer->indirect_buffer->indirect_buffer_size_dwords &
+          (TERAKAN_QUEUE_INDIRECT_BUFFER_SIZE_ALIGNMENT_DWORDS_GFX - 1)) {
       command_writer->indirect_buffer
          ->indirect_buffer[command_writer->indirect_buffer->indirect_buffer_size_dwords++] =
          PKT_TYPE_S(2);
@@ -425,25 +453,44 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
     * Useful references:
     * - Gallium R600 driver
     * - xf86-video-ati
-    * - Linux kernel Radeon driver
+    * - Radeon DRM kernel driver
     * - fglrx indirect buffers
     */
 
    struct terakan_physical_device const * const physical_device =
-      container_of(command_writer->base.command_buffer->vk.pool->base.device->physical,
-                   struct terakan_physical_device const, vk);
-   bool const is_r9xx = physical_device->chip_family_info.is_r9xx;
+      terakan_gfx_command_writer_physical_device(command_writer);
+   struct terakan_physical_device_chip_family_info const * const chip_family_info =
+      &physical_device->chip_family_info;
+   bool const is_r9xx = chip_family_info->is_r9xx;
+   struct terakan_physical_device_submission_info_gfx const * const submission_info_gfx =
+      &physical_device->submission_info_gfx;
 
    uint32_t * packet;
 
    /* Disable register shadowing before setting any registers. */
-   packet = terakan_gfx_command_writer_emit(command_writer, 3, 0, 0, false);
+   packet = terakan_gfx_command_writer_emit(command_writer, 3, false);
    if (unlikely(packet == NULL)) {
       return;
    }
    *packet++ = PKT3(PKT3_CONTEXT_CONTROL, 1, 0);
    *packet++ = (uint32_t)1 << 31; /* CC0_UPDATE_LOAD_ENABLES(1) */
    *packet++ = (uint32_t)1 << 31; /* CC1_UPDATE_SHADOW_ENABLES(1) */
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
+
+   if (submission_info_gfx->need_sq_alu_const_mode_control) {
+      /* Switch to the Direct3D 10 mode for ALU constants (provided via kcache buffers).
+       * DRM Radeon 2.50.0 does this MODE_CONTROL before every indirect buffer execution and doesn't
+       * allow it in submissions without virtual memory, but WDDM Radeon Software as of
+       * 15.301.1901 does it in submissions after CONTEXT_CONTROL.
+       */
+      packet = terakan_gfx_command_writer_emit(command_writer, 2, false);
+      if (unlikely(packet == NULL)) {
+         return;
+      }
+      *packet++ = PKT3(PKT3_MODE_CONTROL, 0, 0);
+      *packet++ = 1;
+      terakan_gfx_command_writer_emit_done(command_writer, packet);
+   }
 
    /*
     * Setup graphics context registers outside terakan_hw_state_draw.
@@ -452,16 +499,18 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
    if (!is_r9xx) {
       /* Workaround for hardware issues with dynamic GPRs - must set all limits to 240 (in units of
        * 8 registers) instead of 0. */
-      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
+      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, false);
       if (unlikely(packet == NULL)) {
          return;
       }
       *packet++ = PKT3(PKT3_SET_CONTEXT_REG, 1, 0);
       *packet++ = TERAKAN_CONTEXT_REG_OFFSET(R_028838_SQ_DYN_GPR_RESOURCE_LIMIT_1);
       /* Workaround for hardware issues with dynamic GPRs - must set all limits to 240 (in units of
-       * 8 registers) instead of 0. */
+       * 8 registers) instead of 0.
+       */
       *packet++ = S_028838_PS_GPRS(0x1E) | S_028838_VS_GPRS(0x1E) | S_028838_GS_GPRS(0x1E) |
                   S_028838_ES_GPRS(0x1E) | S_028838_HS_GPRS(0x1E) | S_028838_LS_GPRS(0x1E);
+      terakan_gfx_command_writer_emit_done(command_writer, packet);
    }
 
    uint32_t const draw_context_regs[] = {
@@ -583,8 +632,8 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
 
       PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
       TERAKAN_CONTEXT_REG_OFFSET(R_0286C8_SPI_THREAD_GROUPING),
-      /* TODO(Triang3l): Gallium R600 has 0 for SPI_THREAD_GROUPING, but Linux Radeon 2.50.0 has 1
-       * in cleanstate_evergreen/cayman.h. Research which is more correct.
+      /* TODO(Triang3l): Gallium R600 has 0 for SPI_THREAD_GROUPING, but DRM Radeon 2.50.0 has 1 in
+       * cleanstate_evergreen/cayman.h. Research which is more correct.
        */
       0,
 
@@ -617,8 +666,7 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       /* R_028030_PA_SC_SCREEN_SCISSOR_TL */
       0,
       /* R_028034_PA_SC_SCREEN_SCISSOR_BR */
-      S_028034_BR_X(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES) |
-         S_028034_BR_Y(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES),
+      S_028034_BR_X(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT) | S_028034_BR_Y(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT),
 
       /* TODO(Triang3l): Move to hw_state_draw. */
       PKT3(PKT3_SET_CONTEXT_REG, 2, 0),
@@ -626,8 +674,7 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       /* R_028204_PA_SC_WINDOW_SCISSOR_TL */
       0,
       /* R_028208_PA_SC_WINDOW_SCISSOR_BR */
-      S_028208_BR_X(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES) |
-         S_028208_BR_Y(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES),
+      S_028208_BR_X(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT) | S_028208_BR_Y(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT),
 
       /* TODO(Triang3l): Move to hw_state_draw. */
       PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
@@ -653,8 +700,7 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       /* R_028240_PA_SC_GENERIC_SCISSOR_TL */
       0,
       /* R_028244_PA_SC_GENERIC_SCISSOR_BR */
-      S_028244_BR_X(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES) |
-         S_028244_BR_Y(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT_1D_SLICES),
+      S_028244_BR_X(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT) | S_028244_BR_Y(TERAKAN_IMAGE_MAX_WIDTH_HEIGHT),
 
       PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
       TERAKAN_CONTEXT_REG_OFFSET(R_028820_PA_CL_NANINF_CNTL),
@@ -691,74 +737,40 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
 
       /* TODO(Triang3l): Move to hw_state_draw. */
       PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
-      TERAKAN_CONTEXT_REG_OFFSET(R_028800_DB_DEPTH_CONTROL),
-      0,
-
-      /* TODO(Triang3l): Move to hw_state_draw. */
-      PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
-      TERAKAN_CONTEXT_REG_OFFSET(R_02880C_DB_SHADER_CONTROL),
-      S_02880C_Z_ORDER(V_02880C_EARLY_Z_THEN_LATE_Z) | S_02880C_DUAL_EXPORT_ENABLE(1) |
-         S_02880C_DB_SOURCE_FORMAT(V_02880C_EXPORT_DB_TWO),
-
-      /* TODO(Triang3l): Move to hw_state_draw. */
-      PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
       TERAKAN_CONTEXT_REG_OFFSET(R_028B70_DB_ALPHA_TO_MASK),
       0,
-
-      /*
-       * Color buffer.
-       */
-
-      /* TODO(Triang3l): Move to hw_state_draw. */
-      PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
-      TERAKAN_CONTEXT_REG_OFFSET(R_028238_CB_TARGET_MASK),
-      0b1111,
-
-      /* TODO(Triang3l): Move to hw_state_draw. */
-      PKT3(PKT3_SET_CONTEXT_REG, 8, 0),
-      TERAKAN_CONTEXT_REG_OFFSET(R_028780_CB_BLEND0_CONTROL),
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-      0,
-
-      /* TODO(Triang3l): Move to hw_state_draw. */
-      PKT3(PKT3_SET_CONTEXT_REG, 1, 0),
-      TERAKAN_CONTEXT_REG_OFFSET(R_028808_CB_COLOR_CONTROL),
-      S_028808_MODE(V_028808_CB_NORMAL) | S_028808_ROP3(0xCC),
    };
 
-   packet =
-      terakan_gfx_command_writer_emit(command_writer, ARRAY_SIZE(draw_context_regs), 0, 0, false);
+   packet = terakan_gfx_command_writer_emit(command_writer, ARRAY_SIZE(draw_context_regs), false);
    if (unlikely(packet == NULL)) {
       return;
    }
    memcpy(packet, draw_context_regs, sizeof(draw_context_regs));
+   packet += ARRAY_SIZE(draw_context_regs);
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 
    if (is_r9xx) {
       /* TODO(Triang3l): Move to hw_state_draw. */
-      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
+      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, false);
       if (unlikely(packet == NULL)) {
          return;
       }
       *packet++ = PKT3(PKT3_SET_CONTEXT_REG, 1, 0);
       *packet++ = TERAKAN_CONTEXT_REG_OFFSET(CM_R_028AA8_IA_MULTI_VGT_PARAM);
       *packet++ = S_028AA8_PRIMGROUP_SIZE(128 - 1);
+      terakan_gfx_command_writer_emit_done(command_writer, packet);
 
-      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
+      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, false);
       if (unlikely(packet == NULL)) {
          return;
       }
       *packet++ = PKT3(PKT3_SET_CONTEXT_REG, 1, 0);
       *packet++ = TERAKAN_CONTEXT_REG_OFFSET(CM_R_0286FC_SPI_LDS_MGMT);
       *packet++ = 0;
+      terakan_gfx_command_writer_emit_done(command_writer, packet);
 
       /* TODO(Triang3l): Move to hw_state_draw. */
-      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
+      packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, false);
       if (unlikely(packet == NULL)) {
          return;
       }
@@ -766,9 +778,10 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       *packet++ = TERAKAN_CONTEXT_REG_OFFSET(CM_R_028804_DB_EQAA);
       *packet++ = S_028804_HIGH_QUALITY_INTERSECTIONS(1) | S_028804_INCOHERENT_EQAA_READS(1) |
                   S_028804_STATIC_ANCHOR_ASSOCIATIONS(1);
+      terakan_gfx_command_writer_emit_done(command_writer, packet);
    }
 
-   packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
+   packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, false);
    if (unlikely(packet == NULL)) {
       return;
    }
@@ -777,14 +790,15 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       TERAKAN_CONTEXT_REG_OFFSET(is_r9xx ? CM_R_028BE4_PA_SU_VTX_CNTL : R_028C08_PA_SU_VTX_CNTL);
    *packet++ = S_028C08_PIX_CENTER_HALF(1) | S_028C08_ROUND_MODE(V_028C08_X_ROUND_TO_EVEN) |
                S_028C08_QUANT_MODE(V_028C08_X_1_256TH);
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 
    /*
     * Setup configuration registers common between graphics and compute.
     */
 
-   uint32_t sq_config = S_008C00_VC_ENABLE(physical_device->chip_family_info.has_vertex_cache) |
-                        S_008C00_EXPORT_SRC_C(1);
-   /* Not raising CS2 priority in SQ_CONFIG on R9xx unlike in Linux Radeon 2.50.0 because it doesn't
+   uint32_t sq_config =
+      S_008C00_VC_ENABLE(chip_family_info->has_vertex_cache) | S_008C00_EXPORT_SRC_C(1);
+   /* Not raising CS2 priority in SQ_CONFIG on R9xx unlike in DRM Radeon 2.50.0 because it doesn't
     * expose the compute rings at all.
     */
    if (!is_r9xx) {
@@ -792,10 +806,19 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
                    S_008C00_GS_PRIO(2) | S_008C00_VS_PRIO(1) | S_008C00_PS_PRIO(0) |
                    S_008C00_CS_PRIO(0);
    }
-   packet = terakan_gfx_command_writer_emit(command_writer, 2 + 2 + 2 + 2, 0, 0, false);
+   packet = terakan_gfx_command_writer_emit(command_writer, 2 + 2 + 2 + 2 + 2, false);
    if (unlikely(packet == NULL)) {
       return;
    }
+   /* PS_PARTIAL_FLUSH is necessary before setting SQ_CONFIG (as well as
+    * SQ_DYN_GPR_CNTL_PS_FLUSH_REQ later), otherwise on WDDM Radeon Software (tested on Barts on
+    * 15.301.1901), the GPU hangs randomly likely because other work is still being done by the SQ.
+    * In Direct3D 11 submissions on R8xx, WAIT_UNTIL for WAIT_3D_IDLE is done instead even, but
+    * PS_PARTIAL_FLUSH seems sufficient.
+    */
+   /* TODO(Triang3l): Is CS_PARTIAL_FLUSH needed too? */
+   *packet++ = PKT3(PKT3_EVENT_WRITE, 0, 0);
+   *packet++ = EVENT_TYPE(EVENT_TYPE_PS_PARTIAL_FLUSH) | EVENT_INDEX(4);
    *packet++ = PKT3(PKT3_SET_CONFIG_REG, is_r9xx ? 2 : 6, 0);
    *packet++ = TERAKAN_CONFIG_REG_OFFSET(R_008C00_SQ_CONFIG);
    /* R_008C00_SQ_CONFIG */
@@ -815,19 +838,20 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
    *packet++ = 0;
    /* R_008C14_SQ_GLOBAL_GPR_RESOURCE_MGMT_2 */
    *packet++ = 0;
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 
    /* TODO(Triang3l): Dynamic GPR usage on R8xx - see evergreen_emit_config_state, and also disable
     * them for tessellation, see evergreen_adjust_gprs. Keep them always enabled for R9xx though.
     */
-   packet = terakan_gfx_command_writer_emit(command_writer, 2 + 2 + 1, 0, 0, false);
+   packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, false);
    if (unlikely(packet == NULL)) {
       return;
    }
-   *packet++ = PKT3(PKT3_EVENT_WRITE, 0, 0);
-   *packet++ = EVENT_TYPE(EVENT_TYPE_PS_PARTIAL_FLUSH) | EVENT_INDEX(4);
    *packet++ = PKT3(PKT3_SET_CONFIG_REG, 1, 0);
+   /* PS_PARTIAL_FLUSH required for this was done earlier. */
    *packet++ = TERAKAN_CONFIG_REG_OFFSET(R_008D8C_SQ_DYN_GPR_CNTL_PS_FLUSH_REQ);
    *packet++ = S_008D8C_DYN_GPR_ENABLE(1);
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 
    uint32_t const config_regs[] = {
       /* Remove LS and HS from one SIMD for a hardware bug workaround according to the Gallium R600
@@ -837,9 +861,9 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       TERAKAN_CONFIG_REG_OFFSET(R_008E20_SQ_STATIC_THREAD_MGMT1),
       /* R_008E20_SQ_STATIC_THREAD_MGMT1 */
       ~(uint32_t)0,
-      /* R_008E20_SQ_STATIC_THREAD_MGMT2 */
+      /* R_008E24_SQ_STATIC_THREAD_MGMT2 */
       ~(uint32_t)0,
-      /* R_008E20_SQ_STATIC_THREAD_MGMT3 */
+      /* R_008E28_SQ_STATIC_THREAD_MGMT3 */
       ~(uint32_t)1,
 
       PKT3(PKT3_SET_CONFIG_REG, 1, 0),
@@ -855,11 +879,13 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       S_008A14_CLIP_VTX_REORDER_ENA(1) | S_008A14_NUM_CLIP_SEQ(3),
    };
 
-   packet = terakan_gfx_command_writer_emit(command_writer, ARRAY_SIZE(config_regs), 0, 0, false);
+   packet = terakan_gfx_command_writer_emit(command_writer, ARRAY_SIZE(config_regs), false);
    if (unlikely(packet == NULL)) {
       return;
    }
    memcpy(packet, config_regs, sizeof(config_regs));
+   packet += ARRAY_SIZE(config_regs);
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 
    /*
     * Setup configuration registers for graphics.
@@ -870,29 +896,27 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
    if (!is_r9xx) {
       /* The thread counts should be a multiple of 8 as space is allocated in blocks of 8 according
        * to the register reference.
-       * Linux Radeon 2.50.0 spreads the non-pixel-shader threads evenly between 6 stages, but aside
+       * DRM Radeon 2.50.0 spreads the non-pixel-shader threads evenly between 6 stages, but aside
        * from the pixel shader there are 5 stages - allocate more.
        */
-      uint32_t const sq_vertex_threads = (physical_device->chip_family_info.sq_max_threads -
-                                          physical_device->chip_family_info.sq_ps_threads_r8xx) /
-                                         5 / 8 * 8;
+      uint32_t const sq_vertex_threads =
+         (chip_family_info->sq_max_threads - chip_family_info->sq_ps_threads_r8xx) / 5 / 8 * 8;
 
-      uint32_t const sq_stage_stack_entries =
-         physical_device->chip_family_info.sq_max_stack_entries / 6;
+      uint32_t const sq_stage_stack_entries = chip_family_info->sq_max_stack_entries / 6;
 
       uint32_t const sq_thread_stack_register_count =
          (R_008C28_SQ_STACK_RESOURCE_MGMT_3 - R_008C18_SQ_THREAD_RESOURCE_MGMT_1) /
             sizeof(uint32_t) +
          1;
-      packet = terakan_gfx_command_writer_emit(
-         command_writer, 2 + sq_thread_stack_register_count + 2 + 1, 0, 0, false);
+      packet = terakan_gfx_command_writer_emit(command_writer,
+                                               2 + sq_thread_stack_register_count + 2 + 1, false);
       if (unlikely(packet == NULL)) {
          return;
       }
       *packet++ = PKT3(PKT3_SET_CONFIG_REG, sq_thread_stack_register_count, 0);
       *packet++ = TERAKAN_CONFIG_REG_OFFSET(R_008C18_SQ_THREAD_RESOURCE_MGMT_1);
       /* R_008C18_SQ_THREAD_RESOURCE_MGMT_1 */
-      *packet++ = S_008C18_NUM_PS_THREADS(physical_device->chip_family_info.sq_ps_threads_r8xx) |
+      *packet++ = S_008C18_NUM_PS_THREADS(chip_family_info->sq_ps_threads_r8xx) |
                   S_008C18_NUM_VS_THREADS(sq_vertex_threads) |
                   S_008C18_NUM_GS_THREADS(sq_vertex_threads) |
                   S_008C18_NUM_ES_THREADS(sq_vertex_threads);
@@ -912,6 +936,7 @@ terakan_gfx_command_writer_emit_preamble(struct terakan_gfx_command_writer * con
       *packet++ = TERAKAN_CONFIG_REG_OFFSET(R_008E2C_SQ_LDS_RESOURCE_MGMT);
       *packet++ = S_008E2C_NUM_PS_LDS(TERAKAN_LIMITS_HW_LDS_SIMD_DWORD_COUNT / 2) |
                   S_008E2C_NUM_LS_LDS(TERAKAN_LIMITS_HW_LDS_SIMD_DWORD_COUNT / 2);
+      terakan_gfx_command_writer_emit_done(command_writer, packet);
    }
 }
 
@@ -928,20 +953,23 @@ terakan_gfx_command_writer_new_indirect_buffer(
    }
 
    terakan_bo_reference_writer_reset(&command_writer->base.bo_reference_writer,
-                                     command_writer->indirect_buffer->bo_references);
+                                     command_writer->indirect_buffer->bo_references,
+                                     terakan_gfx_command_writer_device(command_writer)
+                                        ->command_buffer_submission_size_gfx.bo_references);
 
    command_writer->is_beginning_indirect_buffer = true;
 
    terakan_gfx_command_writer_emit_preamble(command_writer);
 
    /* Clear all resources in the hardware. */
-   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, 0, 0, false);
+   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 1, false);
    if (unlikely(packet == NULL)) {
       return false;
    }
    *packet++ = PKT3(PKT3_SET_CTL_CONST, 1, 0);
    *packet++ = TERAKAN_CTL_CONST_OFFSET(R_03CFF4_SQ_VTX_START_INST_LOC);
    *packet++ = UINT32_MAX;
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 
    terakan_hw_state_draw_indirect_buffer_begun_and_sq_resources_cleared(
       &command_writer->hw_state_draw);
@@ -965,25 +993,59 @@ terakan_gfx_command_writer_new_indirect_buffer(
 }
 
 uint32_t *
-terakan_gfx_command_writer_emit(struct terakan_gfx_command_writer * const command_writer,
-                                uint32_t const packet_dwords, uint32_t const bo_count,
-                                uint32_t const relocation_packet_dwords,
-                                bool abort_if_all_state_emitted)
+terakan_gfx_command_writer_emit_with_bo(struct terakan_gfx_command_writer * const command_writer,
+                                        uint32_t const packet_dwords,
+                                        bool const abort_if_all_state_emitted,
+                                        uint32_t const bo_count,
+                                        uint32_t const relocation_for_32_bits_count,
+                                        uint32_t const relocation_for_40_bits_count)
 {
+#ifndef NDEBUG
+   assert(!command_writer->is_emitting &&
+          "terakan_gfx_command_writer_emit_done must be called with the final append pointer after "
+          "every command emission");
+#endif
+
+   /* Empty indirect buffer submissions may not be supported by the queue, make sure indirect
+    * buffers can't be allocated only to end up being empty.
+    */
+   assert(packet_dwords != 0);
+
    if (unlikely(vk_command_buffer_has_error(&command_writer->base.command_buffer->vk))) {
       return NULL;
    }
 
-   uint32_t const total_packet_dwords = packet_dwords + relocation_packet_dwords;
+   struct terakan_device const * const device = terakan_gfx_command_writer_device(command_writer);
 
-   uint32_t const indirect_buffer_max_dwords =
-      TERAKAN_MAX_INDIRECT_BUFFER_SIZE_DWORDS & ~((uint32_t)7);
+   enum terakan_queue_relocation_type const relocation_type =
+      terakan_device_physical_device(device)->submission_info_gfx.base.relocation_type;
+   uint32_t relocation_count;
+   bool relocation_array_used = false;
+   uint32_t total_packet_dwords = packet_dwords;
+   switch (relocation_type) {
+   case TERAKAN_QUEUE_RELOCATION_TYPE_DRM_NOP:
+      /* One relocation for the whole address. */
+      relocation_count = relocation_for_32_bits_count + relocation_for_40_bits_count;
+      total_packet_dwords += 2 * relocation_count;
+      break;
+   case TERAKAN_QUEUE_RELOCATION_TYPE_WDDM_PATCH:
+      /* One relocation per address dword (two for 40-bit addresses). */
+      relocation_count = relocation_for_32_bits_count + 2 * relocation_for_40_bits_count;
+      relocation_array_used = true;
+      break;
+   default:
+      assert(relocation_type == TERAKAN_QUEUE_RELOCATION_TYPE_NONE);
+      relocation_count = 0;
+   }
 
    if (command_writer->indirect_buffer == NULL ||
-       (indirect_buffer_max_dwords - command_writer->indirect_buffer->indirect_buffer_size_dwords) <
-          total_packet_dwords ||
-       (TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT -
-        command_writer->base.bo_reference_writer.reference_count) < bo_count) {
+       (device->command_buffer_submission_size_gfx.indirect_buffer_dwords -
+        command_writer->indirect_buffer->indirect_buffer_size_dwords) < total_packet_dwords ||
+       (device->command_buffer_submission_size_gfx.bo_references -
+        command_writer->base.bo_reference_writer.reference_count) < bo_count ||
+       (relocation_array_used &&
+        (device->command_buffer_submission_size_gfx.relocations -
+         command_writer->indirect_buffer->relocation_count) < relocation_count)) {
       assert(!command_writer->is_beginning_indirect_buffer);
       if (unlikely(command_writer->is_beginning_indirect_buffer)) {
          /* Possibly a recursive overflow while moving to the new indirect buffer, if this happens,
@@ -1002,11 +1064,14 @@ terakan_gfx_command_writer_emit(struct terakan_gfx_command_writer * const comman
       }
    }
 
-   if (unlikely((indirect_buffer_max_dwords -
+   if (unlikely((device->command_buffer_submission_size_gfx.indirect_buffer_dwords -
                  command_writer->indirect_buffer->indirect_buffer_size_dwords) <
                    total_packet_dwords ||
-                (TERAKAN_BO_REFERENCE_WRITER_REFERENCE_COUNT -
-                 command_writer->base.bo_reference_writer.reference_count) < bo_count)) {
+                (device->command_buffer_submission_size_gfx.bo_references -
+                 command_writer->base.bo_reference_writer.reference_count) < bo_count) ||
+       (relocation_array_used &&
+        (device->command_buffer_submission_size_gfx.relocations -
+         command_writer->indirect_buffer->relocation_count) < relocation_count)) {
       assert(
          !"A single command emission is too large, no space even after moving to the new indirect "
           "buffer");
@@ -1015,11 +1080,93 @@ terakan_gfx_command_writer_emit(struct terakan_gfx_command_writer * const comman
       return NULL;
    }
 
+#ifndef NDEBUG
+   command_writer->is_emitting = true;
+   command_writer->current_emission_relocations_remaining = relocation_count;
+#endif
+
    uint32_t * const indirect_buffer_allocation =
       command_writer->indirect_buffer->indirect_buffer +
       command_writer->indirect_buffer->indirect_buffer_size_dwords;
    command_writer->indirect_buffer->indirect_buffer_size_dwords += total_packet_dwords;
    return indirect_buffer_allocation;
+}
+
+void
+terakan_gfx_command_writer_add_relocation(struct terakan_gfx_command_writer * const command_writer,
+                                          uint32_t ** const indirect_buffer_append_ptr,
+                                          uint32_t const * const address_in_packet,
+                                          uint32_t const wddm_allocation_offset,
+                                          uint64_t const wddm_patch_ids,
+                                          uint32_t const bo_reference)
+{
+   enum terakan_queue_relocation_type const relocation_type =
+      terakan_gfx_command_writer_physical_device(command_writer)
+         ->submission_info_gfx.base.relocation_type;
+
+   if (relocation_type == TERAKAN_QUEUE_RELOCATION_TYPE_NONE) {
+      return;
+   }
+
+#ifndef NDEBUG
+   assert(command_writer->is_emitting);
+   assert(command_writer->current_emission_relocations_remaining != 0);
+   --command_writer->current_emission_relocations_remaining;
+#endif
+
+   switch (relocation_type) {
+   case TERAKAN_QUEUE_RELOCATION_TYPE_DRM_NOP:
+      *((*indirect_buffer_append_ptr)++) = PKT3(PKT3_NOP, 0, 0);
+      /* DRM Radeon accepts BO reference offsets in dwords, so multiplying by
+       * `sizeof(struct drm_radeon_cs_reloc) / sizeof(__u32)`.
+       */
+      *((*indirect_buffer_append_ptr)++) = 4 * bo_reference;
+      break;
+
+   case TERAKAN_QUEUE_RELOCATION_TYPE_WDDM_PATCH: {
+      struct terakan_queue_relocation_wddm_patch * const patch =
+         &((struct terakan_queue_relocation_wddm_patch *)command_writer->indirect_buffer
+              ->relocations)[command_writer->indirect_buffer->relocation_count++];
+      /* + 1 because a hAllocation = 0 allocation list entry is prepended when submitting. */
+      patch->allocation_index = 1 + bo_reference;
+      patch->slot_id = (uint32_t)wddm_patch_ids;
+      patch->driver_id = (uint32_t)(wddm_patch_ids >> 32);
+      patch->allocation_offset = wddm_allocation_offset;
+      patch->patch_offset =
+         sizeof(uint32_t) *
+         (uint32_t)(address_in_packet - command_writer->indirect_buffer->indirect_buffer);
+      patch->split_offset = 0;
+   } break;
+
+   default:
+      assert(!"Unsupported relocation type");
+   }
+}
+
+void
+terakan_gfx_command_writer_emit_event_write_eop_discarding_data(
+   struct terakan_gfx_command_writer * const command_writer, uint32_t const event)
+{
+   uint32_t * packet = terakan_gfx_command_writer_emit_with_bo(command_writer, 6, false, 1, 0, 1);
+   if (unlikely(packet == NULL)) {
+      return;
+   }
+   struct terakan_bo const * const gfx_discard_bo =
+      terakan_gfx_command_writer_device(command_writer)->gfx_discard_bo;
+   *packet++ = PKT3(PKT3_EVENT_WRITE_EOP, 5 - 1, 0);
+   *packet++ = event;
+   uint32_t const * const packet_address = packet;
+   *packet++ = (uint32_t)gfx_discard_bo->va;      /* ADDRESS_LO */
+   *packet++ = (gfx_discard_bo->va >> 32) & 0xFF; /* ADDRESS_HI, INT_SEL, DATA_SEL */
+   *packet++ = 0;                                 /* DATA_LO */
+   *packet++ = 0;                                 /* DATA_HI */
+   terakan_gfx_command_writer_add_relocation_for_40_bits(
+      command_writer, &packet, packet_address, packet_address + 1,
+      TERASCALE_WDDM_PATCH_IDS_EVENT_WRITE_EOP_LO, TERASCALE_WDDM_PATCH_IDS_EVENT_WRITE_EOP_HI,
+      terakan_bo_reference_writer_add_reference(&command_writer->base.bo_reference_writer,
+                                                gfx_discard_bo, false, true,
+                                                TERAKAN_BO_PRIORITY_SYNC));
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
@@ -1028,7 +1175,23 @@ terakan_EndCommandBuffer(VkCommandBuffer const commandBuffer)
    struct terakan_command_buffer * const command_buffer =
       terakan_command_buffer_from_handle(commandBuffer);
 
-   terakan_gfx_command_writer_end_indirect_buffer(command_buffer->command_writer.gfx);
+   struct terakan_gfx_command_writer * const gfx_command_writer =
+      command_buffer->command_writer.gfx;
+
+   /* Insert a barrier for outstanding transfer writes because command buffers track the needed
+    * barriers for this purpose locally, and subsequently submitted command buffers won't be aware
+    * of how transfers were actually done in the current command buffer.
+    */
+   gfx_command_writer->pending_barrier_actions |=
+      gfx_command_writer->post_buffer_copy_write_barrier_actions |
+      gfx_command_writer->post_color_image_copy_write_barrier_actions |
+      gfx_command_writer->post_depth_stencil_image_copy_write_barrier_actions;
+
+   /* As barriers are deferred rather than emitted immediately in vkCmdPipelineBarrier, flush them.
+    */
+   terakan_barrier_emit_pending_actions(gfx_command_writer);
+
+   terakan_gfx_command_writer_end_indirect_buffer(gfx_command_writer);
 
    return vk_command_buffer_end(&command_buffer->vk);
 }
@@ -1046,31 +1209,102 @@ terakan_BeginCommandBuffer(VkCommandBuffer const commandBuffer,
       container_of(command_buffer->vk.pool, struct terakan_command_pool, vk);
 
    assert(command_buffer->command_writer.gfx == NULL);
+   struct terakan_gfx_command_writer * gfx_command_writer;
    if (!list_is_empty(&command_pool->command_writers_free)) {
-      command_buffer->command_writer.gfx = list_first_entry(
-         &command_pool->command_writers_free, struct terakan_gfx_command_writer, base.free_link);
-      list_del(&command_buffer->command_writer.gfx->base.free_link);
+      gfx_command_writer = list_first_entry(&command_pool->command_writers_free,
+                                            struct terakan_gfx_command_writer, base.free_link);
+      list_del(&gfx_command_writer->base.free_link);
    } else {
-      command_buffer->command_writer.gfx =
+      gfx_command_writer =
          vk_alloc(&command_pool->vk.alloc, sizeof(struct terakan_gfx_command_writer),
                   alignof(struct terakan_gfx_command_writer), VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-      if (command_buffer->command_writer.gfx == NULL) {
+      if (gfx_command_writer == NULL) {
          return vk_command_buffer_set_error(&command_buffer->vk, VK_ERROR_OUT_OF_HOST_MEMORY);
       }
    }
+   command_buffer->command_writer.gfx = gfx_command_writer;
 
-   command_buffer->command_writer.gfx->base.command_buffer = command_buffer;
-
-   command_buffer->command_writer.gfx->indirect_buffer_ever_begun = false;
+   gfx_command_writer->base.command_buffer = command_buffer;
 
    /* The first emission will request the first indirect buffer. */
-   command_buffer->command_writer.gfx->is_beginning_indirect_buffer = false;
+   gfx_command_writer->indirect_buffer = NULL;
 
-   terakan_hw_state_draw_reset(&command_buffer->command_writer.gfx->hw_state_draw);
+   gfx_command_writer->indirect_buffer_ever_begun = false;
 
-   terakan_state_draw_reset(
-      &command_buffer->command_writer.gfx->state_draw,
-      command_buffer->vk.pool->base.device->enabled_extensions.EXT_depth_range_unrestricted);
+   gfx_command_writer->is_beginning_indirect_buffer = false;
+
+#ifndef NDEBUG
+   gfx_command_writer->is_emitting = false;
+   gfx_command_writer->current_emission_relocations_remaining = 0;
+#endif
+
+   gfx_command_writer->pending_barrier_actions = 0;
+
+   gfx_command_writer->post_buffer_copy_write_barrier_actions = 0;
+   gfx_command_writer->post_color_image_copy_write_barrier_actions = 0;
+   gfx_command_writer->post_depth_stencil_image_copy_write_barrier_actions = 0;
+
+   terakan_hw_state_draw_reset(&gfx_command_writer->hw_state_draw);
+
+   terakan_push_constants_state_reset(&gfx_command_writer->push_constants_state);
+
+   struct terakan_device const * const device = terakan_command_buffer_device(command_buffer);
+
+   terakan_state_draw_reset(&gfx_command_writer->state_draw, device);
+
+   /* Section Appendix B: Memory Model "Availability, Visibility, and Domain Operations" of the
+    * Vulkan 1.3.277 specification says:
+    *
+    *     "vkQueueSubmit performs a memory domain operation from host to device, and a visibility
+    *     operation with source scope of the device domain and destination scope of all agents and
+    *     references on the device."
+    *
+    * Make device memory visible to all agents on the device by invalidating all caches.
+    * That's done via the command writer's emission logic, after setting up the initial state
+    * registers, so the setup is not blocked by the waits involved.
+    * This is only necessary for the first command buffer in a submission, but doing that here for
+    * simplicity of submitting.
+    */
+   uint32_t const invalidate_caches_packets[] = {
+      PKT3(PKT3_EVENT_WRITE, 1 - 1, 0),
+      EVENT_TYPE(EVENT_TYPE_CACHE_FLUSH_AND_INV_EVENT) | EVENT_INDEX(0),
+
+      PKT3(PKT3_SURFACE_SYNC, 4 - 1, 0),
+      /* CP_COHER_CNTL and engine (ME). */
+      S_0085F0_CB0_DEST_BASE_ENA(1) | S_0085F0_CB1_DEST_BASE_ENA(1) |
+         S_0085F0_CB2_DEST_BASE_ENA(1) | S_0085F0_CB3_DEST_BASE_ENA(1) |
+         S_0085F0_CB4_DEST_BASE_ENA(1) | S_0085F0_CB5_DEST_BASE_ENA(1) |
+         S_0085F0_CB6_DEST_BASE_ENA(1) | S_0085F0_CB7_DEST_BASE_ENA(1) |
+         S_0085F0_CB8_DEST_BASE_ENA(1) | S_0085F0_CB9_DEST_BASE_ENA(1) |
+         S_0085F0_CB10_DEST_BASE_ENA(1) | S_0085F0_CB11_DEST_BASE_ENA(1) |
+         S_0085F0_DB_DEST_BASE_ENA(1) | S_0085F0_TC_ACTION_ENA(1) |
+         S_0085F0_VC_ACTION_ENA(
+            terakan_device_physical_device(device)->chip_family_info.has_vertex_cache) |
+         S_0085F0_CB_ACTION_ENA(1) | S_0085F0_DB_ACTION_ENA(1) | S_0085F0_SH_ACTION_ENA(1) |
+         S_0085F0_SMX_ACTION_ENA(1) | ((uint32_t)1 << 31),
+      /* CP_COHER_SIZE */
+      UINT32_MAX,
+      /* CP_COHER_BASE */
+      0,
+      /* POLL_INTERVAL */
+      10,
+
+      /* Make all prior writes made available by various packets in ME visible to PFP (indirect
+       * arguments, index buffers).
+       */
+      PKT3(PKT3_PFP_SYNC_ME, 0, 0),
+      0,
+   };
+   {
+      uint32_t * invalidate_cache_packets_ptr = terakan_gfx_command_writer_emit(
+         gfx_command_writer, ARRAY_SIZE(invalidate_caches_packets), false);
+      if (likely(invalidate_cache_packets_ptr != NULL)) {
+         memcpy(invalidate_cache_packets_ptr, invalidate_caches_packets,
+                sizeof(invalidate_caches_packets));
+         invalidate_cache_packets_ptr += ARRAY_SIZE(invalidate_caches_packets);
+         terakan_gfx_command_writer_emit_done(gfx_command_writer, invalidate_cache_packets_ptr);
+      }
+   }
 
    return vk_command_buffer_get_record_result(&command_buffer->vk);
 }
@@ -1084,26 +1318,21 @@ terakan_command_pool_trim_resources(struct terakan_command_pool * const command_
    }
    list_inithead(&command_pool->command_writers_free);
 
-   list_for_each_entry_safe (struct terakan_command_buffer_submission_secondary_execution,
-                             submission, &command_pool->secondary_executions_free, free_link) {
-      vk_free(&command_pool->vk.alloc, submission);
-   }
-   list_inithead(&command_pool->secondary_executions_free);
-
-   list_for_each_entry_safe (struct terakan_command_buffer_submission_indirect_buffer, submission,
-                             &command_pool->indirect_buffers_free, free_link) {
-      vk_free(&command_pool->vk.alloc, submission->indirect_buffer);
-      vk_free(&command_pool->vk.alloc, submission->bo_references);
-      vk_free(&command_pool->vk.alloc, submission);
+   list_for_each_entry_safe (struct terakan_command_buffer_indirect_buffer, indirect_buffer,
+                             &command_pool->indirect_buffers_free, link) {
+      vk_free(&command_pool->vk.alloc, indirect_buffer->relocations);
+      vk_free(&command_pool->vk.alloc, indirect_buffer->indirect_buffer);
+      vk_free(&command_pool->vk.alloc, indirect_buffer->bo_references);
+      vk_free(&command_pool->vk.alloc, indirect_buffer);
    }
    list_inithead(&command_pool->indirect_buffers_free);
 
-   list_for_each_entry_safe (struct terakan_push_constant_buffer, push_constant_buffer,
-                             &command_pool->push_constant_buffers_free, link) {
-      terakan_bo_free(push_constant_buffer->bo, &command_pool->vk.alloc);
-      vk_free(&command_pool->vk.alloc, push_constant_buffer);
+   list_for_each_entry_safe (struct terakan_push_buffer, push_buffer,
+                             &command_pool->push_buffers_free, link) {
+      terakan_bo_free(push_buffer->bo, &command_pool->vk.alloc);
+      vk_free(&command_pool->vk.alloc, push_buffer);
    }
-   list_inithead(&command_pool->push_constant_buffers_free);
+   list_inithead(&command_pool->push_buffers_free);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -1157,11 +1386,9 @@ terakan_CreateCommandPool(VkDevice const deviceHandle,
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   list_inithead(&command_pool->push_constant_buffers_free);
+   list_inithead(&command_pool->push_buffers_free);
 
    list_inithead(&command_pool->indirect_buffers_free);
-
-   list_inithead(&command_pool->secondary_executions_free);
 
    list_inithead(&command_pool->command_writers_free);
 

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -59,6 +59,8 @@ void
 terakan_bo_init(struct terakan_bo * const bo, struct terakan_device * const device)
 {
    bo->device = device;
+
+   bo->va = 0;
 
    bo->creation_number = p_atomic_inc_return(&device->last_bo_creation_number);
 

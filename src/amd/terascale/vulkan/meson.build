@@ -1,4 +1,4 @@
-# Copyright © 2023 Vitaliy Triang3l Kuzmin
+# Copyright © 2024 Vitaliy Triang3l Kuzmin
 
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
@@ -39,13 +39,24 @@ libterakan_files = files(
   'meta/terakan_meta.c',
   'meta/terakan_meta.h',
   'meta/terakan_meta_2d.c',
-  'meta/terakan_meta_copy_buffer_to_image.c',
+  'meta/terakan_meta_clear_attachments.c',
+  'meta/terakan_meta_copy_buffer_image.c',
+  'meta/terakan_meta_copy_expand_3x.c',
+  'meta/terakan_meta_copy_image.c',
+  'nir/terakan_nir.h',
+  'nir/terakan_nir_alu.c',
+  'nir/terakan_nir_buffer.c',
+  'nir/terakan_nir_compact_fragment_data_locations.c',
+  'nir/terakan_nir_lower_bindings.c',
+  'terakan_barrier.c',
   'terakan_bo.c',
   'terakan_bo.h',
   'terakan_buffer.c',
   'terakan_buffer.h',
   'terakan_command_buffer.c',
   'terakan_command_buffer.h',
+  'terakan_cp_dma.c',
+  'terakan_cp_dma.h',
   'terakan_descriptor.c',
   'terakan_descriptor.h',
   'terakan_descriptor_set.c',
@@ -75,6 +86,8 @@ libterakan_files = files(
   'terakan_pipeline_graphics.h',
   'terakan_pipeline_layout.c',
   'terakan_pipeline_layout.h',
+  'terakan_push_constants.c',
+  'terakan_push_constants.h',
   'terakan_render_pass.c',
   'terakan_queue.c',
   'terakan_queue.h',
@@ -86,6 +99,8 @@ libterakan_files = files(
   'terakan_state.c',
   'terakan_state.h',
   'terakan_state_color.c',
+  'terakan_state_color.h',
+  'terakan_state_depth_stencil.c',
   'terakan_state_input_assembly.c',
   'terakan_state_input_assembly.h',
   'terakan_state_multisample.c',
@@ -93,20 +108,58 @@ libterakan_files = files(
   'terakan_state_rasterization.h',
   'terakan_sync_completion.c',
   'terakan_sync_completion.h',
+  'terakan_vertex_input.c',
+  'terakan_vertex_input.h',
   'terakan_wsi.c',
   'terakan_wsi.h',
 )
 
-if not with_platform_windows
+libterakan_deps = [
+  dep_libdrm_radeon,
+  dep_thread,
+  dep_dl,
+  dep_m,
+  idep_amd_terascale_common,
+  idep_amd_terascale_compiler,
+  idep_mesautil,
+  idep_nir,
+  idep_vulkan_util,
+  idep_vulkan_wsi,
+  idep_vulkan_runtime,
+  idep_xmlconfig,
+]
+
+if with_platform_windows
+  libterakan_files += files(
+    'winsys/wddm/terakan_bo_wddm.c',
+    'winsys/wddm/terakan_bo_wddm.h',
+    'winsys/wddm/terakan_device_wddm.c',
+    'winsys/wddm/terakan_device_wddm.h',
+    'winsys/wddm/terakan_instance_wddm.c',
+    'winsys/wddm/terakan_instance_wddm.h',
+    'winsys/wddm/terakan_physical_device_wddm.c',
+    'winsys/wddm/terakan_physical_device_wddm.h',
+    'winsys/wddm/terakan_queue_wddm.c',
+    'winsys/wddm/terakan_queue_wddm.h',
+    'winsys/wddm/terakan_wddm_d3dkmthk.h',
+  )
+  libterakan_deps += [
+    cc.find_library('cfgmgr32'),
+    cc.find_library('dxgi'),
+    cc.find_library('gdi32'),
+  ]
+elif system_has_kms_drm
   libterakan_files += files(
     'winsys/drm_radeon/terakan_bo_drm_radeon.c',
     'winsys/drm_radeon/terakan_bo_drm_radeon.h',
     'winsys/drm_radeon/terakan_device_drm_radeon.c',
     'winsys/drm_radeon/terakan_device_drm_radeon.h',
-    'winsys/drm_radeon/terakan_image_drm_radeon.c',
+    'winsys/drm_radeon/terakan_instance_drm_radeon.c',
+    'winsys/drm_radeon/terakan_instance_drm_radeon.h',
     'winsys/drm_radeon/terakan_physical_device_drm_radeon.c',
     'winsys/drm_radeon/terakan_physical_device_drm_radeon.h',
     'winsys/drm_radeon/terakan_queue_drm_radeon.c',
+    'winsys/drm_radeon/terakan_queue_drm_radeon.h',
   )
 endif
 
@@ -130,20 +183,7 @@ libvulkan_terascale = shared_library(
     inc_compiler,
     inc_util,
   ],
-  dependencies : [
-    dep_libdrm_radeon,
-    dep_thread,
-    dep_dl,
-    dep_m,
-    idep_amd_terascale_common,
-    idep_amd_terascale_compiler,
-    idep_mesautil,
-    idep_nir,
-    idep_vulkan_util,
-    idep_vulkan_wsi,
-    idep_vulkan_runtime,
-    idep_xmlconfig,
-  ],
+  dependencies : libterakan_deps,
   c_args : [
     no_override_init_args,
     c_msvc_compat_args,

@@ -39,6 +39,7 @@
 
 #include "nir_serialize.h"
 
+#include "util/macros.h"
 #include "util/mesa-sha1.h"
 
 bool
@@ -931,7 +932,7 @@ struct vk_graphics_pipeline {
    };
 
    uint32_t set_layout_count;
-   struct vk_descriptor_set_layout *set_layouts[MESA_VK_MAX_DESCRIPTOR_SETS];
+   struct vk_descriptor_set_layout **set_layouts;
 
    uint32_t stage_count;
    struct vk_pipeline_stage stages[MESA_VK_MAX_GRAPHICS_PIPELINE_STAGES];
@@ -952,6 +953,7 @@ vk_graphics_pipeline_destroy(struct vk_device *device,
       if (gfx_pipeline->set_layouts[i] != NULL)
          vk_descriptor_set_layout_unref(device, gfx_pipeline->set_layouts[i]);
    }
+   vk_free2(&device->alloc, pAllocator, gfx_pipeline->set_layouts);
 
    vk_pipeline_free(device, pAllocator, pipeline);
 }
@@ -1589,6 +1591,9 @@ vk_create_graphics_pipeline(struct vk_device *device,
       all_state = &all_state_tmp;
    }
 
+   uint32_t set_layout_count =
+      pipeline_layout != NULL ? pipeline_layout->set_count : 0;
+
    /* If we have libraries, import them first. */
    if (libs_info) {
       for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
@@ -1600,17 +1605,8 @@ vk_create_graphics_pipeline(struct vk_device *device,
 
          vk_graphics_pipeline_state_merge(state, &lib_gfx_pipeline->lib.state);
 
-         pipeline->set_layout_count = MAX2(pipeline->set_layout_count,
-                                           lib_gfx_pipeline->set_layout_count);
-         for (uint32_t i = 0; i < lib_gfx_pipeline->set_layout_count; i++) {
-            if (lib_gfx_pipeline->set_layouts[i] == NULL)
-               continue;
-
-            if (pipeline->set_layouts[i] == NULL) {
-               pipeline->set_layouts[i] =
-                  vk_descriptor_set_layout_ref(lib_gfx_pipeline->set_layouts[i]);
-            }
-         }
+         set_layout_count = MAX2(set_layout_count,
+                                 lib_gfx_pipeline->set_layout_count);
 
          for (uint32_t i = 0; i < lib_gfx_pipeline->stage_count; i++) {
             const struct vk_pipeline_stage *lib_stage =
@@ -1625,6 +1621,39 @@ vk_create_graphics_pipeline(struct vk_device *device,
                continue;
 
             stages[lib_stage->stage] = vk_pipeline_stage_clone(lib_stage);
+         }
+      }
+   }
+
+   if (set_layout_count != 0) {
+      pipeline->set_layouts = vk_zalloc2(
+         &device->alloc, pAllocator,
+         set_layout_count * sizeof(struct vk_descriptor_set_layout *),
+         alignof(struct vk_descriptor_set_layout *),
+         VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      if (pipeline->set_layouts == NULL) {
+         result = vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+         goto fail_stages;
+      }
+      pipeline->set_layout_count = set_layout_count;
+   }
+
+   if (libs_info) {
+      for (uint32_t i = 0; i < libs_info->libraryCount; i++) {
+         VK_FROM_HANDLE(vk_pipeline, lib_pipeline, libs_info->pLibraries[i]);
+         const struct vk_graphics_pipeline *lib_gfx_pipeline =
+            container_of(lib_pipeline, const struct vk_graphics_pipeline, base);
+
+         assert(pipeline->set_layout_count >=
+                   lib_gfx_pipeline->set_layout_count);
+         for (uint32_t i = 0; i < lib_gfx_pipeline->set_layout_count; i++) {
+            if (lib_gfx_pipeline->set_layouts[i] == NULL)
+               continue;
+
+            if (pipeline->set_layouts[i] == NULL) {
+               pipeline->set_layouts[i] =
+                  vk_descriptor_set_layout_ref(lib_gfx_pipeline->set_layouts[i]);
+            }
          }
       }
    }
@@ -1646,8 +1675,7 @@ vk_create_graphics_pipeline(struct vk_device *device,
    }
 
    if (pipeline_layout != NULL) {
-      pipeline->set_layout_count = MAX2(pipeline->set_layout_count,
-                                        pipeline_layout->set_count);
+      assert(pipeline->set_layout_count >= pipeline_layout->set_count);
       for (uint32_t i = 0; i < pipeline_layout->set_count; i++) {
          if (pipeline_layout->set_layouts[i] == NULL)
             continue;

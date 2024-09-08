@@ -576,13 +576,13 @@ if with_gallium_kmsro and (with_platform_x11 and not with_dri3)
 endif
 
 dep_dxheaders = null_dep
-if with_gallium_d3d12 or with_microsoft_clc or with_microsoft_vk
+if with_gallium_d3d12 or with_microsoft_clc or with_microsoft_vk or with_amd_terascale_vk
   dep_dxheaders = dependency('directx-headers', required : false)
   if not dep_dxheaders.found()
     dep_dxheaders = dependency('DirectX-Headers',
       version : '>= 1.613.0',
       fallback : ['DirectX-Headers', 'dep_dxheaders'],
-      required : with_gallium_d3d12 or with_microsoft_vk
+      required : with_gallium_d3d12 or with_microsoft_vk or with_amd_terascale_vk
     )
   endif
 endif

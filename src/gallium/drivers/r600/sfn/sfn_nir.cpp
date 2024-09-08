@@ -933,7 +933,7 @@ r600_schedule_shader(r600::Shader *shader)
       auto lrm = r600::LiveRangeEvaluator().run(*scheduled_shader);
 
       if (!r600::register_allocation(lrm)) {
-         R600_ERR("%s: Register allocation failed\n", __func__);
+         R600_ERR_F("%s: Register allocation failed\n", __func__);
          /* For now crash if the shader could not be benerated */
          assert(0);
          return nullptr;

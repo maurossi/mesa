@@ -58,7 +58,6 @@ struct r600_shader {
 	unsigned		noutput;
 	unsigned                nhwatomic;
 	unsigned		nlds;
-	unsigned		nsys_inputs;
 	unsigned		highest_export_param;
 	struct r600_shader_io	input[R600_SHADER_MAX_INPUTS];
 	struct r600_shader_io	output[R600_SHADER_MAX_OUTPUTS];

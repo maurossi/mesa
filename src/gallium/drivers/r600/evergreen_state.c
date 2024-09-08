@@ -101,7 +101,7 @@ static uint32_t r600_translate_blend_function(int blend_func)
 	case PIPE_BLEND_MAX:
 		return V_028780_COMB_MAX_DST_SRC;
 	default:
-		R600_ERR("Unknown blend function %d\n", blend_func);
+		R600_ERR_F("Unknown blend function %d\n", blend_func);
 		assert(0);
 		break;
 	}
@@ -150,7 +150,7 @@ static uint32_t r600_translate_blend_factor(int blend_fact)
 	case PIPE_BLENDFACTOR_INV_SRC1_ALPHA:
 		return V_028780_BLEND_INV_SRC1_ALPHA;
 	default:
-		R600_ERR("Bad blend factor %d not supported!\n", blend_fact);
+		R600_ERR_F("Bad blend factor %d not supported!\n", blend_fact);
 		assert(0);
 		break;
 	}
@@ -237,7 +237,7 @@ bool evergreen_is_format_supported(struct pipe_screen *screen,
 	unsigned retval = 0;
 
 	if (target >= PIPE_MAX_TEXTURE_TYPES) {
-		R600_ERR("r600: unsupported texture type %d\n", target);
+		R600_ERR_F("r600: unsupported texture type %d\n", target);
 		return false;
 	}
 

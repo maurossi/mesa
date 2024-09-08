@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Based on Gallium Radeon DRM winsys which is:
  * Copyright © 2008 Jérôme Glisse
@@ -32,6 +32,7 @@
 #include "terakan_image.h"
 #include "terakan_physical_device.h"
 
+#include "gallium/drivers/r600/evergreend.h"
 #include "util/macros.h"
 #include "util/os_mman.h"
 #include "util/u_math.h"
@@ -48,8 +49,8 @@
 #include <radeon_drm.h>
 
 static bool
-terakan_bo_drm_radeon_set_tiling_for_surface(struct terakan_bo * const bo_base,
-                                             struct radeon_surf const * const surface)
+terakan_bo_drm_radeon_set_tiling(struct terakan_bo * const bo_base,
+                                 struct terakan_bo_tiling const * const tiling)
 {
    struct terakan_bo_drm_radeon const * const bo =
       container_of(bo_base, struct terakan_bo_drm_radeon const, base);
@@ -59,18 +60,15 @@ terakan_bo_drm_radeon_set_tiling_for_surface(struct terakan_bo * const bo_base,
    struct drm_radeon_gem_set_tiling set_tiling_arguments = {
       .handle = bo->handle,
       .tiling_flags =
-         (surface->u.legacy.level[0].mode >= RADEON_SURF_MODE_2D ? RADEON_TILING_MACRO : 0) |
-         (surface->u.legacy.level[0].mode >= RADEON_SURF_MODE_1D ? RADEON_TILING_MICRO : 0) |
-         (__u32)surface->u.legacy.bankw << RADEON_TILING_EG_BANKW_SHIFT |
-         (__u32)surface->u.legacy.bankh << RADEON_TILING_EG_BANKH_SHIFT |
-         (__u32)surface->u.legacy.mtilea << RADEON_TILING_EG_MACRO_TILE_ASPECT_SHIFT |
-         terakan_image_tile_split_bytes_to_hw(surface->u.legacy.tile_split)
-            << RADEON_TILING_EG_TILE_SPLIT_SHIFT |
-         (surface->has_stencil
-             ? terakan_image_tile_split_bytes_to_hw(surface->u.legacy.stencil_tile_split)
-                  << RADEON_TILING_EG_STENCIL_TILE_SPLIT_SHIFT
-             : 0),
-      .pitch = surface->bpe * (__u32)surface->u.legacy.level[0].nblk_x,
+         (tiling->array_mode >= V_028C70_ARRAY_2D_TILED_THIN1 ? RADEON_TILING_MACRO : 0) |
+         (tiling->array_mode >= V_028C70_ARRAY_1D_TILED_THIN1 ? RADEON_TILING_MICRO : 0) |
+         (((__u32)1 << tiling->attrib_bank_width) << RADEON_TILING_EG_BANKW_SHIFT) |
+         (((__u32)1 << tiling->attrib_bank_height) << RADEON_TILING_EG_BANKH_SHIFT) |
+         (((__u32)1 << tiling->attrib_macro_tile_aspect)
+          << RADEON_TILING_EG_MACRO_TILE_ASPECT_SHIFT) |
+         (tiling->attrib_tile_split << RADEON_TILING_EG_TILE_SPLIT_SHIFT) |
+         (tiling->attrib_stencil_tile_split << RADEON_TILING_EG_STENCIL_TILE_SPLIT_SHIFT),
+      .pitch = tiling->pitch_bytes,
    };
    return drmCommandWriteRead(device->render_node_fd, DRM_RADEON_GEM_SET_TILING,
                               &set_tiling_arguments, sizeof(set_tiling_arguments)) == 0;
@@ -115,7 +113,8 @@ terakan_bo_drm_radeon_map_impl(struct terakan_bo * const bo_base)
    int const gem_mmap_result = drmCommandWriteRead(device->render_node_fd, DRM_RADEON_GEM_MMAP,
                                                    &gem_mmap_arguments, sizeof(gem_mmap_arguments));
    if (gem_mmap_result != 0) {
-      vk_loge(VK_LOG_OBJS(device), "Failed to map the buffer 0x%" PRIX32 " in GEM, error number %d",
+      vk_loge(VK_LOG_OBJS(terakan_device_log_obj(&device->base)),
+              "Failed to map the buffer 0x%" PRIX32 " in GEM, error number %d",
               (uint32_t)bo->handle, gem_mmap_result);
       return NULL;
    }
@@ -123,8 +122,8 @@ terakan_bo_drm_radeon_map_impl(struct terakan_bo * const bo_base)
    void * const mapping = os_mmap(NULL, (size_t)bo->size, PROT_READ | PROT_WRITE, MAP_SHARED,
                                   device->render_node_fd, (off_t)gem_mmap_arguments.addr_ptr);
    if (mapping == MAP_FAILED) {
-      vk_loge(VK_LOG_OBJS(device), "Failed to map the buffer 0x%" PRIX32 " in the OS: %m",
-              (uint32_t)bo->handle);
+      vk_loge(VK_LOG_OBJS(terakan_device_log_obj(&device->base)),
+              "Failed to map the buffer 0x%" PRIX32 " in the OS: %m", (uint32_t)bo->handle);
       return NULL;
    }
 
@@ -138,51 +137,6 @@ terakan_bo_drm_radeon_unmap_impl(struct terakan_bo * const bo_base)
       container_of(bo_base, struct terakan_bo_drm_radeon const, base);
 
    os_munmap(bo_base->mapping, (size_t)bo->size);
-}
-
-static void
-terakan_bo_drm_radeon_create_reference(void * const bo_reference_ptr,
-                                       struct terakan_bo const * const bo_base,
-                                       bool const is_reading, bool const is_writing,
-                                       enum terakan_bo_priority const priority)
-{
-   struct drm_radeon_cs_reloc * const bo_reference = (struct drm_radeon_cs_reloc *)bo_reference_ptr;
-
-   struct terakan_bo_drm_radeon const * const bo =
-      container_of(bo_base, struct terakan_bo_drm_radeon const, base);
-
-   bo_reference->handle = bo->handle;
-
-   bo_reference->read_domains = is_reading ? bo->domains : 0;
-   bo_reference->write_domain = is_writing ? bo->domains : 0;
-
-   assert(((__u32)priority & ~(__u32)RADEON_RELOC_PRIO_MASK) == 0);
-   bo_reference->flags = (__u32)priority;
-}
-
-static void
-terakan_bo_drm_radeon_update_reference(void * const bo_reference_ptr,
-                                       struct terakan_bo const * const bo_base,
-                                       bool const is_reading, bool const is_writing,
-                                       enum terakan_bo_priority const priority)
-{
-   struct drm_radeon_cs_reloc * const bo_reference = (struct drm_radeon_cs_reloc *)bo_reference_ptr;
-
-   struct terakan_bo_drm_radeon const * const bo =
-      container_of(bo_base, struct terakan_bo_drm_radeon const, base);
-
-   assert(bo_reference->handle == bo->handle);
-
-   if (is_reading) {
-      bo_reference->read_domains |= bo->domains;
-   }
-   if (is_writing) {
-      bo_reference->write_domain |= bo->domains;
-   }
-
-   assert(((__u32)priority & ~(__u32)RADEON_RELOC_PRIO_MASK) == 0);
-   /* The flags only contain the priority. */
-   bo_reference->flags = MAX2((__u32)priority, bo_reference->flags);
 }
 
 static void
@@ -257,8 +211,7 @@ terakan_bo_drm_radeon_allocate_device_memory(
       /* If VRAM is just stolen system memory, allow both VRAM and GTT, whichever has free space.
        * If a buffer is evicted from VRAM to GTT, it will stay there.
        */
-      if (!container_of(device->base.vk.physical, struct terakan_physical_device const, vk)
-              ->chip_family_info.has_dedicated_vram) {
+      if (!terakan_device_physical_device(&device->base)->chip_family_info.has_dedicated_vram) {
          initial_domains |= RADEON_GEM_DOMAIN_GTT;
       }
    } else {
@@ -280,7 +233,7 @@ terakan_bo_drm_radeon_allocate_device_memory(
                           sizeof(gem_create_arguments));
    if (gem_create_result != 0) {
       vk_free2(&device->base.vk.alloc, allocator, bo);
-      vk_loge(VK_LOG_OBJS(device),
+      vk_loge(VK_LOG_OBJS(terakan_device_log_obj(&device->base)),
               "Failed to allocate a buffer, size: %" PRIu64 " bytes, alignment: %" PRIu64 " bytes, "
               "domains: 0x%" PRIX32 ", flags: 0x%" PRIX32 ", error number %d",
               size, alignment, (uint32_t)initial_domains, (uint32_t)gem_create_arguments.flags,
@@ -390,7 +343,7 @@ terakan_bo_drm_radeon_import_fd(struct terakan_device * const device_base, int c
    if (prime_fd_to_handle_result != 0) {
       mtx_unlock(&device->shared_bo_mutex);
       vk_free2(&device->base.vk.alloc, allocator, bo);
-      vk_loge(VK_LOG_OBJS(device),
+      vk_loge(VK_LOG_OBJS(terakan_device_log_obj(&device->base)),
               "Failed to import a file descriptor as a buffer, size: %" PRIu64 " bytes, preferred "
               "domain: %s, error number %d",
               size, prefer_vram ? "VRAM" : "GTT", prime_fd_to_handle_result);
@@ -436,12 +389,10 @@ terakan_bo_drm_radeon_import_fd(struct terakan_device * const device_base, int c
 }
 
 struct terakan_bo_winsys_fn const terakan_bo_drm_radeon_fn = {
-   .set_tiling_for_surface = terakan_bo_drm_radeon_set_tiling_for_surface,
+   .set_tiling = terakan_bo_drm_radeon_set_tiling,
    .export_fd = terakan_bo_drm_radeon_export_fd,
    .map_impl = terakan_bo_drm_radeon_map_impl,
    .unmap_impl = terakan_bo_drm_radeon_unmap_impl,
-   .create_reference = terakan_bo_drm_radeon_create_reference,
-   .update_reference = terakan_bo_drm_radeon_update_reference,
    .free_impl = terakan_bo_drm_radeon_free_impl,
    .allocate_device_memory = terakan_bo_drm_radeon_allocate_device_memory,
    .get_fd_vram_preference = terakan_bo_drm_radeon_get_fd_vram_preference,

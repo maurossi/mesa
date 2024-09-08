@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -31,6 +31,7 @@
 #include "terakan_physical_device.h"
 
 #include "util/macros.h"
+#include "util/u_endian.h"
 #include "vk_alloc.h"
 #include "vk_format.h"
 #include "vk_log.h"
@@ -49,7 +50,7 @@ terakan_buffer_create_uniform_buffer_descriptor(VkDescriptorBufferInfo const * c
       return NULL;
    }
    if (!terakan_descriptor_create_for_uniform_buffer(
-          buffer->bo, buffer->bo_offset + buffer_info->offset,
+          buffer->bo, buffer->va + buffer_info->offset,
           vk_buffer_range(&buffer->vk, buffer_info->offset, buffer_info->range), resource_out)) {
       return NULL;
    }
@@ -66,7 +67,7 @@ terakan_buffer_create_storage_buffer_descriptor(VkDescriptorBufferInfo const * c
       return NULL;
    }
    if (!terakan_descriptor_create_for_storage_buffer(
-          buffer->bo, buffer->bo_offset + buffer_info->offset,
+          buffer->bo, buffer->va + buffer_info->offset,
           vk_buffer_range(&buffer->vk, buffer_info->offset, buffer_info->range),
           container_of(buffer->vk.base.device->physical, struct terakan_physical_device const, vk)
              ->tiling_info.pipe_interleave_bytes_log2,
@@ -140,8 +141,8 @@ terakan_GetDeviceBufferMemoryRequirements(VkDevice const deviceHandle,
       alignment = sizeof(uint32_t) * 4;
    } else {
       /* Required in many places: largest in vertex fetch instructions, largest possible vertex
-       * index size, a storage buffer vertex fetch and RAT element, indirect buffer alignment.
-       * Additionally, because storage buffers use 32-bit RATs, and with VK_EXT_robustness2 their
+       * index size, a storage buffer vertex fetch and UAV element, indirect buffer alignment.
+       * Additionally, because storage buffers use 32-bit UAVs, and with VK_EXT_robustness2 their
        * ranges are rounded up (not down) to robustStorageBufferAccessSizeAlignment, which is
        * sizeof(uint32_t) because of that, aligning all buffers and images to sizeof(uint32_t)
        * prevents writes to the end of storage buffers with an unaligned size from affecting the
@@ -151,9 +152,8 @@ terakan_GetDeviceBufferMemoryRequirements(VkDevice const deviceHandle,
    }
    pMemoryRequirements->memoryRequirements.alignment = alignment;
 
-   struct terakan_device const * const device = terakan_device_from_handle(deviceHandle);
    struct terakan_physical_device const * const physical_device =
-      container_of(device->vk.physical, struct terakan_physical_device const, vk);
+      terakan_device_physical_device(terakan_device_from_handle(deviceHandle));
    pMemoryRequirements->memoryRequirements.memoryTypeBits =
       ((uint32_t)1 << physical_device->memory_properties.memoryTypeCount) - 1;
 
@@ -180,7 +180,7 @@ terakan_BindBufferMemory2(UNUSED VkDevice const device, uint32_t const bindInfoC
       VkBindBufferMemoryInfo const * const bind_info = &pBindInfos[bind_info_index];
       struct terakan_buffer * const buffer = terakan_buffer_from_handle(bind_info->buffer);
       buffer->bo = terakan_device_memory_from_handle(bind_info->memory)->bo;
-      buffer->bo_offset = bind_info->memoryOffset;
+      buffer->va = buffer->bo->va + bind_info->memoryOffset;
    }
 
    return VK_SUCCESS;
@@ -219,7 +219,7 @@ terakan_CreateBuffer(VkDevice const deviceHandle, VkBufferCreateInfo const * con
    vk_buffer_init(&device->vk, &buffer->vk, pCreateInfo);
 
    buffer->bo = NULL;
-   buffer->bo_offset = 0;
+   buffer->va = 0;
 
    *pBuffer = terakan_buffer_to_handle(buffer);
    return VK_SUCCESS;
@@ -269,57 +269,50 @@ terakan_CreateBufferView(VkDevice const deviceHandle,
     * non-VK_WHOLE_SIZE `range` (VUID-VkBufferViewCreateInfo-range-00928).
     */
    if (buffer_view->vk.elements != 0) {
-      VkDeviceSize const bo_offset = buffer->bo_offset + pCreateInfo->offset;
+      struct terascale_format_info const format_info =
+         terascale_format_info_r8xx[vk_format_to_pipe_format(pCreateInfo->format)];
+      if (format_info.supports_sq_vertex_fetch) {
+         uint64_t const va = buffer->va + pCreateInfo->offset;
 
-      VkFormat const format = pCreateInfo->format;
-      unsigned const bpe = vk_format_get_blocksize(format);
+         unsigned const bytes_per_element = terascale_format_bytes_per_block[format_info.format];
 
-      uint32_t const vertex_data_format = terakan_format_vertex_get_format(format);
-      uint32_t const vertex_number_format = terakan_format_data_get_number_format(format);
-      if (vertex_data_format != FMT_INVALID && vertex_number_format != UINT32_MAX) {
-         buffer_view->resource[0] = (uint32_t)bo_offset;
-         buffer_view->resource[1] = (uint32_t)(bpe * buffer_view->vk.elements - 1);
+         enum terascale_endian_swap const endian_swap =
+            UTIL_ARCH_BIG_ENDIAN ? terascale_format_big_endian_swap[format_info.format]
+                                 : TERASCALE_ENDIAN_SWAP_NONE;
+
+         buffer_view->resource[0] = (uint32_t)va;
+         buffer_view->resource[1] = (uint32_t)(bytes_per_element * buffer_view->vk.elements - 1);
          buffer_view->resource[2] =
-            S_030008_BASE_ADDRESS_HI(bo_offset >> 32) | S_030008_STRIDE(bpe) |
-            S_030008_DATA_FORMAT(vertex_data_format) |
-            S_030008_NUM_FORMAT_ALL(vertex_number_format) |
-            S_030008_FORMAT_COMP_ALL(terakan_format_vertex_get_sign(format));
-         unsigned char const * const format_swizzle = terakan_format_data_get_swizzle(format);
-         buffer_view->resource[3] = S_03000C_DST_SEL_X(terakan_format_data_pipe_swizzle_to_dst_sel(
-                                       (enum pipe_swizzle)format_swizzle[0], PIPE_SWIZZLE_0)) |
-                                    S_03000C_DST_SEL_Y(terakan_format_data_pipe_swizzle_to_dst_sel(
-                                       (enum pipe_swizzle)format_swizzle[1], PIPE_SWIZZLE_0)) |
-                                    S_03000C_DST_SEL_Z(terakan_format_data_pipe_swizzle_to_dst_sel(
-                                       (enum pipe_swizzle)format_swizzle[2], PIPE_SWIZZLE_0)) |
-                                    S_03000C_DST_SEL_W(terakan_format_data_pipe_swizzle_to_dst_sel(
-                                       (enum pipe_swizzle)format_swizzle[3], PIPE_SWIZZLE_1));
+            S_030008_BASE_ADDRESS_HI(va >> 32) | S_030008_STRIDE(bytes_per_element) |
+            S_030008_DATA_FORMAT(format_info.format) |
+            S_030008_NUM_FORMAT_ALL(terascale_format_get_sq_num_format(
+               (enum terascale_format_number_type)format_info.number_type)) |
+            S_030008_FORMAT_COMP_ALL(format_info.channels_signed != 0b0) |
+            S_030008_ENDIAN_SWAP(endian_swap);
+         buffer_view->resource[3] =
+            S_03000C_DST_SEL_X(format_info.swizzle_r) | S_03000C_DST_SEL_Y(format_info.swizzle_g) |
+            S_03000C_DST_SEL_Z(format_info.swizzle_b) | S_03000C_DST_SEL_W(format_info.swizzle_a);
          buffer_view->resource[4] = (uint32_t)buffer_view->vk.elements;
          buffer_view->resource[7] = S_03001C_TYPE(V_03001C_SQ_TEX_VTX_VALID_BUFFER);
          buffer_view->resource[TERAKAN_RESOURCE_BUFFER_PRIORITY_WORD] =
             TERAKAN_BO_PRIORITY_SHADER_READ_BUFFER;
 
-         /* The vertex buffer format is also used for the RAT IMMED buffer, so creating the RAT
-          * inside the vertex format supported conditional too (though all RAT formats should have
-          * vertex counterparts anyway).
+         /* The vertex buffer format is also used for the UAV IMMED buffer, so creating the UAV
+          * inside the vertex format supported conditional too.
           */
 
-         if (pCreateInfo->offset % bpe == 0) {
-            uint32_t const rat_format = terakan_format_color_get_format(format);
-            uint32_t const rat_number_type = terakan_format_color_get_number_type(format);
-            uint32_t const rat_swap = terakan_format_color_get_swap(format);
-            if (rat_format != V_028C70_COLOR_INVALID && rat_number_type != UINT32_MAX &&
-                rat_swap != UINT32_MAX) {
-               terakan_color_descriptor_calculate_buffer_base_pitch_view_dim(
-                  &buffer_view->color, bo_offset, buffer_view->vk.elements, bpe,
-                  container_of(device->vk.physical, struct terakan_physical_device const, vk)
-                     ->tiling_info.pipe_interleave_bytes_log2);
-               buffer_view->color.info =
-                  S_028C70_FORMAT(rat_format) | S_028C70_ARRAY_MODE(V_028C70_ARRAY_LINEAR_ALIGNED) |
-                  S_028C70_NUMBER_TYPE(rat_number_type) | S_028C70_COMP_SWAP(rat_swap) |
-                  S_028C70_BLEND_BYPASS(1) | S_028C70_SOURCE_FORMAT(V_028C70_EXPORT_4C_32BPC) |
-                  S_028C70_RAT(1) | S_028C70_RESOURCE_TYPE(V_028C70_BUFFER);
-               buffer_view->color.attrib = S_028C74_NON_DISP_TILING_ORDER(1);
-            }
+         if (format_info.supports_cb_color && pCreateInfo->offset % bytes_per_element == 0) {
+            terakan_color_descriptor_calculate_buffer_base_pitch_view_dim(
+               &buffer_view->color, va, buffer_view->vk.elements, bytes_per_element,
+               terakan_device_physical_device(device)->tiling_info.pipe_interleave_bytes_log2);
+            buffer_view->color.info =
+               S_028C70_ENDIAN(endian_swap) | S_028C70_FORMAT(format_info.format) |
+               S_028C70_ARRAY_MODE(V_028C70_ARRAY_LINEAR_ALIGNED) |
+               S_028C70_NUMBER_TYPE(format_info.number_type) |
+               S_028C70_COMP_SWAP(format_info.cb_color_swap) | S_028C70_BLEND_BYPASS(1) |
+               S_028C70_SOURCE_FORMAT(V_028C70_EXPORT_4C_32BPC) | S_028C70_RAT(1) |
+               S_028C70_RESOURCE_TYPE(V_028C70_BUFFER);
+            buffer_view->color.attrib = S_028C74_NON_DISP_TILING_ORDER(1);
          }
       }
    }

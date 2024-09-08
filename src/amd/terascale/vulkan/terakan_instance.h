@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -32,7 +32,8 @@
 extern "C" {
 #endif
 
-#if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR)
+#if defined(VK_USE_PLATFORM_XCB_KHR) || defined(VK_USE_PLATFORM_XLIB_KHR) ||                       \
+   defined(VK_USE_PLATFORM_WIN32_KHR)
 #define TERAKAN_USE_WSI_PLATFORM
 #endif
 
@@ -42,13 +43,20 @@ enum {
    TERAKAN_DEBUG_STARTUP = (uint64_t)1 << 0,
 };
 
+struct terakan_instance;
+
+typedef void (*terakan_instance_destroy_fn)(struct terakan_instance * instance);
+
+/* Partially implemented by the winsys. */
 struct terakan_instance {
    struct vk_instance vk;
+
+   terakan_instance_destroy_fn destroy_fn;
 
    uint64_t debug_flags;
 
    /* Binding allocation in the physical device limits. */
-   /* From 4 to 8. The rest of RAT bindings will be used for storage images. */
+   /* From 4 to 8. The rest of UAV bindings will be used for storage images. */
    uint32_t max_per_stage_storage_buffers;
    /* Uniform buffers, sampled images and input attachments are allocated from one range. */
    uint32_t max_per_stage_uniform_buffers;
@@ -57,6 +65,16 @@ struct terakan_instance {
 };
 
 VK_DEFINE_HANDLE_CASTS(terakan_instance, vk.base, VkInstance, VK_OBJECT_TYPE_INSTANCE)
+
+void terakan_instance_finish(struct terakan_instance * instance);
+
+/* The winsys must set the physical device enumeration function after initializing the instance
+ * base.
+ */
+VkResult terakan_instance_init(struct terakan_instance * instance,
+                               VkInstanceCreateInfo const * create_info,
+                               terakan_instance_destroy_fn destroy_fn,
+                               VkAllocationCallbacks const * allocator);
 
 #ifdef __cplusplus
 }

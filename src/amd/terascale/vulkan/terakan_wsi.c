@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -53,6 +53,13 @@ terakan_wsi_init(struct terakan_physical_device * const physical_device)
    }
 
    physical_device->vk.wsi_device = &physical_device->wsi_device;
+
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+   /* As of April 2024, the DXGI path uses Direct3D 12, which is not available on TeraScale.
+    * Until a more direct solution is implemented, present via copying to the host.
+    */
+   physical_device->wsi_device.sw = true;
+#endif
 
    return VK_SUCCESS;
 }

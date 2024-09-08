@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Based on Gallium Radeon DRM winsys which is:
  * Copyright © 2008 Jérôme Glisse

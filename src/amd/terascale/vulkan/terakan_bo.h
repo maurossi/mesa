@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,8 +24,6 @@
 #ifndef TERAKAN_BO_H
 #define TERAKAN_BO_H
 
-#include "ac_surface.h"
-
 #include <stdbool.h>
 #include <stdint.h>
 #include <vulkan/vulkan_core.h>
@@ -38,7 +36,7 @@ extern "C" {
  * Similar to RADEON_PRIO in the Gallium Radeon winsys.
  */
 enum terakan_bo_priority {
-   TERAKAN_BO_PRIORITY_FENCE_TRACE = 0,
+   TERAKAN_BO_PRIORITY_SYNC = 0,
    TERAKAN_BO_PRIORITY_TRANSFORM_FEEDBACK_COUNTER = 0,
 
    TERAKAN_BO_PRIORITY_QUERY = 1,
@@ -75,9 +73,27 @@ enum terakan_bo_priority {
 
 struct terakan_device;
 
+struct terakan_bo_tiling {
+   uint32_t pitch_bytes;
+
+   uint8_t array_mode;
+
+   /* ATTRIB register field values (log2, some being exponent-biased). */
+   uint8_t attrib_tile_split;         /* 0 = 2^6 bytes. */
+   uint8_t attrib_stencil_tile_split; /* 0 = 2^6 bytes. */
+   uint8_t attrib_bank_width;
+   uint8_t attrib_bank_height;
+   uint8_t attrib_macro_tile_aspect;
+};
+
 /* Partially implemented by the winsys. */
 struct terakan_bo {
    struct terakan_device * device;
+
+   /* 0 if virtual memory is not supported, in which case addresses in packets are relative to the
+    * start of the BO.
+    */
+   uint64_t va;
 
    /* Value of the monotonically increasing counter of created BOs given to this BO.
     * Only for purposes like hashing - must not be used as an unique identifier, as it may wrap
@@ -99,21 +115,13 @@ void terakan_bo_init(struct terakan_bo * bo, struct terakan_device * device);
 /* Non-`impl` functions are public. */
 struct terakan_bo_winsys_fn {
    /* Returns whether setting was successful. */
-   bool (*set_tiling_for_surface)(struct terakan_bo * bo, struct radeon_surf const * surface);
+   bool (*set_tiling)(struct terakan_bo * bo, struct terakan_bo_tiling const * tiling);
 
    /* Only needed if the winsys supports VK_KHR_external_memory_fd. */
    int (*export_fd)(struct terakan_bo * bo, bool writable);
 
    void * (*map_impl)(struct terakan_bo * bo);
    void (*unmap_impl)(struct terakan_bo * bo);
-
-   /* BO references in command submissions are winsys-specific objects whose size and alignment are
-    * terakan_device::bo_reference_size/alignment.
-    */
-   void (*create_reference)(void * bo_reference, struct terakan_bo const * bo, bool is_reading,
-                            bool is_writing, enum terakan_bo_priority priority);
-   void (*update_reference)(void * bo_reference, struct terakan_bo const * bo, bool is_reading,
-                            bool is_writing, enum terakan_bo_priority priority);
 
    void (*free_impl)(struct terakan_bo * bo, VkAllocationCallbacks const * allocator);
 

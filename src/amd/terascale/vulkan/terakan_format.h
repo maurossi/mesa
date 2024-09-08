@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -24,11 +24,10 @@
 #ifndef TERAKAN_FORMAT_H
 #define TERAKAN_FORMAT_H
 
-#include "gallium/drivers/r600/evergreend.h"
-#include "gallium/drivers/r600/r600_formats.h"
+#include "amd/terascale/common/terascale_format.h"
 #include "util/format/u_format.h"
-#include "util/u_math.h"
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <vulkan/vulkan_core.h>
@@ -37,119 +36,123 @@
 extern "C" {
 #endif
 
-bool terakan_format_is_linear_only(VkFormat format);
-bool terakan_format_is_tiled_only(VkFormat format);
-
-/* For images with both depth and stencil, these functions always return the values for the depth
- * aspect.
- * The stencil aspect is always 8 UINT with STD swap (Vulkan has both depth and stencil in X
- * depending on the view aspect).
- */
-/* Returns COLOR_INVALID if invalid. */
-uint32_t terakan_format_color_get_format(VkFormat format);
-/* Returns UINT32_MAX if invalid. */
-uint32_t terakan_format_color_get_number_type(VkFormat format);
-/* Returns UINT32_MAX if invalid. */
-uint32_t terakan_format_color_get_swap(VkFormat format);
-bool terakan_format_color_is_blendable(uint32_t color_format, uint32_t number_type);
-
-#define TERAKAN_FORMAT_COLOR_16BPC_EXPORT_NORM_FORMATS                                             \
-   (((uint64_t)1 << V_028C70_COLOR_8) | ((uint64_t)1 << V_028C70_COLOR_8_8) |                      \
-    ((uint64_t)1 << V_028C70_COLOR_5_6_5) | ((uint64_t)1 << V_028C70_COLOR_1_5_5_5) |              \
-    ((uint64_t)1 << V_028C70_COLOR_4_4_4_4) | ((uint64_t)1 << V_028C70_COLOR_5_5_5_1) |            \
-    ((uint64_t)1 << V_028C70_COLOR_2_10_10_10) | ((uint64_t)1 << V_028C70_COLOR_8_8_8_8) |         \
-    ((uint64_t)1 << V_028C70_COLOR_10_10_10_2))
-#define TERAKAN_FORMAT_COLOR_16BPC_EXPORT_FLOAT_FORMATS                                            \
-   (((uint64_t)1 << V_028C70_COLOR_16) | ((uint64_t)1 << V_028C70_COLOR_16_FLOAT) |                \
-    ((uint64_t)1 << V_028C70_COLOR_16_16) | ((uint64_t)1 << V_028C70_COLOR_16_16_FLOAT) |          \
-    ((uint64_t)1 << V_028C70_COLOR_10_11_11) | ((uint64_t)1 << V_028C70_COLOR_10_11_11_FLOAT) |    \
-    ((uint64_t)1 << V_028C70_COLOR_16_16_16_16) |                                                  \
-    ((uint64_t)1 << V_028C70_COLOR_16_16_16_16_FLOAT))
-
-/* Depth and stencil are always stored in memory separately, with the stencil buffer being 8-bit.
- * VK_FORMAT_D16_UNORM_S8_UINT = 16 UNORM + 8 UINT.
- * VK_FORMAT_D24_UNORM_S8_UINT = 8_24 UNORM + 8 UINT.
- * VK_FORMAT_D32_SFLOAT_S8_UINT = 32 FLOAT + 8 UINT.
+/* "Surfel" (surface element) here means what "element" is in AddrLib terms: a block, or, for
+ * 3x-expanded formats (8_8_8, 16_16_16, 32_32_32), a channel.
  */
 
-/* Returns Z_INVALID if invalid. */
-uint32_t terakan_format_depth_get_format(VkFormat format);
-bool terakan_format_has_stencil_8(VkFormat format);
-
-#define TERAKAN_FORMAT_DATA_VERTEX_ONLY_FORMATS                                                    \
-   (((uint64_t)1 << FMT_3_3_2) | ((uint64_t)1 << FMT_8_24_FLOAT) |                                 \
-    ((uint64_t)1 << FMT_24_8_FLOAT) | ((uint64_t)1 << FMT_10_11_11) |                              \
-    ((uint64_t)1 << FMT_11_11_10) | ((uint64_t)1 << FMT_11_11_10_FLOAT) |                          \
-    ((uint64_t)1 << FMT_8_8_8) | ((uint64_t)1 << FMT_16_16_16) |                                   \
-    ((uint64_t)1 << FMT_16_16_16_FLOAT))
-
-#define TERAKAN_FORMAT_DATA_SUBSAMPLED_FORMATS                                                     \
-   (((uint64_t)1 << FMT_GB_GR) | ((uint64_t)1 << FMT_BG_RG))
-
-#define TERAKAN_FORMAT_DATA_BLOCK_COMPRESSED_FORMATS                                               \
-   (((uint64_t)1 << FMT_BC1) | ((uint64_t)1 << FMT_BC2) | ((uint64_t)1 << FMT_BC3) |               \
-    ((uint64_t)1 << FMT_BC4) | ((uint64_t)1 << FMT_BC5) | ((uint64_t)1 << FMT_BC6) |               \
-    ((uint64_t)1 << FMT_BC7))
-
-#define TERAKAN_FORMAT_DATA_TEXTURE_ONLY_FORMATS                                                   \
-   (TERAKAN_FORMAT_DATA_SUBSAMPLED_FORMATS | TERAKAN_FORMAT_DATA_BLOCK_COMPRESSED_FORMATS)
-
-/* For images with both depth and stencil, these functions always return the values for the depth
- * aspect.
- * The stencil aspect is always 8 UINT with X001 destination component selection (Vulkan has both
- * depth and stencil in X depending on the view aspect).
- */
-/* Returns a format that can be used for both vertex and texture fetching, or FMT_INVALID if
- * invalid.
- */
-uint32_t terakan_format_data_get_common_format(VkFormat format);
-/* Returns UINT32_MAX if invalid. */
-uint32_t terakan_format_data_get_number_format(VkFormat format);
-unsigned char const * terakan_format_data_get_swizzle(VkFormat format);
-
-static inline uint32_t
-terakan_format_data_pipe_swizzle_to_dst_sel(enum pipe_swizzle swizzle,
-                                            enum pipe_swizzle const missing_substitute)
+static inline bool
+terakan_format_is_expand_3x(unsigned const bytes_per_block)
 {
-   if (swizzle == PIPE_SWIZZLE_NONE) {
-      swizzle = missing_substitute;
-   }
-   if (swizzle >= PIPE_SWIZZLE_X && swizzle <= PIPE_SWIZZLE_W) {
-      return V_03000C_SQ_SEL_X + ((unsigned)swizzle - (unsigned)PIPE_SWIZZLE_X);
-   }
-   return swizzle == PIPE_SWIZZLE_1 ? V_03000C_SQ_SEL_1 : V_03000C_SQ_SEL_0;
+   return bytes_per_block == 3 || bytes_per_block == (3 << 1) || bytes_per_block == (3 << 2);
 }
 
-static inline uint32_t
-terakan_format_data_component_swizzle_to_dst_sel(VkComponentSwizzle component_swizzle,
-                                                 VkComponentSwizzle const identity_swizzle,
-                                                 unsigned char const format_swizzle[4])
+static inline unsigned
+terakan_format_surfels_per_block(unsigned const bytes_per_block)
+{
+   return terakan_format_is_expand_3x(bytes_per_block) ? 3 : 1;
+}
+
+static inline enum terascale_swizzle
+terakan_format_apply_component_swizzle(struct terascale_format_info const format_info,
+                                       VkComponentSwizzle component_swizzle,
+                                       VkComponentSwizzle const identity_swizzle)
 {
    if (component_swizzle == VK_COMPONENT_SWIZZLE_IDENTITY) {
       component_swizzle = identity_swizzle;
    }
-   if (component_swizzle >= VK_COMPONENT_SWIZZLE_R && component_swizzle <= VK_COMPONENT_SWIZZLE_A) {
-      return terakan_format_data_pipe_swizzle_to_dst_sel(
-         (enum pipe_swizzle)
-            format_swizzle[(unsigned)component_swizzle - (unsigned)VK_COMPONENT_SWIZZLE_R],
-         identity_swizzle == VK_COMPONENT_SWIZZLE_A ? PIPE_SWIZZLE_1 : PIPE_SWIZZLE_0);
+   switch (component_swizzle) {
+   case VK_COMPONENT_SWIZZLE_R:
+      return (enum terascale_swizzle)format_info.swizzle_r;
+   case VK_COMPONENT_SWIZZLE_G:
+      return (enum terascale_swizzle)format_info.swizzle_g;
+   case VK_COMPONENT_SWIZZLE_B:
+      return (enum terascale_swizzle)format_info.swizzle_b;
+   case VK_COMPONENT_SWIZZLE_A:
+      return (enum terascale_swizzle)format_info.swizzle_a;
+   case VK_COMPONENT_SWIZZLE_ONE:
+      return TERASCALE_SWIZZLE_1;
+   default:
+      return TERASCALE_SWIZZLE_0;
    }
-   return component_swizzle == VK_COMPONENT_SWIZZLE_ONE ? V_03000C_SQ_SEL_1 : V_03000C_SQ_SEL_0;
 }
 
-/* Returns FMT_INVALID if invalid. */
-uint32_t terakan_format_texture_get_format(VkFormat format);
-uint32_t terakan_format_texture_get_word4_signs(VkFormat format);
+/* Mappings of Vulkan format aspect masks to aspect indices used within Terakan.
+ * Aspect 0 for simplicity is considered the "main" aspect, which is always present in any format
+ * supported by Terakan.
+ */
 
-/* Returns FMT_INVALID if invalid. */
-uint32_t terakan_format_vertex_get_format(VkFormat format);
-uint32_t terakan_format_vertex_get_sign(VkFormat format);
+#define TERAKAN_FORMAT_MAX_ASPECTS 3
+
+/* The aspect list for each aspect map entry must not have gaps. */
+#define TERAKAN_FORMAT_ASPECT_MAP_DECLARE_ALL                                                      \
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE(TERAKAN_FORMAT_ASPECT_MAP_0_COLOR, VK_IMAGE_ASPECT_COLOR_BIT, \
+                                     VK_IMAGE_ASPECT_NONE, VK_IMAGE_ASPECT_NONE)                   \
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE(TERAKAN_FORMAT_ASPECT_MAP_0_DEPTH, VK_IMAGE_ASPECT_DEPTH_BIT, \
+                                     VK_IMAGE_ASPECT_NONE, VK_IMAGE_ASPECT_NONE)                   \
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE(TERAKAN_FORMAT_ASPECT_MAP_0_STENCIL,                          \
+                                     VK_IMAGE_ASPECT_STENCIL_BIT, VK_IMAGE_ASPECT_NONE,            \
+                                     VK_IMAGE_ASPECT_NONE)                                         \
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE(TERAKAN_FORMAT_ASPECT_MAP_0_DEPTH_1_STENCIL,                  \
+                                     VK_IMAGE_ASPECT_DEPTH_BIT, VK_IMAGE_ASPECT_STENCIL_BIT,       \
+                                     VK_IMAGE_ASPECT_NONE)                                         \
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE(TERAKAN_FORMAT_ASPECT_MAP_0_Y_1_CBCR,                         \
+                                     VK_IMAGE_ASPECT_PLANE_0_BIT, VK_IMAGE_ASPECT_PLANE_1_BIT,     \
+                                     VK_IMAGE_ASPECT_NONE)                                         \
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE(TERAKAN_FORMAT_ASPECT_MAP_0_Y_1_CB_2_CR,                      \
+                                     VK_IMAGE_ASPECT_PLANE_0_BIT, VK_IMAGE_ASPECT_PLANE_1_BIT,     \
+                                     VK_IMAGE_ASPECT_PLANE_2_BIT)
+
+#define TERAKAN_FORMAT_ASPECT_MAP_DECLARE(name, aspect_0, aspect_1, aspect_2) name,
+enum terakan_format_aspect_map {
+   /* clang-format off */
+   TERAKAN_FORMAT_ASPECT_MAP_DECLARE_ALL
+   TERAKAN_FORMAT_ASPECT_MAP_COUNT,
+   /* clang-format on */
+   TERAKAN_FORMAT_ASPECT_MAP_INVALID = TERAKAN_FORMAT_ASPECT_MAP_COUNT,
+};
+#undef TERAKAN_FORMAT_ASPECT_MAP_DECLARE
+
+extern VkImageAspectFlagBits const
+   terakan_format_aspect_map_aspects[TERAKAN_FORMAT_ASPECT_MAP_COUNT][TERAKAN_FORMAT_MAX_ASPECTS];
+extern VkImageAspectFlags const
+   terakan_format_aspect_map_aspect_masks[TERAKAN_FORMAT_ASPECT_MAP_COUNT];
+
+/* Returns TERAKAN_FORMAT_ASPECT_MAP_INVALID if there's no supported aspect map for the format. */
+enum terakan_format_aspect_map
+terakan_format_aspect_map_for_format_aspects(VkImageAspectFlags format_aspects);
+
+unsigned terakan_format_aspect_index(enum terakan_format_aspect_map aspect_map,
+                                     VkImageAspectFlagBits aspect, unsigned result_if_not_present);
+
+struct terakan_format_info {
+   enum terakan_format_aspect_map aspect_map;
+   struct terascale_format_info aspect_formats[TERAKAN_FORMAT_MAX_ASPECTS];
+};
+
+/* Returns whether the format is supported.
+ *
+ * Note that all supported depth / stencil formats should have a corresponding SQ / CB format, so
+ * it's okay not to try to implement depth / stencil usage for the format too if this function
+ * returns false.
+ *
+ * If the format is not supported, the output is left in an undefined state.
+ *
+ * Image formats must be decomposed into aspect formats to get the corresponding hardware register
+ * values for them, but for buffers, using this function is not necessary, and the
+ * application-provided format can be used directly without decomposing it into aspects, as only
+ * single-aspect formats are supported for buffers, and thus the aspect format matches the
+ * application-provided format.
+ */
+bool terakan_format_info_get(VkFormat format, struct terakan_format_info * info_out);
 
 static inline uint32_t
-terakan_format_pitch_alignment_linear_bytes(unsigned const bpe,
-                                            unsigned const tile_pipe_interleave_bytes_log2)
+terakan_format_pitch_alignment_linear_surfels(unsigned const bytes_per_surfel,
+                                              unsigned const tile_pipe_interleave_bytes_log2)
 {
-   return MAX2((uint32_t)bpe << 6, (uint32_t)1 << tile_pipe_interleave_bytes_log2);
+   /* From AddrLib's R800Lib::HwlGetPitchAlignmentLinear. */
+   uint32_t const tile_pipe_interleave_bytes = (uint32_t)1 << tile_pipe_interleave_bytes_log2;
+   uint32_t const surfels_per_pipe_interleave = tile_pipe_interleave_bytes / bytes_per_surfel;
+   return MAX2(surfels_per_pipe_interleave, 64);
 }
 
 #ifdef __cplusplus

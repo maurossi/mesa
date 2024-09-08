@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -38,6 +38,7 @@
 #include "vk_log.h"
 #include "vk_sync.h"
 #include "vk_sync_dummy.h"
+#include "vk_synchronization.h"
 
 #include <assert.h>
 #include <stdbool.h>
@@ -110,6 +111,146 @@ terakan_queue_completion_thread_func(void * queue_ptr)
    return 0;
 }
 
+#define TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS ((uint32_t)1 << 5)
+static_assert(
+   TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS >=
+      TERAKAN_QUEUE_INDIRECT_BUFFER_SIZE_ALIGNMENT_DWORDS_GFX,
+   "Signal indirect buffer size upper bound must be high enough to fit all GFX indirect buffer "
+   "size alignment padding.");
+
+static uint32_t
+terakan_queue_get_graphics_signal_indirect_buffer(
+   struct terakan_device const * const device, VkPipelineStageFlags2 const expanded_signal_stages,
+   uint32_t indirect_buffer[TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS])
+{
+   uint32_t indirect_buffer_size_dwords = 0;
+
+   /* Disable register shadowing before executing any packets that may set registers (not clear if
+    * CP_COHER_CNTL setting in SURFACE_SYNC interacts with it, but for safety it's preferable to do
+    * this for all submissions).
+    */
+   assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 3);
+   indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_CONTEXT_CONTROL, 1, 0);
+   /* CC0_UPDATE_LOAD_ENABLES(1) */
+   indirect_buffer[indirect_buffer_size_dwords++] = (uint32_t)1 << 31;
+   /* CC1_UPDATE_SHADOW_ENABLES(1) */
+   indirect_buffer[indirect_buffer_size_dwords++] = (uint32_t)1 << 31;
+
+   uint32_t cp_coher_cntl_cb_db_dest_base_ena = 0;
+   uint32_t cp_coher_cntl = 0;
+
+   if (expanded_signal_stages & (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                                 VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)) {
+      cp_coher_cntl_cb_db_dest_base_ena |= S_0085F0_DB_DEST_BASE_ENA(1);
+      cp_coher_cntl |= S_0085F0_DB_ACTION_ENA(1);
+   }
+   if (expanded_signal_stages & ((device->vk.enabled_features.fragmentStoresAndAtomics
+                                     ? VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT
+                                     : 0) |
+                                 VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT)) {
+      /* Perform a full destination cache flush if UAVs need to be flushed because
+       * FLUSH_AND_INV_CB_DATA_TS writes a timestamp and thus needs a BO.
+       * Fence signals result in a full flush anyway, more granularity may only be useful for
+       * semaphores.
+       */
+      cp_coher_cntl_cb_db_dest_base_ena |=
+         S_0085F0_CB0_DEST_BASE_ENA(1) | S_0085F0_CB1_DEST_BASE_ENA(1) |
+         S_0085F0_CB2_DEST_BASE_ENA(1) | S_0085F0_CB3_DEST_BASE_ENA(1) |
+         S_0085F0_CB4_DEST_BASE_ENA(1) | S_0085F0_CB5_DEST_BASE_ENA(1) |
+         S_0085F0_CB6_DEST_BASE_ENA(1) | S_0085F0_CB7_DEST_BASE_ENA(1) |
+         S_0085F0_CB8_DEST_BASE_ENA(1) | S_0085F0_CB9_DEST_BASE_ENA(1) |
+         S_0085F0_CB10_DEST_BASE_ENA(1) | S_0085F0_CB11_DEST_BASE_ENA(1);
+      cp_coher_cntl |= S_0085F0_CB_ACTION_ENA(1) | S_0085F0_SMX_ACTION_ENA(1);
+      assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 2);
+      indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_EVENT_WRITE, 1 - 1, 0);
+      indirect_buffer[indirect_buffer_size_dwords++] =
+         EVENT_TYPE(EVENT_TYPE_CACHE_FLUSH_AND_INV_EVENT) | EVENT_INDEX(0);
+   } else {
+      if (expanded_signal_stages &
+          (VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_2_BLIT_BIT)) {
+         cp_coher_cntl_cb_db_dest_base_ena |=
+            S_0085F0_CB0_DEST_BASE_ENA(1) | S_0085F0_CB1_DEST_BASE_ENA(1) |
+            S_0085F0_CB2_DEST_BASE_ENA(1) | S_0085F0_CB3_DEST_BASE_ENA(1) |
+            S_0085F0_CB4_DEST_BASE_ENA(1) | S_0085F0_CB5_DEST_BASE_ENA(1) |
+            S_0085F0_CB6_DEST_BASE_ENA(1) | S_0085F0_CB7_DEST_BASE_ENA(1);
+         cp_coher_cntl |= S_0085F0_CB_ACTION_ENA(1);
+         assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >=
+                2 * 2);
+         indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_EVENT_WRITE, 1 - 1, 0);
+         indirect_buffer[indirect_buffer_size_dwords++] =
+            EVENT_TYPE(EVENT_TYPE_FLUSH_AND_INV_CB_PIXEL_DATA) | EVENT_INDEX(0);
+         indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_EVENT_WRITE, 1 - 1, 0);
+         indirect_buffer[indirect_buffer_size_dwords++] =
+            EVENT_TYPE(EVENT_TYPE_FLUSH_AND_INV_CB_META) | EVENT_INDEX(0);
+      }
+      if (expanded_signal_stages & (VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT |
+                                    VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT)) {
+         /* CP_COHER_CNTL bits have already been set. */
+         assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 2);
+         indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_EVENT_WRITE, 1 - 1, 0);
+         indirect_buffer[indirect_buffer_size_dwords++] =
+            EVENT_TYPE(EVENT_TYPE_DB_CACHE_FLUSH_AND_INV) | EVENT_INDEX(0);
+      }
+   }
+
+   /* SURFACE_SYNC with any CB/DB_DEST_BASE_ENA implies PS_PARTIAL_FLUSH. */
+   if (!cp_coher_cntl_cb_db_dest_base_ena) {
+      if (expanded_signal_stages &
+          (VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_BLIT_BIT)) {
+         assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 2);
+         indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_EVENT_WRITE, 1 - 1, 0);
+         indirect_buffer[indirect_buffer_size_dwords++] =
+            EVENT_TYPE(EVENT_TYPE_PS_PARTIAL_FLUSH) | EVENT_INDEX(4);
+      } else if (expanded_signal_stages &
+                 (VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT | VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT |
+                  VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT |
+                  VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT |
+                  VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT |
+                  VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT |
+                  VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT)) {
+         assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 2);
+         indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_EVENT_WRITE, 1 - 1, 0);
+         indirect_buffer[indirect_buffer_size_dwords++] =
+            EVENT_TYPE(EVENT_TYPE_VS_PARTIAL_FLUSH) | EVENT_INDEX(4);
+      }
+   }
+
+   if (expanded_signal_stages & VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT) {
+      assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 2);
+      indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_EVENT_WRITE, 1 - 1, 0);
+      indirect_buffer[indirect_buffer_size_dwords++] =
+         EVENT_TYPE(EVENT_TYPE_CS_PARTIAL_FLUSH) | EVENT_INDEX(4);
+   }
+
+   /* VK_PIPELINE_STAGE_2_COPY_BIT is flushed in command buffer ending. */
+
+   /* TODO(Triang3l): VK_PIPELINE_STAGE_2_CLEAR_BIT. */
+
+   cp_coher_cntl |= cp_coher_cntl_cb_db_dest_base_ena;
+   if (cp_coher_cntl) {
+      assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 5);
+      indirect_buffer[indirect_buffer_size_dwords++] = PKT3(PKT3_SURFACE_SYNC, 4 - 1, 0);
+      /* In ME. */
+      indirect_buffer[indirect_buffer_size_dwords++] = cp_coher_cntl | ((uint32_t)1 << 31);
+      indirect_buffer[indirect_buffer_size_dwords++] = UINT32_MAX; /* CP_COHER_SIZE */
+      indirect_buffer[indirect_buffer_size_dwords++] = 0;          /* CP_COHER_BASE */
+      indirect_buffer[indirect_buffer_size_dwords++] = 10;         /* POLL_INTERVAL */
+   }
+
+   /* Pad the GFX ring indirect buffer to the size alignment requirement with NOPs, and also prevent
+    * the submission from being empty as it's still needed for the completion signal, but an empty
+    * one may be rejected by the winsys.
+    */
+   while ((indirect_buffer_size_dwords &
+           (TERAKAN_QUEUE_INDIRECT_BUFFER_SIZE_ALIGNMENT_DWORDS_GFX - 1)) ||
+          indirect_buffer_size_dwords == 0) {
+      assert(TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS - indirect_buffer_size_dwords >= 1);
+      indirect_buffer[indirect_buffer_size_dwords++] = PKT_TYPE_S(2);
+   }
+
+   return indirect_buffer_size_dwords;
+}
+
 static VkResult
 terakan_queue_submit(struct vk_queue * const queue_base, struct vk_queue_submit * const submit)
 {
@@ -120,72 +261,22 @@ terakan_queue_submit(struct vk_queue * const queue_base, struct vk_queue_submit 
 
    /* Submit the command buffers. */
 
-   /* TODO(Triang3l): Implement inheritance in secondary command buffers.
-    *
-    * Instead of writing dwords with the real register values and relocations to the secondary
-    * indirect buffers for inherited bindings, write dword-sized substitution tokens in place of the
-    * real indirect buffer dwords that form a linked list inside the indirect buffer submission.
-    *
-    * A substitution token should contain:
-    * - The value of which field (including relocations) of which view the dword should be replaced
-    *   with.
-    * - The attachment number within the subpass the value needs to be taken from (for color
-    *   targets, it may be different from the CB_COLOR# index due to MRT and RAT indices being
-    *   compacted skipping those not used in the fragment shader).
-    * - Offset to the next substitution token. It can be stored in 16 bits since 2^16 dwords is
-    *   essentially the maximum indirect buffer size on Linux Radeon 2.50.0 (when using virtual
-    *   memory), and in this case to make sure the dword 0xFFFF can be addressed too, an offset
-    *   relative to the current dword can be stored, so that 0 will be the terminator.
-    *
-    * During queue submission, the secondary indirect buffer should be copied to a temporary
-    * indirect buffer in the queue (take threaded submission in Mesa into account though), and
-    * references to inherited BOs also need to be added to the submission.
-    *
-    * It must be guaranteed that during submission, there will be free space for all the attachment
-    * references in the BO list - either more space needs to be allocated in the temporary BO list,
-    * or some needs to be reserved in the secondary indirect buffer submission (however, BO
-    * references from the secondary command buffer still must be copied into the temporary buffer,
-    * because reading / writing flags and priorities of _existing_ BO references in the secondary
-    * command buffer may be touched too by the execution depending on whether the secondary indirect
-    * buffer already references something that's inherited but possibly in a different way, and that
-    * depends on the location where it's executed, and in general a secondary command buffer can be
-    * executed in any queue and thus without external synchronization, it just happens that at the
-    * moment this comment is written Terakan has only one queue per type).
-    *
-    * Because some BOs that may be inherited at the execution location may also happen to be
-    * referenced by the secondary indirect buffer itself directly and possibly with different
-    * reading / writing flags and priority, the BO reference hash map also needs to be preserved or
-    * reconstructed for secondary indirect buffers referencing any inherited BOs.
-    *
-    * Note that if virtual memory is used, there won't be relocations, so BO references need to be
-    * created not only by substitution tokens for relocations, but also by tokens that will be
-    * replaced with virtual addresses.
-    */
-
    for (uint32_t command_buffer_index = 0; command_buffer_index < submit->command_buffer_count;
         ++command_buffer_index) {
       struct terakan_command_buffer const * const command_buffer = container_of(
          submit->command_buffers[command_buffer_index], struct terakan_command_buffer const, vk);
-      list_for_each_entry (struct terakan_command_buffer_submission, command_buffer_submission_base,
-                           &command_buffer->submissions, command_buffer_submission_link) {
-         struct terakan_command_buffer_submission_indirect_buffer const *
-            command_buffer_indirect_buffer;
-         if (command_buffer_submission_base->is_secondary_execution) {
-            struct terakan_command_buffer_submission_secondary_execution const *
-               command_buffer_submission = container_of(
-                  command_buffer_submission_base,
-                  struct terakan_command_buffer_submission_secondary_execution const, base);
-            command_buffer_indirect_buffer = command_buffer_submission->indirect_buffer;
-         } else {
-            command_buffer_indirect_buffer =
-               container_of(command_buffer_submission_base,
-                            struct terakan_command_buffer_submission_indirect_buffer const, base);
-         }
+      list_for_each_entry (struct terakan_command_buffer_indirect_buffer,
+                           command_buffer_indirect_buffer, &command_buffer->indirect_buffers,
+                           link) {
+         /* The winsys may not support empty indirect buffers. */
+         assert(command_buffer_indirect_buffer->indirect_buffer_size_dwords != 0);
          VkResult const command_buffer_submit_result = device->winsys_fn->queue->submit(
-            device, queue->ip_type, command_buffer_indirect_buffer->bo_reference_count,
+            queue->submission_context, command_buffer_indirect_buffer->bo_reference_count,
             command_buffer_indirect_buffer->bo_references,
             command_buffer_indirect_buffer->indirect_buffer_size_dwords,
-            command_buffer_indirect_buffer->indirect_buffer);
+            command_buffer_indirect_buffer->indirect_buffer,
+            command_buffer_indirect_buffer->relocation_count,
+            command_buffer_indirect_buffer->relocations);
          if (command_buffer_submit_result != VK_SUCCESS) {
             /* Lose the device as the submission might have been done partially already, don't leave
              * it in an indeterminate state.
@@ -204,7 +295,10 @@ terakan_queue_submit(struct vk_queue * const queue_base, struct vk_queue_submit 
    /* If there are semaphores to signal from this submission, signal the fence BO to await the
     * completion from the completion thread. */
 
-   /* Construct the list of the timeline semaphores that need to be signaled. */
+   /* Construct the list of the timeline semaphores that need to be signaled, and gather the stages
+    * for the dependency.
+    */
+   VkPipelineStageFlags2 signal_stages = 0;
    struct list_head completion_signals;
    list_inithead(&completion_signals);
    for (uint32_t submit_signal_index = 0; submit_signal_index < submit->signal_count;
@@ -213,6 +307,7 @@ terakan_queue_submit(struct vk_queue * const queue_base, struct vk_queue_submit 
       if (submit_signal->sync->type == &vk_sync_dummy_type) {
          continue;
       }
+      signal_stages |= submit_signal->stage_mask;
       assert(submit_signal->sync->type == &terakan_sync_completion_type);
       struct terakan_queue_completion_signal * completion_signal;
       mtx_lock(&device->completion_mutex);
@@ -262,7 +357,7 @@ terakan_queue_submit(struct vk_queue * const queue_base, struct vk_queue_submit 
       mtx_unlock(&device->completion_mutex);
       VkResult const completion_submission_create_result =
          device->winsys_fn->queue->completion_submission_alloc_and_init_winsys(
-            queue, queue->next_completion_payload - 1, &completion_submission);
+            queue, &completion_submission);
       if (completion_submission_create_result != VK_SUCCESS) {
          /* Lose the device as the submission has been done partially already, don't leave it in an
           * indeterminate state.
@@ -279,12 +374,36 @@ terakan_queue_submit(struct vk_queue * const queue_base, struct vk_queue_submit 
       }
       completion_submission->queue = queue;
    }
-   completion_submission->expected_payload = queue->next_completion_payload++;
    list_replace(&completion_signals, &completion_submission->signals);
 
-   /* Submit a signal of the completion fence. */
+   /* Section 7.4.1. "Semaphore Signaling" of the Vulkan 1.3.277 specification says:
+    *
+    *     "When a batch is submitted to a queue via a queue submission, and it includes semaphores
+    *     to be signaled, it defines a memory dependency on the batch, and defines semaphore signal
+    *     operations which set the semaphores to the signaled state."
+    *
+    *     "The first synchronization scope includes every command submitted in the same batch. In
+    *     the case of vkQueueSubmit2, the first synchronization scope is limited to the pipeline
+    *     stage specified by VkSemaphoreSubmitInfo::stageMask. Semaphore signal operations that are
+    *     defined by vkQueueSubmit or vkQueueSubmit2 additionally include all commands that occur
+    *     earlier in submission order."
+    *
+    *     "The first access scope includes all memory access performed by the device."
+    *
+    * Make sure all writes and reads in the first synchronization scope are complete to prevent all
+    * types of data hazards, and flush write caches to make written memory available.
+    */
+   signal_stages = vk_expand_src_stage_flags2(signal_stages);
+   uint32_t signal_indirect_buffer[TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS];
+   uint32_t const signal_indirect_buffer_size_dwords =
+      terakan_queue_get_graphics_signal_indirect_buffer(device, signal_stages,
+                                                        signal_indirect_buffer);
+   assert(signal_indirect_buffer_size_dwords != 0);
+
+   /* Submit the memory dependency packets and a signal of the completion fence. */
    VkResult const completion_submission_submit_result =
-      device->winsys_fn->queue->completion_submission_submit(completion_submission);
+      device->winsys_fn->queue->completion_submission_submit(
+         completion_submission, signal_indirect_buffer_size_dwords, signal_indirect_buffer);
    if (completion_submission_submit_result != VK_SUCCESS) {
       /* Lose the device regardless of the actual result for this specific command buffer because a
        * part of the queue submission might have already been done, don't leave the device in an
@@ -360,6 +479,8 @@ terakan_queue_destroy(struct terakan_queue * const queue)
       vk_free(&device->vk.alloc, completion_signal);
    }
 
+   device->winsys_fn->queue->release_submission_context(queue->submission_context);
+
    vk_queue_finish(&queue->vk);
 
    vk_free(&queue->vk.base.device->alloc, queue);
@@ -381,11 +502,25 @@ terakan_queue_create(struct terakan_device * const device,
 
    result = vk_queue_init(&queue->vk, &device->vk, create_info, index_in_family);
    if (result != VK_SUCCESS) {
-      vk_free(&device->vk.alloc, queue);
-      return result;
+      goto fail_alloc;
    }
 
-   queue->ip_type = AMD_IP_GFX;
+   struct terakan_physical_device const * const physical_device =
+      terakan_device_physical_device(device);
+
+   struct terakan_queue_submission_size desired_submission_size =
+      terakan_command_buffer_optimal_submission_size_gfx(
+         &physical_device->submission_info_gfx.base);
+   desired_submission_size.indirect_buffer_dwords =
+      MAX2(desired_submission_size.indirect_buffer_dwords,
+           TERAKAN_QUEUE_SIGNAL_INDIRECT_BUFFER_MAX_DWORDS);
+
+   result = device->winsys_fn->queue->acquire_submission_context(
+      device, AMD_IP_GFX, desired_submission_size, &queue->submission_context);
+   if (result != VK_SUCCESS) {
+      result = vk_error(device, result);
+      goto fail_queue;
+   }
 
    list_inithead(&queue->completion_signals_free);
    list_inithead(&queue->completion_submissions_free);
@@ -396,19 +531,21 @@ terakan_queue_create(struct terakan_device * const device,
 
    if (thrd_create(&queue->completion_thread, terakan_queue_completion_thread_func, queue) !=
        thrd_success) {
-      vk_queue_finish(&queue->vk);
-      vk_free(&device->vk.alloc, queue);
-      return vk_errorf(device, VK_ERROR_OUT_OF_HOST_MEMORY,
-                       "Failed to create the submission completion thread");
+      result = vk_errorf(device, VK_ERROR_OUT_OF_HOST_MEMORY,
+                         "Failed to create the submission completion thread");
+      goto fail_submission_context;
    }
-
-   /* Start from 1 to distinguish from the zero that might have potentially been used to initialize
-    * the contents of a new BO if that's how completion fences are implemented.
-    */
-   queue->next_completion_payload = 1;
 
    queue->vk.driver_submit = terakan_queue_submit;
 
    *queue_out = queue;
    return VK_SUCCESS;
+
+fail_submission_context:
+   device->winsys_fn->queue->release_submission_context(queue->submission_context);
+fail_queue:
+   vk_queue_finish(&queue->vk);
+fail_alloc:
+   vk_free(&device->vk.alloc, queue);
+   return result;
 }

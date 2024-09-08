@@ -31,7 +31,7 @@ static uint32_t r600_translate_blend_function(int blend_func)
 	case PIPE_BLEND_MAX:
 		return V_028804_COMB_MAX_DST_SRC;
 	default:
-		R600_ERR("Unknown blend function %d\n", blend_func);
+		R600_ERR_F("Unknown blend function %d\n", blend_func);
 		assert(0);
 		break;
 	}
@@ -80,7 +80,7 @@ static uint32_t r600_translate_blend_factor(int blend_fact)
 	case PIPE_BLENDFACTOR_INV_SRC1_ALPHA:
 		return V_028804_BLEND_INV_SRC1_ALPHA;
 	default:
-		R600_ERR("Bad blend factor %d not supported!\n", blend_fact);
+		R600_ERR_F("Bad blend factor %d not supported!\n", blend_fact);
 		assert(0);
 		break;
 	}
@@ -156,7 +156,7 @@ bool r600_is_format_supported(struct pipe_screen *screen,
 	unsigned retval = 0;
 
 	if (target >= PIPE_MAX_TEXTURE_TYPES) {
-		R600_ERR("r600: unsupported texture type %d\n", target);
+		R600_ERR_F("r600: unsupported texture type %d\n", target);
 		return false;
 	}
 
@@ -2066,9 +2066,9 @@ bool r600_adjust_gprs(struct r600_context *rctx)
 	 */
 	for (i = 0; i < R600_NUM_HW_STAGES; i++) {
 		if (num_gprs[i] > new_gprs[i]) {
-			R600_ERR("shaders require too many register (%d + %d + %d + %d) "
-				 "for a combined maximum of %d\n",
-				 num_gprs[R600_HW_STAGE_PS], num_gprs[R600_HW_STAGE_VS], num_gprs[R600_HW_STAGE_ES], num_gprs[R600_HW_STAGE_GS], max_gprs);
+			R600_ERR_F("shaders require too many register (%d + %d + %d + %d) "
+			           "for a combined maximum of %d\n",
+			           num_gprs[R600_HW_STAGE_PS], num_gprs[R600_HW_STAGE_VS], num_gprs[R600_HW_STAGE_ES], num_gprs[R600_HW_STAGE_GS], max_gprs);
 			return false;
 		}
 	}

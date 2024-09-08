@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -26,8 +26,6 @@
 #include "terakan_buffer.h"
 #include "terakan_command_buffer.h"
 #include "terakan_entrypoints.h"
-#include "terakan_hw_state.h"
-#include "terakan_state.h"
 
 #include "gallium/drivers/r600/evergreend.h"
 #include "gallium/drivers/r600/r600d_common.h"
@@ -70,19 +68,21 @@ terakan_CmdBindIndexBuffer(VkCommandBuffer const commandBuffer, VkBuffer const b
    vgt_index_buffer_size = MIN2(vgt_index_buffer_size, UINT32_MAX);
 
    command_writer->state_draw.vgt_index_type = vgt_index_type;
-   terakan_state_draw_set_pending(&command_writer->state_draw, TERAKAN_STATE_DRAW_VGT_INDEX_TYPE);
+   terakan_state_draw_set_pending(&command_writer->state_draw,
+                                  TERAKAN_STATE_DRAW_INDEX_VGT_INDEX_TYPE);
 
    /* The index buffer is not needed by internal draws, modify hw_state_draw directly. */
-   uint64_t const vgt_index_buffer_base = (buffer->bo_offset + offset) / sizeof(uint16_t);
+   uint64_t const vgt_index_buffer_va = buffer->va + offset;
    bool const vgt_index_buffer_modified =
       command_writer->hw_state_draw.vgt_index_buffer.bo != buffer->bo ||
-      command_writer->hw_state_draw.vgt_index_buffer.base != vgt_index_buffer_base ||
+      command_writer->hw_state_draw.vgt_index_buffer.va != vgt_index_buffer_va ||
       command_writer->hw_state_draw.vgt_index_buffer.size != vgt_index_buffer_size;
    command_writer->hw_state_draw.vgt_index_buffer.bo = buffer->bo;
-   command_writer->hw_state_draw.vgt_index_buffer.base = vgt_index_buffer_base;
+   command_writer->hw_state_draw.vgt_index_buffer.va = vgt_index_buffer_va;
    command_writer->hw_state_draw.vgt_index_buffer.size = vgt_index_buffer_size;
    terakan_hw_state_draw_written(&command_writer->hw_state_draw,
-                                 TERAKAN_HW_STATE_DRAW_VGT_INDEX_TYPE, vgt_index_buffer_modified);
+                                 TERAKAN_HW_STATE_DRAW_INDEX_VGT_INDEX_BUFFER,
+                                 vgt_index_buffer_modified);
 }
 
 static void
@@ -90,14 +90,15 @@ terakan_set_vertex_instance_offsets(struct terakan_gfx_command_writer * const co
                                     uint32_t const vertex_offset, uint32_t const instance_offset)
 {
    command_writer->state_draw.vgt_index_offset = vertex_offset;
-   terakan_state_draw_set_pending(&command_writer->state_draw, TERAKAN_STATE_DRAW_VGT_INDEX_OFFSET);
+   terakan_state_draw_set_pending(&command_writer->state_draw,
+                                  TERAKAN_STATE_DRAW_INDEX_VGT_INDEX_OFFSET);
 
    /* The instance offset is not needed by internal draws, modify hw_state_draw directly. */
    bool const sq_vtx_start_inst_loc_modified =
       command_writer->hw_state_draw.sq_vtx_start_inst_loc != instance_offset;
    command_writer->hw_state_draw.sq_vtx_start_inst_loc = instance_offset;
    terakan_hw_state_draw_written(&command_writer->hw_state_draw,
-                                 TERAKAN_HW_STATE_DRAW_SQ_VTX_START_INST_LOC,
+                                 TERAKAN_HW_STATE_DRAW_INDEX_SQ_VTX_START_INST_LOC,
                                  sq_vtx_start_inst_loc_modified);
 }
 
@@ -105,12 +106,19 @@ void
 terakan_before_hw_draw(struct terakan_gfx_command_writer * const command_writer)
 {
    terakan_hw_state_draw_emit_modified(command_writer);
+
+   /* Insert barriers after emitting the state changes, not before, so state changes are not blocked
+    * by the barriers in the CP, and new work can begin as soon as possible.
+    */
+   terakan_barrier_emit_pending_actions(command_writer);
 }
 
 static void
 terakan_before_draw(struct terakan_gfx_command_writer * const command_writer)
 {
    terakan_state_draw_apply_pending(command_writer);
+
+   terakan_push_constants_apply(command_writer, false);
 
    terakan_before_hw_draw(command_writer);
 }
@@ -132,7 +140,7 @@ terakan_CmdDraw(VkCommandBuffer const commandBuffer, uint32_t const vertexCount,
 
    terakan_before_draw(command_writer);
 
-   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 3, 0, 0, false);
+   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 3, false);
    if (unlikely(packet == NULL)) {
       return;
    }
@@ -144,6 +152,8 @@ terakan_CmdDraw(VkCommandBuffer const commandBuffer, uint32_t const vertexCount,
    *packet++ = PKT3(PKT3_DRAW_INDEX_AUTO, 3 - 2, 0);
    *packet++ = vertexCount;
    *packet++ = S_0287F0_SOURCE_SELECT(V_0287F0_DI_SRC_SEL_AUTO_INDEX);
+
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -163,7 +173,7 @@ terakan_CmdDrawIndexed(VkCommandBuffer const commandBuffer, uint32_t const index
 
    terakan_before_draw(command_writer);
 
-   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 4, 0, 0, false);
+   uint32_t * packet = terakan_gfx_command_writer_emit(command_writer, 2 + 4, false);
    if (unlikely(packet == NULL)) {
       return;
    }
@@ -176,4 +186,6 @@ terakan_CmdDrawIndexed(VkCommandBuffer const commandBuffer, uint32_t const index
    *packet++ = firstIndex;
    *packet++ = indexCount;
    *packet++ = S_0287F0_SOURCE_SELECT(V_0287F0_DI_SRC_SEL_DMA);
+
+   terakan_gfx_command_writer_emit_done(command_writer, packet);
 }

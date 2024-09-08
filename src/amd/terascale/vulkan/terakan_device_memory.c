@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -26,6 +26,7 @@
 #include "terakan_descriptor.h"
 #include "terakan_device.h"
 #include "terakan_entrypoints.h"
+#include "terakan_format.h"
 #include "terakan_image.h"
 #include "terakan_physical_device.h"
 
@@ -48,7 +49,7 @@ terakan_GetMemoryFdPropertiesKHR(VkDevice const deviceHandle,
 {
    struct terakan_device * const device = terakan_device_from_handle(deviceHandle);
    struct terakan_physical_device const * const physical_device =
-      container_of(device->vk.physical, struct terakan_physical_device const, vk);
+      terakan_device_physical_device(device);
 
    if (!(terakan_physical_device_supported_external_memory_types(physical_device) & handleType)) {
       return vk_error(device, VK_ERROR_INVALID_EXTERNAL_HANDLE);
@@ -144,7 +145,7 @@ terakan_MapMemory2KHR(VkDevice const deviceHandle, VkMemoryMapInfoKHR const * co
       return vk_error(terakan_device_from_handle(deviceHandle), VK_ERROR_MEMORY_MAP_FAILED);
    }
 
-   *ppData = mapping;
+   *ppData = (char *)mapping + pMemoryMapInfo->offset;
    return VK_SUCCESS;
 }
 
@@ -180,7 +181,7 @@ terakan_AllocateMemory(VkDevice const deviceHandle,
    }
 
    struct terakan_physical_device const * const physical_device =
-      container_of(device->vk.physical, struct terakan_physical_device const, vk);
+      terakan_device_physical_device(device);
 
    /* Storage and uniform buffers in Vulkan require only the offset to be aligned, not the range,
     * but the entire range must be visible to the shader anyway. For the purpose of bounds checking,
@@ -188,8 +189,8 @@ terakan_AllocateMemory(VkDevice const deviceHandle,
     * VkPhysicalDeviceRobustness2PropertiesEXT, so make sure the BO is never smaller than the size
     * rounded up, and the validation in the kernel driver doesn't consider the binding out of
     * bounds.
-    * Linux Radeon 2.50.0 also validates the size of buffer RATs as LINEAR_ALIGNED image size, but
-    * with the smallest SLICE_TILE_MAX it considers them zero-size, so the RAT pitch alignment is
+    * DRM Radeon 2.50.0 also validates the size of buffer UAVs as LINEAR_ALIGNED image size, but
+    * with the smallest SLICE_TILE_MAX it considers them zero-size, so the UAV pitch alignment is
     * not important here.
     */
    VkDeviceSize const bo_size = ALIGN_POT(device_memory->vk.size, TERAKAN_KCACHE_HW_LINE_BYTES);
@@ -247,10 +248,36 @@ terakan_AllocateMemory(VkDevice const deviceHandle,
       if (dedicated_info != NULL) {
          struct terakan_image const * const dedicated_image =
             terakan_image_from_handle(dedicated_info->image);
-         if (dedicated_image != NULL && !device->winsys_fn->bo->set_tiling_for_surface(
-                                           device_memory->bo, &dedicated_image->surface)) {
-            result = vk_error(device, VK_ERROR_UNKNOWN);
-            goto fail_bo;
+         if (dedicated_image != NULL) {
+            struct terakan_image_surface_aspect const * const dedicated_image_main_aspect =
+               &dedicated_image->surface.aspects[0];
+            struct terakan_bo_tiling const bo_tiling = {
+               .pitch_bytes =
+                  (dedicated_image_main_aspect->bytes_per_block /
+                   terakan_format_surfels_per_block(dedicated_image_main_aspect->bytes_per_block)) *
+                  (uint32_t)dedicated_image_main_aspect->levels[0].aligned_extent_surfels[0],
+               .array_mode = dedicated_image_main_aspect->levels[0].array_mode,
+               /* If the image is stencil-only, pass the stencil tile split as both main aspect tile
+                * split and stencil tile split so it doesn't matter which field the receiving end
+                * will take it from.
+                */
+               .attrib_tile_split = dedicated_image_main_aspect->tiling.attrib_tile_split,
+               .attrib_stencil_tile_split =
+                  vk_format_has_stencil(dedicated_image->vk.format)
+                     ? dedicated_image->surface
+                          .aspects[terakan_image_surface_aspect_index(dedicated_image->vk.format,
+                                                                      VK_IMAGE_ASPECT_STENCIL_BIT)]
+                          .tiling.attrib_tile_split
+                     : 0,
+               .attrib_bank_width = dedicated_image_main_aspect->tiling.attrib_bank_width,
+               .attrib_bank_height = dedicated_image_main_aspect->tiling.attrib_bank_height,
+               .attrib_macro_tile_aspect =
+                  dedicated_image_main_aspect->tiling.attrib_macro_tile_aspect,
+            };
+            if (!device->winsys_fn->bo->set_tiling(device_memory->bo, &bo_tiling)) {
+               result = vk_error(device, VK_ERROR_UNKNOWN);
+               goto fail_bo;
+            }
          }
       }
    }

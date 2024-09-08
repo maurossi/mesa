@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -25,6 +25,7 @@
 #define TERAKAN_PHYSICAL_DEVICE_H
 
 #include "terakan_instance.h"
+#include "terakan_queue.h"
 #include "wsi_common.h"
 
 #include "gallium/drivers/r600/r600_isa.h"
@@ -39,10 +40,6 @@
 
 #ifdef __cplusplus
 extern "C" {
-#endif
-
-#if !defined(_WIN32)
-#define TERAKAN_PHYSICAL_DEVICE_HAS_WINSYS_DRM_RADEON
 #endif
 
 #define TERAKAN_PHYSICAL_DEVICE_VENDOR_ID_ATI 0x1002
@@ -78,6 +75,7 @@ struct terakan_physical_device_tiling_info {
    uint8_t pipes_log2;
    uint8_t banks_log2;
    uint8_t pipe_interleave_bytes_log2;
+   uint8_t bank_interleave_log2;
    uint8_t row_bytes_log2;
 };
 
@@ -90,6 +88,24 @@ terakan_physical_device_tiling_info_equal(
           a->pipe_interleave_bytes_log2 == b->pipe_interleave_bytes_log2 &&
           a->row_bytes_log2 == b->row_bytes_log2;
 }
+
+struct terakan_physical_device_submission_info {
+   enum terakan_queue_relocation_type relocation_type;
+   /* Maximum amount of additional data that may be added to submissions in the queue `submit`
+    * function by the winsys, but that doesn't need to be reserved inside the `submit` arguments
+    * themselves.
+    */
+   struct terakan_queue_submission_size submission_outer_reserved_amount;
+};
+
+struct terakan_physical_device_submission_info_gfx {
+   struct terakan_physical_device_submission_info base;
+
+   /* Whether submissions referencing kcache buffers need to reset the constants mode to DX10 using
+    * the MODE_CONTROL packet beforehand.
+    */
+   bool need_sq_alu_const_mode_control;
+};
 
 struct terakan_physical_device;
 struct terakan_device;
@@ -127,6 +143,8 @@ struct terakan_physical_device {
    struct terakan_physical_device_tiling_info tiling_info;
    VkDeviceSize buffer_image_bo_alignment;
 
+   struct terakan_physical_device_submission_info_gfx submission_info_gfx;
+
    /* nir_shader_compiler_options's lifetime must be at least as long as that of any NIR shader. */
    nir_shader_compiler_options nir_options_non_fs;
    nir_shader_compiler_options nir_options_fs;
@@ -148,16 +166,18 @@ void terakan_physical_device_finish(struct terakan_physical_device * device);
 void terakan_physical_device_destroy(struct vk_physical_device * device);
 
 /* vram_visible is included in vram_size.
- * clock_crystal_frequency can be 0 if not available, in this case timestamp queries will be
+ * clock_crystal_frequency_hz can be 0 if not available, in this case timestamp queries will be
  * disabled.
  */
 VkResult terakan_physical_device_init(
    struct terakan_physical_device * device, struct terakan_instance * instance,
    struct terakan_physical_device_winsys_fn const * winsys_fn_static, uint32_t pci_device_id,
-   VkDeviceSize gtt_page_size, VkDeviceSize gtt_size, VkDeviceSize vram_size,
+   VkDeviceSize gtt_allocation_granularity, VkDeviceSize gtt_size, VkDeviceSize vram_size,
    VkDeviceSize vram_visible, VkDeviceSize max_memory_allocation_size,
    VkDeviceSize min_memory_map_alignment,
-   struct terakan_physical_device_tiling_info const * tiling_info, uint32_t clock_crystal_frequency,
+   struct terakan_physical_device_tiling_info const * tiling_info,
+   struct terakan_physical_device_submission_info_gfx const * submission_info_gfx,
+   uint32_t clock_crystal_frequency_hz,
    struct vk_sync_type const * const * supported_sync_types_static);
 
 #ifdef __cplusplus

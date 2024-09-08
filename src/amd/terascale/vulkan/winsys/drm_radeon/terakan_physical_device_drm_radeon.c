@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -185,7 +185,7 @@ terakan_physical_device_drm_radeon_try_create(struct vk_instance * const instanc
    struct stat primary_node_stat = {};
    bool has_primary_node = (drm_device->available_nodes & (1 << DRM_NODE_PRIMARY)) != 0;
    if (has_primary_node && stat(drm_device->nodes[DRM_NODE_PRIMARY], &primary_node_stat) != 0) {
-      vk_logw(VK_LOG_OBJS(instance), "Failed to stat the DRM primary node '%s': %m",
+      vk_logw(VK_LOG_NO_OBJS(&instance->vk), "Failed to stat the DRM primary node '%s': %m",
               drm_device->nodes[DRM_NODE_PRIMARY]);
       has_primary_node = false;
    }
@@ -225,18 +225,22 @@ terakan_physical_device_drm_radeon_try_create(struct vk_instance * const instanc
       .pipes_log2 = tiling_config & 0xF,
       .banks_log2 = 2 + ((tiling_config >> 4) & 0xF),
       .pipe_interleave_bytes_log2 = 8 + ((tiling_config >> 8) & 0xF),
+      /* As of 2.50.0, DRM Radeon doesn't expose the bank interleave, but has log2(1) for it in the
+       * "golden" GB_ADDR_CONFIG values for all R8xx/R9xx chips.
+       */
+      .bank_interleave_log2 = 0,
       .row_bytes_log2 = 10 + ((tiling_config >> 12) & 0xF),
    };
 
-   __u32 clock_crystal_frequency;
+   __u32 clock_crystal_frequency_khz;
    struct drm_radeon_info clock_crystal_frequency_info_arguments = {
       .request = RADEON_INFO_CLOCK_CRYSTAL_FREQ,
-      .value = (__u64)(void *)&clock_crystal_frequency,
+      .value = (__u64)(void *)&clock_crystal_frequency_khz,
    };
    if (drmCommandWriteRead(render_node_fd, DRM_RADEON_INFO, &clock_crystal_frequency_info_arguments,
                            sizeof(clock_crystal_frequency_info_arguments)) != 0) {
       /* Disable timestamp queries in case of failure. */
-      clock_crystal_frequency = 0;
+      clock_crystal_frequency_khz = 0;
    }
 
    /* Initialize the physical device object. */
@@ -273,6 +277,13 @@ terakan_physical_device_drm_radeon_try_create(struct vk_instance * const instanc
 
    device->render_node_validation_fd = render_node_fd;
 
+   struct terakan_physical_device_submission_info_gfx const submission_info_gfx = {
+      .base =
+         {
+            .relocation_type = TERAKAN_QUEUE_RELOCATION_TYPE_DRM_NOP,
+         },
+   };
+
    size_t sync_type_count = 0;
    assert(sync_type_count < ARRAY_SIZE(device->sync_types));
    device->sync_types[sync_type_count++] = &terakan_sync_completion_type;
@@ -296,8 +307,8 @@ terakan_physical_device_drm_radeon_try_create(struct vk_instance * const instanc
       &device->base, instance, &terakan_physical_device_drm_radeon_fn,
       drm_device->deviceinfo.pci->device_id, page_size, (VkDeviceSize)gem_info.gart_size,
       (VkDeviceSize)gem_info.vram_size, (VkDeviceSize)gem_info.vram_visible,
-      UINT32_MAX & ~(page_size - 1), page_size, &tiling_info, clock_crystal_frequency,
-      device->sync_types);
+      UINT32_MAX & ~(page_size - 1), page_size, &tiling_info, &submission_info_gfx,
+      1000 * clock_crystal_frequency_khz, device->sync_types);
    if (result != VK_SUCCESS) {
       goto fail_render_node_path;
    }

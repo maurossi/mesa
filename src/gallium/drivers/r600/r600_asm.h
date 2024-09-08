@@ -19,8 +19,9 @@
 extern "C" {
 #endif
 
-#define R600_ASM_ERR(fmt, args...) \
-	fprintf(stderr, "EE %s:%d %s - " fmt, __FILE__, __LINE__, __func__, ##args)
+#define R600_ASM_ERR_F(fmt, ...) \
+	fprintf(stderr, "EE %s:%d %s - " fmt, __FILE__, __LINE__, __func__, __VA_ARGS__)
+#define R600_ASM_ERR(err) R600_ASM_ERR_F("%s", err)
 
 struct r600_bytecode_alu_src {
 	unsigned			sel;

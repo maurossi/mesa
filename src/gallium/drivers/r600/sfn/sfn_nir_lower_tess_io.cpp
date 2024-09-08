@@ -259,8 +259,9 @@ emit_store_lds(nir_builder *b, nir_intrinsic_instr *op, nir_def *addr)
 
       bool start_even = (orig_writemask & (1u << (2 * i)));
       nir_def *addr2 = nir_iadd_imm(b, addr, 8 * i + (start_even ? 0 : 4));
-      nir_store_local_shared_r600(b, op->src[0].ssa, addr2,
-                                  .write_mask = writemask);
+      nir_intrinsic_instr *store_local_shared =
+         nir_store_local_shared_r600(b, op->src[0].ssa, addr2);
+      nir_intrinsic_set_write_mask(store_local_shared, writemask);
    }
 }
 

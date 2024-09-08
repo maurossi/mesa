@@ -1,5 +1,5 @@
 /*
- * Copyright © 2023 Vitaliy Triang3l Kuzmin
+ * Copyright © 2024 Vitaliy Triang3l Kuzmin
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -61,10 +61,6 @@ terakan_CreateSampler(VkDevice const deviceHandle, VkSamplerCreateInfo const * c
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   bool const is_r9xx =
-      container_of(sampler->vk.base.device->physical, struct terakan_physical_device const, vk)
-         ->chip_family_info.is_r9xx;
-
    sampler->sampler[0] =
       S_03C000_CLAMP_X(terakan_sampler_translate_address_mode(pCreateInfo->addressModeU)) |
       S_03C000_CLAMP_Y(terakan_sampler_translate_address_mode(pCreateInfo->addressModeV)) |
@@ -77,7 +73,8 @@ terakan_CreateSampler(VkDevice const deviceHandle, VkSamplerCreateInfo const * c
       S_03C000_BORDER_COLOR_TYPE(terakan_sampler_translate_border_color(pCreateInfo->borderColor)) |
       S_03C000_DEPTH_COMPARE_FUNCTION(pCreateInfo->compareEnable ? (uint32_t)pCreateInfo->compareOp
                                                                  : 0) |
-      S_03C000_FORCE_UNNORMALIZED(is_r9xx && pCreateInfo->unnormalizedCoordinates);
+      S_03C000_FORCE_UNNORMALIZED(pCreateInfo->unnormalizedCoordinates &&
+                                  terakan_device_physical_device(device)->chip_family_info.is_r9xx);
    sampler->sampler[1] =
       S_03C004_MIN_LOD(terakan_sampler_translate_min_max_lod(pCreateInfo->minLod)) |
       S_03C004_MAX_LOD(terakan_sampler_translate_min_max_lod(pCreateInfo->maxLod));
