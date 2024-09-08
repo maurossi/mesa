@@ -121,6 +121,7 @@ libvulkan_terascale = shared_library(
     dep_thread,
     dep_dl,
     dep_m,
+    idep_amd_terascale_registers,
     idep_mesautil,
     idep_nir,
     idep_vulkan_util,

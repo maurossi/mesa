@@ -31,3 +31,27 @@ amd_terascale_registers_files = files(
 idep_amd_terascale_registers = declare_dependency(
   sources : [amd_terascale_registers_files],
 )
+
+amd_terascale_common_files = files(
+  '../../../gallium/drivers/r600/r600_formats.h',
+)
+
+amd_terascale_common_includes = [
+  inc_util,
+]
+
+libamd_terascale_common = static_library(
+  'amd_terascale_common',
+  [amd_terascale_common_files],
+  include_directories : amd_terascale_common_includes,
+  dependencies : [
+    idep_amd_terascale_registers,
+    idep_mesautil,
+  ],
+  gnu_symbol_visibility : 'hidden',
+)
+
+idep_amd_terascale_common = declare_dependency(
+  link_with : libamd_terascale_common,
+  include_directories : amd_terascale_common_includes,
+)
