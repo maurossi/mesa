@@ -28,7 +28,7 @@ _libnil_format_table = static_library(
   'libnil_format_table',
   _nil_format_table,
   include_directories : [inc_include, inc_src],
-  dependencies : [idep_nvidia_headers, idep_mesautil],
+  dependencies : [idep_nvidia_headers],
   gnu_symbol_visibility: 'hidden',
 )
 
