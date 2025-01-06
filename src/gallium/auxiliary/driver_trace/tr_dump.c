@@ -284,7 +284,7 @@ trace_dump_trace_begin(void)
       atexit(trace_dump_trace_close);
 
       const char *trigger = debug_get_option("GALLIUM_TRACE_TRIGGER", NULL);
-      if (trigger && __normal_user()) {
+      if (trigger) {
          trigger_filename = strdup(trigger);
          trigger_active = false;
       } else
