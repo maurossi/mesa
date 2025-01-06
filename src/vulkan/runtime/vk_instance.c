@@ -203,7 +203,7 @@ vk_instance_init(struct vk_instance *instance,
    instance->trace_per_submit = debug_get_bool_option("MESA_VK_TRACE_PER_SUBMIT", false);
    if (!instance->trace_per_submit) {
       instance->trace_frame = (uint32_t)debug_get_num_option("MESA_VK_TRACE_FRAME", 0xFFFFFFFF);
-      instance->trace_trigger_file = secure_getenv("MESA_VK_TRACE_TRIGGER");
+      instance->trace_trigger_file = getenv("MESA_VK_TRACE_TRIGGER");
    }
 
 #if !VK_LITE_RUNTIME_INSTANCE
