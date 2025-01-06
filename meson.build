@@ -1399,7 +1399,6 @@ functions_to_detect = {
   'getrandom': '',
   'qsort_s': '',
   'posix_fallocate': '',
-  'secure_getenv': '',
 }
 
 foreach f, prefix: functions_to_detect
