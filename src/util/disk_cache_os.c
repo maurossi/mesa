@@ -930,7 +930,7 @@ disk_cache_generate_cache_dir(void *mem_ctx, const char *gpu_name,
    }
 
    if (path == NULL) {
-      char *xdg_cache_home = secure_getenv("XDG_CACHE_HOME");
+      char *xdg_cache_home = getenv("XDG_CACHE_HOME");
 
       if (xdg_cache_home) {
          path = concatenate_and_mkdir(mem_ctx, xdg_cache_home, cache_dir_name,
