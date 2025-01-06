@@ -1407,7 +1407,6 @@ functions_to_detect = {
   'getrandom': '',
   'qsort_s': '',
   'posix_fallocate': '',
-  'secure_getenv': '',
   'sysconf': '#include <unistd.h>',
 }
 
