@@ -329,6 +329,7 @@ crocus_init_screen_caps(struct crocus_screen *screen)
    caps->vertex_color_unclamped = true;
    caps->start_instance = true;
    caps->force_persample_interp = true;
+   caps->mixed_color_depth_bits = true;
    caps->mixed_framebuffer_sizes = true;
    caps->vs_layer_viewport = true;
    caps->tes_layer_viewport = true;
