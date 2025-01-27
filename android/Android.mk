@@ -179,13 +179,11 @@ ifneq ($(strip $(BOARD_MESA3D_GALLIUM_DRIVERS)),)
 # Module 'libgallium_dri', produces '/vendor/lib{64}/libgallium_dri.so'
 # This module also trigger DRI symlinks creation process
 $(eval $(call mesa3d-lib,libgallium_dri,,MESA3D_GALLIUM_BIN))
-# Module 'libglapi', produces '/vendor/lib{64}/libglapi.so'
-$(eval $(call mesa3d-lib,libglapi,,MESA3D_LIBGLAPI_BIN))
 
 # Module 'libGLES_mesa', produces '/vendor/lib{64}/egl/libGLES_mesa.so' as copy of 'libEGL_mesa'
 $(eval $(call mesa3d-lib,libGLES_mesa,egl,MESA3D_LIBEGL_BIN))
-# Modules 'libgallium_dri' and 'libglapi' are installed even if not listed in PRODUCT_PACKAGES
-LOCAL_REQUIRED_MODULES += libgallium_dri libglapi
+# Modules 'libgallium_dri' is installed even if not listed in PRODUCT_PACKAGES
+LOCAL_REQUIRED_MODULES += libgallium_dri
 endif
 
 # Modules 'vulkan.{driver_name}', produces '/vendor/lib{64}/hw/vulkan.{driver_name}.so' HAL
