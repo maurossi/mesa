@@ -186,6 +186,8 @@ $(eval $(call mesa3d-lib,libEGL_mesa,egl,MESA3D_LIBEGL_BIN))
 $(eval $(call mesa3d-lib,libGLESv1_CM_mesa,egl,MESA3D_LIBGLESV1_BIN))
 # Module 'libGLESv2_mesa', produces '/vendor/lib{64}/egl/libGLESv2_mesa.so'
 $(eval $(call mesa3d-lib,libGLESv2_mesa,egl,MESA3D_LIBGLESV2_BIN))
+# Module 'libGLES_mesa', produces '/vendor/lib{64}/egl/libGLES_mesa.so' as copy of 'libEGL_mesa'
+$(eval $(call mesa3d-lib,libGLES_mesa,egl,MESA3D_LIBEGL_BIN))
 endif
 
 # Modules 'vulkan.{driver_name}', produces '/vendor/lib{64}/hw/vulkan.{driver_name}.so' HAL
