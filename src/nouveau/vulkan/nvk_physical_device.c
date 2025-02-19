@@ -297,6 +297,9 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .AMD_buffer_marker = true,
 #if DETECT_OS_ANDROID
       .ANDROID_native_buffer = vk_android_get_ugralloc() != NULL,
+#if ANDROID_API_LEVEL >= 26
+      .ANDROID_external_memory_android_hardware_buffer = vk_android_get_ugralloc() != NULL,
+#endif
 #endif
       .GOOGLE_decorate_string = true,
       .GOOGLE_hlsl_functionality1 = true,
