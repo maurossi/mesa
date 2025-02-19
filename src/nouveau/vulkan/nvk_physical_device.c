@@ -269,6 +269,10 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_ycbcr_image_arrays = true,
       .EXT_zero_initialize_device_memory = true,
 #if DETECT_OS_ANDROID
+#if ANDROID_API_LEVEL >= 26
+      .ANDROID_external_memory_android_hardware_buffer = vk_android_get_ugralloc() &&
+         u_gralloc_get_type(vk_android_get_ugralloc()) != U_GRALLOC_TYPE_FALLBACK,
+#endif
       .ANDROID_native_buffer = vk_android_get_ugralloc() &&
          u_gralloc_get_type(vk_android_get_ugralloc()) != U_GRALLOC_TYPE_FALLBACK,
 #endif
