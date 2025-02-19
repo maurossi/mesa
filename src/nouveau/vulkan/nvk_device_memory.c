@@ -10,10 +10,15 @@
 #include "nvk_physical_device.h"
 #include "nvkmd/nvkmd.h"
 
+#include "util/detect_os.h"
 #include "util/u_atomic.h"
 
 #include <inttypes.h>
 #include <sys/mman.h>
+
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+#include <vndk/hardware_buffer.h>
+#endif
 
 /* Supports opaque fd only */
 const VkExternalMemoryProperties nvk_opaque_fd_mem_props = {
@@ -38,6 +43,41 @@ const VkExternalMemoryProperties nvk_dma_buf_mem_props = {
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT |
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
 };
+
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+/* Supports Android Hardware Buffer buffer memory properties. */
+const VkExternalMemoryProperties nvk_ahb_buffer_mem_props = {
+   .externalMemoryFeatures =
+      VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
+      VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT,
+   .exportFromImportedHandleTypes =
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+   .compatibleHandleTypes =
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+};
+/* Supports Android Hardware Buffer image memory properties. */
+const VkExternalMemoryProperties nvk_ahb_image_mem_props = {
+   .externalMemoryFeatures =
+      /* VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT is not set here */
+      VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT |
+      VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT,
+   .exportFromImportedHandleTypes =
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+   .compatibleHandleTypes =
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+};
+/* Supports exportable Android Hardware Buffer image memory properties. */
+const VkExternalMemoryProperties nvk_ahb_image_mem_props_exportable = {
+   .externalMemoryFeatures =
+      VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT |
+      VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
+      VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT,
+   .exportFromImportedHandleTypes =
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+   .compatibleHandleTypes =
+      VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
+};
+#endif
 
 static enum nvkmd_mem_flags
 nvk_memory_type_flags(const VkMemoryType *type,
@@ -142,6 +182,13 @@ nvk_AllocateMemory(VkDevice device,
    if (!mem)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   if (pAllocateInfo->allocationSize == 0 && !mem->vk.ahardware_buffer) {
+      vk_device_memory_destroy(&dev->vk, pAllocator, &mem->vk);
+      /* Apparently, this is allowed */
+      *pMem = VK_NULL_HANDLE;
+      return VK_SUCCESS;
+   }
+
    const VkImportMemoryFdInfoKHR *fd_info =
       vk_find_struct_const(pAllocateInfo->pNext, IMPORT_MEMORY_FD_INFO_KHR);
    const VkExportMemoryAllocateInfo *export_info =
@@ -231,6 +278,19 @@ nvk_AllocateMemory(VkDevice device,
                                          &mem->mem);
       if (result != VK_SUCCESS)
          goto fail_alloc;
+   } else if (mem->vk.ahardware_buffer) {
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+      const native_handle_t *handle =
+         AHardwareBuffer_getNativeHandle(mem->vk.ahardware_buffer);
+      assert(handle->numFds > 0);
+      result = nvkmd_dev_import_dma_buf(dev->nvkmd, &dev->vk.base,
+                                handle->data[0], &mem->mem);
+      if (result != VK_SUCCESS)
+         goto fail_alloc;
+#else
+      result = VK_ERROR_FEATURE_NOT_PRESENT;
+      goto fail_alloc;
+#endif
    } else {
       result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base,
                                    aligned_size, alignment, flags,
