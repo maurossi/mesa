@@ -9,6 +9,7 @@
 
 #include "vk_device_memory.h"
 
+#include "util/detect_os.h"
 #include "util/list.h"
 
 struct nvkmd_mem;
@@ -24,5 +25,10 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(nvk_device_memory, vk.base, VkDeviceMemory,
 
 extern const VkExternalMemoryProperties nvk_opaque_fd_mem_props;
 extern const VkExternalMemoryProperties nvk_dma_buf_mem_props;
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+extern const VkExternalMemoryProperties nvk_ahb_buffer_mem_props;
+extern const VkExternalMemoryProperties nvk_ahb_image_mem_props;
+extern const VkExternalMemoryProperties nvk_ahb_image_mem_props_exportable;
+#endif
 
 #endif
