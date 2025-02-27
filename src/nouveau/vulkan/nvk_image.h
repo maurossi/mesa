@@ -79,6 +79,11 @@ struct nvk_image {
     */
    bool disjoint;
 
+   uint32_t explicit_row_stride_B;
+
+   /** VkImageAlignmentControlCreateInfoMESA::maximumRequestedAlignment */
+   uint32_t max_alignment_B;
+
    uint8_t plane_count;
    struct nvk_image_plane planes[NVK_MAX_IMAGE_PLANES];
 

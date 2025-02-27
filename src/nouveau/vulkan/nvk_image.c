@@ -756,41 +756,11 @@ nvk_image_init(struct nvk_device *dev,
    if (image->vk.usage & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
       image->vk.usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-   nil_image_usage_flags usage = 0;
-   if (image->vk.tiling == VK_IMAGE_TILING_LINEAR)
-      usage |= NIL_IMAGE_USAGE_LINEAR_BIT;
-   if (image->vk.create_flags & VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT)
-      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
-   if (image->vk.create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT)
-      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
-
-   /* In order to be able to clear 3D depth/stencil images, we need to bind
-    * them as 2D arrays.  Fortunately, 3D depth/stencil shouldn't be common.
-    */
-   if ((image->vk.aspects & (VK_IMAGE_ASPECT_DEPTH_BIT |
-                             VK_IMAGE_ASPECT_STENCIL_BIT)) &&
-       image->vk.image_type == VK_IMAGE_TYPE_3D)
-      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
-
    image->plane_count = vk_format_get_plane_count(image->vk.format);
    image->disjoint = image->plane_count > 1 &&
                      (image->vk.create_flags & VK_IMAGE_CREATE_DISJOINT_BIT);
-
-   if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT) {
-      /* Sparse multiplane is not supported */
-      assert(image->plane_count == 1);
-      usage |= NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT;
-   }
-
-   if (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR))
-      usage |= NIL_IMAGE_USAGE_VIDEO_BIT;
-
-   uint32_t explicit_row_stride_B = 0;
+   image->explicit_row_stride_B = 0;
+   image->max_alignment_B = 0;
 
    /* This section is removed by the optimizer for non-ANDROID builds */
    if (vk_image_is_android_native_buffer(&image->vk)) {
@@ -802,16 +772,15 @@ nvk_image_init(struct nvk_device *dev,
          return result;
 
       image->vk.drm_format_mod = eci.drmFormatModifier;
-      explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
+      image->explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
    }
 
-   uint32_t max_alignment_B = 0;
    const VkImageAlignmentControlCreateInfoMESA *alignment =
       vk_find_struct_const(pCreateInfo->pNext,
                            IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA);
    if (alignment && alignment->maximumRequestedAlignment) {
       assert(util_is_power_of_two_or_zero(alignment->maximumRequestedAlignment));
-      max_alignment_B = alignment->maximumRequestedAlignment;
+      image->max_alignment_B = alignment->maximumRequestedAlignment;
    }
 
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
@@ -828,7 +797,7 @@ nvk_image_init(struct nvk_device *dev,
           * case, and we can only create 2D non-array linear images, so ultimately
           * we only care about the row stride. 
           */
-         explicit_row_stride_B = mod_explicit_info->pPlaneLayouts->rowPitch;
+         image->explicit_row_stride_B = mod_explicit_info->pPlaneLayouts->rowPitch;
       } else {
          const struct VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info =
             vk_find_struct_const(pCreateInfo->pNext,
@@ -842,7 +811,47 @@ nvk_image_init(struct nvk_device *dev,
                                            mod_list_info->pDrmFormatModifiers);
          assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
       }
+   }
 
+   return VK_SUCCESS;
+}
+
+static void
+nvk_image_layout(struct nvk_device *dev, struct nvk_image *image)
+{
+   const struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
+   nil_image_usage_flags usage = 0;
+   if (image->vk.tiling == VK_IMAGE_TILING_LINEAR)
+      usage |= NIL_IMAGE_USAGE_LINEAR_BIT;
+   if (image->vk.create_flags & VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT)
+      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
+   if (image->vk.create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT)
+      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
+
+   /* In order to be able to clear 3D depth/stencil images, we need to bind
+    * them as 2D arrays.  Fortunately, 3D depth/stencil shouldn't be common.
+    */
+   if ((image->vk.aspects & (VK_IMAGE_ASPECT_DEPTH_BIT |
+                             VK_IMAGE_ASPECT_STENCIL_BIT)) &&
+       image->vk.image_type == VK_IMAGE_TYPE_3D)
+      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
+
+   if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT) {
+      /* Sparse multiplane is not supported */
+      assert(image->plane_count == 1);
+      usage |= NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT;
+   }
+
+   if (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR))
+      usage |= NIL_IMAGE_USAGE_VIDEO_BIT;
+
+   if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       if (image->vk.drm_format_mod == DRM_FORMAT_MOD_LINEAR) {
          /* We only have one shadow plane per nvk_image */
          assert(image->plane_count == 1);
@@ -895,8 +904,8 @@ nvk_image_init(struct nvk_device *dev,
          .levels = image->vk.mip_levels,
          .samples = image->vk.samples,
          .usage = usage,
-         .explicit_row_stride_B = explicit_row_stride_B,
-         .max_alignment_B = max_alignment_B,
+         .explicit_row_stride_B = image->explicit_row_stride_B,
+         .max_alignment_B = image->max_alignment_B,
       };
    }
 
@@ -932,8 +941,6 @@ nvk_image_init(struct nvk_device *dev,
       image->stencil_copy_temp.nil =
          nil_image_new(&pdev->info, &stencil_nil_info);
    }
-
-   return VK_SUCCESS;
 }
 
 static void
@@ -1056,6 +1063,8 @@ nvk_CreateImage(VkDevice _device,
       vk_free2(&dev->vk.alloc, pAllocator, image);
       return result;
    }
+
+   nvk_image_layout(dev, image);
 
    for (uint8_t plane = 0; plane < image->plane_count; plane++) {
       result = nvk_image_plane_alloc_va(dev, image, &image->planes[plane]);
@@ -1226,6 +1235,7 @@ nvk_GetDeviceImageMemoryRequirements(VkDevice device,
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   nvk_image_layout(dev, &image);
 
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
@@ -1336,6 +1346,7 @@ nvk_GetDeviceImageSparseMemoryRequirements(
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   nvk_image_layout(dev, &image);
 
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
@@ -1410,6 +1421,7 @@ nvk_GetDeviceImageSubresourceLayoutKHR(
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   nvk_image_layout(dev, &image);
 
    nvk_get_image_subresource_layout(dev, &image, pInfo->pSubresource, pLayout);
 
