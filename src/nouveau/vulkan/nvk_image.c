@@ -1240,6 +1240,33 @@ nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
    vk_image_finish(&image->vk);
 }
 
+static VkResult
+nvk_image_alloc_vas(struct nvk_device *dev,
+                    struct nvk_image *image)
+{
+   /* Note: This may leave the image partially allocated on failure.  However,
+    * nvk_image_finish() can clean up partially allocated images.
+    */
+   VkResult result;
+
+   if (image->vk.create_flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
+                                 VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT)) {
+      for (uint8_t plane = 0; plane < image->plane_count; plane++) {
+         result = nvk_image_plane_alloc_va(dev, image, &image->planes[plane]);
+         if (result != VK_SUCCESS)
+            return result;
+      }
+
+      if (image->stencil_copy_temp.nil.size_B > 0) {
+         result = nvk_image_plane_alloc_va(dev, image, &image->stencil_copy_temp);
+         if (result != VK_SUCCESS)
+            return result;
+      }
+   }
+
+   return VK_SUCCESS;
+}
+
 VKAPI_ATTR VkResult VKAPI_CALL
 nvk_CreateImage(VkDevice _device,
                 const VkImageCreateInfo *pCreateInfo,
@@ -1270,19 +1297,9 @@ nvk_CreateImage(VkDevice _device,
 
    result = nvk_image_layout(dev, image);
 
-   if (image->vk.create_flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
-                                 VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT)) {
-      for (uint8_t plane = 0; plane < image->plane_count; plane++) {
-         result = nvk_image_plane_alloc_va(dev, image, &image->planes[plane]);
-         if (result != VK_SUCCESS)
-            goto fail;
-      }
-
-      if (image->stencil_copy_temp.nil.size_B > 0) {
-         result = nvk_image_plane_alloc_va(dev, image, &image->stencil_copy_temp);
-         if (result != VK_SUCCESS)
-            goto fail;
-      }
+   result = nvk_image_alloc_vas(dev, image);
+   if (result != VK_SUCCESS) {
+      goto fail;
    }
 
    /* This section is removed by the optimizer for non-ANDROID builds */
