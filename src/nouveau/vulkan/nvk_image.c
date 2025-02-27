@@ -859,6 +859,84 @@ nvk_image_init(struct nvk_device *dev,
       image->plane_count = 2;
    }
 
+   image->explicit_row_stride_B = 0;
+   image->max_alignment_B = 0;
+
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+      VkSubresourceLayout a_plane_layouts[4];
+      VkResult result = vk_android_get_anb_layout(
+         pCreateInfo, &eci, a_plane_layouts, 4);
+      if (result != VK_SUCCESS)
+         return result;
+
+      image->vk.drm_format_mod = eci.drmFormatModifier;
+      image->explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
+   }
+
+   const VkImageAlignmentControlCreateInfoMESA *alignment =
+      vk_find_struct_const(pCreateInfo->pNext,
+                           IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA);
+   if (alignment && alignment->maximumRequestedAlignment) {
+      assert(util_is_power_of_two_or_zero(alignment->maximumRequestedAlignment));
+      image->max_alignment_B = alignment->maximumRequestedAlignment;
+   }
+
+   if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
+      /* Modifiers are not supported with YCbCr */
+      assert(image->plane_count == 1);
+
+      const struct VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info =
+         vk_find_struct_const(pCreateInfo->pNext,
+                              IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
+      if (mod_explicit_info) {
+         image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
+         /* Normally with explicit modifiers, the client specifies all strides,
+          * however in our case, we can only really make use of this in the linear
+          * case, and we can only create 2D non-array linear images, so ultimately
+          * we only care about the row stride. 
+          */
+         image->explicit_row_stride_B = mod_explicit_info->pPlaneLayouts->rowPitch;
+      } else {
+         const struct VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT);
+
+         enum pipe_format p_format =
+            nvk_format_to_pipe_format(image->vk.format);
+         image->vk.drm_format_mod =
+            nil_select_best_drm_format_mod(&pdev->info, nil_format(p_format),
+                                           mod_list_info->drmFormatModifierCount,
+                                           mod_list_info->pDrmFormatModifiers);
+         assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
+      }
+   }
+
+   return VK_SUCCESS;
+}
+
+static void
+nvk_image_layout(struct nvk_device *dev, struct nvk_image *image)
+{
+   const struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
+   nil_image_usage_flags usage = 0;
+   if (image->vk.tiling == VK_IMAGE_TILING_LINEAR)
+      usage |= NIL_IMAGE_USAGE_LINEAR_BIT;
+   if (image->vk.create_flags & VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT)
+      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
+   if (image->vk.create_flags & VK_IMAGE_CREATE_2D_VIEW_COMPATIBLE_BIT_EXT)
+      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
+
+   /* In order to be able to clear 3D depth/stencil images, we need to bind
+    * them as 2D arrays.  Fortunately, 3D depth/stencil shouldn't be common.
+    */
+   if ((image->vk.aspects & (VK_IMAGE_ASPECT_DEPTH_BIT |
+                             VK_IMAGE_ASPECT_STENCIL_BIT)) &&
+       image->vk.image_type == VK_IMAGE_TYPE_3D)
+      usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
+
    if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT) {
       /* Sparse multiplane is not supported */
       assert(image->plane_count == 1);
@@ -883,59 +961,7 @@ nvk_image_init(struct nvk_device *dev,
    if (!image->can_compress)
       usage |= NIL_IMAGE_USAGE_UNCOMPRESSED_BIT;
 
-   uint32_t explicit_row_stride_B = 0;
-
-   /* This section is removed by the optimizer for non-ANDROID builds */
-   if (vk_image_is_android_native_buffer(&image->vk)) {
-      VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
-      VkSubresourceLayout a_plane_layouts[4];
-      VkResult result = vk_android_get_anb_layout(
-         pCreateInfo, &eci, a_plane_layouts, 4);
-      if (result != VK_SUCCESS)
-         return result;
-
-      image->vk.drm_format_mod = eci.drmFormatModifier;
-      explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
-   }
-
-   uint32_t max_alignment_B = 0;
-   const VkImageAlignmentControlCreateInfoMESA *alignment =
-      vk_find_struct_const(pCreateInfo->pNext,
-                           IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA);
-   if (alignment && alignment->maximumRequestedAlignment) {
-      assert(util_is_power_of_two_or_zero(alignment->maximumRequestedAlignment));
-      max_alignment_B = alignment->maximumRequestedAlignment;
-   }
-
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
-      /* Modifiers are not supported with YCbCr */
-      assert(image->plane_count == 1);
-
-      const struct VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info =
-         vk_find_struct_const(pCreateInfo->pNext,
-                              IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
-      if (mod_explicit_info) {
-         image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
-         /* Normally with explicit modifiers, the client specifies all strides,
-          * however in our case, we can only really make use of this in the linear
-          * case, and we can only create 2D non-array linear images, so ultimately
-          * we only care about the row stride. 
-          */
-         explicit_row_stride_B = mod_explicit_info->pPlaneLayouts->rowPitch;
-      } else {
-         const struct VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info =
-            vk_find_struct_const(pCreateInfo->pNext,
-                                 IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT);
-
-         enum pipe_format p_format =
-            nvk_format_to_pipe_format(image->vk.format);
-         image->vk.drm_format_mod =
-            nil_select_best_drm_format_mod(&pdev->info, nil_format(p_format),
-                                           mod_list_info->drmFormatModifierCount,
-                                           mod_list_info->pDrmFormatModifiers);
-         assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
-      }
-
       if (image->vk.drm_format_mod == DRM_FORMAT_MOD_LINEAR) {
          /* We only have one shadow plane per nvk_image */
          assert(image->plane_count == 1);
@@ -999,8 +1025,8 @@ nvk_image_init(struct nvk_device *dev,
          .levels = image->vk.mip_levels,
          .samples = image->vk.samples,
          .usage = usage,
-         .explicit_row_stride_B = explicit_row_stride_B,
-         .max_alignment_B = max_alignment_B,
+         .explicit_row_stride_B = image->explicit_row_stride_B,
+         .max_alignment_B = image->max_alignment_B,
       };
    }
 
@@ -1050,8 +1076,6 @@ nvk_image_init(struct nvk_device *dev,
          return vk_errorf(dev, VK_ERROR_UNKNOWN,
                           "Invalid image creation parameters");
    }
-
-   return VK_SUCCESS;
 }
 
 static void
@@ -1165,6 +1189,8 @@ nvk_CreateImage(VkDevice _device,
       vk_free2(&dev->vk.alloc, pAllocator, image);
       return result;
    }
+
+   nvk_image_layout(dev, image);
 
    if (image->vk.create_flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
                                  VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT)) {
@@ -1344,6 +1370,7 @@ nvk_GetDeviceImageMemoryRequirements(VkDevice device,
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   nvk_image_layout(dev, &image);
 
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
@@ -1454,6 +1481,7 @@ nvk_GetDeviceImageSparseMemoryRequirements(
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   nvk_image_layout(dev, &image);
 
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
@@ -1528,6 +1556,7 @@ nvk_GetDeviceImageSubresourceLayoutKHR(
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   nvk_image_layout(dev, &image);
 
    nvk_get_image_subresource_layout(dev, &image, pInfo->pSubresource, pLayout);
 
