@@ -149,7 +149,7 @@ nouveau_zink_predicate(int fd, const char *driver)
    bool prefer_zink = false;
    bool require_zink = false;
 
-   /* Enable Zink by default on Turing and later GPUs
+   /* Enable Zink by default on Ampere and later GPUs
     *
     * We only use Zink if if the kernel supports VMA_TILEMODE, which is needed
     * for DRM format modifiers.  This also doubles as a check for a new enough
@@ -161,7 +161,7 @@ nouveau_zink_predicate(int fd, const char *driver)
       r.param = NOUVEAU_GETPARAM_CHIPSET_ID;
       r.value = 0;
       ret = drmCommandWriteRead(fd, DRM_NOUVEAU_GETPARAM, &r, sizeof(r));
-      if (ret == 0 && r.value >= 0x160) {
+      if (ret == 0 && r.value >= 0x170) {
          prefer_zink = true;
       }
       /* Nouveau GL isn't enabled on anything after Ada */
