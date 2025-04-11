@@ -1150,7 +1150,7 @@ nvk_CreateImage(VkDevice _device,
     *
     * This section is removed by the optimizer for non-ANDROID builds
     */
-   if (vk_image_is_android_hardware_buffer(&image->vk)) {
+   if (vk_image_is_android_hardware_buffer(&image->vk)) { mesa_logi("nvk_CreateImage: AHardwareBuffer image->vk.format %u image->vk.ahb_format %u", image->vk.format, image->vk.ahb_format);
       *pImage = nvk_image_to_handle(image);
       return VK_SUCCESS;
    }
@@ -1552,7 +1552,7 @@ nvk_bind_image_memory(struct nvk_device *dev,
                                          4);
       if (result != VK_SUCCESS)
          return result;
-
+      mesa_logi("nvk_bind_image_memory: AHardwareBuffer image->vk.format %u image->vk.ahb_format %u", image->vk.format, image->vk.ahb_format);
       image->vk.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
       image->vk.drm_format_mod = eci.drmFormatModifier;
       image->explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
