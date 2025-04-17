@@ -3819,6 +3819,10 @@ static void si_bind_vs_shader(struct pipe_context *ctx, void *state)
    struct si_context *sctx = (struct si_context *)ctx;
    struct si_shader_selector *sel = (struct si_shader_selector*)state;
 
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.vs.key.ge.use_aco = 1;
+#endif
+
    if (sctx->shader.vs.cso == sel)
       return;
 
@@ -3829,7 +3833,9 @@ static void si_bind_vs_shader(struct pipe_context *ctx, void *state)
 
    sctx->shader.vs.cso = sel;
    sctx->shader.vs.current = (sel && sel->variants_count) ? sel->variants[0] : NULL;
+#if AMD_LLVM_AVAILABLE
    sctx->shader.vs.key.ge.use_aco = sel ? sel->info.base.use_aco_amd : 0;
+#endif
    sctx->num_vs_blit_sgprs = sel ? sel->info.base.vs.blit_sgprs_amd : 0;
    sctx->vs_uses_draw_id = sel ? sel->info.uses_drawid : false;
 
@@ -3916,12 +3922,18 @@ static void si_bind_gs_shader(struct pipe_context *ctx, void *state)
    bool enable_changed = !!sctx->shader.gs.cso != !!sel;
    bool ngg_changed;
 
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.gs.key.ge.use_aco = 1;
+#endif
+
    if (sctx->shader.gs.cso == sel)
       return;
 
    sctx->shader.gs.cso = sel;
    sctx->shader.gs.current = (sel && sel->variants_count) ? sel->variants[0] : NULL;
+#if AMD_LLVM_AVAILABLE
    sctx->shader.gs.key.ge.use_aco = sel ? sel->info.base.use_aco_amd : 0;
+#endif
    sctx->ia_multi_vgt_param_key.u.uses_gs = sel != NULL;
 
    si_update_common_shader_state(sctx, sel, PIPE_SHADER_GEOMETRY);
@@ -3948,12 +3960,18 @@ static void si_bind_tcs_shader(struct pipe_context *ctx, void *state)
     */
    sctx->is_user_tcs = !!sel;
 
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.tcs.key.ge.use_aco = 1;
+#endif
+
    if (sctx->shader.tcs.cso == sel)
       return;
 
    sctx->shader.tcs.cso = sel;
    sctx->shader.tcs.current = (sel && sel->variants_count) ? sel->variants[0] : NULL;
+#if AMD_LLVM_AVAILABLE
    sctx->shader.tcs.key.ge.use_aco = sel ? sel->info.base.use_aco_amd : 0;
+#endif
    si_update_tess_uses_prim_id(sctx);
    si_update_tess_in_out_patch_vertices(sctx);
 
@@ -3971,12 +3989,18 @@ static void si_bind_tes_shader(struct pipe_context *ctx, void *state)
    struct si_shader_selector *sel = (struct si_shader_selector*)state;
    bool enable_changed = !!sctx->shader.tes.cso != !!sel;
 
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.tes.key.ge.use_aco = 1;
+#endif
+
    if (sctx->shader.tes.cso == sel)
       return;
 
    sctx->shader.tes.cso = sel;
    sctx->shader.tes.current = (sel && sel->variants_count) ? sel->variants[0] : NULL;
+#if AMD_LLVM_AVAILABLE
    sctx->shader.tes.key.ge.use_aco = sel ? sel->info.base.use_aco_amd : 0;
+#endif
    sctx->ia_multi_vgt_param_key.u.uses_tess = sel != NULL;
    si_update_tess_uses_prim_id(sctx);
 
