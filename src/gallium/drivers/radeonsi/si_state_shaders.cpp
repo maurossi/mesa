@@ -3618,6 +3618,10 @@ static void si_bind_vs_shader(struct pipe_context *ctx, void *state)
    struct si_shader_selector *sel = (struct si_shader_selector*)state;
    bool enable_changed = !!sctx->shader.vs.cso != !!sel;
 
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.vs.key.ge.use_aco = 1;
+#endif
+
    if (sctx->shader.vs.cso == sel)
       return;
 
@@ -3722,6 +3726,10 @@ static void si_bind_gs_shader(struct pipe_context *ctx, void *state)
    bool enable_changed = !!sctx->shader.gs.cso != !!sel;
    bool ngg_changed;
 
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.gs.key.ge.use_aco = 1;
+#endif
+
    if (sctx->shader.gs.cso == sel)
       return;
 
@@ -3756,6 +3764,10 @@ static void si_bind_tcs_shader(struct pipe_context *ctx, void *state)
     */
    sctx->is_user_tcs = !!sel;
 
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.tcs.key.ge.use_aco = 1;
+#endif
+
    if (sctx->shader.tcs.cso == sel)
       return;
 
@@ -3780,6 +3792,10 @@ static void si_bind_tes_shader(struct pipe_context *ctx, void *state)
    struct si_shader *old_hw_vs_variant = si_get_vs(sctx)->current;
    struct si_shader_selector *sel = (struct si_shader_selector*)state;
    bool enable_changed = !!sctx->shader.tes.cso != !!sel;
+
+#if !AMD_LLVM_AVAILABLE
+   sctx->shader.tes.key.ge.use_aco = 1;
+#endif
 
    if (sctx->shader.tes.cso == sel)
       return;
