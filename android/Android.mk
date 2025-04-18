@@ -113,6 +113,7 @@ LOCAL_SHARED_LIBRARIES += \
     libhidlbase \
     libutils
 ifeq ($(shell test $(PLATFORM_SDK_VERSION) -ge 35; echo $$?), 0)
+LOCAL_STATIC_LIBRARIES += libzstd
 LOCAL_SHARED_LIBRARIES += libui
 MESON_GEN_PKGCONFIGS += ui
 endif
