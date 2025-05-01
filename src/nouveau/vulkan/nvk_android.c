@@ -25,6 +25,7 @@
 
 #include "util/libsync.h"
 #include "util/os_file.h"
+#include "vk_common_entrypoints.h"
 #include "vk_device.h"
 #include "vk_fence.h"
 #include "vk_queue.h"
@@ -91,18 +92,38 @@ nvk_hal_close(struct hw_device_t *dev)
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-nvk_QueueSignalReleaseImageANDROID(VkQueue _queue,
-                                   uint32_t waitSemaphoreCount,
-                                   const VkSemaphore *pWaitSemaphores,
-                                   VkImage image,
-                                   int *pNativeFenceFd)
+nvk_QueueSignalReleaseImageANDROID(
+      VkQueue             queue,
+      uint32_t            waitSemaphoreCount,
+      const VkSemaphore*  pWaitSemaphores,
+      VkImage             image,
+      int*                pNativeFenceFd)
 {
-   VK_FROM_HANDLE(vk_queue, queue, _queue);
-   struct vk_device *device = queue->base.device;
+   VkResult result;
 
-   device->dispatch_table.QueueWaitIdle(_queue);
+   if (waitSemaphoreCount == 0)
+      goto done;
 
-   *pNativeFenceFd = -1;
+   result = vk_common_QueueSubmit(queue, 1,
+      &(VkSubmitInfo) {
+            .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = pWaitSemaphores,
+            .pWaitDstStageMask = &(VkPipelineStageFlags) {
+               VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+            },
+      },
+      (VkFence) VK_NULL_HANDLE);
+   if (result != VK_SUCCESS)
+      return result;
+
+ done:
+   if (pNativeFenceFd) {
+      /* We can rely implicit on sync because above we submitted all
+       * semaphores to the queue.
+       */
+      *pNativeFenceFd = -1;
+   }
 
    return VK_SUCCESS;
 }
