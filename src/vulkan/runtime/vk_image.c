@@ -109,6 +109,13 @@ vk_image_init(struct vk_device *device,
       image->android_buffer_type = ANDROID_BUFFER_NATIVE;
    }
 
+   const VkImageSwapchainCreateInfoKHR *swapchain_info =
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
+   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+      assert(image->android_buffer_type == ANDROID_BUFFER_NONE);
+      image->android_buffer_type = ANDROID_BUFFER_NATIVE_ALIAS;
+   }
+
    const VkExternalFormatANDROID *ext_format =
       vk_find_struct_const(pCreateInfo->pNext, EXTERNAL_FORMAT_ANDROID);
    if (ext_format && ext_format->externalFormat != 0) {

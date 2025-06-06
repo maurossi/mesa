@@ -32,6 +32,7 @@
 enum android_buffer_type {
    ANDROID_BUFFER_NONE = 0,
    ANDROID_BUFFER_NATIVE,
+   ANDROID_BUFFER_NATIVE_ALIAS,
    ANDROID_BUFFER_HARDWARE,
 };
 #endif
