@@ -864,8 +864,8 @@ if with_gallium_rusticl or with_nouveau_vk or with_tools.contains('etnaviv') or 
     error('Your bingden version is known to be buggy, please upgrade it. ' +
           'If your distribution does not ship a more recent version, ' +
           'you can install the latest version for your user with `cargo install bindgen-cli`.')
-  elif bindgen_version.version_compare('< 0.71.1')
-    error('Mesa requires bindgen 0.71.1 or newer. ' +
+  elif bindgen_version.version_compare('< 0.69.1')
+    error('Mesa requires bindgen 0.69.1 or newer. ' +
           'If your distribution does not ship a recent enough version, ' +
           'you can install the latest version for your user with `cargo install bindgen-cli`.')
   endif
