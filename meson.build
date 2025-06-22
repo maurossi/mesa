@@ -816,7 +816,7 @@ if with_gallium_rusticl or with_nouveau_vk or with_tools.contains('etnaviv') or 
   # bindgen 0.71 is the first version that knows about `editions`
   bindgen_version = find_program('bindgen').version()
   # unknown covers buggy 0.69.0, 0.71.0
-  if bindgen_version == 'unknown' or bindgen_version.version_compare('< 0.71.1')
+  if bindgen_version == 'unknown' or bindgen_version.version_compare('< 0.69.1')
     error('Mesa requires bindgen 0.71.1 or newer. ' +
           'If your distribution does not ship a recent enough version, ' +
           'you can install the latest version for your user with `cargo install bindgen-cli`.')
