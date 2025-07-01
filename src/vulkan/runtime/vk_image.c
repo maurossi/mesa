@@ -168,6 +168,52 @@ vk_image_destroy(struct vk_device *device,
    vk_object_free(device, alloc, image);
 }
 
+VKAPI_ATTR VkResult VKAPI_CALL
+vk_common_CreateImage(VkDevice _device,
+                      const VkImageCreateInfo *pCreateInfo,
+                      const VkAllocationCallbacks *pAllocator,
+                      VkImage *pImage)
+{
+   VK_FROM_HANDLE(vk_device, device, _device);
+   struct vk_image *image;
+   VkResult result;
+
+   assert(device->image_ops->object_size >= sizeof(struct vk_image));
+   assert(device->image_ops->init);
+
+   image = vk_image_create(device, pCreateInfo, pAllocator,
+                           device->image_ops->object_size);
+   if (!image)
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+
+   result = device->image_ops->init(device, pCreateInfo, pAllocator, image);
+   if (result != VK_SUCCESS) {
+      vk_image_destroy(device, pAllocator, image);
+      return vk_error(device, result);
+   }
+
+   *pImage = vk_image_to_handle(image);
+
+   return VK_SUCCESS;
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_DestroyImage(VkDevice _device,
+                       VkImage _image,
+                       const VkAllocationCallbacks *pAllocator)
+{
+   VK_FROM_HANDLE(vk_device, device, _device);
+   VK_FROM_HANDLE(vk_image, image, _image);
+
+   if (!image)
+      return;
+
+   if (device->image_ops->finish)
+      device->image_ops->finish(device, pAllocator, image);
+
+   vk_image_destroy(device, pAllocator, image);
+}
+
 #if DETECT_OS_LINUX || DETECT_OS_BSD
 VKAPI_ATTR VkResult VKAPI_CALL
 vk_common_GetImageDrmFormatModifierPropertiesEXT(UNUSED VkDevice device,

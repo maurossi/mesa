@@ -141,6 +141,9 @@ struct vk_device {
    /** Shader vtable for VK_EXT_shader_object and common pipelines */
    const struct vk_device_shader_ops *shader_ops;
 
+   /** Image vtable when using the common image create and destroy */
+   const struct vk_image_ops *image_ops;
+
    /** Acceleration structure build vtable for common BVH building. */
    const struct vk_acceleration_structure_build_ops *as_build_ops;
 

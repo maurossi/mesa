@@ -103,6 +103,35 @@ struct vk_image {
 VK_DEFINE_NONDISP_HANDLE_CASTS(vk_image, base, VkImage,
                                VK_OBJECT_TYPE_IMAGE);
 
+/** Image ops */
+struct vk_image_ops {
+   /** Size of a driver image object
+    *
+    * Used by the common image implementation. This is passed as the size of
+    * the vk_image_create helper used by vk_common_CreateImage.
+    */
+   size_t object_size;
+
+   /** Initialize driver specific image internals
+    *
+    * Used by vk_common_CreateImage to initialize the driver specific part of
+    * an image after the common part has been initialized.
+    */
+   VkResult (*init)(struct vk_device *device,
+                    const VkImageCreateInfo *create_info,
+                    const VkAllocationCallbacks *alloc,
+                    struct vk_image *image);
+
+   /** De-initialize driver specific image internals
+    *
+    * Used by vk_common_DestroyImage to tear down the driver specific part of
+    * an image before tearing down the common part.
+    */
+   void (*finish)(struct vk_device *device,
+                  const VkAllocationCallbacks *alloc,
+                  struct vk_image *image);
+};
+
 void vk_image_init(struct vk_device *device,
                    struct vk_image *image,
                    const VkImageCreateInfo *pCreateInfo);
