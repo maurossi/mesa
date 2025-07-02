@@ -28,6 +28,7 @@
 #include "util/os_file.h"
 #include "util/os_time.h"
 #include "util/xmlconfig.h"
+#include "vk_common_entrypoints.h"
 #include "vk_device.h"
 #include "vk_fence.h"
 #include "vk_format.h"
@@ -1652,14 +1653,10 @@ wsi_common_vk_instance_supports_present_wait(const struct vk_instance *instance)
 #endif
 }
 
-VkResult
-wsi_common_create_swapchain_image(const struct wsi_device *wsi,
-                                  const VkImageCreateInfo *pCreateInfo,
-                                  VkSwapchainKHR _swapchain,
-                                  VkImage *pImage)
+static void
+wsi_common_validate_image_create_info(const VkImageCreateInfo *pCreateInfo,
+                                      const struct wsi_swapchain *chain)
 {
-   VK_FROM_HANDLE(wsi_swapchain, chain, _swapchain);
-
 #ifndef NDEBUG
    const VkImageCreateInfo *swcInfo = &chain->image_info.create;
    assert(pCreateInfo->flags == 0);
@@ -1703,10 +1700,40 @@ wsi_common_create_swapchain_image(const struct wsi_device *wsi,
       }
    }
 #endif
+}
 
+VkResult
+wsi_common_create_swapchain_image(const struct wsi_device *wsi,
+                                  const VkImageCreateInfo *pCreateInfo,
+                                  VkSwapchainKHR _swapchain,
+                                  VkImage *pImage)
+{
+   VK_FROM_HANDLE(wsi_swapchain, chain, _swapchain);
+
+   wsi_common_validate_image_create_info(pCreateInfo, chain);
    return wsi->CreateImage(chain->device, &chain->image_info.create,
                            &chain->alloc, pImage);
 }
+
+#if !DETECT_OS_ANDROID
+VKAPI_ATTR VkResult VKAPI_CALL
+wsi_CreateImage(VkDevice device,
+                const VkImageCreateInfo *pCreateInfo,
+                const VkAllocationCallbacks *pAllocator,
+                VkImage *pImage)
+{
+   const VkImageSwapchainCreateInfoKHR *swapchain_info =
+      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
+   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
+      VK_FROM_HANDLE(wsi_swapchain, chain, swapchain_info->swapchain);
+
+      wsi_common_validate_image_create_info(pCreateInfo, chain);
+      pCreateInfo = &chain->image_info.create;
+   }
+
+   return vk_common_CreateImage(device, pCreateInfo, pAllocator, pImage);
+}
+#endif
 
 VkResult
 wsi_swapchain_wait_for_present_semaphore(const struct wsi_swapchain *chain,
