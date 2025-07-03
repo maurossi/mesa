@@ -424,6 +424,22 @@ panvk_image_init(struct panvk_image *image,
 }
 
 static VkResult
+panvk_image_init_cb(UNUSED struct vk_device *device,
+                    const VkImageCreateInfo *create_info,
+                    UNUSED const VkAllocationCallbacks *alloc,
+                    struct vk_image *image)
+{
+   struct panvk_image *img = container_of(image, struct panvk_image, vk);
+   return panvk_image_init(img, create_info);
+}
+
+const struct vk_image_ops panvk_image_ops = {
+   .object_size = sizeof(struct panvk_image),
+   .init = panvk_image_init_cb,
+   .finish = NULL,
+};
+
+static VkResult
 panvk_image_plane_bind(struct panvk_device *dev,
                        struct panvk_image_plane *plane, struct pan_kmod_bo *bo,
                        uint64_t base, uint64_t offset)
@@ -464,62 +480,6 @@ panvk_image_plane_bind(struct panvk_device *dev,
    }
 
    return VK_SUCCESS;
-}
-
-VKAPI_ATTR VkResult VKAPI_CALL
-panvk_CreateImage(VkDevice device, const VkImageCreateInfo *pCreateInfo,
-                  const VkAllocationCallbacks *pAllocator, VkImage *pImage)
-{
-   VK_FROM_HANDLE(panvk_device, dev, device);
-   struct panvk_physical_device *phys_dev =
-      to_panvk_physical_device(dev->vk.physical);
-
-   const VkImageSwapchainCreateInfoKHR *swapchain_info =
-      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
-   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
-      return wsi_common_create_swapchain_image(&phys_dev->wsi_device,
-                                               pCreateInfo,
-                                               swapchain_info->swapchain,
-                                               pImage);
-   }
-
-   struct panvk_image *image =
-      vk_image_create(&dev->vk, pCreateInfo, pAllocator, sizeof(*image));
-   if (!image)
-      return panvk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   VkResult result = panvk_image_init(image, pCreateInfo);
-   if (result != VK_SUCCESS) {
-      vk_image_destroy(&dev->vk, pAllocator, &image->vk);
-      return result;
-   }
-
-   /*
-    * From the Vulkan spec:
-    *
-    *    If the size of the resultant image would exceed maxResourceSize, then
-    *    vkCreateImage must fail and return VK_ERROR_OUT_OF_DEVICE_MEMORY.
-    */
-   if (panvk_image_get_total_size(image) > UINT32_MAX) {
-      vk_image_destroy(&dev->vk, pAllocator, &image->vk);
-      return panvk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
-   }
-
-   *pImage = panvk_image_to_handle(image);
-   return VK_SUCCESS;
-}
-
-VKAPI_ATTR void VKAPI_CALL
-panvk_DestroyImage(VkDevice _device, VkImage _image,
-                   const VkAllocationCallbacks *pAllocator)
-{
-   VK_FROM_HANDLE(panvk_device, device, _device);
-   VK_FROM_HANDLE(panvk_image, image, _image);
-
-   if (!image)
-      return;
-
-   vk_image_destroy(&device->vk, pAllocator, &image->vk);
 }
 
 static void

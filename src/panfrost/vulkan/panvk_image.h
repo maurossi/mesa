@@ -38,6 +38,8 @@ struct panvk_image {
 VK_DEFINE_NONDISP_HANDLE_CASTS(panvk_image, vk.base, VkImage,
                                VK_OBJECT_TYPE_IMAGE)
 
+extern const struct vk_image_ops panvk_image_ops;
+
 /* Check whether it is possible that images in a given configuration may use
  * AFBC tiling. This function does not have access to all of the relevant
  * image configuration, and returns true if any images with the specified
