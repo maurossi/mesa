@@ -24,11 +24,10 @@ void
 vn_wsi_fini(struct vn_physical_device *physical_dev);
 
 VkResult
-vn_wsi_create_image(struct vn_device *dev,
-                    const VkImageCreateInfo *create_info,
-                    const struct wsi_image_create_info *wsi_info,
-                    const VkAllocationCallbacks *alloc,
-                    struct vn_image **out_img);
+vn_wsi_image_init(struct vn_device *dev,
+                  const VkImageCreateInfo *create_info,
+                  const struct wsi_image_create_info *wsi_info,
+                  struct vn_image *img);
 
 bool
 vn_wsi_validate_image_format_info(
@@ -49,11 +48,10 @@ vn_wsi_fini(UNUSED struct vn_physical_device *physical_dev)
 }
 
 static inline VkResult
-vn_wsi_create_image(struct vn_device *dev,
-                    const VkImageCreateInfo *create_info,
-                    const struct wsi_image_create_info *wsi_info,
-                    const VkAllocationCallbacks *alloc,
-                    struct vn_image **out_img)
+vn_wsi_image_init(struct vn_device *dev,
+                  const VkImageCreateInfo *create_info,
+                  const struct wsi_image_create_info *wsi_info,
+                  struct vn_image *img)
 {
    return VK_ERROR_OUT_OF_HOST_MEMORY;
 }

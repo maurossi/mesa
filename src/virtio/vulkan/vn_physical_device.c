@@ -15,10 +15,8 @@
 #include "git_sha1.h"
 #include "util/mesa-sha1.h"
 #include "venus-protocol/vn_protocol_driver_device.h"
-#include "vk_android.h"
 #include "vk_common_entrypoints.h"
 
-#include "vn_android.h"
 #include "vn_instance.h"
 
 #define IMAGE_FORMAT_CACHE_MAX_ENTRIES 100

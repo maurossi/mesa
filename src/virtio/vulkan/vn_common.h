@@ -39,6 +39,7 @@
 #include "util/u_math.h"
 #include "util/xmlconfig.h"
 #include "vk_alloc.h"
+#include "vk_android.h"
 #include "vk_command_buffer.h"
 #include "vk_command_pool.h"
 #include "vk_debug_report.h"

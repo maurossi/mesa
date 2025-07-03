@@ -42,48 +42,19 @@ struct vn_image_reqs_cache {
    } debug;
 };
 
-struct vn_image_create_deferred_info {
-   VkImageCreateInfo create;
-   VkImageFormatListCreateInfo list;
-   VkImageStencilUsageCreateInfo stencil;
-
-   /* True if VkImageCreateInfo::format is translated from a non-zero
-    * VkExternalFormatANDROID::externalFormat for the AHB image.
-    */
-   bool from_external_format;
-   /* track whether vn_image_init_deferred succeeds */
-   bool initialized;
-};
-
 struct vn_image {
    struct vn_image_base base;
 
    struct vn_image_memory_requirements requirements[4];
 
-   /* For VK_ANDROID_external_memory_android_hardware_buffer, real image
-    * creation is deferred until bind image memory.
-    */
-   struct vn_image_create_deferred_info *deferred_info;
-
-   struct {
-      /* True if this is a swapchain image and VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
-       * is a valid layout.  A swapchain image can be created internally
-       * (wsi_image_create_info) or externally (VkNativeBufferANDROID and
-       * VkImageSwapchainCreateInfoKHR).
-       */
-      bool is_wsi;
-      bool is_prime_blit_src;
-
-      struct vn_device_memory *memory;
-
-      /* For VK_ANDROID_native_buffer, the WSI image owns the memory. */
-      bool memory_owned;
-   } wsi;
+   bool is_prime_blit_src;
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(vn_image,
                                base.vk.base,
                                VkImage,
                                VK_OBJECT_TYPE_IMAGE)
+
+extern const struct vk_image_ops vn_image_ops;
 
 struct vn_image_view {
    struct vn_object_base base;
@@ -112,15 +83,9 @@ VK_DEFINE_NONDISP_HANDLE_CASTS(vn_sampler_ycbcr_conversion,
                                VK_OBJECT_TYPE_SAMPLER_YCBCR_CONVERSION)
 
 VkResult
-vn_image_create(struct vn_device *dev,
-                const VkImageCreateInfo *create_info,
-                const VkAllocationCallbacks *alloc,
-                struct vn_image **out_img);
-
-VkResult
-vn_image_init_deferred(struct vn_device *dev,
-                       const VkImageCreateInfo *create_info,
-                       struct vn_image *img);
+vn_image_init(struct vn_device *dev,
+              const VkImageCreateInfo *create_info,
+              struct vn_image *img);
 
 void
 vn_image_reqs_cache_init(struct vn_device *dev);

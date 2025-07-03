@@ -14,7 +14,6 @@
 #include "util/hex.h"
 #include "venus-protocol/vn_protocol_driver_device.h"
 
-#include "vn_android.h"
 #include "vn_instance.h"
 #include "vn_physical_device.h"
 #include "vn_queue.h"
@@ -437,6 +436,7 @@ vn_device_init(struct vn_device *dev,
    dev->device_mask = 1;
    dev->renderer = instance->renderer;
    dev->primary_ring = instance->ring.ring;
+   dev->base.vk.image_ops = &vn_image_ops;
 
    create_info =
       vn_device_fix_create_info(dev, create_info, alloc, &local_create_info);

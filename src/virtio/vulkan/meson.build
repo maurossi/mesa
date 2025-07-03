@@ -113,11 +113,6 @@ if with_platform_x11
   vn_deps += dep_xcb_dri3
 endif
 
-if with_platform_android
-  libvn_files += files('vn_android.c')
-  vn_deps += [dep_android, idep_u_gralloc]
-endif
-
 libvulkan_virtio = shared_library(
   'vulkan_virtio',
   [libvn_files, vn_entrypoints, sha1_h],

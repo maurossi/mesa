@@ -218,10 +218,8 @@ vn_cmd_fix_image_memory_barrier_common(const struct vn_image *img,
        *new_layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
       return result;
 
-   assert(img->wsi.is_wsi);
-
    /* prime blit src or no layout transition */
-   if (img->wsi.is_prime_blit_src || *old_layout == *new_layout) {
+   if (img->is_prime_blit_src || *old_layout == *new_layout) {
       if (*old_layout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
          *old_layout = VN_PRESENT_SRC_INTERNAL_LAYOUT;
       if (*new_layout == VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)

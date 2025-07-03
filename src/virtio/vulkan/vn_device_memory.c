@@ -14,7 +14,6 @@
 #include "venus-protocol/vn_protocol_driver_transport.h"
 #include "vk_debug_utils.h"
 
-#include "vn_android.h"
 #include "vn_buffer.h"
 #include "vn_device.h"
 #include "vn_image.h"
@@ -106,7 +105,13 @@ vn_device_memory_bo_fini(struct vn_device *dev, struct vn_device_memory *mem)
    }
 }
 
-VkResult
+static VkResult
+vn_get_memory_dma_buf_properties(struct vn_device *dev,
+                                 int fd,
+                                 uint64_t *out_alloc_size,
+                                 uint32_t *out_mem_type_bits);
+
+static VkResult
 vn_device_memory_import_dma_buf(struct vn_device *dev,
                                 struct vn_device_memory *mem,
                                 const VkMemoryAllocateInfo *alloc_info,
@@ -363,6 +368,11 @@ vn_AllocateMemory(VkDevice device,
                   const VkAllocationCallbacks *pAllocator,
                   VkDeviceMemory *pMemory)
 {
+   if (vk_android_is_ahb_memory(pAllocateInfo)) {
+      return vk_android_allocate_ahb_memory(device, pAllocateInfo, pAllocator,
+                                            pMemory);
+   }
+
    struct vn_device *dev = vn_device_from_handle(device);
 
    struct vn_device_memory *mem = vk_device_memory_create(
@@ -376,9 +386,7 @@ vn_AllocateMemory(VkDevice device,
       vk_find_struct_const(pAllocateInfo->pNext, IMPORT_MEMORY_FD_INFO_KHR);
 
    VkResult result;
-   if (mem->base.vk.ahardware_buffer) {
-      result = vn_android_device_import_ahb(dev, mem, pAllocateInfo);
-   } else if (import_fd_info) {
+   if (import_fd_info) {
       result = vn_device_memory_import_dma_buf(dev, mem, pAllocateInfo,
                                                import_fd_info->fd);
    } else {
@@ -565,7 +573,7 @@ vn_GetMemoryFdKHR(VkDevice device,
    return VK_SUCCESS;
 }
 
-VkResult
+static VkResult
 vn_get_memory_dma_buf_properties(struct vn_device *dev,
                                  int fd,
                                  uint64_t *out_alloc_size,

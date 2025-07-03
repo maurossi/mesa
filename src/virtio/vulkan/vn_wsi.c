@@ -113,11 +113,10 @@ vn_wsi_fini(struct vn_physical_device *physical_dev)
 }
 
 VkResult
-vn_wsi_create_image(struct vn_device *dev,
-                    const VkImageCreateInfo *create_info,
-                    const struct wsi_image_create_info *wsi_info,
-                    const VkAllocationCallbacks *alloc,
-                    struct vn_image **out_img)
+vn_wsi_image_init(struct vn_device *dev,
+                  const VkImageCreateInfo *create_info,
+                  const struct wsi_image_create_info *wsi_info,
+                  struct vn_image *img)
 {
    VkImageCreateInfo local_create_info;
    if (dev->physical_device->renderer_driver_id ==
@@ -146,16 +145,9 @@ vn_wsi_create_image(struct vn_device *dev,
       }
    }
 
-   struct vn_image *img;
-   VkResult result = vn_image_create(dev, create_info, alloc, &img);
-   if (result != VK_SUCCESS)
-      return result;
+   img->is_prime_blit_src = wsi_info->blit_src;
 
-   img->wsi.is_wsi = true;
-   img->wsi.is_prime_blit_src = wsi_info->blit_src;
-
-   *out_img = img;
-   return VK_SUCCESS;
+   return vn_image_init(dev, create_info, img);
 }
 
 static uint32_t
