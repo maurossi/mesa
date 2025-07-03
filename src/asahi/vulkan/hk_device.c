@@ -12,6 +12,7 @@
 #include "hk_cmd_buffer.h"
 #include "hk_descriptor_table.h"
 #include "hk_entrypoints.h"
+#include "hk_image.h"
 #include "hk_instance.h"
 #include "hk_physical_device.h"
 #include "hk_shader.h"
@@ -305,6 +306,7 @@ hk_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_alloc;
 
    dev->vk.shader_ops = &hk_device_shader_ops;
+   dev->vk.image_ops = &hk_image_ops;
    dev->vk.command_dispatch_table = &dev->cmd_dispatch;
 
    drmDevicePtr drm_device = NULL;

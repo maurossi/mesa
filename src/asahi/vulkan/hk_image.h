@@ -79,6 +79,8 @@ struct hk_image {
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(hk_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
 
+extern const struct vk_image_ops hk_image_ops;
+
 static inline uint64_t
 hk_image_plane_base_address(const struct hk_image_plane *plane)
 {

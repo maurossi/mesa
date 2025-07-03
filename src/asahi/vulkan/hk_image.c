@@ -796,11 +796,9 @@ choose_drm_format_mod(struct hk_device *dev, uint8_t plane_count,
 }
 
 static VkResult
-hk_image_init(struct hk_device *dev, struct hk_image *image,
-              const VkImageCreateInfo *pCreateInfo)
+hk_image_init_internal(struct hk_device *dev, struct hk_image *image,
+                       const VkImageCreateInfo *pCreateInfo)
 {
-   vk_image_init(&dev->vk, &image->vk, pCreateInfo);
-
    if ((image->vk.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) &&
        image->vk.samples > 1) {
@@ -909,6 +907,14 @@ hk_image_init(struct hk_device *dev, struct hk_image *image,
    return VK_SUCCESS;
 }
 
+static inline VkResult
+hk_image_init(struct hk_device *dev, struct hk_image *image,
+              const VkImageCreateInfo *pCreateInfo)
+{
+   vk_image_init(&dev->vk, &image->vk, pCreateInfo);
+   return hk_image_init_internal(dev, image, pCreateInfo);
+}
+
 static VkResult
 hk_image_plane_alloc_vma(struct hk_device *dev, struct hk_image_plane *plane,
                          VkImageCreateFlags create_flags)
@@ -965,78 +971,63 @@ hk_image_plane_finish(struct hk_device *dev, struct hk_image_plane *plane,
 }
 
 static void
-hk_image_finish(struct hk_device *dev, struct hk_image *image,
-                const VkAllocationCallbacks *pAllocator)
+hk_image_finish_internal(struct hk_device *dev, struct hk_image *image,
+                         const VkAllocationCallbacks *pAllocator)
 {
    for (uint8_t plane = 0; plane < image->plane_count; plane++) {
       hk_image_plane_finish(dev, &image->planes[plane], image->vk.create_flags,
                             pAllocator);
    }
+}
 
+static void
+hk_image_finish(struct hk_device *dev, struct hk_image *image,
+                const VkAllocationCallbacks *pAllocator)
+{
+   hk_image_finish_internal(dev, image, pAllocator);
    vk_image_finish(&image->vk);
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL
-hk_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
-               const VkAllocationCallbacks *pAllocator, VkImage *pImage)
+static VkResult
+hk_image_init_cb(struct vk_device *device, const VkImageCreateInfo *create_info,
+                 UNUSED const VkAllocationCallbacks *alloc,
+                 struct vk_image *_image)
 {
-   VK_FROM_HANDLE(hk_device, dev, _device);
-   struct hk_physical_device *pdev = hk_device_physical(dev);
-   struct hk_image *image;
+   struct hk_device *dev = container_of(device, struct hk_device, vk);
+   struct hk_image *image = container_of(_image, struct hk_image, vk);
    VkResult result;
 
-#ifdef HK_USE_WSI_PLATFORM
-   /* Ignore swapchain creation info on Android. Since we don't have an
-    * implementation in Mesa, we're guaranteed to access an Android object
-    * incorrectly.
-    */
-   const VkImageSwapchainCreateInfoKHR *swapchain_info =
-      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
-   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
-      return wsi_common_create_swapchain_image(
-         &pdev->wsi_device, pCreateInfo, swapchain_info->swapchain, pImage);
-   }
-#endif
-
-   image = vk_zalloc2(&dev->vk.alloc, pAllocator, sizeof(*image), 8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (!image)
-      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   result = hk_image_init(dev, image, pCreateInfo);
-   if (result != VK_SUCCESS) {
-      vk_free2(&dev->vk.alloc, pAllocator, image);
+   result = hk_image_init_internal(dev, image, create_info);
+   if (result != VK_SUCCESS)
       return result;
-   }
 
    for (uint8_t plane = 0; plane < image->plane_count; plane++) {
       result = hk_image_plane_alloc_vma(dev, &image->planes[plane],
                                         image->vk.create_flags);
       if (result != VK_SUCCESS) {
-         hk_image_finish(dev, image, pAllocator);
-         vk_free2(&dev->vk.alloc, pAllocator, image);
+         hk_image_finish_internal(dev, image, alloc);
          return result;
       }
    }
 
-   *pImage = hk_image_to_handle(image);
-
    return VK_SUCCESS;
 }
 
-VKAPI_ATTR void VKAPI_CALL
-hk_DestroyImage(VkDevice device, VkImage _image,
-                const VkAllocationCallbacks *pAllocator)
+static void
+hk_image_finish_cb(struct vk_device *device, const VkAllocationCallbacks *alloc,
+                   struct vk_image *_image)
 {
-   VK_FROM_HANDLE(hk_device, dev, device);
-   VK_FROM_HANDLE(hk_image, image, _image);
+   struct hk_device *dev = container_of(device, struct hk_device, vk);
+   struct hk_image *image = container_of(_image, struct hk_image, vk);
 
-   if (!image)
-      return;
-
-   hk_image_finish(dev, image, pAllocator);
-   vk_free2(&dev->vk.alloc, pAllocator, image);
+   hk_image_finish_internal(dev, image, alloc);
 }
+
+const struct vk_image_ops hk_image_ops = {
+   .object_size = sizeof(struct hk_image),
+   .init = hk_image_init_cb,
+   .finish = hk_image_finish_cb,
+};
 
 static void
 hk_image_plane_add_req(struct hk_image_plane *plane, bool sparse,
