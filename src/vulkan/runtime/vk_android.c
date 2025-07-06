@@ -266,6 +266,138 @@ vk_android_get_anb_layout(
                                             out_layouts, max_planes);
 }
 
+struct vk_android_deferred_info {
+   VkImageCreateInfo create;
+   VkImageFormatListCreateInfo list;
+   VkImageStencilUsageCreateInfo stencil;
+   VkImageCompressionControlEXT compress;
+   bool initialized;
+};
+
+static VkResult
+vk_android_deferred_info_init(struct vk_device *device,
+                              const VkImageCreateInfo *create_info,
+                              const VkAllocationCallbacks *alloc,
+                              struct vk_image *image)
+{
+   struct {
+      const VkImageFormatListCreateInfo *list;
+      const VkImageStencilUsageCreateInfo *stencil;
+      const VkImageCompressionControlEXT *compress;
+
+      uint32_t family_count;
+      uint32_t format_count;
+      uint32_t rate_count;
+   } info = {0};
+
+   if (create_info->sharingMode == VK_SHARING_MODE_CONCURRENT)
+      info.family_count = create_info->queueFamilyIndexCount;
+
+   vk_foreach_struct_const(ext, create_info->pNext) {
+      switch (ext->sType) {
+      case VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO:
+          info.list = (const void *)ext;
+          if (info.list->viewFormatCount)
+             info.format_count = info.list->viewFormatCount;
+          else
+             info.list = NULL;
+          break;
+      case VK_STRUCTURE_TYPE_IMAGE_STENCIL_USAGE_CREATE_INFO:
+          info.stencil = (const void *)ext;
+          break;
+      case VK_STRUCTURE_TYPE_IMAGE_COMPRESSION_CONTROL_EXT:
+          info.compress = (const void *)ext;
+          if (info.compress->flags &
+              VK_IMAGE_COMPRESSION_FIXED_RATE_EXPLICIT_EXT)
+             info.rate_count = info.compress->compressionControlPlaneCount;
+          break;
+      default:
+          break;
+      }
+   }
+
+   struct vk_android_deferred_info *dinfo;
+   uint32_t *families;
+   VkFormat *formats;
+   VkImageCompressionFixedRateFlagsEXT *rates;
+
+   VK_MULTIALLOC(ma);
+   vk_multialloc_add(&ma, &dinfo, __typeof__(*dinfo), 1);
+   if (info.family_count) {
+      vk_multialloc_add(&ma, &families, __typeof__(*families),
+                        info.family_count);
+   }
+   if (info.format_count) {
+      vk_multialloc_add(&ma, &formats, __typeof__(*formats),
+                        info.format_count);
+   }
+   if (info.rate_count)
+      vk_multialloc_add(&ma, &rates, __typeof__(*rates), info.rate_count);
+   if (!vk_multialloc_alloc2(&ma, &device->alloc, alloc,
+                             VK_SYSTEM_ALLOCATION_SCOPE_OBJECT))
+      return VK_ERROR_OUT_OF_HOST_MEMORY;
+
+   /* Initialize and sanitize deferred info */
+   dinfo->create = *create_info;
+   dinfo->create.pNext = NULL;
+   /* Assign resolved AHB external format */
+   dinfo->create.format = image->format;
+   dinfo->create.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+   if (info.family_count) {
+      typed_memcpy(families, create_info->pQueueFamilyIndices,
+                   info.family_count);
+      dinfo->create.pQueueFamilyIndices = families;
+   }
+
+   if (info.list) {
+      dinfo->list = *info.list;
+      dinfo->list.pNext = NULL;
+      typed_memcpy(formats, info.list->pViewFormats, info.format_count);
+      dinfo->list.pViewFormats = formats;
+      __vk_append_struct(&dinfo->create, &dinfo->list);
+   } else if (create_info->flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT) {
+      /* Per spec section 12.3. Images
+       *
+       * - If tiling is VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT and flags
+       *   contains VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT, then the pNext chain
+       *   must include a VkImageFormatListCreateInfo structure with non-zero
+       *   viewFormatCount.
+       *
+       * ANB and aliased ANB always chain proper format list for mutable
+       * swapchain image support, but AHB is allowed to mutate without an
+       * explicit format list due to legacy spec issue. So we chain a view
+       * format of itself to satisfy VK_EXT_image_drm_format_modifier VUs.
+       */
+      dinfo->list = (VkImageFormatListCreateInfo){
+         .sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_LIST_CREATE_INFO,
+         .viewFormatCount = 1,
+         .pViewFormats = &dinfo->create.format,
+      };
+      __vk_append_struct(&dinfo->create, &dinfo->list);
+   }
+
+   if (info.stencil) {
+      dinfo->stencil = *info.stencil;
+      dinfo->stencil.pNext = NULL;
+      __vk_append_struct(&dinfo->create, &dinfo->stencil);
+   }
+
+   if (info.compress) {
+      dinfo->compress = *info.compress;
+      dinfo->compress.pNext = NULL;
+      if (info.rate_count) {
+         typed_memcpy(rates, info.compress->pFixedRateFlags, info.rate_count);
+         dinfo->compress.pFixedRateFlags = rates;
+      }
+      __vk_append_struct(&dinfo->create, &dinfo->compress);
+   }
+
+   dinfo->initialized = false;
+   image->create_info = &dinfo->create;
+
+   return VK_SUCCESS;
+}
+
 static inline uint32_t
 vk_android_get_fd_mem_type_bits(struct vk_device *device, int dma_buf_fd)
 {
@@ -414,11 +546,14 @@ vk_android_gralloc_image_init(struct vk_device *device,
    VkDevice dev_handle = vk_device_to_handle(device);
    VkResult result;
 
-   if (image->android_buffer_type != ANDROID_BUFFER_NATIVE)
+   if (image->android_buffer_type == ANDROID_BUFFER_HARDWARE)
       return VK_ERROR_FEATURE_NOT_PRESENT;
 
    /* fix the stored tiling here for all gralloc image types */
    image->tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+
+   if (image->android_buffer_type != ANDROID_BUFFER_NATIVE)
+      return vk_android_deferred_info_init(device, create_info, alloc, image);
 
    const VkNativeBufferANDROID *anb =
       vk_find_struct_const(create_info->pNext, NATIVE_BUFFER_ANDROID);
@@ -442,6 +577,19 @@ vk_android_gralloc_image_finish(struct vk_device *device,
                                 const VkAllocationCallbacks *alloc,
                                 struct vk_image *image)
 {
+   if (image->create_info) {
+      struct vk_android_deferred_info *dinfo = container_of(
+         image->create_info, struct vk_android_deferred_info, create);
+
+      const bool deferred_initialized = dinfo->initialized;
+
+      vk_free2(&device->alloc, alloc, dinfo);
+
+      /* image has been destroyed before deferred initialization */
+      if (!deferred_initialized)
+         return;
+   }
+
    if (device->image_ops->finish)
       device->image_ops->finish(device, alloc, image);
 }

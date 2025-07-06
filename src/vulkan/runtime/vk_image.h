@@ -99,6 +99,16 @@ struct vk_image {
     * but it may be overridden by the driver as needed.
     */
    uint32_t ahb_format;
+
+   /* For AHB and aliased ANB, only the vk_image object is created upon
+    * vkCreateImage, while the driver image init is deferred till:
+    * - AHB: dedicated AHB memory import
+    * - aliased ANB: swapchain image binding
+    *
+    * This requires deep copy of the image create info chain used by either
+    * AHB or aliased ANB.
+    */
+   VkImageCreateInfo *create_info;
 #endif
 };
 VK_DEFINE_NONDISP_HANDLE_CASTS(vk_image, base, VkImage,
