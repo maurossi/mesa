@@ -134,6 +134,12 @@ vk_android_hal_open(const struct hw_module_t *mod, const char *id,
    return 0;
 }
 
+bool
+vk_android_is_gralloc_image(struct vk_image *image)
+{
+   return image->android_buffer_type != ANDROID_BUFFER_NONE;
+}
+
 static VkResult
 vk_gralloc_to_drm_explicit_layout(
    struct u_gralloc_buffer_handle *in_hnd,
@@ -258,6 +264,186 @@ vk_android_get_anb_layout(
 
    return vk_gralloc_to_drm_explicit_layout(&gr_handle, out,
                                             out_layouts, max_planes);
+}
+
+static inline uint32_t
+vk_android_get_fd_mem_type_bits(struct vk_device *device, int dma_buf_fd)
+{
+   VkDevice dev_handle = vk_device_to_handle(device);
+   VkMemoryFdPropertiesKHR fd_props = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_FD_PROPERTIES_KHR,
+   };
+   VkResult result = device->dispatch_table.GetMemoryFdPropertiesKHR(
+      dev_handle, VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT, dma_buf_fd,
+      &fd_props);
+   return result == VK_SUCCESS ? fd_props.memoryTypeBits : 0;
+}
+
+static VkResult
+vk_android_get_image_memory_requirements(struct vk_device *device,
+                                         VkImage img_handle,
+                                         int dma_buf_fd,
+                                         VkMemoryRequirements *out_mem_reqs)
+{
+   VkDevice dev_handle = vk_device_to_handle(device);
+
+   VkMemoryRequirements mem_reqs;
+   device->dispatch_table.GetImageMemoryRequirements(dev_handle, img_handle,
+                                                     &mem_reqs);
+
+   const uint32_t fd_mem_type_bits =
+      vk_android_get_fd_mem_type_bits(device, dma_buf_fd);
+
+   if (!(mem_reqs.memoryTypeBits & fd_mem_type_bits)) {
+      mesa_loge("No compatible mem type: img req (%u), fd req (%u)",
+                mem_reqs.memoryTypeBits, fd_mem_type_bits);
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+   }
+
+   mem_reqs.memoryTypeBits &= fd_mem_type_bits;
+   *out_mem_reqs = mem_reqs;
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+vk_android_import_anb_memory(struct vk_device *device,
+                             struct vk_image *image,
+                             const VkNativeBufferANDROID *anb,
+                             const VkAllocationCallbacks *alloc)
+{
+   VkDevice dev_handle = vk_device_to_handle(device);
+   VkImage img_handle = vk_image_to_handle(image);
+   VkMemoryRequirements mem_reqs;
+   VkResult result;
+
+   assert(anb && anb->handle && anb->handle->numFds > 0);
+
+   int dma_buf_fd = anb->handle->data[0];
+   result = vk_android_get_image_memory_requirements(
+      device, img_handle, dma_buf_fd, &mem_reqs);
+   if (result != VK_SUCCESS)
+      return result;
+
+   int dup_fd = os_dupfd_cloexec(dma_buf_fd);
+   if (dup_fd < 0) {
+      return (errno == EMFILE) ? VK_ERROR_TOO_MANY_OBJECTS
+                               : VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
+
+   const VkMemoryDedicatedAllocateInfo dedicated_info = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO,
+      .image = img_handle,
+   };
+   const VkImportMemoryFdInfoKHR import_info = {
+      .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
+      .pNext = &dedicated_info,
+      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+      .fd = dup_fd,
+   };
+   const VkMemoryAllocateInfo alloc_info = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .pNext = &import_info,
+      .allocationSize = mem_reqs.size,
+      .memoryTypeIndex = ffs(mem_reqs.memoryTypeBits) - 1,
+   };
+   result = device->dispatch_table.AllocateMemory(
+      dev_handle, &alloc_info, alloc, &image->anb_memory);
+   if (result != VK_SUCCESS) {
+      close(dup_fd);
+      return result;
+   }
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+vk_android_anb_init(struct vk_device *device,
+                    const VkImageCreateInfo *create_info,
+                    const VkNativeBufferANDROID *anb,
+                    const VkAllocationCallbacks *alloc,
+                    struct vk_image *image)
+{
+   VkResult result;
+
+   struct u_gralloc_buffer_handle gr_handle = {
+      .handle = anb->handle,
+      .hal_format = anb->format,
+      .pixel_stride = anb->stride,
+   };
+   VkImageDrmFormatModifierExplicitCreateInfoEXT local_explicit;
+   VkSubresourceLayout local_layouts[4];
+   result = vk_gralloc_to_drm_explicit_layout(
+      &gr_handle, &local_explicit, local_layouts, 4);
+   if (result != VK_SUCCESS)
+      return result;
+
+   local_explicit.pNext = create_info->pNext;
+
+   const VkExternalMemoryImageCreateInfo local_external = {
+      .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+      .pNext = &local_explicit,
+      .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+   };
+
+   VkImageCreateInfo local_create = *create_info;
+   local_create.pNext = &local_external;
+   local_create.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+
+   assert(device->image_ops->init);
+   result = device->image_ops->init(device, &local_create, alloc, image);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = vk_android_import_anb_memory(device, image, anb, alloc);
+   if (result != VK_SUCCESS) {
+      if (device->image_ops->finish)
+         device->image_ops->finish(device, alloc, image);
+      return result;
+   }
+
+   return VK_SUCCESS;
+}
+
+VkResult
+vk_android_gralloc_image_init(struct vk_device *device,
+                              const VkImageCreateInfo *create_info,
+                              const VkAllocationCallbacks *alloc,
+                              struct vk_image *image)
+{
+   VkDevice dev_handle = vk_device_to_handle(device);
+   VkResult result;
+
+   if (image->android_buffer_type != ANDROID_BUFFER_NATIVE)
+      return VK_ERROR_FEATURE_NOT_PRESENT;
+
+   /* fix the stored tiling here for all gralloc image types */
+   image->tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+
+   const VkNativeBufferANDROID *anb =
+      vk_find_struct_const(create_info->pNext, NATIVE_BUFFER_ANDROID);
+   result = vk_android_anb_init(device, create_info, anb, alloc, image);
+   if (result != VK_SUCCESS)
+      return result;
+
+   result = device->dispatch_table.BindImageMemory(
+      dev_handle, vk_image_to_handle(image), image->anb_memory, 0);
+   if (result != VK_SUCCESS) {
+      if (device->image_ops->finish)
+         device->image_ops->finish(device, alloc, image);
+      return result;
+   }
+
+   return VK_SUCCESS;
+}
+
+void
+vk_android_gralloc_image_finish(struct vk_device *device,
+                                const VkAllocationCallbacks *alloc,
+                                struct vk_image *image)
+{
+   if (device->image_ops->finish)
+      device->image_ops->finish(device, alloc, image);
 }
 
 static VkResult

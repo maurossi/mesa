@@ -28,6 +28,7 @@
 #endif
 
 #include "vk_alloc.h"
+#include "vk_android.h"
 #include "vk_common_entrypoints.h"
 #include "vk_device.h"
 #include "vk_format.h"
@@ -37,11 +38,6 @@
 #include "vk_render_pass.h"
 #include "vk_util.h"
 #include "vulkan/wsi/wsi_common.h"
-
-#if DETECT_OS_ANDROID
-#include "vk_android.h"
-#include <vulkan/vulkan_android.h>
-#endif
 
 void
 vk_image_init(struct vk_device *device,
@@ -186,7 +182,13 @@ vk_common_CreateImage(VkDevice _device,
    if (!image)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   result = device->image_ops->init(device, pCreateInfo, pAllocator, image);
+   if (vk_android_is_gralloc_image(image)) {
+      result = vk_android_gralloc_image_init(device, pCreateInfo, pAllocator,
+                                             image);
+   } else {
+      result = device->image_ops->init(device, pCreateInfo, pAllocator, image);
+   }
+
    if (result != VK_SUCCESS) {
       vk_image_destroy(device, pAllocator, image);
       return vk_error(device, result);
@@ -208,7 +210,9 @@ vk_common_DestroyImage(VkDevice _device,
    if (!image)
       return;
 
-   if (device->image_ops->finish)
+   if (vk_android_is_gralloc_image(image))
+      vk_android_gralloc_image_finish(device, pAllocator, image);
+   else if (device->image_ops->finish)
       device->image_ops->finish(device, pAllocator, image);
 
    vk_image_destroy(device, pAllocator, image);

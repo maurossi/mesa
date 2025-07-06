@@ -40,8 +40,20 @@ struct vk_device;
 struct vk_image;
 
 #if DETECT_OS_ANDROID
+#include <vulkan/vulkan_android.h>
 
 struct u_gralloc *vk_android_get_ugralloc(void);
+
+bool vk_android_is_gralloc_image(struct vk_image *image);
+
+VkResult vk_android_gralloc_image_init(struct vk_device *device,
+                                       const VkImageCreateInfo *create_info,
+                                       const VkAllocationCallbacks *alloc,
+                                       struct vk_image *image);
+
+void vk_android_gralloc_image_finish(struct vk_device *device,
+                                     const VkAllocationCallbacks *alloc,
+                                     struct vk_image *image);
 
 VkResult vk_android_import_anb(struct vk_device *device,
                                const VkImageCreateInfo *pCreateInfo,
@@ -59,6 +71,28 @@ static inline struct u_gralloc *
 vk_android_get_ugralloc(void)
 {
    return NULL;
+}
+
+static inline bool
+vk_android_is_gralloc_image(struct vk_image *image)
+{
+   return false;
+}
+
+static inline VkResult
+vk_android_gralloc_image_init(struct vk_device *device,
+                              const VkImageCreateInfo *create_info,
+                              const VkAllocationCallbacks *alloc,
+                              struct vk_image *image)
+{
+   return VK_ERROR_FEATURE_NOT_PRESENT;
+}
+
+static inline void
+vk_android_gralloc_image_finish(struct vk_device *device,
+                                const VkAllocationCallbacks *alloc,
+                                struct vk_image *image)
+{
 }
 
 static inline VkResult
