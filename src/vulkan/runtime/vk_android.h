@@ -150,6 +150,13 @@ void vk_android_get_ahb_buffer_properties(
    const VkPhysicalDeviceExternalBufferInfo *info,
    VkExternalBufferProperties *props);
 
+bool vk_android_is_ahb_memory(const VkMemoryAllocateInfo *alloc_info);
+
+VkResult vk_android_allocate_ahb_memory(VkDevice dev_handle,
+                                        const VkMemoryAllocateInfo *alloc_info,
+                                        const VkAllocationCallbacks *alloc,
+                                        VkDeviceMemory *out_mem_handle);
+
 #else /* DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26 */
 
 static inline uint64_t
@@ -215,6 +222,21 @@ vk_android_get_ahb_buffer_properties(
    const VkPhysicalDeviceExternalBufferInfo *info,
    VkExternalBufferProperties *props)
 {
+}
+
+static inline bool
+vk_android_is_ahb_memory(const VkMemoryAllocateInfo *alloc_info)
+{
+   return false;
+}
+
+static inline VkResult
+vk_android_allocate_ahb_memory(VkDevice dev_handle,
+                               const VkMemoryAllocateInfo *alloc_info,
+                               const VkAllocationCallbacks *alloc,
+                               VkDeviceMemory *out_mem_handle)
+{
+   return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
 #endif /* ANDROID_API_LEVEL >= 26 */

@@ -26,6 +26,7 @@
 #include "vk_alloc.h"
 #include "vk_common_entrypoints.h"
 #include "vk_device.h"
+#include "vk_device_memory.h"
 #include "vk_enum_defines.h"
 #include "vk_image.h"
 #include "vk_log.h"
@@ -545,9 +546,6 @@ vk_android_gralloc_image_init(struct vk_device *device,
 {
    VkDevice dev_handle = vk_device_to_handle(device);
    VkResult result;
-
-   if (image->android_buffer_type == ANDROID_BUFFER_HARDWARE)
-      return VK_ERROR_FEATURE_NOT_PRESENT;
 
    /* fix the stored tiling here for all gralloc image types */
    image->tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
@@ -1360,6 +1358,195 @@ vk_android_get_ahb_buffer_properties(
       .compatibleHandleTypes =
          VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
    };
+}
+
+bool
+vk_android_is_ahb_memory(const VkMemoryAllocateInfo *alloc_info)
+{
+   vk_foreach_struct_const(ext, alloc_info->pNext) {
+      switch (ext->sType) {
+      case VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID:
+         return true;
+      case VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO:
+         return ((const VkExportMemoryAllocateInfo *)ext)->handleTypes ==
+            VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID;
+      default:
+         break;
+      }
+   }
+
+   return false;
+}
+
+static VkResult
+vk_android_get_buffer_memory_requirements(struct vk_device *device,
+                                          VkBuffer buf_handle,
+                                          int dma_buf_fd,
+                                          VkMemoryRequirements *out_mem_reqs)
+{
+   VkDevice dev_handle = vk_device_to_handle(device);
+
+   VkMemoryRequirements mem_reqs;
+   device->dispatch_table.GetBufferMemoryRequirements(dev_handle, buf_handle,
+                                                      &mem_reqs);
+
+   const uint32_t fd_mem_type_bits =
+      vk_android_get_fd_mem_type_bits(device, dma_buf_fd);
+
+   if (!(mem_reqs.memoryTypeBits & fd_mem_type_bits)) {
+      mesa_loge("No compatible mem type: buf req (%u), fd req (%u)",
+                mem_reqs.memoryTypeBits, fd_mem_type_bits);
+      return VK_ERROR_INVALID_EXTERNAL_HANDLE;
+   }
+
+   mem_reqs.memoryTypeBits &= fd_mem_type_bits;
+   *out_mem_reqs = mem_reqs;
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+vk_android_ahb_image_init(struct vk_device *device,
+                          struct AHardwareBuffer *ahb,
+                          VkImage img_handle)
+{
+   VK_FROM_HANDLE(vk_image, image, img_handle);
+   VkResult result;
+
+   VkImageDrmFormatModifierExplicitCreateInfoEXT local_explicit;
+   VkSubresourceLayout local_layouts[4];
+   result = vk_android_get_ahb_layout(ahb, &local_explicit, local_layouts, 4);
+   if (result != VK_SUCCESS)
+      return result;
+
+   VkExternalMemoryImageCreateInfo local_external = {
+      .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+      .pNext = &local_explicit,
+      .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+   };
+   __vk_append_struct(image->create_info, &local_external);
+
+   assert(device->image_ops->init);
+   result = device->image_ops->init(device, image->create_info, &device->alloc,
+                                    image);
+   if (result != VK_SUCCESS)
+      return result;
+
+   struct vk_android_deferred_info *dinfo = container_of(
+      image->create_info, struct vk_android_deferred_info, create);
+   dinfo->initialized = true;
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+vk_android_import_ahb_memory(VkDevice dev_handle,
+                             const VkMemoryAllocateInfo *alloc_info,
+                             struct AHardwareBuffer *ahb,
+                             const VkAllocationCallbacks *alloc,
+                             VkDeviceMemory *out_mem_handle)
+{
+   VK_FROM_HANDLE(vk_device, device, dev_handle);
+   const native_handle_t *handle = AHardwareBuffer_getNativeHandle(ahb);
+   assert(handle && handle->numFds > 0);
+   int dma_buf_fd = handle->data[0];
+   VkMemoryRequirements mem_reqs;
+   VkResult result;
+
+   const VkMemoryDedicatedAllocateInfo *dedicated_info = vk_find_struct_const(
+      alloc_info->pNext, MEMORY_DEDICATED_ALLOCATE_INFO);
+
+   /* fix allocationSize and memoryTypeIndex */
+   if (dedicated_info && dedicated_info->image != VK_NULL_HANDLE) {
+      result = vk_android_ahb_image_init(device, ahb, dedicated_info->image);
+      if (result == VK_SUCCESS) {
+         result = vk_android_get_image_memory_requirements(
+            device, dedicated_info->image, dma_buf_fd, &mem_reqs);
+      }
+   } else if (dedicated_info && dedicated_info->buffer != VK_NULL_HANDLE) {
+      result = vk_android_get_buffer_memory_requirements(
+         device, dedicated_info->buffer, dma_buf_fd, &mem_reqs);
+   } else {
+      mem_reqs.size = alloc_info->allocationSize;
+      mem_reqs.memoryTypeBits =
+         vk_android_get_fd_mem_type_bits(device, dma_buf_fd);
+      result = mem_reqs.memoryTypeBits ? VK_SUCCESS
+                                       : VK_ERROR_INVALID_EXTERNAL_HANDLE;
+   }
+   if (result != VK_SUCCESS)
+      return result;
+
+   uint32_t mem_type_index = alloc_info->memoryTypeIndex;
+   if (!(mem_type_index & mem_reqs.memoryTypeBits))
+      mem_type_index = ffs(mem_reqs.memoryTypeBits) - 1;
+
+   int dup_fd = os_dupfd_cloexec(dma_buf_fd);
+   if (dup_fd < 0) {
+      return (errno == EMFILE) ? VK_ERROR_TOO_MANY_OBJECTS
+                               : VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
+
+   VkMemoryAllocateInfo local_alloc_info = {
+      .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+      .allocationSize = mem_reqs.size,
+      .memoryTypeIndex = mem_type_index,
+   };
+   VkImportMemoryFdInfoKHR local_import_info = {
+      .sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_FD_INFO_KHR,
+      .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+      .fd = dup_fd,
+   };
+   __vk_append_struct(&local_alloc_info, &local_import_info);
+
+   VkMemoryDedicatedAllocateInfo local_dedicated_info;
+   if (dedicated_info) {
+      local_dedicated_info = *dedicated_info;
+      local_dedicated_info.pNext = NULL;
+      __vk_append_struct(&local_alloc_info, &local_dedicated_info);
+   }
+
+   result = device->dispatch_table.AllocateMemory(
+      dev_handle, &local_alloc_info, alloc, out_mem_handle);
+   if (result != VK_SUCCESS)
+      close(dup_fd);
+
+   return result;
+}
+
+VkResult
+vk_android_allocate_ahb_memory(VkDevice dev_handle,
+                               const VkMemoryAllocateInfo *alloc_info,
+                               const VkAllocationCallbacks *alloc,
+                               VkDeviceMemory *out_mem_handle)
+{
+   struct AHardwareBuffer *ahb;
+   VkResult result;
+
+   assert(vk_android_is_ahb_memory(alloc_info));
+
+   const VkImportAndroidHardwareBufferInfoANDROID *import_info =
+      vk_find_struct_const(alloc_info->pNext,
+                           IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID);
+   if (import_info) {
+      ahb = import_info->buffer;
+      AHardwareBuffer_acquire(ahb);
+   } else {
+      ahb = vk_alloc_ahardware_buffer(alloc_info);
+      if (!ahb)
+         return VK_ERROR_OUT_OF_HOST_MEMORY;
+   }
+
+   result = vk_android_import_ahb_memory(dev_handle, alloc_info, ahb, alloc,
+                                         out_mem_handle);
+   if (result != VK_SUCCESS) {
+      AHardwareBuffer_release(ahb);
+      return result;
+   }
+
+   VK_FROM_HANDLE(vk_device_memory, mem, *out_mem_handle);
+   mem->ahardware_buffer = ahb;
+
+   return VK_SUCCESS;
 }
 
 #endif /* ANDROID_API_LEVEL >= 26 */
