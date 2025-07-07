@@ -812,6 +812,33 @@ vk_common_GetSwapchainGrallocUsage2ANDROID(
 }
 
 VkResult
+vk_android_get_wsi_memory(struct vk_device *device,
+                          const VkBindImageMemoryInfo *bind_info,
+                          VkDeviceMemory *out_mem_handle)
+{
+   VK_FROM_HANDLE(vk_image, image, bind_info->image);
+   VkResult result;
+
+   assert(image->android_buffer_type == ANDROID_BUFFER_NATIVE_ALIAS);
+   assert(image->create_info);
+
+   const VkNativeBufferANDROID *anb =
+      vk_find_struct_const(bind_info->pNext, NATIVE_BUFFER_ANDROID);
+   result = vk_android_anb_init(device, image->create_info, anb,
+                                &device->alloc, image);
+   if (result != VK_SUCCESS)
+      return result;
+
+   struct vk_android_deferred_info *dinfo = container_of(
+      image->create_info, struct vk_android_deferred_info, create);
+   dinfo->initialized = true;
+
+   *out_mem_handle = image->anb_memory;
+
+   return VK_SUCCESS;
+}
+
+VkResult
 vk_android_get_ahb_layout(
    struct AHardwareBuffer *ahardware_buffer,
    VkImageDrmFormatModifierExplicitCreateInfoEXT *out,

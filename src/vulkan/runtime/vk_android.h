@@ -121,6 +121,10 @@ struct AHardwareBuffer;
 
 uint64_t vk_android_get_front_buffer_usage(void);
 
+VkResult vk_android_get_wsi_memory(struct vk_device *device,
+                                   const VkBindImageMemoryInfo *bind_info,
+                                   VkDeviceMemory *out_mem_handle);
+
 VkFormat vk_ahb_format_to_image_format(uint32_t ahb_format);
 
 uint32_t vk_image_format_to_ahb_format(VkFormat vk_format);
@@ -152,6 +156,14 @@ static inline uint64_t
 vk_android_get_front_buffer_usage(void)
 {
    return 0;
+}
+
+static inline VkResult
+vk_android_get_wsi_memory(struct vk_device *device,
+                          const VkBindImageMemoryInfo *bind_info,
+                          VkDeviceMemory *out_mem_handle)
+{
+   return VK_ERROR_FEATURE_NOT_PRESENT;
 }
 
 static inline VkFormat
