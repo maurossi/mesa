@@ -13,6 +13,7 @@
 
 #include "git_sha1.h"
 
+#include "vk_android.h"
 #include "vk_device.h"
 #include "vk_limits.h"
 #include "vk_shader_module.h"
@@ -180,6 +181,12 @@ panvk_per_arch(get_physical_device_extensions)(
 
       .ARM_shader_core_properties = has_vk1_1,
    };
+
+#if DETECT_OS_ANDROID
+   if (vk_android_get_ugralloc()) {
+      ext->ANDROID_native_buffer = true;
+   }
+#endif
 }
 
 static bool
@@ -942,6 +949,11 @@ panvk_per_arch(get_physical_device_properties)(
 
       /* VK_KHR_push_descriptor */
       .maxPushDescriptors = MAX_PUSH_DESCS,
+
+#if DETECT_OS_ANDROID
+      /* VK_ANDROID_native_buffer */
+      .sharedImage = !!vk_android_get_front_buffer_usage(),
+#endif
 
       /* VK_ARM_shader_core_properties */
       .pixelRate = device->model->rates.pixel,
