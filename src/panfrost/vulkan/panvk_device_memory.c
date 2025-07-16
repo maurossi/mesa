@@ -11,6 +11,7 @@
 #include "panvk_device_memory.h"
 #include "panvk_entrypoints.h"
 
+#include "vk_android.h"
 #include "vk_log.h"
 
 static void *
@@ -46,6 +47,11 @@ panvk_AllocateMemory(VkDevice _device,
                      const VkAllocationCallbacks *pAllocator,
                      VkDeviceMemory *pMem)
 {
+   if (vk_android_is_ahb_memory(pAllocateInfo)) {
+      return vk_android_allocate_ahb_memory(_device, pAllocateInfo, pAllocator,
+                                            pMem);
+   }
+
    VK_FROM_HANDLE(panvk_device, device, _device);
    struct panvk_instance *instance =
       to_panvk_instance(device->vk.physical->instance);

@@ -184,6 +184,7 @@ panvk_per_arch(get_physical_device_extensions)(
 
 #if DETECT_OS_ANDROID
    if (vk_android_get_ugralloc()) {
+      ext->ANDROID_external_memory_android_hardware_buffer = true;
       ext->ANDROID_native_buffer = true;
    }
 #endif
