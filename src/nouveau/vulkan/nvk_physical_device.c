@@ -22,11 +22,6 @@
 #include "util/disk_cache.h"
 #include "util/mesa-sha1.h"
 
-#if DETECT_OS_ANDROID
-#include <vulkan/vk_android_native_buffer.h>
-#include "util/u_gralloc/u_gralloc.h"
-#endif
-
 #include "vk_android.h"
 #include "vk_device.h"
 #include "vk_drm_syncobj.h"
@@ -270,10 +265,6 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .EXT_ycbcr_2plane_444_formats = true,
       .EXT_ycbcr_image_arrays = true,
       .EXT_zero_initialize_device_memory = true,
-#if DETECT_OS_ANDROID
-      .ANDROID_native_buffer = vk_android_get_ugralloc() &&
-         u_gralloc_get_type(vk_android_get_ugralloc()) != U_GRALLOC_TYPE_FALLBACK,
-#endif
       .GOOGLE_decorate_string = true,
       .GOOGLE_hlsl_functionality1 = true,
       .GOOGLE_user_type = true,
@@ -282,6 +273,12 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .NV_shader_sm_builtins = true,
       .VALVE_mutable_descriptor_type = true,
    };
+
+#if DETECT_OS_ANDROID
+   if (vk_android_get_ugralloc()) {
+      ext->ANDROID_native_buffer = true;
+   }
+#endif
 }
 
 static void
