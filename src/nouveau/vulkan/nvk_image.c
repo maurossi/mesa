@@ -529,7 +529,17 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
    }
 
    const VkExternalMemoryProperties *ext_mem_props = NULL;
-   if (external_info != NULL && external_info->handleType != 0) {
+   if (external_info != NULL && external_info->handleType ==
+       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) {
+      VkResult result = vk_android_get_ahb_image_properties(
+         physicalDevice, pImageFormatInfo, pImageFormatProperties);
+      if (result != VK_SUCCESS)
+         return result;
+
+      /* Stay aligned with VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT */
+      maxMipLevels = 1;
+      maxArraySize = 1;
+   } else if (external_info != NULL && external_info->handleType != 0) {
       bool tiling_has_explicit_layout;
       switch (pImageFormatInfo->tiling) {
       case VK_IMAGE_TILING_LINEAR:
@@ -640,6 +650,9 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
           *    ignored."
           *
           * This is true if and only if ext_mem_props == NULL
+          *
+          * For AHB, vk_android_get_ahb_image_properties above has filled the
+          * struct already, so ext_mem_props is left as NULL to skip here.
           */
          if (ext_mem_props != NULL)
             p->externalMemoryProperties = *ext_mem_props;

@@ -11,6 +11,7 @@
 #include "nvkmd/nvkmd.h"
 
 #include "util/u_atomic.h"
+#include "vk_android.h"
 
 #include <inttypes.h>
 #include <sys/mman.h>
@@ -125,6 +126,12 @@ nvk_AllocateMemory(VkDevice device,
                    const VkAllocationCallbacks *pAllocator,
                    VkDeviceMemory *pMem)
 {
+
+   if (vk_android_is_ahb_memory(pAllocateInfo)) {
+      return vk_android_allocate_ahb_memory(device, pAllocateInfo, pAllocator,
+                                            pMem);
+   }
+
    VK_FROM_HANDLE(nvk_device, dev, device);
    struct nvk_physical_device *pdev = nvk_device_physical_mut(dev);
    struct nvk_device_memory *mem;

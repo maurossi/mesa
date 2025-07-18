@@ -11,6 +11,8 @@
 #include "nvk_queue.h"
 #include "nvkmd/nvkmd.h"
 
+#include "vk_android.h"
+
 static uint32_t
 nvk_get_buffer_alignment(const struct nvk_physical_device *pdev,
                          VkBufferUsageFlags2KHR usage_flags,
@@ -194,6 +196,13 @@ nvk_GetPhysicalDeviceExternalBufferProperties(
    const VkPhysicalDeviceExternalBufferInfo *pExternalBufferInfo,
    VkExternalBufferProperties *pExternalBufferProperties)
 {
+   if (pExternalBufferInfo->handleType ==
+       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) {
+      vk_android_get_ahb_buffer_properties(physicalDevice, pExternalBufferInfo,
+                                           pExternalBufferProperties);
+      return;
+   }
+
    /* The Vulkan 1.3.256 spec says:
     *
     *    VUID-VkPhysicalDeviceExternalBufferInfo-handleType-parameter

@@ -276,6 +276,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
 
 #if DETECT_OS_ANDROID
    if (vk_android_get_ugralloc()) {
+      ext->ANDROID_external_memory_android_hardware_buffer = true;
       ext->ANDROID_native_buffer = true;
    }
 #endif
