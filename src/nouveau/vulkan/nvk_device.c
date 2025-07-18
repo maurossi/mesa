@@ -6,6 +6,7 @@
 
 #include "nvk_cmd_buffer.h"
 #include "nvk_entrypoints.h"
+#include "nvk_image.h"
 #include "nvk_instance.h"
 #include "nvk_physical_device.h"
 #include "nvk_sampler.h"
@@ -155,6 +156,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_alloc;
 
    dev->vk.shader_ops = &nvk_device_shader_ops;
+   dev->vk.image_ops = &nvk_image_ops;
 
    result = nvkmd_pdev_create_dev(pdev->nvkmd, &pdev->vk.base, &dev->nvkmd);
    if (result != VK_SUCCESS)

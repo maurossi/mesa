@@ -107,6 +107,8 @@ struct nvk_image {
 
 VK_DEFINE_NONDISP_HANDLE_CASTS(nvk_image, vk.base, VkImage, VK_OBJECT_TYPE_IMAGE)
 
+extern const struct vk_image_ops nvk_image_ops;
+
 static inline uint64_t
 nvk_image_plane_base_address(const struct nvk_image_plane *plane)
 {

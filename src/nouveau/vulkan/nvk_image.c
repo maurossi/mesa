@@ -818,20 +818,6 @@ nvk_image_init_internal(struct nvk_device *dev,
       usage |= NIL_IMAGE_USAGE_VIDEO_BIT;
 
    uint32_t explicit_row_stride_B = 0;
-
-   /* This section is removed by the optimizer for non-ANDROID builds */
-   if (vk_image_is_android_native_buffer(&image->vk)) {
-      VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
-      VkSubresourceLayout a_plane_layouts[4];
-      VkResult result = vk_android_get_anb_layout(
-         pCreateInfo, &eci, a_plane_layouts, 4);
-      if (result != VK_SUCCESS)
-         return result;
-
-      image->vk.drm_format_mod = eci.drmFormatModifier;
-      explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
-   }
-
    uint32_t max_alignment_B = 0;
    const VkImageAlignmentControlCreateInfoMESA *alignment =
       vk_find_struct_const(pCreateInfo->pNext,
@@ -853,7 +839,7 @@ nvk_image_init_internal(struct nvk_device *dev,
          /* Normally with explicit modifiers, the client specifies all strides,
           * however in our case, we can only really make use of this in the linear
           * case, and we can only create 2D non-array linear images, so ultimately
-          * we only care about the row stride. 
+          * we only care about the row stride.
           */
          explicit_row_stride_B = mod_explicit_info->pPlaneLayouts->rowPitch;
       } else {
@@ -1086,59 +1072,31 @@ nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
    vk_image_finish(&image->vk);
 }
 
-VKAPI_ATTR VkResult VKAPI_CALL
-nvk_CreateImage(VkDevice _device,
-                const VkImageCreateInfo *pCreateInfo,
-                const VkAllocationCallbacks *pAllocator,
-                VkImage *pImage)
+
+static VkResult
+nvk_image_init_cb(struct vk_device *device,
+                  const VkImageCreateInfo *create_info,
+                  const VkAllocationCallbacks *alloc,
+                  struct vk_image *_image)
 {
-   VK_FROM_HANDLE(nvk_device, dev, _device);
-   struct nvk_image *image;
+   struct nvk_device *dev = container_of(device, struct nvk_device, vk);
+   struct nvk_image *image = container_of(_image, struct nvk_image, vk);
    VkResult result;
 
-#ifdef NVK_USE_WSI_PLATFORM
-   /* Ignore swapchain creation info on Android. Since we don't have an
-    * implementation in Mesa, we're guaranteed to access an Android object
-    * incorrectly.
-    */
-   const struct nvk_physical_device *pdev = nvk_device_physical(dev);
-   const VkImageSwapchainCreateInfoKHR *swapchain_info =
-      vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
-   if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
-      return wsi_common_create_swapchain_image(&pdev->wsi_device,
-                                               pCreateInfo,
-                                               swapchain_info->swapchain,
-                                               pImage);
-   }
-#endif
-
-   image = vk_zalloc2(&dev->vk.alloc, pAllocator, sizeof(*image), 8,
-                      VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
-   if (!image)
-      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
-
-   result = nvk_image_init(dev, image, pCreateInfo);
-   if (result != VK_SUCCESS) {
-      vk_free2(&dev->vk.alloc, pAllocator, image);
+   result = nvk_image_init_internal(dev, image, create_info);
+   if (result != VK_SUCCESS)
       return result;
-   }
 
    for (uint8_t plane = 0; plane < image->plane_count; plane++) {
       result = nvk_image_plane_alloc_va(dev, image, &image->planes[plane]);
-      if (result != VK_SUCCESS) {
-         nvk_image_finish(dev, image, pAllocator);
-         vk_free2(&dev->vk.alloc, pAllocator, image);
-         return result;
-      }
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
    if (image->stencil_copy_temp.nil.size_B > 0) {
       result = nvk_image_plane_alloc_va(dev, image, &image->stencil_copy_temp);
-      if (result != VK_SUCCESS) {
-         nvk_image_finish(dev, image, pAllocator);
-         vk_free2(&dev->vk.alloc, pAllocator, image);
-         return result;
-      }
+      if (result != VK_SUCCESS)
+         goto fail;
    }
 
    if (image->linear_tiled_shadow.nil.size_B > 0) {
@@ -1148,44 +1106,35 @@ nvk_CreateImage(VkDevice _device,
                                          shadow->nil.pte_kind, shadow->nil.tile_mode,
                                          NVKMD_MEM_LOCAL,
                                          &image->linear_tiled_shadow_mem);
-      if (result != VK_SUCCESS) {
-         nvk_image_finish(dev, image, pAllocator);
-         vk_free2(&dev->vk.alloc, pAllocator, image);
-         return result;
-      }
+      if (result != VK_SUCCESS)
+         goto fail;
+
       shadow->addr = image->linear_tiled_shadow_mem->va->addr;
    }
 
-   /* This section is removed by the optimizer for non-ANDROID builds */
-   if (vk_image_is_android_native_buffer(&image->vk)) {
-      result = vk_android_import_anb(&dev->vk, pCreateInfo, pAllocator,
-                                     &image->vk);
-      if (result != VK_SUCCESS) {
-         nvk_image_finish(dev, image, pAllocator);
-         vk_free2(&dev->vk.alloc, pAllocator, image);
-         return result;
-      }
-   }
-
-   *pImage = nvk_image_to_handle(image);
-
    return VK_SUCCESS;
+
+fail:
+   nvk_image_finish_internal(dev, image, alloc);
+   return result;
 }
 
-VKAPI_ATTR void VKAPI_CALL
-nvk_DestroyImage(VkDevice device,
-                 VkImage _image,
-                 const VkAllocationCallbacks *pAllocator)
+static void
+nvk_image_finish_cb(struct vk_device *device,
+                    const VkAllocationCallbacks *alloc,
+                    struct vk_image *_image)
 {
-   VK_FROM_HANDLE(nvk_device, dev, device);
-   VK_FROM_HANDLE(nvk_image, image, _image);
+   struct nvk_device *dev = container_of(device, struct nvk_device, vk);
+   struct nvk_image *image = container_of(_image, struct nvk_image, vk);
 
-   if (!image)
-      return;
-
-   nvk_image_finish(dev, image, pAllocator);
-   vk_free2(&dev->vk.alloc, pAllocator, image);
+   nvk_image_finish_internal(dev, image, alloc);
 }
+
+const struct vk_image_ops nvk_image_ops = {
+   .object_size = sizeof(struct nvk_image),
+   .init = nvk_image_init_cb,
+   .finish = nvk_image_finish_cb,
+};
 
 static void
 nvk_image_plane_add_req(struct nvk_device *dev,
@@ -1521,31 +1470,27 @@ nvk_bind_image_memory(struct nvk_device *dev,
 {
    VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
    VK_FROM_HANDLE(nvk_image, image, info->image);
+   uint64_t offset_B = info->memoryOffset;
    VkResult result;
 
-#if DETECT_OS_ANDROID
-   const VkNativeBufferANDROID *anb_info =
-      vk_find_struct_const(info->pNext, NATIVE_BUFFER_ANDROID);
-   if (anb_info != NULL && anb_info->handle != NULL) {
-      /* We do the actual bind the end of CreateImage() */
-      assert(mem == NULL);
-      return VK_SUCCESS;
-   }
-#endif
-
-   /* Ignore this struct on Android, we cannot access swapchain structures there. */
-#ifdef NVK_USE_WSI_PLATFORM
    if (mem == NULL) {
+      VkDeviceMemory mem_handle;
+#if DETECT_OS_ANDROID
+      result = vk_android_get_wsi_memory(&dev->vk, info, &mem_handle);
+      if (result != VK_SUCCESS)
+         return result;
+#else
       const VkBindImageMemorySwapchainInfoKHR *swapchain_info =
          vk_find_struct_const(info->pNext, BIND_IMAGE_MEMORY_SWAPCHAIN_INFO_KHR);
       assert(swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE);
-      mem = nvk_device_memory_from_handle(
-         wsi_common_get_memory(swapchain_info->swapchain, swapchain_info->imageIndex));
-   }
+      mem_handle = wsi_common_get_memory(swapchain_info->swapchain,
+                                         swapchain_info->imageIndex);
 #endif
+      mem = nvk_device_memory_from_handle(mem_handle);
+      offset_B = 0;
+   }
 
    assert(mem != NULL);
-   uint64_t offset_B = info->memoryOffset;
    if (image->disjoint) {
       const VkBindImagePlaneMemoryInfo *plane_info =
          vk_find_struct_const(info->pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
