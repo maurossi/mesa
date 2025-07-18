@@ -760,13 +760,11 @@ nvk_GetPhysicalDeviceSparseImageFormatProperties2(
 }
 
 static VkResult
-nvk_image_init(struct nvk_device *dev,
-               struct nvk_image *image,
-               const VkImageCreateInfo *pCreateInfo)
+nvk_image_init_internal(struct nvk_device *dev,
+                        struct nvk_image *image,
+                        const VkImageCreateInfo *pCreateInfo)
 {
    const struct nvk_physical_device *pdev = nvk_device_physical(dev);
-
-   vk_image_init(&dev->vk, &image->vk, pCreateInfo);
 
    if ((image->vk.usage & (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                            VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) &&
@@ -916,10 +914,10 @@ nvk_image_init(struct nvk_device *dev,
          ycbcr_info->planes[plane].denominator_scales[1] : 1;
 
       if (image->separate_zs) {
-	 if (plane == 0)
-	    format = vk_format_depth_only(format);
-	 else if (plane == 1)
-	    format = vk_format_stencil_only(format);
+         if (plane == 0)
+            format = vk_format_depth_only(format);
+         else if (plane == 1)
+            format = vk_format_stencil_only(format);
       }
 
       nil_info[plane] = (struct nil_image_init_info) {
@@ -990,6 +988,14 @@ nvk_image_init(struct nvk_device *dev,
    return VK_SUCCESS;
 }
 
+static inline VkResult
+nvk_image_init(struct nvk_device *dev, struct nvk_image *image,
+               const VkImageCreateInfo *pCreateInfo)
+{
+   vk_image_init(&dev->vk, &image->vk, pCreateInfo);
+   return nvk_image_init_internal(dev, image, pCreateInfo);
+}
+
 static void
 nvk_image_plane_size_align_B(struct nvk_device *dev,
                              const struct nvk_image *image,
@@ -1054,8 +1060,8 @@ nvk_image_plane_finish(struct nvk_device *dev,
 }
 
 static void
-nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
-                 const VkAllocationCallbacks *pAllocator)
+nvk_image_finish_internal(struct nvk_device *dev, struct nvk_image *image,
+                          const VkAllocationCallbacks *pAllocator)
 {
    for (uint8_t plane = 0; plane < image->plane_count; plane++) {
       nvk_image_plane_finish(dev, &image->planes[plane],
@@ -1070,7 +1076,13 @@ nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
    assert(image->linear_tiled_shadow.va == NULL);
    if (image->linear_tiled_shadow_mem != NULL)
       nvkmd_mem_unref(image->linear_tiled_shadow_mem);
+}
 
+static void
+nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
+                 const VkAllocationCallbacks *pAllocator)
+{
+   nvk_image_finish_internal(dev, image, pAllocator);
    vk_image_finish(&image->vk);
 }
 
@@ -1081,7 +1093,6 @@ nvk_CreateImage(VkDevice _device,
                 VkImage *pImage)
 {
    VK_FROM_HANDLE(nvk_device, dev, _device);
-   const struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_image *image;
    VkResult result;
 
@@ -1090,6 +1101,7 @@ nvk_CreateImage(VkDevice _device,
     * implementation in Mesa, we're guaranteed to access an Android object
     * incorrectly.
     */
+   const struct nvk_physical_device *pdev = nvk_device_physical(dev);
    const VkImageSwapchainCreateInfoKHR *swapchain_info =
       vk_find_struct_const(pCreateInfo->pNext, IMAGE_SWAPCHAIN_CREATE_INFO_KHR);
    if (swapchain_info && swapchain_info->swapchain != VK_NULL_HANDLE) {
