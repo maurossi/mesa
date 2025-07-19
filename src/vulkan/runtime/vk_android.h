@@ -25,7 +25,9 @@
 
 #include <stdbool.h>
 
-#include "vulkan/vulkan_core.h"
+#include "vulkan/vk_android_native_buffer.h"
+#include "vulkan/vulkan.h"
+#include "vulkan/vulkan_android.h"
 
 #include "util/detect_os.h"
 
