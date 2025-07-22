@@ -800,22 +800,9 @@ nvk_image_init_internal(struct nvk_device *dev,
       image->plane_count = 2;
    }
 
-   if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT) {
-      /* Sparse multiplane is not supported */
-      assert(image->plane_count == 1);
-      usage |= NIL_IMAGE_USAGE_SPARSE_RESIDENCY_BIT;
-   }
+   image->explicit_row_stride_B = 0;
+   image->max_alignment_B = 0;
 
-   if (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_DECODE_SRC_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_ENCODE_DST_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
-                          VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR))
-      usage |= NIL_IMAGE_USAGE_VIDEO_BIT;
-
-   uint32_t explicit_row_stride_B = 0;
-   uint32_t max_alignment_B = 0;
    const VkImageAlignmentControlCreateInfoMESA *alignment =
       vk_find_struct_const(pCreateInfo->pNext,
                            IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA);
