@@ -1096,6 +1096,42 @@ nvk_image_finish(struct nvk_device *dev, struct nvk_image *image,
    vk_image_finish(&image->vk);
 }
 
+static VkResult
+nvk_image_alloc_vas(struct nvk_device *dev,
+                    struct nvk_image *image)
+{
+   /* Note: This may leave the image partially allocated on failure.  However,
+    * nvk_image_finish() can clean up partially allocated images.
+    */
+   VkResult result;
+
+   for (uint8_t plane = 0; plane < image->plane_count; plane++) {
+      result = nvk_image_plane_alloc_va(dev, image, &image->planes[plane]);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   if (image->stencil_copy_temp.nil.size_B > 0) {
+      result = nvk_image_plane_alloc_va(dev, image, &image->stencil_copy_temp);
+      if (result != VK_SUCCESS)
+         return result;
+   }
+
+   if (image->linear_tiled_shadow.nil.size_B > 0) {
+      struct nvk_image_plane *shadow = &image->linear_tiled_shadow;
+      result = nvkmd_dev_alloc_tiled_mem(dev->nvkmd, &dev->vk.base,
+                                         shadow->nil.size_B, shadow->nil.align_B,
+                                         shadow->nil.pte_kind, shadow->nil.tile_mode,
+                                         NVKMD_MEM_LOCAL,
+                                         &image->linear_tiled_shadow_mem);
+      if (result != VK_SUCCESS)
+         return result;
+
+      shadow->addr = image->linear_tiled_shadow_mem->va->addr;
+   }
+
+   return VK_SUCCESS;
+}
 
 static VkResult
 nvk_image_init_cb(struct vk_device *device,
@@ -1112,31 +1148,12 @@ nvk_image_init_cb(struct vk_device *device,
       return result;
 
    result = nvk_image_layout(dev, image);
+   if (result != VK_SUCCESS)
+      goto fail;
 
-   for (uint8_t plane = 0; plane < image->plane_count; plane++) {
-      result = nvk_image_plane_alloc_va(dev, image, &image->planes[plane]);
-      if (result != VK_SUCCESS)
-         goto fail;
-   }
-
-   if (image->stencil_copy_temp.nil.size_B > 0) {
-      result = nvk_image_plane_alloc_va(dev, image, &image->stencil_copy_temp);
-      if (result != VK_SUCCESS)
-         goto fail;
-   }
-
-   if (image->linear_tiled_shadow.nil.size_B > 0) {
-      struct nvk_image_plane *shadow = &image->linear_tiled_shadow;
-      result = nvkmd_dev_alloc_tiled_mem(dev->nvkmd, &dev->vk.base,
-                                         shadow->nil.size_B, shadow->nil.align_B,
-                                         shadow->nil.pte_kind, shadow->nil.tile_mode,
-                                         NVKMD_MEM_LOCAL,
-                                         &image->linear_tiled_shadow_mem);
-      if (result != VK_SUCCESS)
-         goto fail;
-
-      shadow->addr = image->linear_tiled_shadow_mem->va->addr;
-   }
+   result = nvk_image_alloc_vas(dev, image);
+   if (result != VK_SUCCESS)
+      goto fail;
 
    return VK_SUCCESS;
 
