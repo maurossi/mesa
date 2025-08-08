@@ -885,9 +885,9 @@ nvk_image_init(struct nvk_device *dev,
    /* This section is removed by the optimizer for non-ANDROID builds */
    if (vk_image_is_android_native_buffer(&image->vk)) {
       VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
-      VkSubresourceLayout a_plane_layouts[4];
+      VkSubresourceLayout a_plane_layouts[NVK_MAX_IMAGE_PLANES];
       VkResult result = vk_android_get_anb_layout(
-         pCreateInfo, &eci, a_plane_layouts, 4);
+         pCreateInfo, &eci, a_plane_layouts, NVK_MAX_IMAGE_PLANES);
       if (result != VK_SUCCESS)
          return result;
 
