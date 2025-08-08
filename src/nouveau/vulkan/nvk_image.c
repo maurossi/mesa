@@ -820,7 +820,7 @@ nvk_image_init(struct nvk_device *dev,
          pCreateInfo, &eci, a_plane_layouts, NVK_MAX_IMAGE_PLANES);
       if (result != VK_SUCCESS)
          return result;
-
+      mesa_loge("nvk_image_init: ANB vk_android_get_anb_layout successful plane_count %u vk.format %u vk.drm_format_mod %lu explicit_row_stride_B %u", image->plane_count, image->vk.format, image->vk.drm_format_mod, image->explicit_row_stride_B);
       image->vk.drm_format_mod = eci.drmFormatModifier;
       image->explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
    }
@@ -862,7 +862,7 @@ nvk_image_init(struct nvk_device *dev,
          assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
       }
    }
-
+   mesa_loge("nvk_image_init: Successful vk.format %u vk.ahb_format %u vk.drm_format_mod %lu explicit_row_stride_B %u", image->vk.format, image->vk.ahb_format, image->vk.drm_format_mod, image->explicit_row_stride_B);
    return VK_SUCCESS;
 }
 
@@ -900,7 +900,7 @@ nvk_image_layout(struct nvk_device *dev, struct nvk_image *image)
                           VK_IMAGE_USAGE_VIDEO_ENCODE_SRC_BIT_KHR |
                           VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR))
       usage |= NIL_IMAGE_USAGE_VIDEO_BIT;
-
+   mesa_loge("nvk_image_layout: vk.format %u plane_count %u vk.tiling %u vk.drm_format_mod %lu explicit_row_stride_B %u max_alignment_B %u", image->vk.format, image->plane_count, image->vk.tiling, image->vk.drm_format_mod, image->explicit_row_stride_B, image->max_alignment_B);
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       if (image->vk.drm_format_mod == DRM_FORMAT_MOD_LINEAR) {
          /* We only have one shadow plane per nvk_image */
@@ -1112,7 +1112,7 @@ nvk_image_alloc_vas(struct nvk_device *dev,
     * nvk_image_finish() can clean up partially allocated images.
     */
    VkResult result;
-
+   mesa_loge("nvk_image_alloc_vas: plane_count %u stencil_copy_temp.nil.size_B %lu linear_tiled_shadow.nil.size_B %lu", image->plane_count, image->stencil_copy_temp.nil.size_B, image->linear_tiled_shadow.nil.size_B);
    for (uint8_t plane = 0; plane < image->plane_count; plane++) {
       result = nvk_image_plane_alloc_va(dev, image, &image->planes[plane]);
       if (result != VK_SUCCESS)
@@ -1183,13 +1183,13 @@ nvk_CreateImage(VkDevice _device,
     *
     * This section is removed by the optimizer for non-ANDROID builds
     */
-   if (vk_image_is_android_hardware_buffer(&image->vk)) {
+   if (vk_image_is_android_hardware_buffer(&image->vk)) { mesa_loge("nvk_CreateImage: AHardwareBuffer Layout and VA allocation deferred vk.format %u vk.ahb_format %u", image->vk.format, image->vk.ahb_format);
       *pImage = nvk_image_to_handle(image);
       return VK_SUCCESS;
    }
 
    result = nvk_image_layout(dev, image);
-
+   mesa_loge("nvk_CreateImage: ANB nvk_image_layout result %u vk.format %u vk.ahb_format %u", result, image->vk.format, image->vk.ahb_format);
    result = nvk_image_alloc_vas(dev, image);
    if (result != VK_SUCCESS) {
       nvk_image_finish(dev, image, pAllocator);
@@ -1198,7 +1198,7 @@ nvk_CreateImage(VkDevice _device,
    }
 
    /* This section is removed by the optimizer for non-ANDROID builds */
-   if (vk_image_is_android_native_buffer(&image->vk)) {
+   if (vk_image_is_android_native_buffer(&image->vk)) { mesa_loge("nvk_CreateImage: ANB vk.format %u vk.ahb_format %u", image->vk.format, image->vk.ahb_format);
       result = vk_android_import_anb(&dev->vk, pCreateInfo, pAllocator,
                                      &image->vk);
       if (result != VK_SUCCESS) {
@@ -1207,7 +1207,7 @@ nvk_CreateImage(VkDevice _device,
          return result;
       }
    }
-
+   mesa_loge("nvk_CreateImage: ANB vk_android_import_anb successful vk.format %u vk.ahb_format %u", image->vk.format, image->vk.ahb_format);
    *pImage = nvk_image_to_handle(image);
 
    return VK_SUCCESS;
@@ -1334,7 +1334,7 @@ nvk_GetDeviceImageMemoryRequirements(VkDevice device,
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
    result = nvk_image_layout(dev, &image);
-
+   mesa_loge("nvk_GetDeviceImageMemoryRequirements: nvk_image_layout result %u", result);
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
 
@@ -1445,7 +1445,7 @@ nvk_GetDeviceImageSparseMemoryRequirements(
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
    result = nvk_image_layout(dev, &image);
-
+   mesa_loge("nvk_GetDeviceImageSparseMemoryRequirements: ANB nvk_image_layout result %u", result);
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
 
@@ -1520,7 +1520,7 @@ nvk_GetDeviceImageSubresourceLayoutKHR(
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
    result = nvk_image_layout(dev, &image);
-
+   mesa_loge("nvk_GetDeviceImageSubresourceLayoutKHR: nvk_image_layout result %u", result);
    nvk_get_image_subresource_layout(dev, &image, pInfo->pSubresource, pLayout);
 
    nvk_image_finish(dev, &image, NULL);
@@ -1570,14 +1570,14 @@ nvk_bind_image_memory(struct nvk_device *dev,
 #if DETECT_OS_ANDROID
    const VkNativeBufferANDROID *anb_info =
       vk_find_struct_const(info->pNext, NATIVE_BUFFER_ANDROID);
-   if (anb_info != NULL && anb_info->handle != NULL) {
+   if (anb_info != NULL && anb_info->handle != NULL) { mesa_loge("nvk_bind_image_memory: ANB plane_count %u vk.format %u vk.drm_format_mod %lu explicit_row_stride_B %u", image->plane_count, image->vk.format, image->vk.drm_format_mod, image->explicit_row_stride_B);
       /* We do the actual bind the end of CreateImage() */
       assert(mem == NULL);
       return VK_SUCCESS;
    }
 
 #if ANDROID_API_LEVEL >= 26
-   if (vk_image_is_android_hardware_buffer(&image->vk)) {
+   if (vk_image_is_android_hardware_buffer(&image->vk)) { mesa_loge("nvk_bind_image_memory: AHardwareBuffer initial values plane_count %u vk.format %u vk.ahb_format %u vk.tiling %u vk.drm_format_mod %lu explicit_row_stride_B %u", image->plane_count, image->vk.format, image->vk.ahb_format, image->vk.tiling, image->vk.drm_format_mod, image->explicit_row_stride_B);
       VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
       VkSubresourceLayout a_plane_layouts[NVK_MAX_IMAGE_PLANES];
       result = vk_android_get_ahb_layout(mem->vk.ahardware_buffer,
@@ -1589,9 +1589,9 @@ nvk_bind_image_memory(struct nvk_device *dev,
       image->vk.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
       image->vk.drm_format_mod = eci.drmFormatModifier;
       image->explicit_row_stride_B = eci.pPlaneLayouts[0].rowPitch;
-
+      mesa_loge("nvk_bind_image_memory: AHardwareBuffer vk_android_get_ahb_layout successful plane_count %u vk.format %u vk.ahb_format %u vk.tiling %u vk.drm_format_mod %lu explicit_row_stride_B %u", image->plane_count, image->vk.format, image->vk.ahb_format, image->vk.tiling, image->vk.drm_format_mod, image->explicit_row_stride_B);
       result = nvk_image_layout(dev, image);
-
+      mesa_loge("nvk_bind_image_memory: AHardwareBuffer nvk_image_layout result %u", result);
       result = nvk_image_alloc_vas(dev, image);
       if (result != VK_SUCCESS)
          return result;
