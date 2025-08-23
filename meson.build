@@ -858,7 +858,6 @@ if with_gallium_rusticl or with_nouveau_vk or with_tools.contains('etnaviv') or 
     '-Ddeprecated_safe_2024',
     '-Dimpl_trait_overcaptures',
     '-Dkeyword_idents_2024',
-    '-Dmissing_unsafe_on_extern',
     '-Dnever_type_fallback_flowing_into_unsafe',
     '-Drust_2024_prelude_collisions',
     '-Dstatic_mut_refs',
