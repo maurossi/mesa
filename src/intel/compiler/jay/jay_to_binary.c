@@ -362,11 +362,12 @@ emit(struct brw_codegen *p,
       brw_BFN(p, dst, SRC(0), SRC(1), SRC(2), brw_imm_ud(jay_bfn_ctrl(I)));
       break;
 
-   case JAY_OPCODE_DESWIZZLE_ODD:
+   case JAY_OPCODE_DESWIZZLE_ODD: {
       bool hi = simd_offs ? true : jay_deswizzle_odd_src2_hi(I);
       brw_MOV(p, dst,
               byte_offset(to_brw_reg(f, I, simd_offs, 0, false), hi ? 64 : 0));
       break;
+   }
 
    case JAY_OPCODE_DESWIZZLE_EVEN:
       brw_set_default_exec_size(p, BRW_EXECUTE_16);
