@@ -3453,7 +3453,7 @@ radv_create_trap_handler_shader(struct radv_device *device)
    info.type = RADV_SHADER_TYPE_TRAP_HANDLER;
 
    struct radv_shader_args args;
-   struct radv_shader_debug_info debug = {};
+   struct radv_shader_debug_info debug = {0};
    radv_declare_shader_args(device, NULL, &info, stage, MESA_SHADER_NONE, &args, &debug);
 
 #if AMD_LLVM_AVAILABLE

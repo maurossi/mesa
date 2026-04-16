@@ -972,7 +972,7 @@ radv_declare_shader_args(const struct radv_device *device, const struct radv_gra
       .args = args,
    };
 
-   struct user_sgpr_info user_sgpr_info = {};
+   struct user_sgpr_info user_sgpr_info = {0};
 
    if (!mesa_shader_stage_is_rt(stage)) {
       declare_shader_args(&state, device, gfx_state, info, stage, previous_stage, NULL);
