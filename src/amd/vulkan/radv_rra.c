@@ -1366,14 +1366,14 @@ dump_bvh_stats(struct radv_device *device, struct vk_acceleration_structure *acc
    float sah;
    float instance_sah;
    if (radv_use_bvh8(pdev)) {
-      struct radv_bvh_stats_gfx12 stats = {};
+      struct radv_bvh_stats_gfx12 stats = {0};
       radv_gather_bvh_stats_gfx12(data + header->bvh_offset, RADV_BVH_ROOT_NODE, 1, surface_area, blas_sah, &stats);
       sah = stats.sah;
       instance_sah = stats.instance_sah;
       fprintf(device->rra_trace.stats_file, ",%u,%u,%u,%u", stats.max_depth, stats.box_node_count,
               stats.primitive_node_count, stats.instance_node_count);
    } else {
-      struct radv_bvh_stats_gfx10_3 stats = {};
+      struct radv_bvh_stats_gfx10_3 stats = {0};
       radv_gather_bvh_stats_gfx10_3(data + header->bvh_offset, RADV_BVH_ROOT_NODE, 1, surface_area, blas_sah, &stats);
       sah = stats.sah;
       instance_sah = stats.instance_sah;
