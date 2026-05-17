@@ -108,6 +108,13 @@ struct nvk_image {
     */
    bool separate_zs;
 
+   uint32_t explicit_row_stride_B[NVK_MAX_IMAGE_PLANES];
+
+   int64_t explicit_offsets_B[NVK_MAX_IMAGE_PLANES];
+
+   /** VkImageAlignmentControlCreateInfoMESA::maximumRequestedAlignment */
+   uint32_t max_alignment_B;
+
    uint8_t plane_count;
    struct nvk_image_plane planes[NVK_MAX_IMAGE_PLANES];
 
