@@ -838,6 +838,87 @@ nvk_image_init(struct nvk_device *dev,
 
    vk_image_init(&dev->vk, &image->vk, pCreateInfo);
 
+   image->plane_count = vk_format_get_plane_count(image->vk.format);
+   image->disjoint = image->plane_count > 1 &&
+                     (image->vk.create_flags & VK_IMAGE_CREATE_DISJOINT_BIT);
+
+   if (nvk_use_separate_zs(pdev, image->vk.format)) {
+      image->separate_zs = true;
+      image->plane_count = 2;
+   }
+
+   for (uint8_t plane = 0; plane < NVK_MAX_IMAGE_PLANES; plane++) {
+      image->explicit_row_stride_B[plane] = 0;
+      image->explicit_offsets_B[plane] = -1;
+   }
+
+   image->max_alignment_B = 0;
+
+   /* This section is removed by the optimizer for non-ANDROID builds */
+   if (vk_image_is_android_native_buffer(&image->vk)) {
+      VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+      VkSubresourceLayout a_plane_layouts[4];
+      VkResult result = vk_android_get_anb_layout(
+         pCreateInfo, &eci, a_plane_layouts, 4);
+      if (result != VK_SUCCESS)
+         return result;
+
+      image->vk.drm_format_mod = eci.drmFormatModifier;
+      for (uint8_t plane = 0; plane < eci.drmFormatModifierPlaneCount; plane++) {
+         image->explicit_row_stride_B[plane] = eci.pPlaneLayouts[plane].rowPitch;
+         image->explicit_offsets_B[plane] = eci.pPlaneLayouts[plane].offset;
+      }
+   }
+
+   const VkImageAlignmentControlCreateInfoMESA *alignment =
+      vk_find_struct_const(pCreateInfo->pNext,
+                           IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA);
+   if (alignment && alignment->maximumRequestedAlignment) {
+      assert(util_is_power_of_two_or_zero(alignment->maximumRequestedAlignment));
+      image->max_alignment_B = alignment->maximumRequestedAlignment;
+   }
+
+   if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
+      const struct VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info =
+         vk_find_struct_const(pCreateInfo->pNext,
+                              IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
+      if (mod_explicit_info) {
+         image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
+         /* Normally with explicit modifiers, the client specifies all strides,
+          * however in our case, we can only really make use of this in the linear
+          * case, and we can only create 2D non-array linear images, so ultimately
+          * we only care about the row stride. For multiplanar images, we also
+          * have to care about the explicit plane offset.
+          */
+         for (uint8_t plane = 0; plane < mod_explicit_info->drmFormatModifierPlaneCount; plane++) {
+            image->explicit_row_stride_B[plane] = mod_explicit_info->pPlaneLayouts[plane].rowPitch;
+            image->explicit_offsets_B[plane] = mod_explicit_info->pPlaneLayouts[plane].offset;
+         }
+      } else {
+         /* Non-linear modifiers are not supported with YCbCr */
+         assert(image->plane_count == 1);
+         const struct VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info =
+            vk_find_struct_const(pCreateInfo->pNext,
+                                 IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT);
+
+         enum pipe_format p_format =
+            nvk_format_to_pipe_format(image->vk.format);
+         image->vk.drm_format_mod =
+            nil_select_best_drm_format_mod(&pdev->info, nil_format(p_format),
+                                           mod_list_info->drmFormatModifierCount,
+                                           mod_list_info->pDrmFormatModifiers);
+         assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
+      }
+   }
+
+   return VK_SUCCESS;
+}
+
+static VkResult
+nvk_image_layout(struct nvk_device *dev, struct nvk_image *image)
+{
+   const struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
    nil_image_usage_flags usage = 0;
    if (image->vk.tiling == VK_IMAGE_TILING_LINEAR)
       usage |= NIL_IMAGE_USAGE_LINEAR_BIT;
@@ -853,15 +934,6 @@ nvk_image_init(struct nvk_device *dev,
                              VK_IMAGE_ASPECT_STENCIL_BIT)) &&
        image->vk.image_type == VK_IMAGE_TYPE_3D)
       usage |= NIL_IMAGE_USAGE_2D_VIEW_BIT;
-
-   image->plane_count = vk_format_get_plane_count(image->vk.format);
-   image->disjoint = image->plane_count > 1 &&
-                     (image->vk.create_flags & VK_IMAGE_CREATE_DISJOINT_BIT);
-
-   if (nvk_use_separate_zs(pdev, image->vk.format)) {
-      image->separate_zs = true;
-      image->plane_count = 2;
-   }
 
    if (image->vk.create_flags & VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT) {
       /* Sparse multiplane is not supported */
@@ -887,70 +959,9 @@ nvk_image_init(struct nvk_device *dev,
    if (!image->can_compress)
       usage |= NIL_IMAGE_USAGE_UNCOMPRESSED_BIT;
 
-   uint32_t explicit_row_stride_B[NVK_MAX_IMAGE_PLANES] = { 0 };
-   int64_t explicit_offsets_B[NVK_MAX_IMAGE_PLANES];
-   for (uint8_t plane = 0; plane < NVK_MAX_IMAGE_PLANES; plane++)
-      explicit_offsets_B[plane] = -1;
-
-   /* This section is removed by the optimizer for non-ANDROID builds */
-   if (vk_image_is_android_native_buffer(&image->vk)) {
-      VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
-      VkSubresourceLayout a_plane_layouts[4];
-      VkResult result = vk_android_get_anb_layout(
-         pCreateInfo, &eci, a_plane_layouts, 4);
-      if (result != VK_SUCCESS)
-         return result;
-
-      image->vk.drm_format_mod = eci.drmFormatModifier;
-      for (uint8_t plane = 0; plane < eci.drmFormatModifierPlaneCount; plane++) {
-         explicit_row_stride_B[plane] = eci.pPlaneLayouts[plane].rowPitch;
-         explicit_offsets_B[plane] = eci.pPlaneLayouts[plane].offset;
-      }
-   }
-
-   uint32_t max_alignment_B = 0;
-   const VkImageAlignmentControlCreateInfoMESA *alignment =
-      vk_find_struct_const(pCreateInfo->pNext,
-                           IMAGE_ALIGNMENT_CONTROL_CREATE_INFO_MESA);
-   if (alignment && alignment->maximumRequestedAlignment) {
-      assert(util_is_power_of_two_or_zero(alignment->maximumRequestedAlignment));
-      max_alignment_B = alignment->maximumRequestedAlignment;
-   }
-
    const struct vk_format_ycbcr_info *ycbcr_info =
       vk_format_get_ycbcr_info(image->vk.format);
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
-      const struct VkImageDrmFormatModifierExplicitCreateInfoEXT *mod_explicit_info =
-         vk_find_struct_const(pCreateInfo->pNext,
-                              IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
-      if (mod_explicit_info) {
-         image->vk.drm_format_mod = mod_explicit_info->drmFormatModifier;
-         /* Normally with explicit modifiers, the client specifies all strides,
-          * however in our case, we can only really make use of this in the linear
-          * case, and we can only create 2D non-array linear images, so ultimately
-          * we only care about the row stride. For multiplanar images, we also
-          * have to care about the explicit plane offset.
-          */
-         for (uint8_t plane = 0; plane < mod_explicit_info->drmFormatModifierPlaneCount; plane++) {
-            explicit_row_stride_B[plane] = mod_explicit_info->pPlaneLayouts[plane].rowPitch;
-            explicit_offsets_B[plane] = mod_explicit_info->pPlaneLayouts[plane].offset;
-         }
-      } else {
-         /* Non-linear modifiers are not supported with YCbCr */
-         assert(image->plane_count == 1);
-         const struct VkImageDrmFormatModifierListCreateInfoEXT *mod_list_info =
-            vk_find_struct_const(pCreateInfo->pNext,
-                                 IMAGE_DRM_FORMAT_MODIFIER_LIST_CREATE_INFO_EXT);
-
-         enum pipe_format p_format =
-            nvk_format_to_pipe_format(image->vk.format);
-         image->vk.drm_format_mod =
-            nil_select_best_drm_format_mod(&pdev->info, nil_format(p_format),
-                                           mod_list_info->drmFormatModifierCount,
-                                           mod_list_info->pDrmFormatModifiers);
-         assert(image->vk.drm_format_mod != DRM_FORMAT_MOD_INVALID);
-      }
-
       if (image->vk.drm_format_mod == DRM_FORMAT_MOD_LINEAR) {
          for (uint8_t plane = 0; plane < image->plane_count; plane++) {
             VkFormat format = ycbcr_info ?
@@ -1029,8 +1040,8 @@ nvk_image_init(struct nvk_device *dev,
          .levels = image->vk.mip_levels,
          .samples = image->vk.samples,
          .usage = usage,
-         .explicit_row_stride_B = explicit_row_stride_B[plane],
-         .max_alignment_B = max_alignment_B,
+         .explicit_row_stride_B = image->explicit_row_stride_B[plane],
+         .max_alignment_B = image->max_alignment_B,
       };
    }
 
@@ -1120,11 +1131,11 @@ nvk_image_init(struct nvk_device *dev,
       image->planes[plane].plane_align_B = plane_align_B;
       image->image_align_B = MAX2(plane_align_B, image->image_align_B);
 
-      if (explicit_offsets_B[plane] >= 0) {
-         assert(explicit_offsets_B[plane] % plane_align_B == 0);
-         image->planes[plane].plane_offset_B = explicit_offsets_B[plane];
+      if (image->explicit_offsets_B[plane] >= 0) {
+         assert(image->explicit_offsets_B[plane] % plane_align_B == 0);
+         image->planes[plane].plane_offset_B = image->explicit_offsets_B[plane];
          image->image_size_B =
-            MAX2((explicit_offsets_B[plane] + image->planes[plane].nil.size_B),
+            MAX2((image->planes[plane].plane_offset_B + image->planes[plane].nil.size_B),
                  image->image_size_B);
       } else if (image->disjoint) {
          image->planes[plane].plane_offset_B = 0;
@@ -1256,6 +1267,8 @@ nvk_CreateImage(VkDevice _device,
       vk_free2(&dev->vk.alloc, pAllocator, image);
       return result;
    }
+
+   result = nvk_image_layout(dev, image);
 
    if (image->vk.create_flags & (VK_IMAGE_CREATE_SPARSE_BINDING_BIT |
                                  VK_IMAGE_CREATE_SPARSE_RESIDENCY_BIT)) {
@@ -1405,6 +1418,7 @@ nvk_GetDeviceImageMemoryRequirements(VkDevice device,
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   result = nvk_image_layout(dev, &image);
 
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
@@ -1515,6 +1529,7 @@ nvk_GetDeviceImageSparseMemoryRequirements(
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   result = nvk_image_layout(dev, &image);
 
    const VkImageAspectFlags aspects =
       image.disjoint ? pInfo->planeAspect : image.vk.aspects;
@@ -1584,6 +1599,7 @@ nvk_GetDeviceImageSubresourceLayoutKHR(
 
    result = nvk_image_init(dev, &image, pInfo->pCreateInfo);
    assert(result == VK_SUCCESS);
+   result = nvk_image_layout(dev, &image);
 
    nvk_get_image_subresource_layout(dev, &image, pInfo->pSubresource, pLayout);
 
