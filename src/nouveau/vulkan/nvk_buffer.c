@@ -10,6 +10,8 @@
 #include "nvk_physical_device.h"
 #include "nvk_queue.h"
 #include "nvkmd/nvkmd.h"
+#include "util/detect_os.h"
+#include "vk_android.h"
 
 #define NVK_BUFFER_CREATE_CAPTURE_REPLAY_BITS \
    (VK_BUFFER_CREATE_DEVICE_ADDRESS_CAPTURE_REPLAY_BIT | \
@@ -201,6 +203,11 @@ nvk_GetDeviceBufferMemoryRequirements(
          dedicated->requiresDedicatedAllocation = false;
          break;
       }
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+      case VK_STRUCTURE_TYPE_IMPORT_ANDROID_HARDWARE_BUFFER_INFO_ANDROID:
+         /* This case is handled in the common code */
+         break;
+#endif
       default:
          vk_debug_ignored_stype(ext->sType);
          break;
@@ -238,6 +245,12 @@ nvk_GetPhysicalDeviceExternalBufferProperties(
       pExternalBufferProperties->externalMemoryProperties =
          nvk_dma_buf_mem_props;
       return;
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+   case VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID:
+      vk_android_get_ahb_buffer_properties(
+         physicalDevice, pExternalBufferInfo, pExternalBufferProperties);
+      return;
+#endif
    default:
       goto unsupported;
    }

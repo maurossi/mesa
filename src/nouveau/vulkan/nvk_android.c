@@ -8,7 +8,10 @@
 
 #include "nvk_private.h"
 
+#include "nvk_android.h"
+#include "nvk_device.h"
 #include "nvk_entrypoints.h"
+#include "nvk_image.h"
 #include "vk_android.h"
 
 #include "vk_device.h"
@@ -39,3 +42,48 @@ nvk_QueueSignalReleaseImageANDROID(VkQueue _queue,
 
    return VK_SUCCESS;
 }
+
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+VkResult
+nvk_android_ahb_image_init(struct nvk_device *dev,
+                           struct nvk_image *img,
+                           struct AHardwareBuffer *ahb)
+{
+   VkResult result;
+   assert(img->vk.android_deferred_create_info);
+
+   VkImageDrmFormatModifierExplicitCreateInfoEXT eci;
+   VkSubresourceLayout layouts[NVK_MAX_IMAGE_PLANES];
+
+   /* Extract physical bounds and modifier from the Android OS */
+   result = vk_android_get_ahb_layout(ahb, &eci, layouts, NVK_MAX_IMAGE_PLANES);
+   if (result != VK_SUCCESS)
+      return result;
+
+   /* Append the explicit modifier info using Mesa runtime helpers */
+   __vk_append_struct(img->vk.android_deferred_create_info, &eci);
+
+   VkExternalMemoryImageCreateInfo external_info = {
+      .sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO,
+      .handleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
+   };
+
+   __vk_append_struct(img->vk.android_deferred_create_info, &external_info);
+
+   /* Save the received tiling (OPTIMAL/LINEAR) and spoof the state
+    * to force nvk_image_init to step inside the DRM_FORMAT_MODIFIER block.
+    */
+   VkImageTiling original_tiling = img->vk.tiling;
+   img->vk.tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT;
+
+   img->vk.drm_format_mod = eci.drmFormatModifier;
+
+   /* Call nvk_image_init directly with the appended deferred info */
+   result = nvk_image_init(dev, img, img->vk.android_deferred_create_info);
+
+   /* Restore the original tiling to preserve Vulkan API correctness */
+   img->vk.tiling = original_tiling;
+
+   return result;
+}
+#endif

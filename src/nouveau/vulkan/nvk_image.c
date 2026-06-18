@@ -4,6 +4,7 @@
  */
 #include "nvk_image.h"
 
+#include "nvk_android.h"
 #include "nvk_device.h"
 #include "nvk_device_memory.h"
 #include "nvk_entrypoints.h"
@@ -17,6 +18,8 @@
 #include "vk_format.h"
 #include "nil.h"
 #include "vk_enum_defines.h"
+
+#include <vulkan/vulkan_android.h>
 
 #include "clb097.h"
 #include "clb197.h"
@@ -542,7 +545,17 @@ nvk_GetPhysicalDeviceImageFormatProperties2(
    }
 
    const VkExternalMemoryProperties *ext_mem_props = NULL;
-   if (external_info != NULL && external_info->handleType != 0) {
+   if (external_info != NULL && external_info->handleType ==
+       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID) {
+      VkResult result = vk_android_get_ahb_image_properties(
+         physicalDevice, pImageFormatInfo, pImageFormatProperties);
+      if (result != VK_SUCCESS)
+         return result;
+
+      /* Stay aligned with VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT */
+      maxMipLevels = 1;
+      maxArraySize = 1;
+   } else if (external_info != NULL && external_info->handleType != 0) {
       bool tiling_has_explicit_layout;
       switch (pImageFormatInfo->tiling) {
       case VK_IMAGE_TILING_LINEAR:
@@ -829,7 +842,7 @@ nvk_image_can_compress(const struct nvkmd_pdev *nvkmd_pdev,
       return false;
 }
 
-static VkResult
+VkResult
 nvk_image_init(struct nvk_device *dev,
                struct nvk_image *image,
                const VkImageCreateInfo *pCreateInfo)
@@ -1251,6 +1264,19 @@ nvk_CreateImage(VkDevice _device,
    if (!image)
       return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
 
+   if (vk_image_is_android_hardware_buffer(&image->vk)) {
+      result = vk_android_init_deferred_image(&dev->vk, &image->vk,
+                                              pCreateInfo, &dev->vk.alloc);
+      if (result != VK_SUCCESS) {
+         vk_free2(&dev->vk.alloc, pAllocator, image);
+         return result;
+      }
+
+      *pImage = nvk_image_to_handle(image);
+
+      return VK_SUCCESS;
+   }
+
    result = nvk_image_init(dev, image, pCreateInfo);
    if (result != VK_SUCCESS) {
       vk_free2(&dev->vk.alloc, pAllocator, image);
@@ -1671,6 +1697,24 @@ nvk_bind_image_memory(struct nvk_device *dev,
 #endif
 
    assert(mem != NULL);
+
+#if DETECT_OS_ANDROID && ANDROID_API_LEVEL >= 26
+   /* Catch AHB images that need their deferred layout compiled before plane binding */
+   if (vk_image_is_android_hardware_buffer(&image->vk) &&
+       image->vk.android_deferred_create_info) {
+
+      assert(mem->vk.ahardware_buffer != NULL);
+
+      result = nvk_android_ahb_image_init(dev, image, mem->vk.ahardware_buffer);
+      if (result != VK_SUCCESS)
+         return result;
+
+      /* Free the deferred info to prevent re-initialization */
+      vk_free2(&dev->vk.alloc, NULL, image->vk.android_deferred_create_info);
+      image->vk.android_deferred_create_info = NULL;
+   }
+#endif
+
    if (image->disjoint) {
       const VkBindImagePlaneMemoryInfo *plane_info =
          vk_find_struct_const(info->pNext, BIND_IMAGE_PLANE_MEMORY_INFO);
