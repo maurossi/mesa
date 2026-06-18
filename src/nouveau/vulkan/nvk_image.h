@@ -35,7 +35,9 @@
  */
 #define NVK_MIP_TAIL_START_OFFSET 0x6d74000000000000UL
 
+struct nvk_device;
 struct nvk_device_memory;
+struct nvk_image;
 struct nvk_physical_device;
 struct nvk_queue;
 struct nvkmd_mem;
@@ -224,6 +226,10 @@ nvk_image_memory_aspects_to_plane(ASSERTED const struct nvk_image *image,
       return nvk_image_aspects_to_plane(image, aspectMask);
    }
 }
+
+VkResult nvk_image_init(struct nvk_device *dev,
+                        struct nvk_image *image,
+                        const VkImageCreateInfo *pCreateInfo);
 
 bool nvk_image_plane_aligned_for_linear_attachment(const struct nvk_image_plane *plane,
                                                    const struct nil_image_level *level);
