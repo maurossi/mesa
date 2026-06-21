@@ -126,7 +126,6 @@ _libcompiler_bindings = static_library(
   ],
   dependencies : [
     idep_nir_headers,
-    idep_mesautil,
   ],
 )
 
